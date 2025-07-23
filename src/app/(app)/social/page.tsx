@@ -65,7 +65,7 @@ export default function SocialPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
-  const [deletingPost, setDeletingPost] = useState<SocialPost | null>(null);
+  const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -125,12 +125,11 @@ export default function SocialPage() {
     setEditingPost(null);
   };
   
-  const handleDeletePost = () => {
-    if (!deletingPost) return;
-    const updatedPosts = socialPosts.filter((post) => post.id !== deletingPost.id);
+  const handleDeletePost = (postId: number) => {
+    const updatedPosts = socialPosts.filter((post) => post.id !== postId);
     setSocialPosts(updatedPosts);
     toast({ title: "Post deleted successfully!" });
-    setDeletingPost(null);
+    setDeletingPostId(null);
   };
 
   const handleCopyText = (text: string) => {
@@ -157,7 +156,7 @@ export default function SocialPage() {
         photoDataUris: form.getValues("photos"),
       });
       const newPost: SocialPost = {
-        id: socialPosts.length + 1,
+        id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
         title: result.title,
         content: result.postText,
         images: previewImages.length > 0 ? previewImages : ["https://placehold.co/400x400.png"],
@@ -268,9 +267,9 @@ export default function SocialPage() {
                             <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
                                 <Pencil className="h-4 w-4" />
                             </Button>
-                             <AlertDialog onOpenChange={() => setDeletingPost(null)}>
+                             <AlertDialog open={deletingPostId === post.id} onOpenChange={(open) => !open && setDeletingPostId(null)}>
                                 <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => setDeletingPost(post)}>
+                                  <Button variant="ghost" size="icon" onClick={() => setDeletingPostId(post.id)}>
                                     <Trash2 className="h-4 w-4 text-destructive" />
                                   </Button>
                                 </AlertDialogTrigger>
@@ -283,7 +282,7 @@ export default function SocialPage() {
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={handleDeletePost}>Delete</AlertDialogAction>
+                                    <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>

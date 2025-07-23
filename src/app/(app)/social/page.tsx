@@ -45,6 +45,7 @@ const formSchema = z.object({
 });
 
 const editFormSchema = z.object({
+    title: z.string().min(3, "Title is too short."),
     content: z.string().min(10, "Post content is too short.").max(280, "Post content cannot exceed 280 characters."),
 });
 
@@ -99,7 +100,7 @@ export default function SocialPage() {
   
   const handleEditClick = (post: SocialPost) => {
     setEditingPost(post);
-    editForm.reset({ content: post.content });
+    editForm.reset({ title: post.title, content: post.content });
   };
   
   const handleUpdatePost = (values: z.infer<typeof editFormSchema>) => {
@@ -137,7 +138,7 @@ export default function SocialPage() {
       });
       const newPost: SocialPost = {
         id: socialPosts.length + 1,
-        platform: "AI Generated",
+        title: result.title,
         content: result.postText,
         images: previewImages.length > 0 ? previewImages : ["https://placehold.co/400x400.png"],
         dataAiHint: "tech club",
@@ -240,7 +241,7 @@ export default function SocialPage() {
                 <CardHeader>
                     <div className="flex justify-between items-start">
                         <div>
-                            <CardTitle>{post.platform}</CardTitle>
+                            <CardTitle>{post.title}</CardTitle>
                             <CardDescription>{post.date}</CardDescription>
                         </div>
                         <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
@@ -274,7 +275,7 @@ export default function SocialPage() {
                         <Copy className="mr-2"/> Copy Text
                     </Button>
                     {post.images && post.images.length === 1 && (
-                      <Button className="w-full" onClick={() => handleDownloadImage(post.images[0], post.platform)}>
+                      <Button className="w-full" onClick={() => handleDownloadImage(post.images[0], post.title)}>
                          <Download className="mr-2"/> Download Image
                       </Button>
                     )}
@@ -299,6 +300,19 @@ export default function SocialPage() {
             </DialogHeader>
             <Form {...editForm}>
               <form onSubmit={editForm.handleSubmit(handleUpdatePost)} className="space-y-4">
+                 <FormField
+                  control={editForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                  <FormField
                   control={editForm.control}
                   name="content"

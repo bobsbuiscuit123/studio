@@ -23,6 +23,7 @@ const GenerateSocialMediaPostInputSchema = z.object({
 export type GenerateSocialMediaPostInput = z.infer<typeof GenerateSocialMediaPostInputSchema>;
 
 const GenerateSocialMediaPostOutputSchema = z.object({
+  title: z.string().describe('A short, catchy title for the social media post based on the prompt.'),
   postText: z.string().describe('The generated social media post text, no more than 280 characters.'),
   imageCaption: z.string().optional().describe('The generated caption for the image, if applicable.'),
 });
@@ -40,7 +41,8 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateSocialMediaPostOutputSchema},
   prompt: `You are a social media marketing expert for school clubs.
   Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
-  The social media post should be no more than 280 characters.
+  Based on the user's prompt, generate a short, catchy title for the post.
+  The social media post text should be no more than 280 characters.
 
   User Prompt: {{{prompt}}}
 

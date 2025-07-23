@@ -28,7 +28,7 @@ export type Announcement = {
 
 export type SocialPost = {
   id: number;
-  platform: string;
+  title: string;
   content: string;
   images: string[];
   dataAiHint?: string;

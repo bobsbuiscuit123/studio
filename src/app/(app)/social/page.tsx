@@ -49,6 +49,7 @@ import { Input } from "@/components/ui/input";
 import { useSocialPosts } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
 
 
 const formSchema = z.object({
@@ -338,28 +339,28 @@ export default function SocialPage() {
 
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
-                <CardFooter className="flex flex-col items-start gap-2">
-                    <div className="flex justify-between w-full">
-                         <div className="flex gap-2">
-                             <Button variant={post.liked ? "default" : "outline"} className="flex-1" onClick={() => handleLike(post.id)}>
-                                <ThumbsUp className="mr-2"/> Like
-                            </Button>
-                            <Button variant="outline" className="flex-1" onClick={() => setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)}>
-                                <MessageCircle className="mr-2"/> Comment
-                            </Button>
-                         </div>
-                         <div className="text-sm text-muted-foreground self-center">
-                            {post.likes || 0} likes &bull; {post.comments?.length || 0} comments
-                         </div>
-                    </div>
+                <CardFooter className="flex flex-col items-start gap-2 p-4">
+                     <Separator className="my-2" />
+                     <div className="flex justify-start items-center w-full gap-4">
+                         <Button variant={post.liked ? "default" : "outline"} size="sm" onClick={() => handleLike(post.id)} className="flex items-center gap-2">
+                            <ThumbsUp className="h-4 w-4"/> {post.likes || 0}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)} className="flex items-center gap-2">
+                            <MessageCircle className="h-4 w-4"/> {post.comments?.length || 0}
+                        </Button>
+                     </div>
                     {activeCommentPostId === post.id && (
-                        <div className="w-full pt-2">
-                            <div className="space-y-2 mb-2">
+                        <div className="w-full pt-4">
+                            <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
                                 {(post.comments || []).map((comment, index) => (
-                                    <div key={index} className="text-sm p-2 bg-muted rounded-md">
-                                        <span className="font-semibold">{comment.author}:</span> {comment.text}
+                                    <div key={index} className="text-sm p-3 bg-muted rounded-lg">
+                                        <p className="font-semibold">{comment.author}</p>
+                                        <p className="text-muted-foreground">{comment.text}</p>
                                     </div>
                                 ))}
+                                 {(post.comments || []).length === 0 && (
+                                    <p className="text-sm text-muted-foreground text-center py-4">No comments yet.</p>
+                                )}
                             </div>
                             <Form {...commentForm}>
                                 <form onSubmit={commentForm.handleSubmit((data) => handleAddComment(post.id, data))} className="flex gap-2">
@@ -374,7 +375,7 @@ export default function SocialPage() {
                                         </FormItem>
                                     )}
                                     />
-                                    <Button type="submit">Post</Button>
+                                    <Button type="submit" size="sm">Post</Button>
                                 </form>
                             </Form>
                         </div>

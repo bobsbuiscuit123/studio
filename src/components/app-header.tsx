@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Menu, Settings, User, LogOut } from "lucide-react";
-import { AppSidebar } from "./app-sidebar";
+import { Menu, Settings, User, LogOut, Bot } from "lucide-react";
+import { AppSidebarNav } from "./app-sidebar-nav";
+import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
 
@@ -28,6 +29,7 @@ const pageTitles: { [key: string]: string } = {
   "/members": "Members",
   "/slides": "Meeting Slides",
   "/social": "Social Media",
+  "/assistant": "AI Assistant",
 };
 
 export function AppHeader() {
@@ -35,7 +37,7 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "Clubhouse AI";
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
+    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
        <Sheet>
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="sm:hidden">
@@ -43,19 +45,22 @@ export function AppHeader() {
             <span className="sr-only">Toggle Menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="sm:max-w-xs p-0">
-          <div className="p-4 border-b">
-             <div className="flex items-center gap-2 font-semibold">
+        <SheetContent side="left" className="flex flex-col">
+          <nav className="grid gap-2 text-lg font-medium">
+            <Link
+              href="#"
+              className="flex items-center gap-2 text-lg font-semibold mb-4"
+            >
               <Logo className="h-6 w-6" />
-              <span className="">Clubhouse AI</span>
-            </div>
-          </div>
-          <AppSidebar />
+              <span>Clubhouse AI</span>
+            </Link>
+            <AppSidebarNav />
+          </nav>
         </SheetContent>
       </Sheet>
 
-      <div className="flex-1">
-        <h1 className="text-lg font-semibold md:text-2xl">{title}</h1>
+      <div className="w-full flex-1">
+         <h1 className="text-lg font-semibold md:text-2xl">{title}</h1>
       </div>
       
       <DropdownMenu>

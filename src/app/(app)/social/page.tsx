@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Network, Loader2, Image as ImageIcon, X, Pencil } from "lucide-react";
+import { Network, Loader2, Image as ImageIcon, X, Pencil, Download, Copy } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import {
   Dialog,
@@ -84,6 +85,21 @@ export default function SocialPage() {
     setSocialPosts(updatedPosts);
     toast({ title: "Post updated!" });
     setEditingPost(null);
+  };
+
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: "Post text copied!" });
+  };
+
+  const handleDownloadImage = (imageUrl: string, title: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_post_image.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Image download started!" });
   };
 
 
@@ -194,7 +210,7 @@ export default function SocialPage() {
           socialPosts.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
             {socialPosts.map((post) => (
-              <Card key={post.id}>
+              <Card key={post.id} className="flex flex-col">
                 <CardHeader>
                     <div className="flex justify-between items-start">
                         <div>
@@ -206,10 +222,18 @@ export default function SocialPage() {
                         </Button>
                     </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 flex-grow">
                   <Image src={post.image} alt="Social post image" width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
+                <CardFooter className="flex gap-2">
+                    <Button variant="outline" className="w-full" onClick={() => handleCopyText(post.content)}>
+                        <Copy className="mr-2"/> Copy Text
+                    </Button>
+                    <Button className="w-full" onClick={() => handleDownloadImage(post.image, post.platform)}>
+                       <Download className="mr-2"/> Download Image
+                    </Button>
+                </CardFooter>
               </Card>
             ))}
           </div>

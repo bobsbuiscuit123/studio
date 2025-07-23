@@ -29,6 +29,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
+import { useRouter, useSearchParams } from 'next/navigation';
+
 
 const formSchema = z.object({
   name: z.string().min(2, 'Club name must be at least 2 characters.'),
@@ -46,6 +48,8 @@ export default function HomePage() {
   const [isClient, setIsClient] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setIsClient(true);
@@ -54,6 +58,37 @@ export default function HomePage() {
       setClubs(JSON.parse(savedClubs));
     }
   }, []);
+
+  useEffect(() => {
+    if (isClient) {
+      const joinClubId = searchParams.get('joinClubId');
+      if (joinClubId) {
+        // This is a simplified example. In a real app, you'd fetch club details from a backend.
+        // For now, we'll assume the person sharing the link is on the same browser or we can mock it.
+        const allClubsString = localStorage.getItem('clubs');
+        if (allClubsString) {
+          const allClubs: Club[] = JSON.parse(allClubsString);
+          const clubToJoin = allClubs.find(c => c.id === joinClubId);
+
+          if (clubToJoin) {
+            const myClubsString = localStorage.getItem('clubs') || '[]';
+            const myClubs: Club[] = JSON.parse(myClubsString);
+            
+            if (!myClubs.some(c => c.id === joinClubId)) {
+                const updatedClubs = [...myClubs, clubToJoin];
+                setClubs(updatedClubs);
+                localStorage.setItem('clubs', JSON.stringify(updatedClubs));
+                toast({ title: `Joined ${clubToJoin.name}!` });
+            } else {
+                toast({ title: `You are already a member of ${clubToJoin.name}.`});
+            }
+          }
+        }
+        // Clean the URL
+        router.replace('/');
+      }
+    }
+  }, [isClient, searchParams, router, toast]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

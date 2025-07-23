@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, Mail, PlusCircle, UserPlus } from "lucide-react";
+import { MessageSquare, Mail, UserPlus, Share2 } from "lucide-react";
 import Image from "next/image";
 import {
   Card,
@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useEffect, useState } from "react";
 
 const formSchema = z.object({
     name: z.string().min(2, "Name is too short"),
@@ -37,8 +38,16 @@ const formSchema = z.object({
 
 
 export default function MembersPage() {
-  const { data: members, updateData: setMembers, loading } = useMembers();
+  const { data: members, updateData: setMembers, loading, clubId } = useMembers();
   const { toast } = useToast();
+  const [joinLink, setJoinLink] = useState('');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && clubId) {
+        const url = `${window.location.origin}/?joinClubId=${clubId}`;
+        setJoinLink(url);
+    }
+  }, [clubId]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -61,11 +70,17 @@ export default function MembersPage() {
       description: `Messaging for ${name} is not implemented yet.`,
     });
   };
+
+  const handleCopyToClipboard = () => {
+    navigator.clipboard.writeText(joinLink);
+    toast({ title: "Copied to clipboard!" });
+  };
   
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-semibold">Member Directory</h1>
+        <div className="flex gap-2">
          <Dialog>
             <DialogTrigger asChild>
               <Button>
@@ -94,6 +109,28 @@ export default function MembersPage() {
               </form>
             </DialogContent>
           </Dialog>
+           <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Share2 className="mr-2" /> Invite Members
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Share Join Link</DialogTitle>
+                <DialogDescription>
+                  Share this link with people you want to invite to your club.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Input value={joinLink} readOnly />
+              </div>
+              <DialogFooter>
+                <Button onClick={handleCopyToClipboard}>Copy Link</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
        {loading ? <p>Loading...</p> : 

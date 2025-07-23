@@ -10,14 +10,11 @@ import {
   Presentation,
   Network,
   Landmark,
-  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/assistant', icon: Bot, label: 'AI Assistant' },
   { href: '/announcements', icon: Megaphone, label: 'Announcements' },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { href: '/members', icon: UsersRound, label: 'Members' },

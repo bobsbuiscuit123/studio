@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Menu, Settings, User, LogOut, Bot } from "lucide-react";
+import { Menu, Settings, User, LogOut } from "lucide-react";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname } from "next/navigation";
@@ -29,7 +29,6 @@ const pageTitles: { [key: string]: string } = {
   "/members": "Members",
   "/slides": "Meeting Slides",
   "/social": "Social Media",
-  "/assistant": "AI Assistant",
 };
 
 export function AppHeader() {

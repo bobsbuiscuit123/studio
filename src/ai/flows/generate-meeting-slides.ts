@@ -1,9 +1,9 @@
 'use server';
 
 /**
- * @fileOverview An AI agent for generating meeting slides.
+ * @fileOverview An AI agent for generating meeting slides from a prompt.
  *
- * - generateMeetingSlides - A function that generates meeting slides based on club data and president input.
+ * - generateMeetingSlides - A function that generates meeting slides based on a prompt.
  * - GenerateMeetingSlidesInput - The input type for the generateMeetingSlides function.
  * - GenerateMeetingSlidesOutput - The return type for the generateMeetingSlides function.
  */
@@ -12,11 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateMeetingSlidesInputSchema = z.object({
-  clubName: z.string().describe('The name of the club.'),
-  meetingDate: z.string().describe('The date of the meeting.'),
-  keyUpdates: z.string().describe('Key updates to be presented at the meeting.'),
-  actionItems: z.string().describe('Action items for club members.'),
-  additionalNotes: z.string().optional().describe('Any additional notes or information.'),
+  prompt: z.string().describe('A natural language prompt describing the meeting content. For example: "Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."'),
 });
 export type GenerateMeetingSlidesInput = z.infer<typeof GenerateMeetingSlidesInputSchema>;
 
@@ -35,15 +31,9 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateMeetingSlidesOutputSchema},
   prompt: `You are an AI assistant designed to generate meeting slides for club presidents.
 
-  Based on the following information, create content for meeting slides in markdown format:
+  Based on the user's prompt, create content for meeting slides in markdown format. The slide content should be well-formatted, easy to present, and structured with clear headings.
 
-  Club Name: {{{clubName}}}
-  Meeting Date: {{{meetingDate}}}
-  Key Updates: {{{keyUpdates}}}
-  Action Items: {{{actionItems}}}
-  Additional Notes: {{{additionalNotes}}}
-
-  The slide content should be well-formatted and easy to present. Return the entire slide content as a string.
+  User prompt: {{{prompt}}}
   `,
 });
 

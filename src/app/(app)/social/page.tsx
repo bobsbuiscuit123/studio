@@ -10,7 +10,6 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { socialPosts as initialSocialPosts } from "@/lib/mock-data";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
@@ -19,11 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 type SocialPost = (typeof initialSocialPosts)[0];
 
 const formSchema = z.object({
-  clubName: z.string().min(1, "Club name is required."),
-  activityDescription: z.string().min(1, "Activity description is required."),
-  targetAudience: z.string().min(1, "Target audience is required."),
-  callToAction: z.string().min(1, "Call to action is required."),
-  imageCaptionPreferences: z.string().optional(),
+  prompt: z.string().min(10, "Please provide a more detailed prompt."),
   photo: z.any().optional(),
 });
 
@@ -37,11 +32,7 @@ export default function SocialPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      clubName: "The Innovators Club",
-      activityDescription: "",
-      targetAudience: "Students interested in tech",
-      callToAction: "Join our Discord!",
-      imageCaptionPreferences: "",
+      prompt: "",
     },
   });
 
@@ -61,7 +52,7 @@ export default function SocialPage() {
     setIsLoading(true);
     try {
       const result = await generateSocialMediaPost({
-        ...values,
+        prompt: values.prompt,
         photoDataUri: form.getValues("photo"),
       });
       const newPost: SocialPost = {
@@ -95,62 +86,46 @@ export default function SocialPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Network /> Create Social Post</CardTitle>
-            <CardDescription>Generate a social media post with AI.</CardDescription>
+            <CardDescription>Describe the social media post you want to create.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                  <FormField
                   control={form.control}
-                  name="activityDescription"
+                  name="prompt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Activity / Event</FormLabel>
+                      <FormLabel>Prompt</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="Describe the activity or event." {...field} />
+                        <Textarea 
+                          placeholder="e.g., Create a post for the Innovators Club about our next meeting on web development. Target students interested in tech and ask them to join our Discord." 
+                          className="min-h-[150px]"
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="callToAction"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Call to Action</FormLabel>
+                <FormItem>
+                  <FormLabel>Image (Optional)</FormLabel>
+                    <div className="flex items-center gap-2">
+                       <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                          <ImageIcon className="mr-2" />
+                          Upload Image
+                        </Button>
                       <FormControl>
-                        <Input placeholder="e.g., Sign up now!" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="photo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Image</FormLabel>
-                      <FormControl>
-                        <div className="flex items-center gap-2">
-                           <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                              <ImageIcon className="mr-2" />
-                              Upload Image
-                            </Button>
-                          <Input 
-                            type="file" 
-                            accept="image/*"
-                            ref={fileInputRef} 
-                            className="hidden" 
-                            onChange={handleImageChange}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <Input 
+                          type="file" 
+                          accept="image/*"
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          onChange={handleImageChange}
+                        />
+                       </FormControl>
+                    </div>
+                </FormItem>
 
                 {previewImage && (
                   <div className="relative">

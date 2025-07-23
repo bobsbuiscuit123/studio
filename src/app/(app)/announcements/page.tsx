@@ -16,7 +16,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { announcements as initialAnnouncements } from "@/lib/mock-data";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
@@ -25,11 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 type Announcement = (typeof initialAnnouncements)[0];
 
 const formSchema = z.object({
-  eventTitle: z.string().min(1, "Event title is required."),
-  eventDescription: z.string().min(1, "Event description is required."),
-  eventDate: z.string().min(1, "Event date is required."),
-  deadline: z.string().optional(),
-  additionalInfo: z.string().optional(),
+  prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
 export default function AnnouncementsPage() {
@@ -40,11 +35,7 @@ export default function AnnouncementsPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      eventTitle: "",
-      eventDescription: "",
-      eventDate: "",
-      deadline: "",
-      additionalInfo: "",
+      prompt: "",
     },
   });
 
@@ -54,7 +45,7 @@ export default function AnnouncementsPage() {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement(values);
       const newAnnouncement: Announcement = {
         id: announcements.length + 1,
-        title: values.eventTitle,
+        title: result.title,
         content: result.announcement,
         author: "AI Assistant",
         date: new Date().toLocaleDateString(),
@@ -79,71 +70,22 @@ export default function AnnouncementsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
-            <CardDescription>Use AI to draft a new announcement for the club.</CardDescription>
+            <CardDescription>Describe the announcement you want to create.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="eventTitle"
+                  name="prompt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Event Title</FormLabel>
+                      <FormLabel>Prompt</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., Annual Bake Sale" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="eventDescription"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Event Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Describe the event in detail." {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="eventDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Event Date</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Next Friday at 2 PM" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="deadline"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Deadline (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Sign up by Wednesday" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="additionalInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Additional Info (Optional)</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Any other important details" {...field} />
+                        <Textarea 
+                          placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
+                          className="min-h-[150px]"
+                          {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

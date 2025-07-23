@@ -12,11 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateSocialMediaPostInputSchema = z.object({
-  clubName: z.string().describe('The name of the club.'),
-  activityDescription: z.string().describe('A description of the club activity or event.'),
-  targetAudience: z.string().describe('The target audience for the social media post.'),
-  callToAction: z.string().describe('A call to action for the post (e.g., visit our website, join our next meeting).'),
-  imageCaptionPreferences: z.string().optional().describe('Any preferences or specific requirements for the image caption.'),
+  prompt: z.string().describe('A natural language prompt describing the social media post. For example: "Create a post for the Innovators Club about our next meeting on web development. The target audience is students interested in tech. Include a call to action to join our Discord."'),
   photoDataUri: z
     .string()
     .optional()
@@ -27,7 +23,7 @@ const GenerateSocialMediaPostInputSchema = z.object({
 export type GenerateSocialMediaPostInput = z.infer<typeof GenerateSocialMediaPostInputSchema>;
 
 const GenerateSocialMediaPostOutputSchema = z.object({
-  postText: z.string().describe('The generated social media post text.'),
+  postText: z.string().describe('The generated social media post text, no more than 280 characters.'),
   imageCaption: z.string().optional().describe('The generated caption for the image, if applicable.'),
 });
 export type GenerateSocialMediaPostOutput = z.infer<typeof GenerateSocialMediaPostOutputSchema>;
@@ -43,26 +39,16 @@ const prompt = ai.definePrompt({
   input: {schema: GenerateSocialMediaPostInputSchema},
   output: {schema: GenerateSocialMediaPostOutputSchema},
   prompt: `You are a social media marketing expert for school clubs.
-  Your task is to create engaging social media posts to promote club activities and attract new members.
+  Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
+  The social media post should be no more than 280 characters.
 
-  Here are the details for the social media post:
-  Club Name: {{{clubName}}}
-  Activity Description: {{{activityDescription}}}
-  Target Audience: {{{targetAudience}}}
-  Call to Action: {{{callToAction}}}
-
-  {{#if imageCaptionPreferences}}
-  Special caption requirements: {{{imageCaptionPreferences}}}
-  {{/if}}
+  User Prompt: {{{prompt}}}
 
   {{#if photoDataUri}}
   Here is a photo for the post: {{media url=photoDataUri}}
-  Create a image caption to go along with this photo.
+  Create an engaging image caption to go along with this photo.
   {{/if}}
-
-  Generate a social media post that is appropriate for the specified target audience, and be sure to include the call to action.
-  The social media post should be no more than 280 characters.
-  `, // Twitter post length
+  `,
 });
 
 const generateSocialMediaPostFlow = ai.defineFlow(

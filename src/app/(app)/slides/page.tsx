@@ -9,17 +9,12 @@ import { Presentation, Clipboard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateMeetingSlides } from "@/ai/flows/generate-meeting-slides";
 
 const formSchema = z.object({
-  clubName: z.string().min(1, "Club name is required."),
-  meetingDate: z.string().min(1, "Meeting date is required."),
-  keyUpdates: z.string().min(1, "Key updates are required."),
-  actionItems: z.string().min(1, "Action items are required."),
-  additionalNotes: z.string().optional(),
+  prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
 export default function SlidesPage() {
@@ -30,11 +25,7 @@ export default function SlidesPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      clubName: "The Innovators Club",
-      meetingDate: "",
-      keyUpdates: "",
-      actionItems: "",
-      additionalNotes: "",
+      prompt: "",
     },
   });
 
@@ -70,7 +61,7 @@ export default function SlidesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
             <CardDescription>
-              Create content for your next meeting's presentation.
+              Describe the meeting content you want to generate slides for.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -78,64 +69,16 @@ export default function SlidesPage() {
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="clubName"
+                  name="prompt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Club Name</FormLabel>
+                      <FormLabel>Prompt</FormLabel>
                       <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="meetingDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Meeting Date</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., July 26, 2024" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="keyUpdates"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Key Updates</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="What are the key updates?" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="actionItems"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Action Items</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="What are the action items?" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="additionalNotes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Additional Notes (Optional)</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Any other notes?" {...field} />
+                        <Textarea 
+                          placeholder="e.g., Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."
+                          className="min-h-[150px]"
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

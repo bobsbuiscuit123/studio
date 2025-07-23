@@ -15,7 +15,6 @@ import { Calendar } from "@/components/ui/calendar";
 import { events as initialEvents } from "@/lib/mock-data";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { addCalendarEvent, AddCalendarEventOutput } from "@/ai/flows/add-calendar-event";
@@ -24,10 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 type ClubEvent = (typeof initialEvents)[0];
 
 const formSchema = z.object({
-  title: z.string().min(1, "Title is required."),
-  description: z.string().min(1, "Description is required."),
-  date: z.string().min(1, "Date is required."),
-  location: z.string().min(1, "Location is required."),
+  prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
 export default function CalendarPage() {
@@ -39,10 +35,7 @@ export default function CalendarPage() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      title: "",
-      description: "",
-      date: "",
-      location: "",
+      prompt: "",
     },
   });
 
@@ -51,10 +44,10 @@ export default function CalendarPage() {
     try {
       const result: AddCalendarEventOutput = await addCalendarEvent(values);
       const newEvent: ClubEvent = {
-        title: result.event.title,
-        description: result.event.description,
-        date: new Date(result.event.date),
-        location: result.event.location,
+        title: result.title,
+        description: result.description,
+        date: new Date(result.date),
+        location: result.location,
       };
       setEvents([newEvent, ...events]);
       toast({ title: "Event added successfully!" });
@@ -63,7 +56,7 @@ export default function CalendarPage() {
       console.error(error);
       toast({
         title: "Error",
-        description: "Failed to add event.",
+        description: "Failed to add event from prompt.",
         variant: "destructive",
       });
     } finally {
@@ -118,65 +111,30 @@ export default function CalendarPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
-            <CardDescription>Use AI to add a new event to the calendar.</CardDescription>
+            <CardDescription>Describe the event you want to add to the calendar.</CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="title"
+                  name="prompt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Event Title</FormLabel>
+                      <FormLabel>Prompt</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., Monthly Meeting" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="What is the event about?" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Date & Time</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Next Friday at 3pm" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="location"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Location</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., Room 101" {...field} />
+                        <Textarea 
+                          placeholder="e.g., Schedule our monthly meeting for next Tuesday at 6 PM in the main auditorium. The topic is planning the summer fundraiser."
+                          className="min-h-[150px]"
+                          {...field} 
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? <Loader2 className="animate-spin" /> : "Add Event"}
+                  {isLoading ? <Loader2 className="animate-spin" /> : "Add Event with AI"}
                 </Button>
               </form>
             </Form>

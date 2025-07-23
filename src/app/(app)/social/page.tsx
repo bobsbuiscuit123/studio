@@ -249,21 +249,23 @@ export default function SocialPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow">
-                  <Carousel className="w-full max-w-xs mx-auto">
-                    <CarouselContent>
-                      {post.images.map((image, index) => (
-                        <CarouselItem key={index}>
-                           <Image src={image} alt={`Social post image ${index+1}`} width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
-                        </CarouselItem>
-                      ))}
-                    </CarouselContent>
-                    {post.images.length > 1 && (
-                      <>
-                        <CarouselPrevious />
-                        <CarouselNext />
-                      </>
-                    )}
-                  </Carousel>
+                  {post.images && post.images.length > 0 && (
+                    <Carousel className="w-full max-w-xs mx-auto">
+                      <CarouselContent>
+                        {post.images.map((image, index) => (
+                          <CarouselItem key={index}>
+                             <Image src={image} alt={`Social post image ${index+1}`} width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
+                          </CarouselItem>
+                        ))}
+                      </CarouselContent>
+                      {post.images.length > 1 && (
+                        <>
+                          <CarouselPrevious />
+                          <CarouselNext />
+                        </>
+                      )}
+                    </Carousel>
+                  )}
 
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
@@ -271,7 +273,7 @@ export default function SocialPage() {
                     <Button variant="outline" className="w-full" onClick={() => handleCopyText(post.content)}>
                         <Copy className="mr-2"/> Copy Text
                     </Button>
-                    {post.images.length === 1 && (
+                    {post.images && post.images.length === 1 && (
                       <Button className="w-full" onClick={() => handleDownloadImage(post.images[0], post.platform)}>
                          <Download className="mr-2"/> Download Image
                       </Button>

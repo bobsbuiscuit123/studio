@@ -12,23 +12,23 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import {
   generateClubAnnouncement,
-  GenerateClubAnnouncementInputSchema,
-  GenerateClubAnnouncementOutputSchema,
+  GenerateClubAnnouncementInput,
+  GenerateClubAnnouncementOutput,
 } from './generate-announcement';
 import {
   generateMeetingSlides,
-  GenerateMeetingSlidesInputSchema,
-  GenerateMeetingSlidesOutputSchema,
+  GenerateMeetingSlidesInput,
+  GenerateMeetingSlidesOutput,
 } from './generate-meeting-slides';
 import {
   generateSocialMediaPost,
-  GenerateSocialMediaPostInputSchema,
-  GenerateSocialMediaPostOutputSchema,
+  GenerateSocialMediaPostInput,
+  GenerateSocialMediaPostOutput,
 } from './generate-social-media-post';
 import {
   addCalendarEvent,
-  AddCalendarEventInputSchema,
-  AddCalendarEventOutputSchema,
+  AddCalendarEventInput,
+  AddCalendarEventOutput,
 } from './add-calendar-event';
 
 // Define tools for the assistant to use
@@ -36,8 +36,8 @@ const announcementTool = ai.defineTool(
   {
     name: 'generateClubAnnouncement',
     description: 'Generates a club announcement.',
-    inputSchema: GenerateClubAnnouncementInputSchema,
-    outputSchema: GenerateClubAnnouncementOutputSchema,
+    inputSchema: z.custom<GenerateClubAnnouncementInput>(),
+    outputSchema: z.custom<GenerateClubAnnouncementOutput>(),
   },
   async (input) => generateClubAnnouncement(input)
 );
@@ -46,8 +46,8 @@ const slidesTool = ai.defineTool(
   {
     name: 'generateMeetingSlides',
     description: 'Generates meeting slides.',
-    inputSchema: GenerateMeetingSlidesInputSchema,
-    outputSchema: GenerateMeetingSlidesOutputSchema,
+    inputSchema: z.custom<GenerateMeetingSlidesInput>(),
+    outputSchema: z.custom<GenerateMeetingSlidesOutput>(),
   },
   async (input) => generateMeetingSlides(input)
 );
@@ -56,8 +56,8 @@ const socialPostTool = ai.defineTool(
   {
     name: 'generateSocialMediaPost',
     description: 'Generates a social media post.',
-    inputSchema: GenerateSocialMediaPostInputSchema,
-    outputSchema: GenerateSocialMediaPostOutputSchema,
+    inputSchema: z.custom<GenerateSocialMediaPostInput>(),
+    outputSchema: z.custom<GenerateSocialMediaPostOutput>(),
   },
   async (input) => generateSocialMediaPost(input)
 );
@@ -66,8 +66,8 @@ const calendarTool = ai.defineTool(
   {
     name: 'addCalendarEvent',
     description: 'Adds an event to the club calendar.',
-    inputSchema: AddCalendarEventInputSchema,
-    outputSchema: AddCalendarEventOutputSchema,
+    inputSchema: z.custom<AddCalendarEventInput>(),
+    outputSchema: z.custom<AddCalendarEventOutput>(),
   },
   async (input) => addCalendarEvent(input)
 );

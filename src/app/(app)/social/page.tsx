@@ -137,14 +137,16 @@ export default function SocialPage() {
     toast({ title: "Post text copied!" });
   };
 
-  const handleDownloadImage = (imageUrl: string, title: string) => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_post_image.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast({ title: "Image download started!" });
+  const handleDownloadImages = (imageUrls: string[], title: string) => {
+    imageUrls.forEach((imageUrl, index) => {
+      const link = document.createElement('a');
+      link.href = imageUrl;
+      link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_post_image_${index + 1}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+    toast({ title: "Image downloads started!" });
   };
 
 
@@ -314,9 +316,9 @@ export default function SocialPage() {
                     <Button variant="outline" className="w-full" onClick={() => handleCopyText(post.content)}>
                         <Copy className="mr-2"/> Copy Text
                     </Button>
-                    {post.images && post.images.length === 1 && (
-                      <Button className="w-full" onClick={() => handleDownloadImage(post.images[0], post.title)}>
-                         <Download className="mr-2"/> Download Image
+                    {post.images && post.images.length > 0 && (
+                      <Button className="w-full" onClick={() => handleDownloadImages(post.images, post.title)}>
+                         <Download className="mr-2"/> Download Image{post.images.length > 1 ? 's' : ''}
                       </Button>
                     )}
                 </CardFooter>

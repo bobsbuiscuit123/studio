@@ -34,7 +34,7 @@ function useClubData<T>(key: string, initialData: T) {
       // Handles the case where there is no selected club
       setLoading(false);
     }
-  }, [clubId, key, initialData]);
+  }, [clubId, key, JSON.stringify(initialData)]);
 
   const updateData = (newData: T) => {
     if (clubId) {
@@ -62,7 +62,7 @@ export function useEvents() {
     const { data, loading, updateData, clubId } = useClubData('events', []);
     
     // The events are stored as strings, so we need to convert them to Date objects
-    const eventsWithDates = data.map((event: any) => ({
+    const eventsWithDates = (data || []).map((event: any) => ({
         ...event,
         date: new Date(event.date),
     }));

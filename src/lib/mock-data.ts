@@ -30,7 +30,7 @@ export type SocialPost = {
   id: number;
   platform: string;
   content: string;
-  image: string;
+  images: string[];
   dataAiHint?: string;
   author: string;
   date: string;

@@ -13,8 +13,8 @@ import {z} from 'genkit';
 
 const GenerateSocialMediaPostInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt describing the social media post. For example: "Create a post for the Innovators Club about our next meeting on web development. The target audience is students interested in tech. Include a call to action to join our Discord."'),
-  photoDataUri: z
-    .string()
+  photoDataUris: z
+    .array(z.string())
     .optional()
     .describe(
       "A photo to include in the social media post, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
@@ -44,9 +44,12 @@ const prompt = ai.definePrompt({
 
   User Prompt: {{{prompt}}}
 
-  {{#if photoDataUri}}
-  Here is a photo for the post: {{media url=photoDataUri}}
-  Create an engaging image caption to go along with this photo.
+  {{#if photoDataUris}}
+  Here are photos for the post: 
+  {{#each photoDataUris}}
+    {{media url=this}}
+  {{/each}}
+  Create an engaging image caption to go along with these photos.
   {{/if}}
   `,
 });

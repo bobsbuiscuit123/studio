@@ -11,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const GenerateClubAnnouncementInputSchema = z.object({
+export const GenerateClubAnnouncementInputSchema = z.object({
   eventTitle: z.string().describe('The title of the event.'),
   eventDescription: z.string().describe('A detailed description of the event.'),
   eventDate: z.string().describe('The date and time of the event.'),
@@ -22,7 +22,7 @@ export type GenerateClubAnnouncementInput = z.infer<
   typeof GenerateClubAnnouncementInputSchema
 >;
 
-const GenerateClubAnnouncementOutputSchema = z.object({
+export const GenerateClubAnnouncementOutputSchema = z.object({
   announcement: z.string().describe('The generated announcement text.'),
 });
 export type GenerateClubAnnouncementOutput = z.infer<

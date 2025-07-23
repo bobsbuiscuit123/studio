@@ -1,4 +1,3 @@
-// src/ai/flows/generate-social-media-post.ts
 'use server';
 
 /**
@@ -12,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const GenerateSocialMediaPostInputSchema = z.object({
+export const GenerateSocialMediaPostInputSchema = z.object({
   clubName: z.string().describe('The name of the club.'),
   activityDescription: z.string().describe('A description of the club activity or event.'),
   targetAudience: z.string().describe('The target audience for the social media post.'),
@@ -27,7 +26,7 @@ const GenerateSocialMediaPostInputSchema = z.object({
 });
 export type GenerateSocialMediaPostInput = z.infer<typeof GenerateSocialMediaPostInputSchema>;
 
-const GenerateSocialMediaPostOutputSchema = z.object({
+export const GenerateSocialMediaPostOutputSchema = z.object({
   postText: z.string().describe('The generated social media post text.'),
   imageCaption: z.string().optional().describe('The generated caption for the image, if applicable.'),
 });

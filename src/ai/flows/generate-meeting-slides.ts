@@ -11,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const GenerateMeetingSlidesInputSchema = z.object({
+export const GenerateMeetingSlidesInputSchema = z.object({
   clubName: z.string().describe('The name of the club.'),
   meetingDate: z.string().describe('The date of the meeting.'),
   keyUpdates: z.string().describe('Key updates to be presented at the meeting.'),
@@ -20,7 +20,7 @@ const GenerateMeetingSlidesInputSchema = z.object({
 });
 export type GenerateMeetingSlidesInput = z.infer<typeof GenerateMeetingSlidesInputSchema>;
 
-const GenerateMeetingSlidesOutputSchema = z.object({
+export const GenerateMeetingSlidesOutputSchema = z.object({
   slideContent: z.string().describe('The generated content for the meeting slides in markdown format.'),
 });
 export type GenerateMeetingSlidesOutput = z.infer<typeof GenerateMeetingSlidesOutputSchema>;

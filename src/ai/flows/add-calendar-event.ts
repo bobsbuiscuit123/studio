@@ -11,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const AddCalendarEventInputSchema = z.object({
+export const AddCalendarEventInputSchema = z.object({
   title: z.string().describe('The title of the event.'),
   description: z.string().describe('A detailed description of the event.'),
   date: z.string().describe('The date and time of the event in a natural language format (e.g., "next Tuesday at 2pm").'),
@@ -21,7 +21,7 @@ export type AddCalendarEventInput = z.infer<
   typeof AddCalendarEventInputSchema
 >;
 
-const AddCalendarEventOutputSchema = z.object({
+export const AddCalendarEventOutputSchema = z.object({
   event: z.object({
     title: z.string(),
     description: z.string(),

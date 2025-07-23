@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Network, Loader2, Image as ImageIcon, X } from "lucide-react";
+import { Network, Loader2, Image as ImageIcon, X, Pencil } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
@@ -29,10 +36,15 @@ const formSchema = z.object({
   photo: z.any().optional(),
 });
 
+const editFormSchema = z.object({
+    content: z.string().min(10, "Post content is too short.").max(280, "Post content cannot exceed 280 characters."),
+});
+
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -41,6 +53,10 @@ export default function SocialPage() {
     defaultValues: {
       prompt: "",
     },
+  });
+  
+  const editForm = useForm<z.infer<typeof editFormSchema>>({
+    resolver: zodResolver(editFormSchema),
   });
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,6 +70,22 @@ export default function SocialPage() {
       reader.readAsDataURL(file);
     }
   };
+  
+  const handleEditClick = (post: SocialPost) => {
+    setEditingPost(post);
+    editForm.reset({ content: post.content });
+  };
+  
+  const handleUpdatePost = (values: z.infer<typeof editFormSchema>) => {
+    if (!editingPost) return;
+    const updatedPosts = socialPosts.map((post) =>
+      post.id === editingPost.id ? { ...post, ...values } : post
+    );
+    setSocialPosts(updatedPosts);
+    toast({ title: "Post updated!" });
+    setEditingPost(null);
+  };
+
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
@@ -88,6 +120,7 @@ export default function SocialPage() {
   };
 
   return (
+    <>
     <div className="grid gap-8 md:grid-cols-3">
       <div className="md:col-span-1">
         <Card>
@@ -163,12 +196,19 @@ export default function SocialPage() {
             {socialPosts.map((post) => (
               <Card key={post.id}>
                 <CardHeader>
-                    <CardTitle>{post.platform}</CardTitle>
-                     <CardDescription>{post.date}</CardDescription>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle>{post.platform}</CardTitle>
+                            <CardDescription>{post.date}</CardDescription>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <Image src={post.image} alt="Social post image" width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
-                  <p className="text-sm text-muted-foreground">{post.content}</p>
+                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
               </Card>
             ))}
@@ -182,5 +222,36 @@ export default function SocialPage() {
         )}
       </div>
     </div>
+    {editingPost && (
+        <Dialog open={!!editingPost} onOpenChange={() => setEditingPost(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Social Media Post</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(handleUpdatePost)} className="space-y-4">
+                 <FormField
+                  control={editForm.control}
+                  name="content"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Post Text</FormLabel>
+                      <FormControl>
+                        <Textarea className="min-h-[150px]" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={() => setEditingPost(null)}>Cancel</Button>
+                    <Button type="submit">Save Changes</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+    )}
+    </>
   );
 }

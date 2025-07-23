@@ -12,7 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Loader2 } from "lucide-react";
+import { CalendarDays, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -20,9 +20,24 @@ import { addCalendarEvent, AddCalendarEventOutput } from "@/ai/flows/add-calenda
 import { useToast } from "@/hooks/use-toast";
 import { useEvents } from "@/lib/data-hooks";
 import type { ClubEvent } from "@/lib/mock-data";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
+});
+
+const editFormSchema = z.object({
+    title: z.string().min(3, "Title must be at least 3 characters."),
+    description: z.string().min(10, "Description must be at least 10 characters."),
+    location: z.string().min(2, "Location must be at least 2 characters."),
+    date: z.string(),
 });
 
 export default function CalendarPage() {
@@ -30,6 +45,7 @@ export default function CalendarPage() {
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   
   useEffect(() => {
     setDate(new Date());
@@ -41,12 +57,38 @@ export default function CalendarPage() {
       prompt: "",
     },
   });
+  
+  const editForm = useForm<z.infer<typeof editFormSchema>>({
+    resolver: zodResolver(editFormSchema),
+  });
+
+  const handleEditClick = (event: ClubEvent) => {
+    setEditingEvent(event);
+    editForm.reset({
+      title: event.title,
+      description: event.description,
+      location: event.location,
+      date: event.date.toISOString().slice(0, 16), // Format for datetime-local input
+    });
+  };
+
+  const handleUpdateEvent = (values: z.infer<typeof editFormSchema>) => {
+    if (!editingEvent) return;
+    const updatedEvents = events.map((event) =>
+      event.id === editingEvent.id ? { ...event, ...values, date: new Date(values.date) } : event
+    );
+    setEvents(updatedEvents);
+    toast({ title: "Event updated!" });
+    setEditingEvent(null);
+  };
+
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
       const result: AddCalendarEventOutput = await addCalendarEvent(values);
       const newEvent: ClubEvent = {
+        id: (events.length + 1).toString(),
         title: result.title,
         description: result.description,
         date: new Date(result.date),
@@ -68,6 +110,7 @@ export default function CalendarPage() {
   };
   
   return (
+    <>
     <div className="grid gap-8 md:grid-cols-3">
       <div className="md:col-span-2">
         <Card>
@@ -156,10 +199,17 @@ export default function CalendarPage() {
                 events.length > 0 ? (
                   [...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event, index) => (
                   <div key={index} className="p-4 rounded-lg bg-muted/50">
-                    <p className="font-semibold">{event.title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
-                    </p>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <p className="font-semibold">{event.title}</p>
+                            <p className="text-sm text-muted-foreground">
+                            {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
+                            </p>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(event)}>
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                    </div>
                     <p className="text-sm mt-2">{event.description}</p>
                     <p className="text-sm mt-1">
                       <strong>Location:</strong> {event.location}
@@ -174,5 +224,67 @@ export default function CalendarPage() {
         </Card>
       </div>
     </div>
+    {editingEvent && (
+        <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Event</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(handleUpdateEvent)} className="space-y-4">
+                 <FormField
+                  control={editForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl><Input {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={editForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
+                      <FormControl><Textarea {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={editForm.control}
+                  name="location"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Location</FormLabel>
+                      <FormControl><Input {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={editForm.control}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Date and Time</FormLabel>
+                      <FormControl><Input type="datetime-local" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={() => setEditingEvent(null)}>Cancel</Button>
+                    <Button type="submit">Save Changes</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+    )}
+    </>
   );
 }

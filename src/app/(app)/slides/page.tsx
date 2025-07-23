@@ -113,9 +113,11 @@ export default function SlidesPage() {
               </div>
             )}
             {generatedContent && (
-              <div className="prose prose-sm dark:prose-invert max-w-none p-4 bg-muted rounded-md h-full overflow-auto">
-                <pre className="whitespace-pre-wrap break-words bg-transparent p-0 m-0">{generatedContent}</pre>
-              </div>
+              <Textarea
+                className="prose prose-sm dark:prose-invert max-w-none p-4 bg-muted rounded-md h-full overflow-auto whitespace-pre-wrap break-words"
+                value={generatedContent}
+                onChange={(e) => setGeneratedContent(e.target.value)}
+              />
             )}
             {!generatedContent && !isLoading && (
               <div className="flex items-center justify-center h-full text-center text-muted-foreground">

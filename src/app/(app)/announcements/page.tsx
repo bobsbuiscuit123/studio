@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Megaphone, Loader2 } from "lucide-react";
+import { Megaphone, Loader2, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,6 +15,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
@@ -27,9 +38,15 @@ const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
+const editFormSchema = z.object({
+    title: z.string().min(3, "Title must be at least 3 characters long."),
+    content: z.string().min(10, "Content must be at least 10 characters long."),
+});
+
 export default function AnnouncementsPage() {
   const { data: announcements, updateData: setAnnouncements, loading } = useAnnouncements();
   const [isLoading, setIsLoading] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -38,6 +55,28 @@ export default function AnnouncementsPage() {
       prompt: "",
     },
   });
+
+  const editForm = useForm<z.infer<typeof editFormSchema>>({
+    resolver: zodResolver(editFormSchema),
+  });
+  
+  const handleEditClick = (announcement: Announcement) => {
+    setEditingAnnouncement(announcement);
+    editForm.reset({
+        title: announcement.title,
+        content: announcement.content,
+    });
+  };
+
+  const handleUpdateAnnouncement = (values: z.infer<typeof editFormSchema>) => {
+    if (!editingAnnouncement) return;
+    const updatedAnnouncements = announcements.map((ann) =>
+        ann.id === editingAnnouncement.id ? { ...ann, ...values } : ann
+    );
+    setAnnouncements(updatedAnnouncements);
+    toast({ title: "Announcement updated!" });
+    setEditingAnnouncement(null);
+  };
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
@@ -65,6 +104,7 @@ export default function AnnouncementsPage() {
   };
 
   return (
+    <>
     <div className="grid gap-8 md:grid-cols-3">
       <div className="md:col-span-1">
         <Card>
@@ -111,13 +151,20 @@ export default function AnnouncementsPage() {
               announcements.map((announcement) => (
                 <Card key={announcement.id}>
                   <CardHeader>
-                    <CardTitle>{announcement.title}</CardTitle>
-                    <CardDescription>
-                      Posted by {announcement.author} - {announcement.date}
-                    </CardDescription>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <CardTitle>{announcement.title}</CardTitle>
+                            <CardDescription>
+                            Posted by {announcement.author} - {announcement.date}
+                            </CardDescription>
+                        </div>
+                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
+                            <Pencil className="h-4 w-4" />
+                        </Button>
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                       {announcement.content}
                     </p>
                   </CardContent>
@@ -133,5 +180,49 @@ export default function AnnouncementsPage() {
         </div>
       </div>
     </div>
+     {editingAnnouncement && (
+        <Dialog open={!!editingAnnouncement} onOpenChange={() => setEditingAnnouncement(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Announcement</DialogTitle>
+            </DialogHeader>
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(handleUpdateAnnouncement)} className="space-y-4">
+                <FormField
+                  control={editForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={editForm.control}
+                  name="content"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Content</FormLabel>
+                      <FormControl>
+                        <Textarea className="min-h-[200px]" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={() => setEditingAnnouncement(null)}>Cancel</Button>
+                  <Button type="submit">Save Changes</Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }

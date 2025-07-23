@@ -11,6 +11,7 @@ export type Member = {
 };
 
 export type ClubEvent = {
+  id: string;
   date: Date;
   title: string;
   description: string;

@@ -1,1 +1,6 @@
-// Flows will be imported for their side effects in this file.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/generate-announcement.ts';
+import '@/ai/flows/generate-meeting-slides.ts';
+import '@/ai/flows/generate-social-media-post.ts';

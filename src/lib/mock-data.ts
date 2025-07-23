@@ -26,6 +26,11 @@ export type Announcement = {
   date: string;
 };
 
+export type Comment = {
+  author: string;
+  text: string;
+};
+
 export type SocialPost = {
   id: number;
   title: string;
@@ -34,6 +39,9 @@ export type SocialPost = {
   dataAiHint?: string;
   author: string;
   date: string;
+  likes: number;
+  liked?: boolean;
+  comments: Comment[];
 };
 
 export type Transaction = {

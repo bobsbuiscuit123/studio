@@ -47,7 +47,8 @@ import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useSocialPosts } from "@/lib/data-hooks";
-import type { SocialPost } from "@/lib/mock-data";
+import type { SocialPost, Comment } from "@/lib/mock-data";
+import { cn } from "@/lib/utils";
 
 
 const formSchema = z.object({
@@ -60,6 +61,10 @@ const editFormSchema = z.object({
     content: z.string().min(10, "Post content is too short.").max(280, "Post content cannot exceed 280 characters."),
 });
 
+const commentFormSchema = z.object({
+    comment: z.string().min(1, "Comment cannot be empty."),
+});
+
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +73,8 @@ export default function SocialPage() {
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -79,6 +86,13 @@ export default function SocialPage() {
   
   const editForm = useForm<z.infer<typeof editFormSchema>>({
     resolver: zodResolver(editFormSchema),
+  });
+
+  const commentForm = useForm<z.infer<typeof commentFormSchema>>({
+    resolver: zodResolver(commentFormSchema),
+    defaultValues: {
+        comment: "",
+    },
   });
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,20 +146,32 @@ export default function SocialPage() {
     setDeletingPostId(null);
   };
 
-  const handleLike = () => {
-    toast({
-        title: "Feature not available",
-        description: "Liking posts is not implemented yet.",
+  const handleLike = (postId: number) => {
+    const updatedPosts = socialPosts.map((post) => {
+        if (post.id === postId) {
+            const newLikedState = !post.liked;
+            return {
+                ...post,
+                likes: newLikedState ? (post.likes || 0) + 1 : (post.likes || 1) - 1,
+                liked: newLikedState,
+            };
+        }
+        return post;
     });
+    setSocialPosts(updatedPosts);
   };
 
-  const handleComment = () => {
-      toast({
-        title: "Feature not available",
-        description: "Commenting on posts is not implemented yet.",
-      });
+  const handleAddComment = (postId: number, values: z.infer<typeof commentFormSchema>) => {
+    const newComment: Comment = {
+      author: "Club Member",
+      text: values.comment,
+    };
+    const updatedPosts = socialPosts.map((post) =>
+      post.id === postId ? { ...post, comments: [...(post.comments || []), newComment] } : post
+    );
+    setSocialPosts(updatedPosts);
+    commentForm.reset();
   };
-
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
@@ -162,6 +188,9 @@ export default function SocialPage() {
         dataAiHint: "tech club",
         author: "AI Assistant",
         date: new Date().toLocaleDateString(),
+        likes: 0,
+        liked: false,
+        comments: [],
       };
       setSocialPosts([newPost, ...socialPosts]);
       toast({ title: "Social media post generated successfully!" });
@@ -309,13 +338,47 @@ export default function SocialPage() {
 
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
-                <CardFooter className="flex gap-2">
-                    <Button variant="outline" className="w-full" onClick={handleLike}>
-                        <ThumbsUp className="mr-2"/> Like
-                    </Button>
-                    <Button variant="outline" className="w-full" onClick={handleComment}>
-                        <MessageCircle className="mr-2"/> Comment
-                    </Button>
+                <CardFooter className="flex flex-col items-start gap-2">
+                    <div className="flex justify-between w-full">
+                         <div className="flex gap-2">
+                             <Button variant={post.liked ? "default" : "outline"} className="flex-1" onClick={() => handleLike(post.id)}>
+                                <ThumbsUp className="mr-2"/> Like
+                            </Button>
+                            <Button variant="outline" className="flex-1" onClick={() => setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)}>
+                                <MessageCircle className="mr-2"/> Comment
+                            </Button>
+                         </div>
+                         <div className="text-sm text-muted-foreground self-center">
+                            {post.likes || 0} likes &bull; {post.comments?.length || 0} comments
+                         </div>
+                    </div>
+                    {activeCommentPostId === post.id && (
+                        <div className="w-full pt-2">
+                            <div className="space-y-2 mb-2">
+                                {(post.comments || []).map((comment, index) => (
+                                    <div key={index} className="text-sm p-2 bg-muted rounded-md">
+                                        <span className="font-semibold">{comment.author}:</span> {comment.text}
+                                    </div>
+                                ))}
+                            </div>
+                            <Form {...commentForm}>
+                                <form onSubmit={commentForm.handleSubmit((data) => handleAddComment(post.id, data))} className="flex gap-2">
+                                    <FormField
+                                    control={commentForm.control}
+                                    name="comment"
+                                    render={({ field }) => (
+                                        <FormItem className="flex-grow">
+                                            <FormControl>
+                                                <Input placeholder="Add a comment..." {...field} />
+                                            </FormControl>
+                                        </FormItem>
+                                    )}
+                                    />
+                                    <Button type="submit">Post</Button>
+                                </form>
+                            </Form>
+                        </div>
+                    )}
                 </CardFooter>
               </Card>
             ))}

@@ -12,15 +12,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { events as initialEvents } from "@/lib/mock-data";
 import { CalendarDays, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { addCalendarEvent, AddCalendarEventOutput } from "@/ai/flows/add-calendar-event";
 import { useToast } from "@/hooks/use-toast";
-
-type ClubEvent = (typeof initialEvents)[0];
+import { useEvents } from "@/lib/data-hooks";
+import type { ClubEvent } from "@/lib/mock-data";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -28,10 +27,10 @@ const formSchema = z.object({
 
 export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>();
-  const [events, setEvents] = useState<ClubEvent[]>(initialEvents);
+  const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-
+  
   useEffect(() => {
     setDate(new Date());
   }, []);
@@ -53,7 +52,7 @@ export default function CalendarPage() {
         date: new Date(result.date),
         location: result.location,
       };
-      setEvents([newEvent, ...events]);
+      setEvents([...events, newEvent]);
       toast({ title: "Event added successfully!" });
       form.reset();
     } catch (error) {
@@ -89,6 +88,7 @@ export default function CalendarPage() {
               }}
               components={{
                 DayContent: ({ date }) => {
+                  if (loading) return <div>...</div>
                   const dayEvents = events.filter(
                     (event) =>
                       event.date.getDate() === date.getDate() &&
@@ -152,18 +152,24 @@ export default function CalendarPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {events.map((event, index) => (
-              <div key={index} className="p-4 rounded-lg bg-muted/50">
-                <p className="font-semibold">{event.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
-                </p>
-                <p className="text-sm mt-2">{event.description}</p>
-                <p className="text-sm mt-1">
-                  <strong>Location:</strong> {event.location}
-                </p>
-              </div>
-            ))}
+             {loading ? <p>Loading...</p> : 
+                events.length > 0 ? (
+                  [...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event, index) => (
+                  <div key={index} className="p-4 rounded-lg bg-muted/50">
+                    <p className="font-semibold">{event.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
+                    </p>
+                    <p className="text-sm mt-2">{event.description}</p>
+                    <p className="text-sm mt-1">
+                      <strong>Location:</strong> {event.location}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                 <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
+              )
+            }
           </CardContent>
         </Card>
       </div>

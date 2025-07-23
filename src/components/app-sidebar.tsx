@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Logo } from "./icons";
-import { Button } from "./ui/button";
 import { AppSidebarNav } from "./app-sidebar-nav";
 
 export function AppSidebar() {
@@ -12,7 +11,7 @@ export function AppSidebar() {
         <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Logo className="h-6 w-6" />
-            <span className="">Clubhouse AI</span>
+            <span className="">ClubHub</span>
           </Link>
         </div>
         <div className="flex-1">

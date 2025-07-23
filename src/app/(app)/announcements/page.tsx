@@ -15,20 +15,20 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { announcements as initialAnnouncements } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
+import { useAnnouncements } from "@/lib/data-hooks";
+import type { Announcement } from "@/lib/mock-data";
 
-type Announcement = (typeof initialAnnouncements)[0];
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
 export default function AnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements);
+  const { data: announcements, updateData: setAnnouncements, loading } = useAnnouncements();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -106,26 +106,30 @@ export default function AnnouncementsPage() {
       <div className="md:col-span-2">
         <h2 className="text-2xl font-bold mb-4">Recent Announcements</h2>
         <div className="flex flex-col gap-4">
-          {announcements.map((announcement) => (
-            <Card key={announcement.id}>
-              <CardHeader>
-                <CardTitle>{announcement.title}</CardTitle>
-                <CardDescription>
-                  Posted by {announcement.author} - {announcement.date}
-                </CardDescription>
-              </CardHeader>
+          {loading ? <p>Loading...</p> : 
+            announcements.length > 0 ? (
+              announcements.map((announcement) => (
+                <Card key={announcement.id}>
+                  <CardHeader>
+                    <CardTitle>{announcement.title}</CardTitle>
+                    <CardDescription>
+                      Posted by {announcement.author} - {announcement.date}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">
+                      {announcement.content}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))
+          ) : (
+            <Card className="flex items-center justify-center py-12">
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {announcement.content}
-                </p>
+                <p className="text-muted-foreground">No announcements yet. Create one to get started!</p>
               </CardContent>
-              <CardFooter>
-                <Button variant="link" className="p-0">
-                  Read More
-                </Button>
-              </CardFooter>
             </Card>
-          ))}
+          )}
         </div>
       </div>
     </div>

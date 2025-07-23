@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Card,
   CardContent,
@@ -14,10 +16,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { transactions } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { useTransactions } from "@/lib/data-hooks";
+import { Button } from "@/components/ui/button";
+import { PlusCircle } from "lucide-react";
 
 export default function FinancesPage() {
+  const { data: transactions, loading } = useTransactions();
+
   const totalIncome = transactions
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
@@ -58,13 +64,18 @@ export default function FinancesPage() {
         </Card>
       </div>
       <Card>
-        <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
-          <CardDescription>
-            This is a mock integration with RevTrak.
-          </CardDescription>
+        <CardHeader className="flex flex-row justify-between items-center">
+            <div>
+              <CardTitle>Transaction History</CardTitle>
+              <CardDescription>
+                Manually track your club's income and expenses.
+              </CardDescription>
+            </div>
+             <Button disabled><PlusCircle className="mr-2"/> Add Transaction</Button>
         </CardHeader>
         <CardContent>
+          {loading ? <p>Loading...</p> : 
+            transactions.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -106,6 +117,12 @@ export default function FinancesPage() {
               ))}
             </TableBody>
           </Table>
+           ) : (
+            <div className="text-center py-16 text-muted-foreground">
+                <p>No transactions yet. Add one to get started!</p>
+            </div>
+           )
+          }
         </CardContent>
       </Card>
     </div>

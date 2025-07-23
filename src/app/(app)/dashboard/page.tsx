@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import {
   Activity,
@@ -23,10 +25,46 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { members, events } from "@/lib/mock-data";
+import { useMembers, useEvents } from "@/lib/data-hooks";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function Dashboard() {
-  const upcomingEvent = events[0];
+  const { data: members, loading: membersLoading, clubId } = useMembers();
+  const { data: events, loading: eventsLoading } = useEvents();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!clubId && !membersLoading) {
+      router.push('/');
+    }
+  }, [clubId, membersLoading, router]);
+
+  if (membersLoading || eventsLoading) {
+    return (
+       <div className="flex flex-col gap-4 md:gap-8">
+      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
+        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="h-3 w-20 mt-1" /></CardContent></Card>
+        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
+        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
+      </div>
+      <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader><CardTitle>New Members</CardTitle><CardDescription>Recently joined members.</CardDescription></CardHeader>
+          <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Upcoming Events</CardTitle><CardDescription>Don't miss these events.</CardDescription></CardHeader>
+          <CardContent className="grid gap-8"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent>
+        </Card>
+      </div>
+    </div>
+    );
+  }
+  
+  const upcomingEvent = events.length > 0 ? [...events].sort((a,b) => a.date.getTime() - b.date.getTime())[0] : null;
 
   return (
     <div className="flex flex-col gap-4 md:gap-8">
@@ -38,7 +76,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{members.length}</div>
-            <p className="text-xs text-muted-foreground">+2 from last month</p>
+            <p className="text-xs text-muted-foreground">The heart of your club.</p>
           </CardContent>
         </Card>
         <Card>
@@ -49,10 +87,16 @@ export default function Dashboard() {
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold truncate">{upcomingEvent.title}</div>
-            <p className="text-xs text-muted-foreground">
-              {upcomingEvent.date.toLocaleDateString()}
-            </p>
+             {upcomingEvent ? (
+              <>
+                <div className="text-2xl font-bold truncate">{upcomingEvent.title}</div>
+                <p className="text-xs text-muted-foreground">
+                  {upcomingEvent.date.toLocaleDateString()}
+                </p>
+              </>
+            ) : (
+              <div className="text-xl font-semibold text-muted-foreground">No upcoming events</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -61,9 +105,9 @@ export default function Dashboard() {
             <Landmark className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$1,250.50</div>
+            <div className="text-2xl font-bold">$0.00</div>
             <p className="text-xs text-muted-foreground">
-              Based on recent transactions
+              Connect to a payment provider.
             </p>
           </CardContent>
         </Card>
@@ -73,9 +117,9 @@ export default function Dashboard() {
             <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">+5 New Posts</div>
+            <div className="text-2xl font-bold">Stay Updated</div>
             <p className="text-xs text-muted-foreground">
-              +3 announcements this month
+              Activity from all club channels.
             </p>
           </CardContent>
         </Card>
@@ -97,6 +141,7 @@ export default function Dashboard() {
             </Button>
           </CardHeader>
           <CardContent>
+             {members.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -120,6 +165,9 @@ export default function Dashboard() {
                 ))}
               </TableBody>
             </Table>
+            ) : (
+               <div className="text-center py-8 text-muted-foreground">No members yet.</div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -143,6 +191,9 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
+             {events.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
+            )}
           </CardContent>
         </Card>
       </div>

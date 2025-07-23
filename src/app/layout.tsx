@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Clubhouse AI",
+  title: "ClubHub",
   description: "The ultimate club management tool, powered by AI.",
 };
 

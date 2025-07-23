@@ -15,14 +15,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { socialPosts as initialSocialPosts } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
+import { useSocialPosts } from "@/lib/data-hooks";
+import type { SocialPost } from "@/lib/mock-data";
 
-type SocialPost = (typeof initialSocialPosts)[0];
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -30,7 +30,7 @@ const formSchema = z.object({
 });
 
 export default function SocialPage() {
-  const [socialPosts, setSocialPosts] = useState<SocialPost[]>(initialSocialPosts);
+  const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -157,20 +157,29 @@ export default function SocialPage() {
       </div>
        <div className="md:col-span-2">
         <h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {socialPosts.map((post) => (
-            <Card key={post.id}>
-              <CardHeader>
-                  <CardTitle>{post.platform}</CardTitle>
-                   <CardDescription>{post.date}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Image src={post.image} alt="Social post image" width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
-                <p className="text-sm text-muted-foreground">{post.content}</p>
+        {loading ? <p>Loading...</p> : 
+          socialPosts.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {socialPosts.map((post) => (
+              <Card key={post.id}>
+                <CardHeader>
+                    <CardTitle>{post.platform}</CardTitle>
+                     <CardDescription>{post.date}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Image src={post.image} alt="Social post image" width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
+                  <p className="text-sm text-muted-foreground">{post.content}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+             <Card className="flex items-center justify-center py-12 md:col-span-2">
+              <CardContent>
+                <p className="text-muted-foreground">No social posts yet. Create one to get started!</p>
               </CardContent>
             </Card>
-          ))}
-        </div>
+        )}
       </div>
     </div>
   );

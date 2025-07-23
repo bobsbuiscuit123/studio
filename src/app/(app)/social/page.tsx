@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Network, Loader2, Image as ImageIcon, X, Pencil, Download, Copy, Trash2 } from "lucide-react";
+import { Network, Loader2, Image as ImageIcon, X, Pencil, ThumbsUp, MessageCircle, Trash2 } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -132,21 +132,18 @@ export default function SocialPage() {
     setDeletingPostId(null);
   };
 
-  const handleCopyText = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: "Post text copied!" });
+  const handleLike = () => {
+    toast({
+        title: "Feature not available",
+        description: "Liking posts is not implemented yet.",
+    });
   };
 
-  const handleDownloadImages = (imageUrls: string[], title: string) => {
-    imageUrls.forEach((imageUrl, index) => {
-      const link = document.createElement('a');
-      link.href = imageUrl;
-      link.download = `${title.replace(/\s+/g, '_').toLowerCase()}_post_image_${index + 1}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
-    toast({ title: "Image downloads started!" });
+  const handleComment = () => {
+      toast({
+        title: "Feature not available",
+        description: "Commenting on posts is not implemented yet.",
+      });
   };
 
 
@@ -161,7 +158,7 @@ export default function SocialPage() {
         id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
         title: result.title,
         content: result.postText,
-        images: previewImages.length > 0 ? previewImages : ["https://placehold.co/400x400.png"],
+        images: previewImages.length > 0 ? previewImages : [],
         dataAiHint: "tech club",
         author: "AI Assistant",
         date: new Date().toLocaleDateString(),
@@ -313,14 +310,12 @@ export default function SocialPage() {
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">{post.content}</p>
                 </CardContent>
                 <CardFooter className="flex gap-2">
-                    <Button variant="outline" className="w-full" onClick={() => handleCopyText(post.content)}>
-                        <Copy className="mr-2"/> Copy Text
+                    <Button variant="outline" className="w-full" onClick={handleLike}>
+                        <ThumbsUp className="mr-2"/> Like
                     </Button>
-                    {post.images && post.images.length > 0 && (
-                      <Button className="w-full" onClick={() => handleDownloadImages(post.images, post.title)}>
-                         <Download className="mr-2"/> Download Image{post.images.length > 1 ? 's' : ''}
-                      </Button>
-                    )}
+                    <Button variant="outline" className="w-full" onClick={handleComment}>
+                        <MessageCircle className="mr-2"/> Comment
+                    </Button>
                 </CardFooter>
               </Card>
             ))}

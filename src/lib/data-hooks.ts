@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import type { Member } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -89,4 +90,21 @@ export function useSocialPosts() {
 
 export function useTransactions() {
   return useClubData('transactions', []);
+}
+
+// Hook to get the current user's role
+export function useCurrentUserRole() {
+    const { data: members, loading } = useMembers();
+    const [role, setRole] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!loading && members && members.length > 0) {
+            // In a real app, you'd have a proper user session.
+            // For this prototype, we'll assume the first member is the current user.
+            const currentUser = members[0] as Member;
+            setRole(currentUser.role);
+        }
+    }, [members, loading]);
+
+    return { role, loading };
 }

@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { addCalendarEvent, AddCalendarEventOutput } from "@/ai/flows/add-calendar-event";
 import { useToast } from "@/hooks/use-toast";
-import { useEvents } from "@/lib/data-hooks";
+import { useEvents, useCurrentUserRole } from "@/lib/data-hooks";
 import type { ClubEvent } from "@/lib/mock-data";
 import {
     Dialog,
@@ -46,6 +46,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
+  const { role } = useCurrentUserRole();
   
   useEffect(() => {
     setDate(new Date());
@@ -109,6 +110,8 @@ export default function CalendarPage() {
     }
   };
   
+  const isOwner = role && role !== 'Member';
+
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">
@@ -155,38 +158,40 @@ export default function CalendarPage() {
         </Card>
       </div>
       <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
-            <CardDescription>Describe the event you want to add to the calendar.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="prompt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Prompt</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="e.g., Schedule our monthly meeting for next Tuesday at 6 PM in the main auditorium. The topic is planning the summer fundraiser."
-                          className="min-h-[150px]"
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? <Loader2 className="animate-spin" /> : "Add Event with AI"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
+        {isOwner && (
+            <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
+                <CardDescription>Describe the event you want to add to the calendar.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    <FormField
+                    control={form.control}
+                    name="prompt"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Prompt</FormLabel>
+                        <FormControl>
+                            <Textarea 
+                            placeholder="e.g., Schedule our monthly meeting for next Tuesday at 6 PM in the main auditorium. The topic is planning the summer fundraiser."
+                            className="min-h-[150px]"
+                            {...field} 
+                            />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                    />
+                    <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="animate-spin" /> : "Add Event with AI"}
+                    </Button>
+                </form>
+                </Form>
+            </CardContent>
+            </Card>
+        )}
         <Card>
           <CardHeader>
             <CardTitle>Upcoming Events</CardTitle>
@@ -206,9 +211,11 @@ export default function CalendarPage() {
                             {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
                             </p>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(event)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
+                        {isOwner && (
+                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(event)}>
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                     <p className="text-sm mt-2">{event.description}</p>
                     <p className="text-sm mt-1">

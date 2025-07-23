@@ -30,6 +30,7 @@ import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Member } from '@/lib/mock-data';
 
 
 const formSchema = z.object({
@@ -118,8 +119,16 @@ export default function HomePage() {
     const updatedClubs = [...clubs, newClub];
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
+
+    const firstMember: Member = {
+        name: "Alex Johnson",
+        email: "alex.j@example.com",
+        role: "President",
+        avatar: `https://placehold.co/100x100.png?text=A`
+    }
+
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify({
-      members: [],
+      members: [firstMember],
       events: [],
       announcements: [],
       socialPosts: [],

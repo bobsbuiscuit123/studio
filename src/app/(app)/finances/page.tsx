@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { useTransactions } from "@/lib/data-hooks";
+import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import {
@@ -52,6 +52,7 @@ export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { role } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof transactionFormSchema>>({
     resolver: zodResolver(transactionFormSchema),
@@ -84,6 +85,8 @@ export default function FinancesPage() {
     .filter((t) => t.amount < 0)
     .reduce((acc, t) => acc + t.amount, 0);
   const netBalance = totalIncome + totalExpenses;
+  
+  const isOwner = role && role !== 'Member';
 
   return (
     <>
@@ -125,60 +128,62 @@ export default function FinancesPage() {
                 Manually track your club's income and expenses.
               </CardDescription>
             </div>
-             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button><PlusCircle className="mr-2"/> Add Transaction</Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add a New Transaction</DialogTitle>
-                    <DialogDescription>
-                      Enter the details for the transaction. Use a negative number for expenses.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
-                    <div>
-                      <Label htmlFor="description">Description</Label>
-                      <Input id="description" {...form.register('description')} />
-                      {form.formState.errors.description && <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>}
-                    </div>
-                    <div>
-                      <Label htmlFor="amount">Amount</Label>
-                      <Input id="amount" type="number" step="0.01" {...form.register('amount')} />
-                       {form.formState.errors.amount && <p className="text-red-500 text-sm">{form.formState.errors.amount.message}</p>}
-                    </div>
-                     <div>
-                      <Label htmlFor="date">Date</Label>
-                      <Input id="date" type="date" {...form.register('date')} />
-                       {form.formState.errors.date && <p className="text-red-500 text-sm">{form.formState.errors.date.message}</p>}
-                    </div>
-                    <div>
-                      <Label>Status</Label>
-                      <RadioGroup
-                        defaultValue={form.getValues('status')}
-                        onValueChange={(value) => form.setValue('status', value as 'Paid' | 'Pending')}
-                        className="flex gap-4 mt-2"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="Paid" id="paid" />
-                          <Label htmlFor="paid">Paid</Label>
+             {isOwner && (
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <DialogTrigger asChild>
+                    <Button><PlusCircle className="mr-2"/> Add Transaction</Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add a New Transaction</DialogTitle>
+                        <DialogDescription>
+                        Enter the details for the transaction. Use a negative number for expenses.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
+                        <div>
+                        <Label htmlFor="description">Description</Label>
+                        <Input id="description" {...form.register('description')} />
+                        {form.formState.errors.description && <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>}
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="Pending" id="pending" />
-                          <Label htmlFor="pending">Pending</Label>
+                        <div>
+                        <Label htmlFor="amount">Amount</Label>
+                        <Input id="amount" type="number" step="0.01" {...form.register('amount')} />
+                        {form.formState.errors.amount && <p className="text-red-500 text-sm">{form.formState.errors.amount.message}</p>}
                         </div>
-                      </RadioGroup>
-                       {form.formState.errors.status && <p className="text-red-500 text-sm">{form.formState.errors.status.message}</p>}
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                           <Button type="button" variant="ghost">Cancel</Button>
-                        </DialogClose>
-                        <Button type="submit">Add Transaction</Button>
-                    </DialogFooter>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                        <div>
+                        <Label htmlFor="date">Date</Label>
+                        <Input id="date" type="date" {...form.register('date')} />
+                        {form.formState.errors.date && <p className="text-red-500 text-sm">{form.formState.errors.date.message}</p>}
+                        </div>
+                        <div>
+                        <Label>Status</Label>
+                        <RadioGroup
+                            defaultValue={form.getValues('status')}
+                            onValueChange={(value) => form.setValue('status', value as 'Paid' | 'Pending')}
+                            className="flex gap-4 mt-2"
+                        >
+                            <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="Paid" id="paid" />
+                            <Label htmlFor="paid">Paid</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="Pending" id="pending" />
+                            <Label htmlFor="pending">Pending</Label>
+                            </div>
+                        </RadioGroup>
+                        {form.formState.errors.status && <p className="text-red-500 text-sm">{form.formState.errors.status.message}</p>}
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                            <Button type="button" variant="ghost">Cancel</Button>
+                            </DialogClose>
+                            <Button type="submit">Add Transaction</Button>
+                        </DialogFooter>
+                    </form>
+                    </DialogContent>
+                </Dialog>
+             )}
         </CardHeader>
         <CardContent>
           {loading ? <p>Loading...</p> : 

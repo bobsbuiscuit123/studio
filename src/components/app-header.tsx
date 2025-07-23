@@ -20,6 +20,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
+import { useCurrentUserRole } from "@/lib/data-hooks";
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
@@ -35,6 +36,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const [clubName, setClubName] = useState("");
   const title = pageTitles[pathname] || "ClubHub";
+  const { role } = useCurrentUserRole();
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -65,7 +67,7 @@ export function AppHeader() {
               <Logo className="h-6 w-6" />
               <span>ClubHub</span>
             </Link>
-            <AppSidebarNav />
+            <AppSidebarNav role={role || ''} />
           </nav>
         </SheetContent>
       </Sheet>

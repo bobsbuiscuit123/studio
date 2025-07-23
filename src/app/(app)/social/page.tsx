@@ -46,7 +46,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { useSocialPosts } from "@/lib/data-hooks";
+import { useSocialPosts, useCurrentUserRole } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -75,6 +75,7 @@ export default function SocialPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
+  const { role } = useCurrentUserRole();
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -209,77 +210,81 @@ export default function SocialPage() {
     }
   };
 
+  const isOwner = role && role !== 'Member';
+
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">
-      <div className="md:col-span-1">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Network /> Create Social Post</CardTitle>
-            <CardDescription>Describe the social media post you want to create.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                 <FormField
-                  control={form.control}
-                  name="prompt"
-                  render={({ field }) => (
+      {isOwner && (
+        <div className="md:col-span-1">
+            <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Network /> Create Social Post</CardTitle>
+                <CardDescription>Describe the social media post you want to create.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    <FormField
+                    control={form.control}
+                    name="prompt"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Prompt</FormLabel>
+                        <FormControl>
+                            <Textarea 
+                            placeholder="e.g., Create a post for the Innovators Club about our next meeting on web development. Target students interested in tech and ask them to join our Discord." 
+                            className="min-h-[150px]"
+                            {...field} 
+                            />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                    />
                     <FormItem>
-                      <FormLabel>Prompt</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="e.g., Create a post for the Innovators Club about our next meeting on web development. Target students interested in tech and ask them to join our Discord." 
-                          className="min-h-[150px]"
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
+                    <FormLabel>Images (Optional)</FormLabel>
+                        <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                            <ImageIcon className="mr-2" />
+                            Upload Images
+                            </Button>
+                        <FormControl>
+                            <Input 
+                            type="file" 
+                            accept="image/*"
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            onChange={handleImageChange}
+                            multiple
+                            />
+                        </FormControl>
+                        </div>
                     </FormItem>
-                  )}
-                />
-                <FormItem>
-                  <FormLabel>Images (Optional)</FormLabel>
-                    <div className="flex items-center gap-2">
-                       <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                          <ImageIcon className="mr-2" />
-                          Upload Images
-                        </Button>
-                      <FormControl>
-                        <Input 
-                          type="file" 
-                          accept="image/*"
-                          ref={fileInputRef} 
-                          className="hidden" 
-                          onChange={handleImageChange}
-                          multiple
-                        />
-                       </FormControl>
-                    </div>
-                </FormItem>
 
-                {previewImages.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {previewImages.map((image, index) => (
-                      <div key={index} className="relative">
-                        <Image src={image} alt={`Preview ${index + 1}`} width={200} height={200} className="rounded-md w-full h-auto aspect-square object-cover" />
-                         <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePreviewImage(index)}>
-                            <X className="h-4 w-4"/>
-                          </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-               
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? <Loader2 className="animate-spin" /> : "Generate Post"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      </div>
-       <div className="md:col-span-2">
+                    {previewImages.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                        {previewImages.map((image, index) => (
+                        <div key={index} className="relative">
+                            <Image src={image} alt={`Preview ${index + 1}`} width={200} height={200} className="rounded-md w-full h-auto aspect-square object-cover" />
+                            <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePreviewImage(index)}>
+                                <X className="h-4 w-4"/>
+                            </Button>
+                        </div>
+                        ))}
+                    </div>
+                    )}
+                
+                    <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="animate-spin" /> : "Generate Post"}
+                    </Button>
+                </form>
+                </Form>
+            </CardContent>
+            </Card>
+        </div>
+      )}
+       <div className={isOwner ? "md:col-span-2" : "md:col-span-3"}>
         <h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
         {loading ? <p>Loading...</p> : 
           socialPosts.length > 0 ? (
@@ -292,30 +297,32 @@ export default function SocialPage() {
                             <CardTitle>{post.title}</CardTitle>
                             <CardDescription>{post.date}</CardDescription>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                             <AlertDialog open={deletingPostId === post.id} onOpenChange={(open) => !open && setDeletingPostId(null)}>
-                                <AlertDialogTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => setDeletingPostId(post.id)}>
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      This action cannot be undone. This will permanently delete this social media post.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                        </div>
+                        {isOwner && (
+                            <div className="flex items-center gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog open={deletingPostId === post.id} onOpenChange={(open) => !open && setDeletingPostId(null)}>
+                                    <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" onClick={() => setDeletingPostId(post.id)}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete this social media post.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </div>
+                        )}
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow">

@@ -13,18 +13,20 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/announcements', icon: Megaphone, label: 'Announcements' },
-  { href: '/calendar', icon: CalendarDays, label: 'Calendar' },
-  { href: '/members', icon: UsersRound, label: 'Members' },
-  { href: '/finances', icon: Landmark, label: 'Finances' },
-  { href: '/slides', icon: Presentation, label: 'Meeting Slides' },
-  { href: '/social', icon: Network, label: 'Social Media' },
+const allNavItems = [
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Member'] },
+  { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'] },
+  { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'] },
+  { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'] },
+  { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'] },
+  { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin'] },
+  { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Member'] },
 ];
 
-export function AppSidebarNav() {
+export function AppSidebarNav({ role }: { role: string }) {
   const pathname = usePathname();
+
+  const navItems = allNavItems.filter(item => item.roles.includes(role));
 
   return (
     <>

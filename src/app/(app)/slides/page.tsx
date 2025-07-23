@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateMeetingSlides } from "@/ai/flows/generate-meeting-slides";
+import { useCurrentUserRole } from "@/lib/data-hooks";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -21,6 +22,7 @@ export default function SlidesPage() {
   const [generatedContent, setGeneratedContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { role } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -53,6 +55,17 @@ export default function SlidesPage() {
       toast({ title: "Copied to clipboard!" });
     }
   };
+
+  if (role && role === 'Member') {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Card className="p-8 text-center">
+                <CardTitle>Access Denied</CardTitle>
+                <CardDescription>This page is only available to club administrators.</CardDescription>
+            </Card>
+        </div>
+    )
+  }
 
   return (
     <div className="grid md:grid-cols-3 gap-8">

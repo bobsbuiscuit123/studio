@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole } from "@/lib/data-hooks";
 import type { Announcement } from "@/lib/mock-data";
 
 
@@ -48,6 +48,7 @@ export default function AnnouncementsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
+  const { role } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -102,48 +103,52 @@ export default function AnnouncementsPage() {
       setIsLoading(false);
     }
   };
+  
+  const isOwner = role && role !== 'Member';
 
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">
-      <div className="md:col-span-1">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
-            <CardDescription>Describe the announcement you want to create.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="prompt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Prompt</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
-                          className="min-h-[150px]"
-                          {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Generate"
-                  )}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      </div>
-      <div className="md:col-span-2">
+      {isOwner && (
+        <div className="md:col-span-1">
+            <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
+                <CardDescription>Describe the announcement you want to create.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                    <FormField
+                    control={form.control}
+                    name="prompt"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Prompt</FormLabel>
+                        <FormControl>
+                            <Textarea 
+                            placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
+                            className="min-h-[150px]"
+                            {...field} />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                    />
+                    <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        "Generate"
+                    )}
+                    </Button>
+                </form>
+                </Form>
+            </CardContent>
+            </Card>
+        </div>
+      )}
+      <div className={isOwner ? "md:col-span-2" : "md:col-span-3"}>
         <h2 className="text-2xl font-bold mb-4">Recent Announcements</h2>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
@@ -158,9 +163,11 @@ export default function AnnouncementsPage() {
                             Posted by {announcement.author} - {announcement.date}
                             </CardDescription>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
+                        {isOwner && (
+                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                        )}
                     </div>
                   </CardHeader>
                   <CardContent>

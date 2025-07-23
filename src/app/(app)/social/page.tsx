@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Network, Loader2, Image as ImageIcon, X, Pencil, Download, Copy } from "lucide-react";
+import { Network, Loader2, Image as ImageIcon, X, Pencil, Download, Copy, Trash2 } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,17 @@ import {
   DialogTitle,
   DialogFooter
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
@@ -54,6 +65,7 @@ export default function SocialPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
+  const [deletingPost, setDeletingPost] = useState<SocialPost | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -111,6 +123,14 @@ export default function SocialPage() {
     setSocialPosts(updatedPosts);
     toast({ title: "Post updated!" });
     setEditingPost(null);
+  };
+  
+  const handleDeletePost = () => {
+    if (!deletingPost) return;
+    const updatedPosts = socialPosts.filter((post) => post.id !== deletingPost.id);
+    setSocialPosts(updatedPosts);
+    toast({ title: "Post deleted successfully!" });
+    setDeletingPost(null);
   };
 
   const handleCopyText = (text: string) => {
@@ -244,9 +264,30 @@ export default function SocialPage() {
                             <CardTitle>{post.title}</CardTitle>
                             <CardDescription>{post.date}</CardDescription>
                         </div>
-                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
-                            <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                             <AlertDialog onOpenChange={() => setDeletingPost(null)}>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => setDeletingPost(post)}>
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      This action cannot be undone. This will permanently delete this social media post.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={handleDeletePost}>Delete</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow">

@@ -25,6 +25,11 @@ import {
   GenerateSocialMediaPostInput,
   GenerateSocialMediaPostOutput,
 } from './generate-social-media-post';
+import {
+  addCalendarEvent,
+  AddCalendarEventInput,
+  AddCalendarEventOutput,
+} from './add-calendar-event';
 
 // Define tools for the assistant to use
 const announcementTool = ai.defineTool(
@@ -57,6 +62,16 @@ const socialPostTool = ai.defineTool(
   async (input) => generateSocialMediaPost(input)
 );
 
+const calendarTool = ai.defineTool(
+  {
+    name: 'addCalendarEvent',
+    description: 'Adds an event to the club calendar.',
+    inputSchema: z.custom<AddCalendarEventInput>(),
+    outputSchema: z.custom<AddCalendarEventOutput>(),
+  },
+  async (input) => addCalendarEvent(input)
+);
+
 const AssistantInputSchema = z.object({
   query: z.string().describe('The user\'s request.'),
 });
@@ -77,7 +92,7 @@ const assistantPrompt = ai.definePrompt({
   name: 'assistantPrompt',
   input: { schema: AssistantInputSchema },
   output: { schema: AssistantOutputSchema },
-  tools: [announcementTool, slidesTool, socialPostTool],
+  tools: [announcementTool, slidesTool, socialPostTool, calendarTool],
   prompt: `You are a helpful AI assistant for a school club. Your name is Clubhouse AI.
   Use the available tools to help the user with their request.
   The user's request is: {{{query}}}

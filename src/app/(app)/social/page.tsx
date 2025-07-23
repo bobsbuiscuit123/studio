@@ -8,12 +8,19 @@ import { Network, Loader2, Image as ImageIcon, X } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { socialPosts as initialSocialPosts } from "@/lib/mock-data";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 type SocialPost = (typeof initialSocialPosts)[0];
 

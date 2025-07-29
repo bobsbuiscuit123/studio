@@ -264,12 +264,18 @@ export default function HomePage() {
                 {form.formState.errors.name && (
                   <p className="text-red-500 text-sm">{form.formState.errors.name.message}</p>
                 )}
-                <Input type="file" accept="image/*" onChange={handleImageChange} />
+                <div className="flex flex-col gap-2">
+                  <Label>Club Logo (Optional)</Label>
+                  <Input type="file" accept="image/*" onChange={handleImageChange} />
+                </div>
                 {previewImage && <Image src={previewImage} alt="logo preview" width={100} height={100} className="rounded-md" />}
                 <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="submit">Create Club</Button>
-                    </DialogClose>
+                  <DialogClose asChild>
+                    <Button type="button" variant="ghost">Cancel</Button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <Button type="submit">Create Club</Button>
+                  </DialogClose>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -281,12 +287,12 @@ export default function HomePage() {
             {clubs.map((club) => (
               <Card key={club.id}>
                 <CardHeader className="flex-row items-center gap-4">
-                  <Image src={club.logo} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg" />
-                  <CardTitle>{club.name}</CardTitle>
+                  <Image src={club.logo} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg aspect-square object-cover" />
+                  <div>
+                    <CardTitle>{club.name}</CardTitle>
+                    <CardDescription>Manage this club</CardDescription>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                    <CardDescription>Click to manage this club's dashboard and activities.</CardDescription>
-                </CardContent>
                 <CardFooter>
                   <Link href="/dashboard" className="w-full" onClick={() => handleSelectClub(club.id)}>
                     <Button className="w-full">

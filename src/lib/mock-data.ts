@@ -64,4 +64,5 @@ export type Message = {
     recipientEmail: string;
     text: string;
     timestamp: Date;
+    read: boolean;
 }

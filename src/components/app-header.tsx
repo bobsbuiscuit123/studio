@@ -21,7 +21,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useMessages } from "@/lib/data-hooks";
 import { SettingsDialog } from "./settings-dialog";
 
 const pageTitles: { [key: string]: string } = {
@@ -42,6 +42,8 @@ export function AppHeader() {
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { allMessages, loading: messagesLoading } = useMessages(user?.email);
+  const [hasUnread, setHasUnread] = useState(false);
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -53,6 +55,12 @@ export function AppHeader() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!messagesLoading && user && allMessages) {
+        setHasUnread(allMessages.some(m => m.recipientEmail === user.email && !m.read));
+    }
+  }, [allMessages, user, messagesLoading]);
   
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
   
@@ -87,7 +95,7 @@ export function AppHeader() {
               <Logo className="h-6 w-6" />
               <span>ClubHub</span>
             </Link>
-            <AppSidebarNav role={role || ''} />
+            <AppSidebarNav role={role || ''} hasUnreadMessages={hasUnread} />
           </nav>
         </SheetContent>
       </Sheet>

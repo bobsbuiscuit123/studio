@@ -1,12 +1,25 @@
+
 "use client";
 
 import Link from "next/link";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useMessages } from "@/lib/data-hooks";
+import { useEffect, useState } from "react";
 
 export function AppSidebar() {
   const { role } = useCurrentUserRole();
+  const { user } = useCurrentUser();
+  const { allMessages, loading: messagesLoading } = useMessages(user?.email);
+  const [hasUnread, setHasUnread] = useState(false);
+
+  useEffect(() => {
+    if (!messagesLoading && user && allMessages) {
+        setHasUnread(allMessages.some(m => m.recipientEmail === user.email && !m.read));
+    }
+  }, [allMessages, user, messagesLoading]);
+
+
   return (
     <div className="hidden border-r bg-muted/40 md:block">
       <div className="flex h-full max-h-screen flex-col gap-2">
@@ -18,7 +31,7 @@ export function AppSidebar() {
         </div>
         <div className="flex-1">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
-            <AppSidebarNav role={role || ''}/>
+            <AppSidebarNav role={role || ''} hasUnreadMessages={hasUnread}/>
           </nav>
         </div>
       </div>

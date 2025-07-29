@@ -1,5 +1,6 @@
 
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useCallback } from 'react';
 import type { Member, User, Message } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
@@ -37,7 +38,7 @@ function useClubData<T>(key: string, initialData: T) {
     }
   }, [clubId, key, JSON.stringify(initialData)]);
 
-  const updateData = (newData: T) => {
+  const updateData = useCallback((newData: T) => {
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
       setData(newData);
@@ -50,7 +51,7 @@ function useClubData<T>(key: string, initialData: T) {
         console.error(`Error writing ${key} to localStorage`, error);
       }
     }
-  };
+  }, [clubId]);
 
   return { data, loading, updateData, clubId };
 }
@@ -121,7 +122,7 @@ export function useMessages(userEmail?: string | null, recipientEmail?: string |
         updateData([...otherMessages, ...newMessages]);
     };
     
-    return { data: filteredMessages, loading, updateData: updateMessages, clubId };
+    return { data: filteredMessages, allMessages, loading, updateData: updateData, clubId };
 }
 
 

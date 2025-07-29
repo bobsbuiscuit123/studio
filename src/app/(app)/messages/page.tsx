@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -25,13 +25,29 @@ function MessagesContent() {
   const { user, loading: userLoading } = useCurrentUser();
   const searchParams = useSearchParams();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const { data: messages, updateData: setMessages } = useMessages(user?.email, selectedMember?.email);
+  const { data: messages, allMessages, updateData: setAllMessages } = useMessages(user?.email, selectedMember?.email);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof messageFormSchema>>({
     resolver: zodResolver(messageFormSchema),
     defaultValues: { text: "" },
   });
+
+  const markMessagesAsRead = useCallback(() => {
+    if (!user || !selectedMember || !allMessages) return;
+
+    const updatedMessages = allMessages.map((msg) => {
+      if (msg.recipientEmail === user.email && msg.senderEmail === selectedMember.email && !msg.read) {
+        return { ...msg, read: true };
+      }
+      return msg;
+    });
+
+    // Check if any message was actually updated to avoid unnecessary writes
+    if (JSON.stringify(updatedMessages) !== JSON.stringify(allMessages)) {
+        setAllMessages(updatedMessages);
+    }
+  }, [user, selectedMember, allMessages, setAllMessages]);
 
   useEffect(() => {
     if (!membersLoading && !userLoading) {
@@ -44,11 +60,19 @@ function MessagesContent() {
       } else if (members.length > 0) {
         const otherMembers = members.filter((m: Member) => m.email !== user?.email);
         if (otherMembers.length > 0) {
-          setSelectedMember(otherMembers[0]);
+          // Find first member with unread messages
+          const memberWithUnread = otherMembers.find(m => allMessages.some(msg => msg.senderEmail === m.email && !msg.read));
+          setSelectedMember(memberWithUnread || otherMembers[0]);
         }
       }
     }
-  }, [searchParams, members, user, membersLoading, userLoading]);
+  }, [searchParams, members, user, membersLoading, userLoading, allMessages]);
+  
+  useEffect(() => {
+    if (selectedMember) {
+        markMessagesAsRead();
+    }
+  }, [selectedMember, markMessagesAsRead]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -64,8 +88,9 @@ function MessagesContent() {
       recipientEmail: selectedMember.email,
       text: values.text,
       timestamp: new Date(),
+      read: false,
     };
-    setMessages([...messages, newMessage]);
+    setAllMessages([...allMessages, newMessage]);
     form.reset();
   };
   
@@ -92,15 +117,18 @@ function MessagesContent() {
         </div>
         <ScrollArea className="flex-1">
           {membersLoading ? <p className="p-4">Loading members...</p> : (
-            otherMembers.map((member) => (
+            otherMembers.map((member) => {
+              const hasUnread = allMessages.some(msg => msg.senderEmail === member.email && msg.recipientEmail === user?.email && !msg.read);
+              return (
               <div
                 key={member.email}
                 className={cn(
-                  "flex items-center gap-3 p-3 cursor-pointer hover:bg-muted",
+                  "flex items-center gap-3 p-3 cursor-pointer hover:bg-muted relative",
                   selectedMember?.email === member.email && "bg-muted"
                 )}
                 onClick={() => setSelectedMember(member)}
               >
+                {hasUnread && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />}
                 <Avatar className="h-10 w-10">
                     <AvatarImage src={member.avatar} />
                     <AvatarFallback style={{backgroundColor: stringToColor(member.name)}}>
@@ -108,13 +136,13 @@ function MessagesContent() {
                     </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <p className="font-semibold">{member.name}</p>
+                  <p className={cn("font-semibold", hasUnread && "font-bold")}>{member.name}</p>
                   <p className="text-sm text-muted-foreground truncate">
                     {/* Placeholder for last message */}
                   </p>
                 </div>
               </div>
-            ))
+            )})
           )}
         </ScrollArea>
       </div>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -25,15 +26,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useMembers, useEvents } from "@/lib/data-hooks";
+import { useMembers, useEvents, useMessages, useCurrentUser } from "@/lib/data-hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: members, loading: membersLoading, clubId } = useMembers();
   const { data: events, loading: eventsLoading } = useEvents();
+  const { user, loading: userLoading } = useCurrentUser();
+  const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!clubId && !membersLoading) {
@@ -41,7 +46,19 @@ export default function Dashboard() {
     }
   }, [clubId, membersLoading, router]);
 
-  if (membersLoading || eventsLoading || !clubId) {
+  useEffect(() => {
+    if (!messagesLoading && user && allMessages) {
+      const unreadMessages = allMessages.filter(m => m.recipientEmail === user.email && !m.read);
+      if (unreadMessages.length > 0) {
+        toast({
+          title: "You have new messages!",
+          description: `You have ${unreadMessages.length} unread message(s).`,
+        });
+      }
+    }
+  }, [messagesLoading, user, allMessages, toast]);
+
+  if (membersLoading || eventsLoading || !clubId || userLoading) {
     return (
        <div className="flex flex-col gap-4 md:gap-8">
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">

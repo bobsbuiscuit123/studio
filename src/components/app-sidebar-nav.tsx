@@ -10,6 +10,7 @@ import {
   Presentation,
   Network,
   Landmark,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +19,7 @@ const allNavItems = [
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'] },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'] },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'] },
+  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Member'] },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'] },
   { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin'] },
   { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Member'] },

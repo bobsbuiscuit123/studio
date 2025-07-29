@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useRouter } from "next/navigation";
 
 export default function MembersPage() {
   const { data: members, loading, clubId } = useMembers();
@@ -33,6 +34,7 @@ export default function MembersPage() {
   const [joinCode, setJoinCode] = useState('');
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
+  const router = useRouter();
 
   useEffect(() => {
     if (clubId) {
@@ -56,11 +58,8 @@ export default function MembersPage() {
     return `hsl(${hue}, 70%, 80%)`;
   };
 
-  const handleMessage = (name: string) => {
-    toast({
-      title: "Feature not available",
-      description: `Messaging for ${name} is not implemented yet.`,
-    });
+  const handleMessage = (member: Member) => {
+    router.push(`/messages?recipient=${member.email}`);
   };
 
   const handleCopyToClipboard = () => {
@@ -110,7 +109,7 @@ export default function MembersPage() {
        {loading ? <p>Loading...</p> : 
           members.length > 0 ? (
           <div className="grid gap-4 md:gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {members.map((member) => (
+            {members.filter(m => m.email !== user?.email).map((member) => (
               <Card key={member.email}>
                 <CardHeader className="items-center text-center">
                     <Avatar className="w-24 h-24 mb-2 text-4xl">
@@ -129,7 +128,7 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter>
-                  <Button className="w-full" onClick={() => handleMessage(member.name)}>
+                  <Button className="w-full" onClick={() => handleMessage(member)}>
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Message
                   </Button>

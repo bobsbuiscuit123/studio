@@ -32,6 +32,7 @@ const pageTitles: { [key: string]: string } = {
   "/members": "Members",
   "/slides": "Meeting Slides",
   "/social": "Social Media",
+  "/messages": "Messages",
 };
 
 export function AppHeader() {

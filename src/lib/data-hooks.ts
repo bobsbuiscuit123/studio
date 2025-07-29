@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import type { Member, User } from './mock-data';
+import type { Member, User, Message } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -91,6 +91,39 @@ export function useSocialPosts() {
 export function useTransactions() {
   return useClubData('transactions', []);
 }
+
+export function useMessages(userEmail?: string | null, recipientEmail?: string | null) {
+    const { data: allMessages, loading, updateData, clubId } = useClubData<Message[]>('messages', []);
+
+    const [filteredMessages, setFilteredMessages] = useState<Message[]>([]);
+
+    useEffect(() => {
+        if (userEmail && recipientEmail && allMessages) {
+            const conversation = allMessages.filter(
+                (msg) =>
+                    (msg.senderEmail === userEmail && msg.recipientEmail === recipientEmail) ||
+                    (msg.senderEmail === recipientEmail && msg.recipientEmail === userEmail)
+            );
+            setFilteredMessages(conversation.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+        } else {
+            setFilteredMessages([]);
+        }
+    }, [allMessages, userEmail, recipientEmail]);
+
+    const updateMessages = (newMessages: Message[]) => {
+        // This function updates the entire message log for the club.
+        // It's a bit inefficient for a real app but works for this mock setup.
+        // A real implementation would be more targeted.
+        const otherMessages = allMessages.filter(msg => 
+            !((msg.senderEmail === userEmail && msg.recipientEmail === recipientEmail) ||
+              (msg.senderEmail === recipientEmail && msg.recipientEmail === userEmail))
+        );
+        updateData([...otherMessages, ...newMessages]);
+    };
+    
+    return { data: filteredMessages, loading, updateData: updateMessages, clubId };
+}
+
 
 export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);

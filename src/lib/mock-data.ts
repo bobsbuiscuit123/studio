@@ -57,3 +57,11 @@ export type Transaction = {
   date: string;
   status: 'Paid' | 'Pending';
 };
+
+export type Message = {
+    id: string;
+    senderEmail: string;
+    recipientEmail: string;
+    text: string;
+    timestamp: Date;
+}

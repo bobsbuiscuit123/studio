@@ -163,7 +163,7 @@ export default function HomePage() {
     const allClubsString = localStorage.getItem('clubs') || '[]';
     const allClubs: Club[] = JSON.parse(allClubsString);
     
-    const newJoinCode = values.name.substring(0, 4).toUpperCase();
+    const newJoinCode = values.name.replace(/\s/g, '').substring(0, 4).toUpperCase();
     if (allClubs.some(club => club.joinCode === newJoinCode)) {
         toast({ title: "Club Name Unavailable", description: "A club with a similar name already exists. Please choose a different name.", variant: "destructive"});
         return;
@@ -224,8 +224,10 @@ export default function HomePage() {
     const clubDataString = localStorage.getItem(clubDataKey);
     let clubData = clubDataString ? JSON.parse(clubDataString) : { members: [] };
 
-    if (clubData.members.some((m: Member) => m.email === user.email)) {
+    if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
         toast({ title: "Already a Member", description: `You are already a member of ${clubToJoin.name}.`, variant: "default" });
+        handleSelectClub(clubToJoin.id);
+        router.push('/dashboard');
         return;
     }
 
@@ -239,11 +241,16 @@ export default function HomePage() {
     clubData.members = [...(clubData.members || []), newMember];
     localStorage.setItem(clubDataKey, JSON.stringify(clubData));
     
-    const updatedClubs = [...clubs, clubToJoin].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
-    setClubs(updatedClubs);
+    // Add club to user's list if not already there.
+    if (!clubs.some(c => c.id === clubToJoin.id)) {
+        const updatedUserClubs = [...clubs, clubToJoin];
+        setClubs(updatedUserClubs);
+    }
     
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
+    handleSelectClub(clubToJoin.id);
+    router.push('/dashboard');
   };
 
   const handleSelectClub = (clubId: string) => {
@@ -271,9 +278,13 @@ export default function HomePage() {
   if (isClient) {
     Object.keys(localStorage).forEach(key => {
         if (key.startsWith('club_')) {
-            const clubData = JSON.parse(localStorage.getItem(key) || '{}');
-            if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
-                userClubIds.add(key.replace('club_', ''));
+            try {
+                const clubData = JSON.parse(localStorage.getItem(key) || '{}');
+                if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
+                    userClubIds.add(key.replace('club_', ''));
+                }
+            } catch (e) {
+                console.error("Failed to parse club data from local storage", e);
             }
         }
     });

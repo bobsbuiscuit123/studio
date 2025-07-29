@@ -89,7 +89,7 @@ export function AppHeader() {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
             <Avatar>
-              <AvatarImage src={user?.avatar} alt="User Avatar" data-ai-hint="person"/>
+              <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
               <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
                 {getAvatarFallback(user?.name)}
                 </AvatarFallback>
@@ -106,13 +106,9 @@ export function AppHeader() {
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
           <DropdownMenuItem onClick={() => {
-            const clubId = localStorage.getItem('selectedClubId');
-            localStorage.clear();
-            if (clubId) {
-              localStorage.setItem('selectedClubId', clubId);
-            }
+            localStorage.removeItem('selectedClubId');
             window.location.href = '/';
-          }}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
+          }}><LogOut className="mr-2 h-4 w-4" />Logout & Switch Account</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

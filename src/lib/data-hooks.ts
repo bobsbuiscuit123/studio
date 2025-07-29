@@ -96,6 +96,27 @@ export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const applyTheme = (color?: string) => {
+    const root = document.documentElement;
+    if (!color) {
+        root.removeAttribute('style');
+        return;
+    }
+    root.style.setProperty('--primary-hue', color);
+    const [hue, saturation, lightness] = color.split(' ').map(parseFloat);
+    root.style.setProperty('--background', `hsl(${hue} 43% 96%)`);
+    root.style.setProperty('--foreground', `hsl(${hue} 10% 20%)`);
+    root.style.setProperty('--card', `hsl(0 0% 100%)`);
+    root.style.setProperty('--primary', `hsl(${color})`);
+    root.style.setProperty('--primary-foreground', `hsl(${hue} 10% 10%)`);
+    root.style.setProperty('--secondary', `hsl(${hue} 30% 92%)`);
+    root.style.setProperty('--muted', `hsl(${hue} 30% 92%)`);
+    root.style.setProperty('--accent', `hsl(${(hue + 180) % 360} 53% 79%)`);
+    root.style.setProperty('--border', `hsl(${hue} 20% 88%)`);
+    root.style.setProperty('--input', `hsl(${hue} 20% 88%)`);
+    root.style.setProperty('--ring', `hsl(${color})`);
+  };
+
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem('currentUser');
@@ -111,23 +132,6 @@ export function useCurrentUser() {
     }
     setLoading(false);
   }, []);
-  
-  const applyTheme = (color: string) => {
-    const root = document.documentElement;
-    root.style.setProperty('--primary-hue', color);
-    const [hue, saturation, lightness] = color.split(' ').map(parseFloat);
-    root.style.setProperty('--background', `${hue} ${saturation * 0.5}% 96%`);
-    root.style.setProperty('--foreground', `${hue} 10% 20%`);
-    root.style.setProperty('--card', `0 0% 100%`);
-    root.style.setProperty('--primary', `${hue} ${saturation}% ${lightness}%`);
-    root.style.setProperty('--primary-foreground', `${hue} 10% 10%`);
-    root.style.setProperty('--secondary', `${hue} 30% 92%`);
-    root.style.setProperty('--muted', `${hue} 30% 92%`);
-    root.style.setProperty('--accent', `${(hue + 180) % 360} 53% 79%`);
-    root.style.setProperty('--border', `${hue} 20% 88%`);
-    root.style.setProperty('--input', `${hue} 20% 88%`);
-    root.style.setProperty('--ring', `${hue} ${saturation}% ${lightness}%`);
-  }
 
   const saveUser = (newUser: Partial<User>) => {
     const updatedUser = { ...user, ...newUser } as User;
@@ -141,9 +145,7 @@ export function useCurrentUser() {
   const clearUser = () => {
     setUser(null);
     localStorage.removeItem('currentUser');
-    // Reset theme to default
-    const root = document.documentElement;
-    root.removeAttribute('style');
+    applyTheme(); // Reset to default
   }
 
   return { user, loading, saveUser, clearUser };

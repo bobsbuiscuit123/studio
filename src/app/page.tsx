@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { PlusCircle, ArrowRight, Trash2 } from 'lucide-react';
+import { PlusCircle, ArrowRight, Trash2, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -111,7 +111,7 @@ function UserSetup({ onUserSaved }: { onUserSaved: (user: User) => void }) {
 }
 
 export default function HomePage() {
-  const { user, loading: userLoading, saveUser } = useCurrentUser();
+  const { user, loading: userLoading, saveUser, clearUser } = useCurrentUser();
   const [clubs, setClubs] = useState<Club[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -129,7 +129,7 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (isClient) {
+    if (isClient && user) {
       const joinClubId = searchParams.get('joinClubId');
       if (joinClubId) {
         const allClubsString = localStorage.getItem('clubs');
@@ -138,29 +138,38 @@ export default function HomePage() {
           const clubToJoin = allClubs.find(c => c.id === joinClubId);
 
           if (clubToJoin) {
-            const myClubsString = localStorage.getItem('clubs') || '[]';
+            const myClubsString = localStorage.getItem('my_clubs') || '[]';
             const myClubs: Club[] = JSON.parse(myClubsString);
             
             if (!myClubs.some(c => c.id === joinClubId)) {
-                const updatedClubs = [...myClubs, clubToJoin];
-                setClubs(updatedClubs);
-                localStorage.setItem('clubs', JSON.stringify(updatedClubs));
+                // This logic is simplified; in a real app, joining a club would be more complex.
+                // We're adding to a separate 'my_clubs' list to avoid showing all clubs on every user's dash.
+                const updatedMyClubs = [...myClubs, clubToJoin];
+                localStorage.setItem('my_clubs', JSON.stringify(updatedMyClubs));
                 
+                // Add member to club's member list
                 const clubDataKey = `club_${clubToJoin.id}`;
                 const clubDataString = localStorage.getItem(clubDataKey);
-                if(clubDataString && user) {
-                    const clubData = JSON.parse(clubDataString);
-                    const newMember: Member = {
-                        name: user.name,
-                        email: user.email,
-                        role: 'Member',
-                        avatar: `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
-                    };
-                    clubData.members = [...(clubData.members || []), newMember];
-                    localStorage.setItem(clubDataKey, JSON.stringify(clubData));
+                let clubData = clubDataString ? JSON.parse(clubDataString) : { members: [], announcements: [], etc: []};
+
+                const newMember: Member = {
+                    name: user.name,
+                    email: user.email,
+                    role: 'Member',
+                    avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
+                };
+                
+                if (!clubData.members.some((m: Member) => m.email === newMember.email)) {
+                  clubData.members = [...(clubData.members || []), newMember];
+                  localStorage.setItem(clubDataKey, JSON.stringify(clubData));
                 }
 
                 toast({ title: `Joined ${clubToJoin.name}!` });
+                 // Refresh clubs to show the newly joined one
+                const savedClubs = localStorage.getItem('clubs');
+                if (savedClubs) {
+                  setClubs(JSON.parse(savedClubs));
+                }
             } else {
                 toast({ title: `You are already a member of ${clubToJoin.name}.`});
             }
@@ -227,6 +236,11 @@ export default function HomePage() {
   const handleSelectClub = (clubId: string) => {
     localStorage.setItem('selectedClubId', clubId);
   };
+
+  const handleSwitchAccount = () => {
+    clearUser();
+    window.location.reload();
+  }
   
   if (!isClient || userLoading) {
     return (
@@ -318,6 +332,11 @@ export default function HomePage() {
           </div>
         )}
       </div>
+       <div className="mt-8">
+            <Button variant="outline" onClick={handleSwitchAccount}>
+                <LogIn className="mr-2"/> Switch Account
+            </Button>
+       </div>
     </div>
   );
 }

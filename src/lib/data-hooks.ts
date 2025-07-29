@@ -98,23 +98,12 @@ export function useCurrentUser() {
 
   const applyTheme = (color?: string) => {
     const root = document.documentElement;
-    if (!color) {
-        root.removeAttribute('style');
-        return;
+    if (color) {
+      root.style.setProperty('--primary-hue', color);
+    } else {
+      // Revert to default if no color is provided
+      root.style.setProperty('--primary-hue', '275 60% 75%');
     }
-    root.style.setProperty('--primary-hue', color);
-    const [hue, saturation, lightness] = color.split(' ').map(parseFloat);
-    root.style.setProperty('--background', `hsl(${hue} 43% 96%)`);
-    root.style.setProperty('--foreground', `hsl(${hue} 10% 20%)`);
-    root.style.setProperty('--card', `hsl(0 0% 100%)`);
-    root.style.setProperty('--primary', `hsl(${color})`);
-    root.style.setProperty('--primary-foreground', `hsl(${hue} 10% 10%)`);
-    root.style.setProperty('--secondary', `hsl(${hue} 30% 92%)`);
-    root.style.setProperty('--muted', `hsl(${hue} 30% 92%)`);
-    root.style.setProperty('--accent', `hsl(${(hue + 180) % 360} 53% 79%)`);
-    root.style.setProperty('--border', `hsl(${hue} 20% 88%)`);
-    root.style.setProperty('--input', `hsl(${hue} 20% 88%)`);
-    root.style.setProperty('--ring', `hsl(${color})`);
   };
 
   useEffect(() => {

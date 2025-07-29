@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
+import html2pdf from 'html2pdf.js';
 
 
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,17 @@ export default function SlidesPage() {
   };
   
   const handleDownload = () => {
-    window.print();
+    const element = document.getElementById('print-content');
+    if (element) {
+      const opt = {
+        margin:       1,
+        filename:     'meeting-slides.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+      };
+      html2pdf().from(element).set(opt).save();
+    }
   };
 
   const handleCopyToClipboard = () => {
@@ -177,7 +188,7 @@ export default function SlidesPage() {
         </div>
       </div>
       {generatedContent && generatedContent.slides.length > 0 && (
-        <div id="print-content">
+        <div id="print-content" className="hidden">
           {generatedContent.slides.map((slide, index) => (
               <div key={`print-${index}`} className="print-slide-page">
                   <div className="print-slide-content">

@@ -80,44 +80,26 @@
     }
 }
 
-@media print {
-    body {
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        margin: 0;
-        padding: 0;
-    }
-
-    /* Hide everything except the print content */
-    body > div {
-        display: none !important;
-    }
-    #interactive-content {
-        display: none !important;
-    }
-    #print-content {
-        display: block !important;
-    }
-    .print-slide-page {
-        width: 11in;
-        height: 8.5in;
-        padding: 1in;
-        page-break-after: always;
-        background-color: white !important;
-        color: black !important;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        box-sizing: border-box;
-    }
-     .print-slide-content {
-        text-align: center;
-    }
-    .prose {
-        color: black !important;
-    }
-    h2, h3, h4, h5, h6 {
-        color: black !important;
-    }
+.print-slide-page {
+    width: 11in;
+    height: 8.5in;
+    padding: 1in;
+    background-color: white !important;
+    color: black !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    box-sizing: border-box;
+    page-break-after: always;
 }
+ .print-slide-content {
+    text-align: center;
+}
+.prose {
+    color: black !important;
+}
+h2, h3, h4, h5, h6 {
+    color: black !important;
+}
+

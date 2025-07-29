@@ -26,7 +26,7 @@ function MessagesContent() {
   const searchParams = useSearchParams();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const { allMessages, updateData: setAllMessages, data: messages } = useMessages(user?.email, selectedMember?.email);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof messageFormSchema>>({
     resolver: zodResolver(messageFormSchema),
@@ -51,7 +51,7 @@ function MessagesContent() {
   }, [user, allMessages, setAllMessages]);
 
   useEffect(() => {
-    if (!userLoading && allMessages) {
+    if (!userLoading) {
       markAllMessagesAsRead();
     }
   }, [userLoading, allMessages, markAllMessagesAsRead]);
@@ -76,8 +76,8 @@ function MessagesContent() {
   }, [searchParams, members, user, membersLoading, userLoading, allMessages]);
   
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight });
+    if (viewportRef.current) {
+      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
     }
   }, [messages]);
 
@@ -167,7 +167,7 @@ function MessagesContent() {
                 <p className="text-sm text-muted-foreground">{selectedMember.role}</p>
               </div>
             </div>
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+            <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
               <div className="space-y-4">
                 {messages.map((msg) => (
                   <div
@@ -248,3 +248,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

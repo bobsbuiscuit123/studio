@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -30,7 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole, useMembers } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { Announcement } from "@/lib/mock-data";
 
 
@@ -49,7 +50,7 @@ export default function AnnouncementsPage() {
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
-  const { data: members } = useMembers();
+  const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
 
   useEffect(() => {
@@ -96,12 +97,11 @@ export default function AnnouncementsPage() {
     setIsLoading(true);
     try {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement(values);
-      const currentUser = members.length > 0 ? members[0] : { name: "Club Admin" };
       const newAnnouncement: Announcement = {
         id: announcements.length + 1,
         title: result.title,
         content: result.announcement,
-        author: currentUser.name,
+        author: user?.name || "Club Admin",
         date: new Date().toLocaleDateString(),
       };
       setAnnouncements([newAnnouncement, ...announcements]);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef } from "react";
@@ -46,7 +47,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { useSocialPosts, useCurrentUserRole } from "@/lib/data-hooks";
+import { useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -76,6 +77,7 @@ export default function SocialPage() {
   const { toast } = useToast();
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
   const { role } = useCurrentUserRole();
+  const { user } = useCurrentUser();
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -165,7 +167,7 @@ export default function SocialPage() {
 
   const handleAddComment = (postId: number, values: z.infer<typeof commentFormSchema>) => {
     const newComment: Comment = {
-      author: "Club Member",
+      author: user?.name || "Club Member",
       text: values.comment,
     };
     const updatedPosts = socialPosts.map((post) =>
@@ -188,7 +190,7 @@ export default function SocialPage() {
         content: result.postText,
         images: previewImages.length > 0 ? previewImages : [],
         dataAiHint: "tech club",
-        author: "AI Assistant",
+        author: user?.name || "AI Assistant",
         date: new Date().toLocaleDateString(),
         likes: 0,
         liked: false,
@@ -295,7 +297,7 @@ export default function SocialPage() {
                     <div className="flex justify-between items-start">
                         <div>
                             <CardTitle>{post.title}</CardTitle>
-                            <CardDescription>{post.date}</CardDescription>
+                            <CardDescription>{post.author} - {post.date}</CardDescription>
                         </div>
                         {isOwner && (
                             <div className="flex items-center gap-1">
@@ -394,7 +396,7 @@ export default function SocialPage() {
         ) : (
              <Card className="flex items-center justify-center py-12 md:col-span-2">
               <CardContent>
-                <p className="text-muted-foreground">No social posts yet. Create one to get started!</p>
+                <p className="text-muted-foreground">No social posts yet. {isOwner && "Create one to get started!"}</p>
               </CardContent>
             </Card>
         )}

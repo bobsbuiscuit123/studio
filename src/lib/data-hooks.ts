@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import type { Member } from './mock-data';
+import type { Member, User } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -92,19 +92,61 @@ export function useTransactions() {
   return useClubData('transactions', []);
 }
 
+export function useCurrentUser() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    try {
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      }
+    } catch (error) {
+      console.error('Error reading user from localStorage', error);
+    }
+    setLoading(false);
+  }, []);
+
+  const saveUser = (newUser: User) => {
+    setUser(newUser);
+    localStorage.setItem('currentUser', JSON.stringify(newUser));
+  };
+  
+  const clearUser = () => {
+    setUser(null);
+    localStorage.removeItem('currentUser');
+  }
+
+  return { user, loading, saveUser, clearUser };
+}
+
+
 // Hook to get the current user's role
 export function useCurrentUserRole() {
-    const { data: members, loading } = useMembers();
+    const { data: members, loading: membersLoading } = useMembers();
+    const { user, loading: userLoading } = useCurrentUser();
     const [role, setRole] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
 
     useEffect(() => {
-        if (!loading && members && members.length > 0) {
-            // In a real app, you'd have a proper user session.
-            // For this prototype, we'll assume the first member is the current user.
-            const currentUser = members[0] as Member;
-            setRole(currentUser.role);
+        if (!membersLoading && !userLoading) {
+            if (user && members && members.length > 0) {
+                const currentUserInClub = members.find((m: Member) => m.email === user.email);
+                if (currentUserInClub) {
+                    setRole(currentUserInClub.role);
+                } else {
+                    // If user is not in the member list, they can't have a role
+                    setRole('Member');
+                }
+            } else if (user) {
+                // If there's a user but no members list (e.g. new club), default to President
+                 setRole('President');
+            }
+            setLoading(false);
         }
-    }, [members, loading]);
+    }, [members, user, membersLoading, userLoading]);
 
     return { role, loading };
 }

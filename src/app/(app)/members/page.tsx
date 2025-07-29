@@ -1,3 +1,4 @@
+
 "use client";
 
 import { MessageSquare, Mail, UserPlus, Share2 } from "lucide-react";
@@ -11,7 +12,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
+import { useMembers, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { Member } from "@/lib/mock-data";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -42,6 +43,7 @@ export default function MembersPage() {
   const { toast } = useToast();
   const [joinLink, setJoinLink] = useState('');
   const { role } = useCurrentUserRole();
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     if (typeof window !== 'undefined' && clubId) {
@@ -153,7 +155,7 @@ export default function MembersPage() {
                     data-ai-hint={member.dataAiHint || 'person'}
                   />
                   <CardTitle>{member.name}</CardTitle>
-                  <CardDescription>{member.role}</CardDescription>
+                  <CardDescription>{member.role} {member.email === user?.email && "(You)"}</CardDescription>
                 </CardHeader>
                 <CardContent className="text-center">
                   <a href={`mailto:${member.email}`} className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-2">

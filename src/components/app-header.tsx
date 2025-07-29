@@ -1,3 +1,4 @@
+
 "use client";
 import { useEffect, useState } from "react";
 import {
@@ -20,7 +21,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
@@ -37,6 +38,7 @@ export function AppHeader() {
   const [clubName, setClubName] = useState("");
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
+  const { user } = useCurrentUser();
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -80,13 +82,13 @@ export function AppHeader() {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
             <Avatar>
-              <AvatarImage src="https://placehold.co/100x100.png" alt="User Avatar" data-ai-hint="woman smiling"/>
-              <AvatarFallback>AJ</AvatarFallback>
+              <AvatarImage src={`https://placehold.co/100x100.png?text=${user?.name.charAt(0)}`} alt="User Avatar" data-ai-hint="person"/>
+              <AvatarFallback>{user?.name.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuLabel>{user?.name || "My Account"}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
           <DropdownMenuItem><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>

@@ -16,18 +16,24 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from './ui/badge';
 
+type NotificationMap = {
+  messages: boolean;
+  announcements: boolean;
+  social: boolean;
+}
+
 const allNavItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Member'] },
-  { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'] },
-  { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'] },
-  { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'] },
-  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Member'] },
-  { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'] },
-  { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin'] },
-  { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Member'] },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Member'], notificationKey: null },
+  { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'], notificationKey: 'announcements' },
+  { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'], notificationKey: null },
+  { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'], notificationKey: null },
+  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Member'], notificationKey: 'messages' },
+  { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'], notificationKey: null },
+  { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin'], notificationKey: null },
+  { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Member'], notificationKey: 'social' },
 ];
 
-export function AppSidebarNav({ role, hasUnreadMessages }: { role: string; hasUnreadMessages: boolean }) {
+export function AppSidebarNav({ role, notifications }: { role: string; notifications: NotificationMap }) {
   const pathname = usePathname();
 
   const navItems = allNavItems.filter(item => item.roles.includes(role));
@@ -35,7 +41,7 @@ export function AppSidebarNav({ role, hasUnreadMessages }: { role: string; hasUn
   return (
     <>
       {navItems.map((item) => {
-        const hasNotification = item.href === '/messages' && hasUnreadMessages;
+        const hasNotification = item.notificationKey && notifications[item.notificationKey as keyof NotificationMap];
         return (
           <Link
             key={item.href}

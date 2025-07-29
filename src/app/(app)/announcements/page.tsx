@@ -64,6 +64,14 @@ export default function AnnouncementsPage() {
     }
   }, []);
 
+  useEffect(() => {
+    // Mark all announcements as read when the page is viewed
+    if (announcements.some(a => !a.read)) {
+        const updatedAnnouncements = announcements.map(a => ({ ...a, read: true }));
+        setAnnouncements(updatedAnnouncements);
+    }
+  }, [announcements, setAnnouncements]);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -103,6 +111,7 @@ export default function AnnouncementsPage() {
         content: result.announcement,
         author: user?.name || "Club Admin",
         date: new Date().toLocaleDateString(),
+        read: false,
       };
       setAnnouncements([newAnnouncement, ...announcements]);
       toast({ title: "Announcement generated successfully!" });

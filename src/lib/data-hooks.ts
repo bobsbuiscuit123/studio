@@ -1,7 +1,6 @@
 
-
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Message } from './mock-data';
+import type { Member, User, Message, Announcement, SocialPost } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -17,25 +16,29 @@ function useClubData<T>(key: string, initialData: T) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
       try {
         const storedClubData = localStorage.getItem(clubDataKey);
-        if (storedClubData) {
-          const parsedData = JSON.parse(storedClubData);
-          setData(parsedData[key] || initialData);
-        } else {
-           setData(initialData);
+        if (isMounted) {
+          if (storedClubData) {
+            const parsedData = JSON.parse(storedClubData);
+            setData(parsedData[key] || initialData);
+          } else {
+             setData(initialData);
+          }
         }
       } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        setData(initialData);
+        if (isMounted) setData(initialData);
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
     } else if (clubId === null) {
       // Handles the case where there is no selected club
-      setLoading(false);
+      if (isMounted) setLoading(false);
     }
+    return () => { isMounted = false; };
   }, [clubId, key, JSON.stringify(initialData)]);
 
   const updateData = useCallback((newData: T) => {
@@ -51,13 +54,13 @@ function useClubData<T>(key: string, initialData: T) {
         console.error(`Error writing ${key} to localStorage`, error);
       }
     }
-  }, [clubId]);
+  }, [clubId, key]);
 
   return { data, loading, updateData, clubId };
 }
 
 export function useAnnouncements() {
-  return useClubData('announcements', []);
+  return useClubData<Announcement[]>('announcements', []);
 }
 
 export function useEvents() {
@@ -82,47 +85,44 @@ export function useEvents() {
 
 
 export function useMembers() {
-  return useClubData('members', []);
+  return useClubData<Member[]>('members', []);
 }
 
 export function useSocialPosts() {
-  return useClubData('socialPosts', []);
+  return useClubData<SocialPost[]>('socialPosts', []);
 }
 
 export function useTransactions() {
   return useClubData('transactions', []);
 }
 
-export function useMessages(userEmail?: string | null, recipientEmail?: string | null) {
+export function useMessages(userEmail?: string | null) {
     const { data: allMessages, loading, updateData, clubId } = useClubData<Message[]>('messages', []);
 
-    const [filteredMessages, setFilteredMessages] = useState<Message[]>([]);
+    const [conversation, setConversation] = useState<Message[]>([]);
+    const [recipientEmail, setRecipientEmail] = useState<string | null>(null);
 
     useEffect(() => {
         if (userEmail && recipientEmail && allMessages) {
-            const conversation = allMessages.filter(
+            const currentConversation = allMessages.filter(
                 (msg) =>
                     (msg.senderEmail === userEmail && msg.recipientEmail === recipientEmail) ||
                     (msg.senderEmail === recipientEmail && msg.recipientEmail === userEmail)
             );
-            setFilteredMessages(conversation.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
+            setConversation(currentConversation.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
         } else {
-            setFilteredMessages([]);
+            setConversation([]);
         }
     }, [allMessages, userEmail, recipientEmail]);
-
-    const updateMessages = (newMessages: Message[]) => {
-        // This function updates the entire message log for the club.
-        // It's a bit inefficient for a real app but works for this mock setup.
-        // A real implementation would be more targeted.
-        const otherMessages = allMessages.filter(msg => 
-            !((msg.senderEmail === userEmail && msg.recipientEmail === recipientEmail) ||
-              (msg.senderEmail === recipientEmail && msg.recipientEmail === userEmail))
-        );
-        updateData([...otherMessages, ...newMessages]);
-    };
     
-    return { data: filteredMessages, allMessages, loading, updateData: updateData, clubId };
+    return { 
+        data: conversation, 
+        allMessages, 
+        loading, 
+        updateData: updateData, 
+        setConversation: setRecipientEmail,
+        clubId 
+    };
 }
 
 

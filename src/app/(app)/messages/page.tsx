@@ -25,7 +25,7 @@ function MessagesContent() {
   const { user, loading: userLoading } = useCurrentUser();
   const searchParams = useSearchParams();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const { allMessages, updateData: setAllMessages, data: messages } = useMessages(user?.email, selectedMember?.email);
+  const { allMessages, updateData: setAllMessages, data: messages, setConversation } = useMessages(user?.email);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof messageFormSchema>>({
@@ -33,12 +33,12 @@ function MessagesContent() {
     defaultValues: { text: "" },
   });
 
-  const markAllMessagesAsRead = useCallback(() => {
-    if (!user || !allMessages || allMessages.length === 0) return;
+  const markConversationAsRead = useCallback(() => {
+    if (!user || !selectedMember || !allMessages || allMessages.length === 0) return;
 
     let wasMessageUpdated = false;
     const updatedMessages = allMessages.map((msg) => {
-      if (msg.recipientEmail === user.email && !msg.read) {
+      if (msg.senderEmail === selectedMember.email && msg.recipientEmail === user.email && !msg.read) {
         wasMessageUpdated = true;
         return { ...msg, read: true };
       }
@@ -48,36 +48,42 @@ function MessagesContent() {
     if (wasMessageUpdated) {
         setAllMessages(updatedMessages);
     }
-  }, [user, allMessages, setAllMessages]);
+  }, [user, allMessages, setAllMessages, selectedMember]);
 
   useEffect(() => {
-    if (!userLoading) {
-      markAllMessagesAsRead();
+    if (selectedMember && !userLoading) {
+      markConversationAsRead();
     }
-  }, [userLoading, allMessages, markAllMessagesAsRead]);
-
+  }, [selectedMember, userLoading, allMessages, markConversationAsRead]);
 
   useEffect(() => {
-    if (!membersLoading && !userLoading) {
+    if (!membersLoading && !userLoading && members.length > 0) {
       const recipientEmail = searchParams.get('recipient');
+      let memberToSelect: Member | null = null;
       if (recipientEmail) {
-        const member = members.find((m: Member) => m.email === recipientEmail);
-        if (member) {
-          setSelectedMember(member);
-        }
-      } else if (members.length > 0) {
+        memberToSelect = members.find((m: Member) => m.email === recipientEmail) || null;
+      } else {
         const otherMembers = members.filter((m: Member) => m.email !== user?.email);
         if (otherMembers.length > 0) {
-          const memberWithUnread = otherMembers.find(m => allMessages.some(msg => msg.senderEmail === m.email && !msg.read));
-          setSelectedMember(memberWithUnread || otherMembers[0]);
+          const memberWithUnread = otherMembers.find(m => allMessages.some(msg => msg.senderEmail === m.email && msg.recipientEmail === user?.email && !msg.read));
+          memberToSelect = memberWithUnread || otherMembers[0];
         }
       }
+      
+      if(memberToSelect) {
+        setSelectedMember(memberToSelect);
+        setConversation(memberToSelect.email);
+      }
     }
-  }, [searchParams, members, user, membersLoading, userLoading, allMessages]);
+  }, [searchParams, members, user, membersLoading, userLoading, allMessages, setConversation]);
   
   useEffect(() => {
     if (viewportRef.current) {
-      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+        setTimeout(() => {
+            if (viewportRef.current) {
+                viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+            }
+        }, 0);
     }
   }, [messages]);
 
@@ -95,6 +101,11 @@ function MessagesContent() {
     form.reset();
   };
   
+  const handleSelectMember = (member: Member) => {
+    setSelectedMember(member);
+    setConversation(member.email);
+  }
+
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : '';
   
   const stringToColor = (str: string) => {
@@ -127,7 +138,7 @@ function MessagesContent() {
                   "flex items-center gap-3 p-3 cursor-pointer hover:bg-muted relative",
                   selectedMember?.email === member.email && "bg-muted"
                 )}
-                onClick={() => setSelectedMember(member)}
+                onClick={() => handleSelectMember(member)}
               >
                 {hasUnread && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />}
                 <Avatar className="h-10 w-10">
@@ -248,5 +259,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

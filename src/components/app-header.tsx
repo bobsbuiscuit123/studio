@@ -21,7 +21,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useMessages } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import { SettingsDialog } from "./settings-dialog";
 
 const pageTitles: { [key: string]: string } = {
@@ -43,7 +43,13 @@ export function AppHeader() {
   const { user } = useCurrentUser();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
-  const [hasUnread, setHasUnread] = useState(false);
+  const { data: announcements, loading: announcementsLoading } = useAnnouncements();
+  const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+  
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
+  const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
+
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -58,10 +64,22 @@ export function AppHeader() {
 
   useEffect(() => {
     if (!messagesLoading && user && allMessages) {
-        setHasUnread(allMessages.some(m => m.recipientEmail === user.email && !m.read));
+        setHasUnreadMessages(allMessages.some(m => m.recipientEmail === user.email && !m.read));
     }
   }, [allMessages, user, messagesLoading]);
   
+  useEffect(() => {
+    if (!announcementsLoading) {
+      setHasUnreadAnnouncements(announcements.some(a => !a.read));
+    }
+  }, [announcements, announcementsLoading]);
+
+  useEffect(() => {
+    if (!socialPostsLoading) {
+      setHasUnreadSocials(socialPosts.some(p => !p.read));
+    }
+  }, [socialPosts, socialPostsLoading]);
+
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
   
   const stringToColor = (str: string) => {
@@ -95,7 +113,14 @@ export function AppHeader() {
               <Logo className="h-6 w-6" />
               <span>ClubHub</span>
             </Link>
-            <AppSidebarNav role={role || ''} hasUnreadMessages={hasUnread} />
+            <AppSidebarNav 
+              role={role || ''} 
+              notifications={{
+                messages: hasUnreadMessages,
+                announcements: hasUnreadAnnouncements,
+                social: hasUnreadSocials,
+              }}
+            />
           </nav>
         </SheetContent>
       </Sheet>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -79,6 +79,13 @@ export default function SocialPage() {
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
 
+  useEffect(() => {
+    // Mark all posts as read when the page is viewed
+    if (socialPosts.some(p => !p.read)) {
+        const updatedPosts = socialPosts.map(p => ({ ...p, read: true }));
+        setSocialPosts(updatedPosts);
+    }
+  }, [socialPosts, setSocialPosts]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -195,6 +202,7 @@ export default function SocialPage() {
         likes: 0,
         liked: false,
         comments: [],
+        read: false,
       };
       setSocialPosts([newPost, ...socialPosts]);
       toast({ title: "Social media post generated successfully!" });

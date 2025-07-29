@@ -30,6 +30,7 @@ export type Announcement = {
   content: string;
   author: string;
   date: string;
+  read: boolean;
 };
 
 export type Comment = {
@@ -48,6 +49,7 @@ export type SocialPost = {
   likes: number;
   liked?: boolean;
   comments: Comment[];
+  read: boolean;
 };
 
 export type Transaction = {

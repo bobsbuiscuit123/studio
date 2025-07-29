@@ -35,12 +35,14 @@ export default function MembersPage() {
   const { user } = useCurrentUser();
 
   useEffect(() => {
-    // We need to check for `window` to ensure this code only runs on the client.
-    if (typeof window !== 'undefined' && clubId) {
-      const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
-      const currentClub = clubs.find((c: any) => c.id === clubId);
-      if (currentClub && currentClub.joinCode) {
-        setJoinCode(currentClub.joinCode);
+    if (clubId) {
+      const clubsString = localStorage.getItem('clubs');
+      if (clubsString) {
+        const clubs = JSON.parse(clubsString);
+        const currentClub = clubs.find((c: any) => c.id === clubId);
+        if (currentClub && currentClub.joinCode) {
+          setJoinCode(currentClub.joinCode);
+        }
       }
     }
   }, [clubId]);

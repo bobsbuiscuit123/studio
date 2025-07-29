@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -12,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Loader2, Pencil } from "lucide-react";
+import { CalendarDays, Loader2, Pencil, PlusSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -28,6 +29,7 @@ import {
     DialogFooter
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -108,6 +110,25 @@ export default function CalendarPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+  
+  const generateGoogleCalendarLink = (event: ClubEvent) => {
+    const formatDate = (date: Date) => {
+      return date.toISOString().replace(/-|:|\.\d\d\d/g,"");
+    };
+
+    const startTime = formatDate(event.date);
+    // Assuming a 1 hour duration for the event
+    const endTime = formatDate(new Date(event.date.getTime() + 60 * 60 * 1000));
+
+    const url = new URL("https://www.google.com/calendar/render");
+    url.searchParams.append("action", "TEMPLATE");
+    url.searchParams.append("text", event.title);
+    url.searchParams.append("dates", `${startTime}/${endTime}`);
+    url.searchParams.append("details", event.description);
+    url.searchParams.append("location", event.location);
+
+    return url.toString();
   };
   
   const isOwner = role && role !== 'Member';
@@ -203,7 +224,7 @@ export default function CalendarPage() {
              {loading ? <p>Loading...</p> : 
                 events.length > 0 ? (
                   [...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event, index) => (
-                  <div key={index} className="p-4 rounded-lg bg-muted/50">
+                  <div key={index} className="p-4 rounded-lg bg-muted/50 space-y-2">
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="font-semibold">{event.title}</p>
@@ -217,10 +238,15 @@ export default function CalendarPage() {
                             </Button>
                         )}
                     </div>
-                    <p className="text-sm mt-2">{event.description}</p>
-                    <p className="text-sm mt-1">
+                    <p className="text-sm">{event.description}</p>
+                    <p className="text-sm">
                       <strong>Location:</strong> {event.location}
                     </p>
+                    <Link href={generateGoogleCalendarLink(event)} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" size="sm">
+                        <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
+                      </Button>
+                    </Link>
                   </div>
                 ))
               ) : (
@@ -295,3 +321,5 @@ export default function CalendarPage() {
     </>
   );
 }
+
+    

@@ -41,7 +41,7 @@ export default function Dashboard() {
     }
   }, [clubId, membersLoading, router]);
 
-  if (membersLoading || eventsLoading) {
+  if (membersLoading || eventsLoading || !clubId) {
     return (
        <div className="flex flex-col gap-4 md:gap-8">
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">

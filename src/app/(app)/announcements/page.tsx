@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Megaphone, Loader2, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole, useMembers } from "@/lib/data-hooks";
 import type { Announcement } from "@/lib/mock-data";
 
 
@@ -49,6 +49,19 @@ export default function AnnouncementsPage() {
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
+  const { data: members } = useMembers();
+  const [clubName, setClubName] = useState("");
+
+  useEffect(() => {
+    const clubId = localStorage.getItem('selectedClubId');
+    if(clubId) {
+      const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
+      const currentClub = clubs.find((c: any) => c.id === clubId);
+      if(currentClub) {
+        setClubName(currentClub.name);
+      }
+    }
+  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -83,11 +96,12 @@ export default function AnnouncementsPage() {
     setIsLoading(true);
     try {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement(values);
+      const currentUser = members.length > 0 ? members[0] : { name: "Club Admin" };
       const newAnnouncement: Announcement = {
         id: announcements.length + 1,
         title: result.title,
         content: result.announcement,
-        author: "AI Assistant",
+        author: currentUser.name,
         date: new Date().toLocaleDateString(),
       };
       setAnnouncements([newAnnouncement, ...announcements]);
@@ -160,7 +174,7 @@ export default function AnnouncementsPage() {
                         <div>
                             <CardTitle>{announcement.title}</CardTitle>
                             <CardDescription>
-                            Posted by {announcement.author} - {announcement.date}
+                            {announcement.author} - {clubName} - {announcement.date}
                             </CardDescription>
                         </div>
                         {isOwner && (
@@ -180,7 +194,7 @@ export default function AnnouncementsPage() {
           ) : (
             <Card className="flex items-center justify-center py-12">
               <CardContent>
-                <p className="text-muted-foreground">No announcements yet. Create one to get started!</p>
+                <p className="text-muted-foreground">No announcements yet. {isOwner && "Create one to get started!"}</p>
               </CardContent>
             </Card>
           )}

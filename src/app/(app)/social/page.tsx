@@ -81,7 +81,7 @@ export default function SocialPage() {
 
   useEffect(() => {
     // Mark all posts as read when the page is viewed
-    if (socialPosts.some(p => !p.read)) {
+    if (socialPosts && socialPosts.some(p => !p.read)) {
         const updatedPosts = socialPosts.map(p => ({ ...p, read: true }));
         setSocialPosts(updatedPosts);
     }

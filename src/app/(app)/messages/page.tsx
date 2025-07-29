@@ -33,39 +33,42 @@ function MessagesContent() {
     defaultValues: { text: "" },
   });
 
-  const markConversationAsRead = useCallback(() => {
-    if (!user || !selectedMember || !allMessages || allMessages.length === 0) return;
-
+  const markConversationAsRead = useCallback((recipientEmail: string) => {
+    if (!user || !allMessages) return;
+    
     let wasMessageUpdated = false;
     const updatedMessages = allMessages.map((msg) => {
-      if (msg.senderEmail === selectedMember.email && msg.recipientEmail === user.email && !msg.read) {
+      if (msg.senderEmail === recipientEmail && msg.recipientEmail === user.email && !msg.read) {
         wasMessageUpdated = true;
         return { ...msg, read: true };
       }
       return msg;
     });
-    
+
     if (wasMessageUpdated) {
         setAllMessages(updatedMessages);
     }
-  }, [user, allMessages, setAllMessages, selectedMember]);
+  }, [user, allMessages, setAllMessages]);
 
   useEffect(() => {
-    if (selectedMember && !userLoading) {
-      markConversationAsRead();
+    if (selectedMember) {
+      markConversationAsRead(selectedMember.email);
     }
-  }, [selectedMember, userLoading, allMessages, markConversationAsRead]);
+  }, [selectedMember, markConversationAsRead]);
 
   useEffect(() => {
-    if (!membersLoading && !userLoading && members.length > 0) {
+    if (!membersLoading && !userLoading && members.length > 0 && user) {
       const recipientEmail = searchParams.get('recipient');
       let memberToSelect: Member | null = null;
+
       if (recipientEmail) {
         memberToSelect = members.find((m: Member) => m.email === recipientEmail) || null;
       } else {
         const otherMembers = members.filter((m: Member) => m.email !== user?.email);
         if (otherMembers.length > 0) {
-          const memberWithUnread = otherMembers.find(m => allMessages.some(msg => msg.senderEmail === m.email && msg.recipientEmail === user?.email && !msg.read));
+          const memberWithUnread = otherMembers.find(m => 
+            allMessages.some(msg => msg.senderEmail === m.email && msg.recipientEmail === user.email && !msg.read)
+          );
           memberToSelect = memberWithUnread || otherMembers[0];
         }
       }

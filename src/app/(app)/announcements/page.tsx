@@ -66,7 +66,7 @@ export default function AnnouncementsPage() {
 
   useEffect(() => {
     // Mark all announcements as read when the page is viewed
-    if (announcements.some(a => !a.read)) {
+    if (announcements && announcements.some(a => !a.read)) {
         const updatedAnnouncements = announcements.map(a => ({ ...a, read: true }));
         setAnnouncements(updatedAnnouncements);
     }

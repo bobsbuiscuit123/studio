@@ -25,7 +25,7 @@ function MessagesContent() {
   const { user, loading: userLoading } = useCurrentUser();
   const searchParams = useSearchParams();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const { data: messages, allMessages, updateData: setAllMessages } = useMessages(user?.email, selectedMember?.email);
+  const { allMessages, updateData: setAllMessages, data: messages } = useMessages(user?.email, selectedMember?.email);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof messageFormSchema>>({
@@ -33,21 +33,29 @@ function MessagesContent() {
     defaultValues: { text: "" },
   });
 
-  const markMessagesAsRead = useCallback(() => {
-    if (!user || !selectedMember || !allMessages) return;
+  const markAllMessagesAsRead = useCallback(() => {
+    if (!user || !allMessages || allMessages.length === 0) return;
 
+    let wasMessageUpdated = false;
     const updatedMessages = allMessages.map((msg) => {
-      if (msg.recipientEmail === user.email && msg.senderEmail === selectedMember.email && !msg.read) {
+      if (msg.recipientEmail === user.email && !msg.read) {
+        wasMessageUpdated = true;
         return { ...msg, read: true };
       }
       return msg;
     });
-
-    // Check if any message was actually updated to avoid unnecessary writes
-    if (JSON.stringify(updatedMessages) !== JSON.stringify(allMessages)) {
+    
+    if (wasMessageUpdated) {
         setAllMessages(updatedMessages);
     }
-  }, [user, selectedMember, allMessages, setAllMessages]);
+  }, [user, allMessages, setAllMessages]);
+
+  useEffect(() => {
+    if (!userLoading && allMessages) {
+      markAllMessagesAsRead();
+    }
+  }, [userLoading, allMessages, markAllMessagesAsRead]);
+
 
   useEffect(() => {
     if (!membersLoading && !userLoading) {
@@ -60,7 +68,6 @@ function MessagesContent() {
       } else if (members.length > 0) {
         const otherMembers = members.filter((m: Member) => m.email !== user?.email);
         if (otherMembers.length > 0) {
-          // Find first member with unread messages
           const memberWithUnread = otherMembers.find(m => allMessages.some(msg => msg.senderEmail === m.email && !msg.read));
           setSelectedMember(memberWithUnread || otherMembers[0]);
         }
@@ -68,12 +75,6 @@ function MessagesContent() {
     }
   }, [searchParams, members, user, membersLoading, userLoading, allMessages]);
   
-  useEffect(() => {
-    if (selectedMember) {
-        markMessagesAsRead();
-    }
-  }, [selectedMember, markMessagesAsRead]);
-
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight });

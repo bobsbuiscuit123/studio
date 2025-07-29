@@ -84,6 +84,7 @@ export default function SlidesPage() {
   }
 
   return (
+    <>
     <div className="grid md:grid-cols-3 gap-8 print:hidden">
       <div className="md:col-span-1">
         <Card>
@@ -172,18 +173,19 @@ export default function SlidesPage() {
           </CardContent>
         </Card>
       </div>
-       {generatedContent && generatedContent.slides.length > 0 && (
-          <div id="print-content" className="hidden print:block">
-            {generatedContent.slides.map((slide, index) => (
-                <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-12 bg-white flex flex-col justify-center items-center text-center break-after-page">
-                    <h2 className="text-5xl font-bold mb-8 text-black">{slide.title}</h2>
-                    <div className="prose prose-2xl text-black">
-                      <ReactMarkdown>{slide.content}</ReactMarkdown>
-                    </div>
-                </div>
-            ))}
-          </div>
-       )}
     </div>
+    {generatedContent && generatedContent.slides.length > 0 && (
+      <div id="print-content" className="hidden print:block">
+        {generatedContent.slides.map((slide, index) => (
+            <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-12 bg-white flex flex-col justify-center items-center text-center break-after-page text-black">
+                <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
+                <div className="prose prose-2xl">
+                  <ReactMarkdown>{slide.content}</ReactMarkdown>
+                </div>
+            </div>
+        ))}
+      </div>
+    )}
+    </>
   );
 }

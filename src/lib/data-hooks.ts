@@ -96,25 +96,12 @@ export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const applyTheme = (color?: string) => {
-    const root = document.documentElement;
-    if (color) {
-      root.style.setProperty('--primary-hue', color);
-    } else {
-      // Revert to default if no color is provided
-      root.style.setProperty('--primary-hue', '275 60% 75%');
-    }
-  };
-
   useEffect(() => {
     try {
       const storedUser = localStorage.getItem('currentUser');
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
         setUser(parsedUser);
-        if (parsedUser.themeColor) {
-            applyTheme(parsedUser.themeColor);
-        }
       }
     } catch (error) {
       console.error('Error reading user from localStorage', error);
@@ -126,15 +113,11 @@ export function useCurrentUser() {
     const updatedUser = { ...user, ...newUser } as User;
     setUser(updatedUser);
     localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-    if (newUser.themeColor) {
-        applyTheme(newUser.themeColor);
-    }
   };
   
   const clearUser = () => {
     setUser(null);
     localStorage.removeItem('currentUser');
-    applyTheme(); // Reset to default
   }
 
   return { user, loading, saveUser, clearUser };

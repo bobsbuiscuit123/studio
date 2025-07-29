@@ -55,7 +55,17 @@ export function AppHeader() {
   
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
   
-  const avatarBgColor = (user?.themeColor && !user?.avatar) ? `hsl(${user.themeColor.split(' ')[0]}, 60%, 80%)` : undefined;
+  const stringToColor = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = hash % 360;
+    return `hsl(${hue}, 70%, 80%)`;
+  };
+  
+  const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
+
 
   return (
     <>

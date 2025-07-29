@@ -28,15 +28,6 @@ const profileFormSchema = z.object({
   email: z.string().email("Please enter a valid email address."),
 });
 
-const themeColors = [
-    { name: 'Default', value: '275 60% 75%'},
-    { name: 'Red', value: '0 72% 51%'},
-    { name: 'Orange', value: '25 95% 53%'},
-    { name: 'Green', value: '142 76% 36%'},
-    { name: 'Blue', value: '217 91% 60%'},
-    { name: 'Purple', value: '262 84% 59%'},
-];
-
 type SettingsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -85,15 +76,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       reader.readAsDataURL(file);
     }
   };
-
-  const handleThemeChange = (color: string) => {
-    saveUser({ themeColor: color });
-    toast({ title: "Theme updated!" });
-  };
   
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
+  
+  const stringToColor = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = hash % 360;
+    return `hsl(${hue}, 70%, 80%)`;
+  };
 
-  const avatarBgColor = (user?.themeColor && !user?.avatar) ? `hsl(${user.themeColor.split(' ')[0]}, 60%, 80%)` : undefined;
+  const avatarBgColor = (user?.name && !previewAvatar) ? stringToColor(user.name) : undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,7 +131,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                     <Label>Profile Picture</Label>
                     <div className="flex items-center gap-4">
                         <Avatar className="h-20 w-20">
-                            <AvatarImage src={previewAvatar || user?.avatar} alt="User Avatar" />
+                            <AvatarImage src={previewAvatar || undefined} alt="User Avatar" />
                             <AvatarFallback className="text-3xl" style={{ backgroundColor: avatarBgColor }}>
                                 {getAvatarFallback(user?.name)}
                             </AvatarFallback>
@@ -145,24 +140,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                             Upload Image
                         </Button>
                         <Input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
-                    </div>
-                </div>
-                <div className="space-y-2">
-                    <Label>Theme Color</Label>
-                     <p className="text-sm text-muted-foreground">This also sets your default avatar color if no image is uploaded.</p>
-                    <div className="flex flex-wrap gap-2">
-                        {themeColors.map(color => (
-                            <button
-                                key={color.name}
-                                onClick={() => handleThemeChange(color.value)}
-                                className={cn(
-                                    "h-10 w-10 rounded-full border-2 transition-all",
-                                    user?.themeColor === color.value ? 'border-ring' : 'border-transparent'
-                                )}
-                                style={{ backgroundColor: `hsl(${color.value})`}}
-                                aria-label={`Select ${color.name} theme`}
-                            />
-                        ))}
                     </div>
                 </div>
             </div>

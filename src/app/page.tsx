@@ -36,7 +36,7 @@ import { Member, User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
 
 const clubFormSchema = z.object({
-  name: z.string().min(2, 'Club name must be at least 2 characters.'),
+  name: z.string().min(4, 'Club name must be at least 4 characters.'),
   logo: z.any().optional(),
 });
 
@@ -154,22 +154,6 @@ export default function HomePage() {
     }
   };
   
-  const generateJoinCode = (allClubs: Club[]): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let code;
-    let isUnique = false;
-    while(!isUnique) {
-        code = '';
-        for (let i = 0; i < 4; i++) {
-            code += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        if (!allClubs.some(club => club.joinCode === code)) {
-            isUnique = true;
-        }
-    }
-    return code!;
-  }
-
   const handleCreateClub = (values: z.infer<typeof clubFormSchema>) => {
     if (!user) {
         toast({ title: "Error", description: "Cannot create a club without user information.", variant: "destructive" });
@@ -178,15 +162,21 @@ export default function HomePage() {
     
     const allClubsString = localStorage.getItem('clubs') || '[]';
     const allClubs: Club[] = JSON.parse(allClubsString);
+    
+    const newJoinCode = values.name.substring(0, 4).toUpperCase();
+    if (allClubs.some(club => club.joinCode === newJoinCode)) {
+        toast({ title: "Club Name Unavailable", description: "A club with a similar name already exists. Please choose a different name.", variant: "destructive"});
+        return;
+    }
 
     const newClub: Club = {
       id: Date.now().toString(),
       name: values.name,
       logo: values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
-      joinCode: generateJoinCode(allClubs),
+      joinCode: newJoinCode,
     };
 
-    const updatedClubs = [...clubs, newClub];
+    const updatedClubs = [...allClubs, newClub];
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
 
@@ -249,6 +239,9 @@ export default function HomePage() {
     clubData.members = [...(clubData.members || []), newMember];
     localStorage.setItem(clubDataKey, JSON.stringify(clubData));
     
+    const updatedClubs = [...clubs, clubToJoin].filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
+    setClubs(updatedClubs);
+    
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
   };
@@ -273,6 +266,20 @@ export default function HomePage() {
   if (!user) {
     return <UserSetup onUserSaved={(newUser) => saveUser(newUser)} />;
   }
+  
+  const userClubIds = new Set();
+  if (isClient) {
+    Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('club_')) {
+            const clubData = JSON.parse(localStorage.getItem(key) || '{}');
+            if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
+                userClubIds.add(key.replace('club_', ''));
+            }
+        }
+    });
+  }
+
+  const displayedClubs = clubs.filter(club => userClubIds.has(club.id));
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
@@ -331,7 +338,7 @@ export default function HomePage() {
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={clubForm.handleSubmit(handleCreateClub)} className="space-y-4">
-                    <Input {...clubForm.register('name')} placeholder="Club Name" />
+                    <Input {...clubForm.register('name')} placeholder="Club Name (e.g., Innovators Club)" />
                     {clubForm.formState.errors.name && (
                     <p className="text-red-500 text-sm">{clubForm.formState.errors.name.message}</p>
                     )}
@@ -352,9 +359,9 @@ export default function HomePage() {
           </div>
         </div>
 
-        {clubs.length > 0 ? (
+        {displayedClubs.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {clubs.map((club) => (
+            {displayedClubs.map((club) => (
               <Card key={club.id}>
                 <CardHeader className="flex-row items-center gap-4">
                   <Image src={club.logo} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg aspect-square object-cover" />

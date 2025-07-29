@@ -93,7 +93,7 @@ export default function MembersPage() {
                 </DialogHeader>
                 <div className="py-4">
                     {joinCode ? (
-                        <p className="text-center text-4xl font-bold tracking-widest bg-muted p-4 rounded-lg">{joinCode}</p>
+                        <p className="text-center text-4xl font-bold tracking-[0.5em] bg-muted p-4 rounded-lg">{joinCode}</p>
                     ) : (
                         <p className="text-center text-muted-foreground">Loading join code...</p>
                     )}

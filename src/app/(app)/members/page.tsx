@@ -1,8 +1,7 @@
 
 "use client";
 
-import { MessageSquare, Mail, UserPlus, Share2 } from "lucide-react";
-import Image from "next/image";
+import { MessageSquare, Mail, Share2 } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -23,41 +22,28 @@ import {
   DialogTitle,
   DialogTrigger,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const formSchema = z.object({
-    name: z.string().min(2, "Name is too short"),
-    email: z.string().email("Invalid email address"),
-    role: z.string().min(2, "Role is too short"),
-});
-
-
 export default function MembersPage() {
-  const { data: members, updateData: setMembers, loading, clubId } = useMembers();
+  const { data: members, loading, clubId } = useMembers();
   const { toast } = useToast();
-  const [joinLink, setJoinLink] = useState('');
+  const [joinCode, setJoinCode] = useState('');
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && clubId) {
-        const url = `${window.location.origin}/?joinClubId=${clubId}`;
-        setJoinLink(url);
+    if (clubId) {
+      const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
+      const currentClub = clubs.find((c: any) => c.id === clubId);
+      if (currentClub && currentClub.joinCode) {
+        setJoinCode(currentClub.joinCode);
+      }
     }
   }, [clubId]);
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: { name: "", email: "", role: "Member" },
-  });
-  
   const stringToColor = (str: string) => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -65,16 +51,6 @@ export default function MembersPage() {
     }
     const hue = hash % 360;
     return `hsl(${hue}, 70%, 80%)`;
-  };
-
-  const handleAddMember = (values: z.infer<typeof formSchema>) => {
-    const newMember: Member = {
-      ...values,
-      avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
-    };
-    setMembers([newMember, ...members]);
-    toast({ title: "Member added successfully!" });
-    form.reset();
   };
 
   const handleMessage = (name: string) => {
@@ -85,7 +61,7 @@ export default function MembersPage() {
   };
 
   const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(joinLink);
+    navigator.clipboard.writeText(joinCode);
     toast({ title: "Copied to clipboard!" });
   };
 
@@ -99,50 +75,22 @@ export default function MembersPage() {
             <div className="flex gap-2">
             <Dialog>
                 <DialogTrigger asChild>
-                <Button>
-                    <UserPlus className="mr-2" /> Add Member
-                </Button>
-                </DialogTrigger>
-                <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Add a New Member</DialogTitle>
-                    <DialogDescription>
-                    Enter the details for the new member.
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={form.handleSubmit(handleAddMember)} className="space-y-4">
-                    <Input {...form.register('name')} placeholder="Full Name" />
-                    {form.formState.errors.name && <p className="text-red-500 text-sm">{form.formState.errors.name.message}</p>}
-                    <Input {...form.register('email')} placeholder="Email Address" />
-                    {form.formState.errors.email && <p className="text-red-500 text-sm">{form.formState.errors.email.message}</p>}
-                    <Input {...form.register('role')} placeholder="Role (e.g., Member, President)" />
-                    {form.formState.errors.role && <p className="text-red-500 text-sm">{form.formState.errors.role.message}</p>}
-                    <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="submit">Add Member</Button>
-                    </DialogClose>
-                    </DialogFooter>
-                </form>
-                </DialogContent>
-            </Dialog>
-            <Dialog>
-                <DialogTrigger asChild>
                 <Button variant="outline">
                     <Share2 className="mr-2" /> Invite Members
                 </Button>
                 </DialogTrigger>
                 <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Share Join Link</DialogTitle>
+                    <DialogTitle>Invite Members with Join Code</DialogTitle>
                     <DialogDescription>
-                    Share this link with people you want to invite to your club.
+                    Share this code with people you want to invite to your club.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                    <Input value={joinLink} readOnly />
+                    <p className="text-center text-4xl font-bold tracking-widest bg-muted p-4 rounded-lg">{joinCode}</p>
                 </div>
                 <DialogFooter>
-                    <Button onClick={handleCopyToClipboard}>Copy Link</Button>
+                    <Button onClick={handleCopyToClipboard}>Copy Code</Button>
                 </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -183,7 +131,7 @@ export default function MembersPage() {
         ) : (
            <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">No members have been added yet.</p>
-            {isOwner && <p className="text-muted-foreground">Click "Add Member" to get started!</p>}
+            {isOwner && <p className="text-muted-foreground">Share the join code to get started!</p>}
           </div>
         )}
     </div>

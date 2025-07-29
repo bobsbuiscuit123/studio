@@ -312,7 +312,7 @@ export default function HomePage() {
                     )}
                     <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                        <DialogClose asChild><Button type="submit">Join Club</Button></DialogClose>
+                        <Button type="submit">Join Club</Button>
                     </DialogFooter>
                  </form>
                 </DialogContent>
@@ -344,9 +344,7 @@ export default function HomePage() {
                     <DialogClose asChild>
                         <Button type="button" variant="ghost">Cancel</Button>
                     </DialogClose>
-                    <DialogClose asChild>
-                        <Button type="submit">Create Club</Button>
-                    </DialogClose>
+                    <Button type="submit">Create Club</Button>
                     </DialogFooter>
                 </form>
                 </DialogContent>

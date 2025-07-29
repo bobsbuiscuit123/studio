@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
+import html2pdf from 'html2pdf.js';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,8 +23,6 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-
-declare const html2pdf: any;
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -189,7 +188,7 @@ export default function SlidesPage() {
           </div>
         </div>
       </div>
-      <div className="hidden">
+      <div className="hidden print:block">
           <div id="print-content">
           {generatedContent && generatedContent.slides.map((slide, index) => (
               <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Presentation, Download, Loader2, Copy } from "lucide-react";
+import { Presentation, Download, Loader2, Copy, Share2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 
 
@@ -15,7 +15,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateMeetingSlides, GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
-import { useCurrentUserRole } from "@/lib/data-hooks";
+import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements } from "@/lib/data-hooks";
 import {
   Carousel,
   CarouselContent,
@@ -23,16 +24,37 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Announcement } from "@/lib/mock-data";
+
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
+const shareFormSchema = z.object({
+  prompt: z.string().min(10, "Please provide a more detailed prompt for the announcement."),
+});
+
 export default function SlidesPage() {
   const [generatedContent, setGeneratedContent] = useState<GenerateMeetingSlidesOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
+  const { user } = useCurrentUser();
+  const { data: announcements, updateData: setAnnouncements } = useAnnouncements();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -40,10 +62,17 @@ export default function SlidesPage() {
       prompt: "",
     },
   });
+  
+  const shareForm = useForm<z.infer<typeof shareFormSchema>>({
+    resolver: zodResolver(shareFormSchema),
+    defaultValues: { prompt: "" },
+  });
+
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setGeneratedContent(null);
+    setGeneratedAnnouncement(null);
     try {
       const result = await generateMeetingSlides(values);
       setGeneratedContent(result);
@@ -80,6 +109,45 @@ export default function SlidesPage() {
       navigator.clipboard.writeText(textToCopy);
       toast({ title: "Copied all slide content to clipboard!" });
     }
+  };
+  
+  const handleShare = async (values: z.infer<typeof shareFormSchema>) => {
+    if (!generatedContent) return;
+    setIsSharing(true);
+    setGeneratedAnnouncement(null);
+    try {
+      const slidesContent = generatedContent.slides.map(s => `Slide: ${s.title}\n${s.content}`).join('\n\n');
+      const announcementPrompt = `${values.prompt}\n\nHere is the content of the slides to announce:\n${slidesContent}`;
+      
+      const result = await generateClubAnnouncement({ prompt: announcementPrompt });
+      setGeneratedAnnouncement(result);
+      toast({ title: "Announcement draft generated!" });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to generate announcement.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handlePostAnnouncement = () => {
+    if (!generatedAnnouncement || !user) return;
+    const newAnnouncement: Announcement = {
+      id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
+      title: generatedAnnouncement.title,
+      content: generatedAnnouncement.announcement,
+      author: user.name,
+      date: new Date().toLocaleDateString(),
+      read: false,
+    };
+    setAnnouncements([newAnnouncement, ...announcements]);
+    toast({ title: "Shared to announcements!" });
+    setIsShareDialogOpen(false);
+    setGeneratedAnnouncement(null);
+    shareForm.reset();
   };
 
 
@@ -144,6 +212,77 @@ export default function SlidesPage() {
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
+                   <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="secondary" disabled={!generatedContent}>
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Share to Announcements</DialogTitle>
+                        <DialogDescription>
+                          Generate an announcement for these slides and post it for the club to see.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+                        <div>
+                          <h3 className="font-semibold mb-2">1. Create your announcement</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Describe the announcement you want to make about these slides. The AI will use your prompt and the slide content to generate a message.
+                          </p>
+                          <Form {...shareForm}>
+                            <form onSubmit={shareForm.handleSubmit(handleShare)} className="space-y-4">
+                              <FormField
+                                control={shareForm.control}
+                                name="prompt"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Announcement Prompt</FormLabel>
+                                    <FormControl>
+                                      <Textarea 
+                                        placeholder="e.g., Announce the upcoming meeting and share these slides as a preview."
+                                        className="min-h-[120px]"
+                                        {...field} 
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <Button type="submit" disabled={isSharing} className="w-full">
+                                {isSharing ? <Loader2 className="animate-spin" /> : "Generate Announcement"}
+                              </Button>
+                            </form>
+                          </Form>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold mb-2">2. Review and Post</h3>
+                           <p className="text-sm text-muted-foreground mb-4">
+                            Review the generated announcement below. If you're happy with it, click post.
+                          </p>
+                          <div className="border rounded-lg p-4 bg-muted/50 min-h-[220px]">
+                            {isSharing && <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>}
+                            {generatedAnnouncement ? (
+                              <div className="space-y-2">
+                                <h4 className="font-bold">{generatedAnnouncement.title}</h4>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{generatedAnnouncement.announcement}</p>
+                              </div>
+                            ) : !isSharing && (
+                              <div className="flex items-center justify-center h-full">
+                                <p className="text-sm text-center text-muted-foreground">Your generated announcement will appear here.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
+                        <Button onClick={handlePostAnnouncement} disabled={!generatedAnnouncement}>Post Announcement</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                   <Button variant="outline" onClick={handleDownload} disabled={!generatedContent}>
                     <Download className="mr-2 h-4 w-4"/>
                     Download as PDF

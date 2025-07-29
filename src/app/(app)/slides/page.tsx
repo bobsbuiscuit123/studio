@@ -7,8 +7,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
-import html2pdf from 'html2pdf.js';
-
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +22,8 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+
+declare const html2pdf: any;
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -64,10 +64,10 @@ export default function SlidesPage() {
     const element = document.getElementById('print-content');
     if (element) {
       const opt = {
-        margin:       1,
+        margin:       0,
         filename:     'meeting-slides.pdf',
         image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2 },
+        html2canvas:  { scale: 2, useCORS: true },
         jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
       };
       html2pdf().from(element).set(opt).save();
@@ -167,9 +167,11 @@ export default function SlidesPage() {
                             <CarouselItem key={index}>
                                 <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
                                     <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
-                                    <ReactMarkdown className="prose prose-lg dark:prose-invert">
-                                        {slide.content}
-                                    </ReactMarkdown>
+                                    <div className="prose prose-lg dark:prose-invert">
+                                        <ReactMarkdown>
+                                            {slide.content}
+                                        </ReactMarkdown>
+                                    </div>
                                 </Card>
                             </CarouselItem>
                         ))}
@@ -187,20 +189,18 @@ export default function SlidesPage() {
           </div>
         </div>
       </div>
-      {generatedContent && generatedContent.slides.length > 0 && (
-        <div id="print-content" className="hidden">
-          {generatedContent.slides.map((slide, index) => (
-              <div key={`print-${index}`} className="print-slide-page">
-                  <div className="print-slide-content">
+      <div className="hidden">
+          <div id="print-content">
+          {generatedContent && generatedContent.slides.map((slide, index) => (
+              <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
                     <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
                     <div className="prose prose-2xl">
                       <ReactMarkdown>{slide.content}</ReactMarkdown>
                     </div>
-                  </div>
               </div>
           ))}
-        </div>
-      )}
+          </div>
+      </div>
     </>
   );
 }

@@ -4,22 +4,31 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Presentation, Clipboard, Loader2 } from "lucide-react";
+import { Presentation, Download, Loader2, Copy } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
+
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateMeetingSlides } from "@/ai/flows/generate-meeting-slides";
+import { generateMeetingSlides, GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
 import { useCurrentUserRole } from "@/lib/data-hooks";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
 });
 
 export default function SlidesPage() {
-  const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [generatedContent, setGeneratedContent] = useState<GenerateMeetingSlidesOutput | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
@@ -36,7 +45,7 @@ export default function SlidesPage() {
     setGeneratedContent(null);
     try {
       const result = await generateMeetingSlides(values);
-      setGeneratedContent(result.slideContent);
+      setGeneratedContent(result);
       toast({ title: "Slides generated successfully!" });
     } catch (error) {
       toast({
@@ -49,12 +58,18 @@ export default function SlidesPage() {
     }
   };
   
-  const handleCopy = () => {
+  const handleDownload = () => {
+    window.print();
+  };
+
+  const handleCopyToClipboard = () => {
     if (generatedContent) {
-      navigator.clipboard.writeText(generatedContent);
-      toast({ title: "Copied to clipboard!" });
+      const textToCopy = generatedContent.slides.map(slide => `## ${slide.title}\n\n${slide.content}`).join('\n\n---\n\n');
+      navigator.clipboard.writeText(textToCopy);
+      toast({ title: "Copied all slide content to clipboard!" });
     }
   };
+
 
   if (role && role === 'Member') {
     return (
@@ -68,7 +83,7 @@ export default function SlidesPage() {
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-8">
+    <div className="grid md:grid-cols-3 gap-8 print:hidden">
       <div className="md:col-span-1">
         <Card>
           <CardHeader>
@@ -106,40 +121,68 @@ export default function SlidesPage() {
         </Card>
       </div>
       <div className="md:col-span-2">
-        <Card className="flex flex-col flex-grow min-h-[600px]">
+        <Card className="flex flex-col flex-grow">
           <CardHeader className="flex flex-row items-start justify-between">
             <div>
-              <CardTitle>Generated Slide Content</CardTitle>
+              <CardTitle>Generated Slides</CardTitle>
               <CardDescription>
-                AI-generated content will appear here. You can copy it or edit it below.
+                AI-generated slides will appear here.
               </CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!generatedContent}>
-              <Clipboard className="h-4 w-4"/>
-              <span className="sr-only">Copy</span>
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleDownload} disabled={!generatedContent}>
+                <Download className="mr-2 h-4 w-4"/>
+                Download as PDF
+              </Button>
+               <Button variant="ghost" size="icon" onClick={handleCopyToClipboard} disabled={!generatedContent}>
+                <Copy className="h-4 w-4"/>
+                <span className="sr-only">Copy All Content</span>
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent className="flex-grow">
+          <CardContent className="flex-grow flex items-center justify-center min-h-[500px]">
             {isLoading && (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             )}
-            {generatedContent && (
-              <Textarea
-                className="prose prose-sm dark:prose-invert max-w-none p-4 bg-muted rounded-md h-full overflow-auto whitespace-pre-wrap break-words"
-                value={generatedContent}
-                onChange={(e) => setGeneratedContent(e.target.value)}
-              />
-            )}
-            {!generatedContent && !isLoading && (
+            {generatedContent && generatedContent.slides.length > 0 ? (
+                <Carousel className="w-full max-w-xl">
+                    <CarouselContent>
+                    {generatedContent.slides.map((slide, index) => (
+                        <CarouselItem key={index}>
+                            <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
+                                <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
+                                <ReactMarkdown className="prose prose-lg dark:prose-invert">
+                                    {slide.content}
+                                </ReactMarkdown>
+                            </Card>
+                        </CarouselItem>
+                    ))}
+                    </CarouselContent>
+                    <CarouselPrevious className="-left-12" />
+                    <CarouselNext className="-right-12" />
+                </Carousel>
+            ) : !isLoading && (
               <div className="flex items-center justify-center h-full text-center text-muted-foreground">
-                  <p>Generated content will be displayed here.</p>
+                  <p>Generated slides will be displayed here.</p>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
+       {generatedContent && generatedContent.slides.length > 0 && (
+          <div id="print-content" className="hidden print:block">
+            {generatedContent.slides.map((slide, index) => (
+                <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-12 bg-white flex flex-col justify-center items-center text-center break-after-page">
+                    <h2 className="text-5xl font-bold mb-8 text-black">{slide.title}</h2>
+                    <div className="prose prose-2xl text-black">
+                      <ReactMarkdown>{slide.content}</ReactMarkdown>
+                    </div>
+                </div>
+            ))}
+          </div>
+       )}
     </div>
   );
 }

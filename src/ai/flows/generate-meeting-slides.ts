@@ -16,8 +16,14 @@ const GenerateMeetingSlidesInputSchema = z.object({
 });
 export type GenerateMeetingSlidesInput = z.infer<typeof GenerateMeetingSlidesInputSchema>;
 
+
+const SlideSchema = z.object({
+    title: z.string().describe("The title of the slide."),
+    content: z.string().describe("The bulleted or paragraph content for the slide body. Should be in markdown format. Use bullet points with asterisks."),
+});
+
 const GenerateMeetingSlidesOutputSchema = z.object({
-  slideContent: z.string().describe('The generated content for the meeting slides in markdown format.'),
+  slides: z.array(SlideSchema).describe("An array of slide objects for the presentation."),
 });
 export type GenerateMeetingSlidesOutput = z.infer<typeof GenerateMeetingSlidesOutputSchema>;
 
@@ -31,7 +37,8 @@ const prompt = ai.definePrompt({
   output: {schema: GenerateMeetingSlidesOutputSchema},
   prompt: `You are an AI assistant designed to generate meeting slides for club presidents.
 
-  Based on the user's prompt, create content for meeting slides in markdown format. The slide content should be well-formatted, easy to present, and structured with clear headings.
+  Based on the user's prompt, create an array of slides. Each slide should have a title and content formatted in markdown.
+  The first slide should be a title slide and the last slide should be a "Q&A" or "Thank you" slide.
 
   User prompt: {{{prompt}}}
   `,

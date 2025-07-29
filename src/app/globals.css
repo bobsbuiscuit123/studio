@@ -79,3 +79,18 @@
         --accent-hue: 195 53% 79%;
     }
 }
+
+@layer utilities {
+    @media print {
+        .print\:hidden {
+            display: none;
+        }
+        .print\:block {
+            display: block;
+        }
+        body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+}

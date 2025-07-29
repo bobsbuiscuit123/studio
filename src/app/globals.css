@@ -89,14 +89,11 @@
     }
 
     /* Hide everything except the print content */
-    body > div:not(#print-content) {
-        display: none;
-    }
-    main > div:not(#print-content) {
-        display: none;
+    body > div {
+        display: none !important;
     }
     #interactive-content {
-        display: none;
+        display: none !important;
     }
     #print-content {
         display: block !important;
@@ -120,8 +117,7 @@
     .prose {
         color: black !important;
     }
-    h2 {
+    h2, h3, h4, h5, h6 {
         color: black !important;
     }
-
 }

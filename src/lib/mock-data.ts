@@ -26,6 +26,11 @@ export type ClubEvent = {
   location: string;
 };
 
+export type Slide = {
+    title: string;
+    content: string;
+}
+
 export type Announcement = {
   id: number;
   title: string;
@@ -33,6 +38,7 @@ export type Announcement = {
   author: string;
   date: string;
   read: boolean;
+  slides?: Slide[];
 };
 
 export type Comment = {

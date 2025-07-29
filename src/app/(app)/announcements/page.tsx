@@ -2,10 +2,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Megaphone, Loader2, Pencil } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import ReactMarkdown from 'react-markdown';
+
 
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +54,9 @@ export default function AnnouncementsPage() {
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
+  const [printableContent, setPrintableContent] = useState<any>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -71,6 +76,29 @@ export default function AnnouncementsPage() {
         setAnnouncements(updatedAnnouncements);
     }
   }, [announcements, setAnnouncements]);
+  
+  useEffect(() => {
+    if (printableContent && isDownloading) {
+      const generatePdf = async () => {
+        const html2pdf = (await import('html2pdf.js')).default;
+        const element = document.getElementById(`print-announcement-${printableContent.id}`);
+        if (element) {
+          const opt = {
+            margin: 0,
+            filename: 'meeting-slides.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true },
+            jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' }
+          };
+          html2pdf().from(element).set(opt).save();
+        }
+        setPrintableContent(null);
+        setIsDownloading(false);
+      }
+      generatePdf();
+    }
+  }, [printableContent, isDownloading]);
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -99,6 +127,11 @@ export default function AnnouncementsPage() {
     setAnnouncements(updatedAnnouncements);
     toast({ title: "Announcement updated!" });
     setEditingAnnouncement(null);
+  };
+  
+  const handleDownloadSlides = async (announcement: Announcement) => {
+    setPrintableContent(announcement);
+    setIsDownloading(true);
   };
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
@@ -198,6 +231,18 @@ export default function AnnouncementsPage() {
                       {announcement.content}
                     </p>
                   </CardContent>
+                   {announcement.slides && announcement.slides.length > 0 && (
+                    <CardFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleDownloadSlides(announcement)}
+                        disabled={isDownloading && printableContent?.id === announcement.id}
+                      >
+                         {isDownloading && printableContent?.id === announcement.id ? <Loader2 className="animate-spin" /> : <Download className="mr-2" />}
+                         Download Associated Slides (PDF)
+                      </Button>
+                    </CardFooter>
+                  )}
                 </Card>
               ))
           ) : (
@@ -253,6 +298,20 @@ export default function AnnouncementsPage() {
           </DialogContent>
         </Dialog>
       )}
+      <div className="hidden">
+        {printableContent && (
+             <div id={`print-announcement-${printableContent.id}`} className="print:block">
+                {printableContent.slides.map((slide: any, index: number) => (
+                    <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
+                          <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
+                          <div className="prose prose-2xl">
+                            <ReactMarkdown>{slide.content}</ReactMarkdown>
+                          </div>
+                    </div>
+                ))}
+            </div>
+        )}
+      </div>
     </>
   );
 }

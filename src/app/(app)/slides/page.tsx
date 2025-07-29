@@ -1,5 +1,5 @@
 
-"use client";
+'use client';
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -89,9 +89,9 @@ export default function SlidesPage() {
   };
   
   const handleDownload = async () => {
+    const html2pdf = (await import('html2pdf.js')).default;
     const element = document.getElementById('print-content');
     if (element) {
-      const html2pdf = (await import('html2pdf.js')).default;
       const opt = {
         margin:       0,
         filename:     'meeting-slides.pdf',
@@ -134,7 +134,7 @@ export default function SlidesPage() {
   };
 
   const handlePostAnnouncement = () => {
-    if (!generatedAnnouncement || !user) return;
+    if (!generatedAnnouncement || !user || !generatedContent) return;
     const newAnnouncement: Announcement = {
       id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
       title: generatedAnnouncement.title,
@@ -142,6 +142,7 @@ export default function SlidesPage() {
       author: user.name,
       date: new Date().toLocaleDateString(),
       read: false,
+      slides: generatedContent.slides, // Attach slide data here
     };
     setAnnouncements([newAnnouncement, ...announcements]);
     toast({ title: "Shared to announcements!" });
@@ -223,7 +224,7 @@ export default function SlidesPage() {
                       <DialogHeader>
                         <DialogTitle>Share to Announcements</DialogTitle>
                         <DialogDescription>
-                          Generate an announcement for these slides and post it for the club to see.
+                          Generate an announcement for these slides and post it for the club to see. The announcement will link to a PDF of these slides.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">

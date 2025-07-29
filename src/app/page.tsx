@@ -67,7 +67,7 @@ type Club = {
   joinCode: string;
 };
 
-function UserSetup({ onUserSaved }: { onUserSaved: (user: User) => void }) {
+function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
     const form = useForm<z.infer<typeof userFormSchema>>({
         resolver: zodResolver(userFormSchema),
         defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
@@ -128,6 +128,68 @@ function UserSetup({ onUserSaved }: { onUserSaved: (user: User) => void }) {
                     <Button type="submit" className="w-full">Create Account</Button>
                 </form>
             </CardContent>
+             <CardFooter className="justify-center">
+                <p className="text-sm text-muted-foreground">
+                    Already have an account?{' '}
+                    <Button variant="link" className="p-0 h-auto" onClick={onSwitchToLogin}>Log In</Button>
+                </p>
+            </CardFooter>
+        </div>
+    );
+}
+
+function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => void; onSwitchToSignUp: () => void; }) {
+    const loginForm = useForm<z.infer<typeof loginFormSchema>>({
+        resolver: zodResolver(loginFormSchema),
+        defaultValues: { email: '', password: '' },
+    });
+    const { toast } = useToast();
+
+     const handleLogin = (values: z.infer<typeof loginFormSchema>) => {
+        const allUsersString = localStorage.getItem('users') || '[]';
+        const allUsers: User[] = JSON.parse(allUsersString);
+        const foundUser = allUsers.find(u => u.email === values.email);
+
+        if (!foundUser) {
+            toast({ title: "User not found", description: "No account found with that email.", variant: "destructive" });
+            return;
+        }
+        if (foundUser.password !== values.password) {
+            toast({ title: "Invalid Password", description: "The password you entered is incorrect.", variant: "destructive" });
+            return;
+        }
+        
+        onLogin(foundUser);
+        toast({ title: `Welcome back, ${foundUser.name}!`});
+    };
+
+    return (
+         <div className="w-full max-w-md">
+             <CardHeader>
+                <CardTitle className="text-3xl">Log In to ClubHub</CardTitle>
+                <CardDescription>Enter your credentials to access your account.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+                    <div>
+                        <Label htmlFor="email-login">Email</Label>
+                        <Input id="email-login" {...loginForm.register('email')} />
+                        {loginForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.email.message}</p>}
+                    </div>
+                    <div>
+                        <Label htmlFor="password-login">Password</Label>
+                        <Input id="password-login" type="password" {...loginForm.register('password')} />
+                        {loginForm.formState.errors.password && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.password.message}</p>}
+                    </div>
+                    <Button type="submit" className="w-full">Log In</Button>
+                </form>
+            </CardContent>
+            <CardFooter className="justify-center">
+                <p className="text-sm text-muted-foreground">
+                    Don't have an account?{' '}
+                    <Button variant="link" className="p-0 h-auto" onClick={onSwitchToSignUp}>Sign Up</Button>
+                </p>
+            </CardFooter>
         </div>
     );
 }
@@ -140,8 +202,7 @@ export default function HomePage() {
   const { toast } = useToast();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
-
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
 
   useEffect(() => {
     setIsClient(true);
@@ -161,11 +222,6 @@ export default function HomePage() {
     defaultValues: { code: '' },
   });
 
-  const loginForm = useForm<z.infer<typeof loginFormSchema>>({
-    resolver: zodResolver(loginFormSchema),
-    defaultValues: { email: '', password: '' },
-  });
-
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -176,25 +232,6 @@ export default function HomePage() {
       };
       reader.readAsDataURL(file);
     }
-  };
-
-   const handleLogin = (values: z.infer<typeof loginFormSchema>) => {
-      const allUsersString = localStorage.getItem('users') || '[]';
-      const allUsers: User[] = JSON.parse(allUsersString);
-      const foundUser = allUsers.find(u => u.email === values.email);
-
-      if (!foundUser) {
-          toast({ title: "User not found", description: "No account found with that email.", variant: "destructive" });
-          return;
-      }
-      if (foundUser.password !== values.password) {
-          toast({ title: "Invalid Password", description: "The password you entered is incorrect.", variant: "destructive" });
-          return;
-      }
-      
-      saveUser(foundUser);
-      toast({ title: `Welcome back, ${foundUser.name}!`});
-      setIsLoginOpen(false);
   };
   
   const handleCreateClub = (values: z.infer<typeof clubFormSchema>) => {
@@ -285,9 +322,6 @@ export default function HomePage() {
     clubData.members = [...(clubData.members || []), newMember];
     localStorage.setItem(clubDataKey, JSON.stringify(clubData));
     
-    // This part is tricky. User is not directly associated with clubs in a list.
-    // Instead, we check which clubs the user is a member of.
-    // We can refresh the page or manually update the state to show the new club.
     window.location.reload();
     
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
@@ -324,40 +358,11 @@ export default function HomePage() {
                 </CardHeader>
 
                 <div className="p-6 pt-0">
-                    <UserSetup onUserSaved={(newUser) => saveUser(newUser)} />
-
-                    <div className="mt-6 text-center">
-                       <p className="text-sm text-muted-foreground">
-                           Already have an account?{' '}
-                           <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
-                               <DialogTrigger asChild>
-                                    <Button variant="link" className="p-0 h-auto">Log In</Button>
-                               </DialogTrigger>
-                               <DialogContent>
-                                   <DialogHeader>
-                                       <DialogTitle>Log In</DialogTitle>
-                                       <DialogDescription>Enter your credentials to access your account.</DialogDescription>
-                                   </DialogHeader>
-                                   <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
-                                       <div>
-                                           <Label htmlFor="email-login">Email</Label>
-                                           <Input id="email-login" {...loginForm.register('email')} />
-                                           {loginForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.email.message}</p>}
-                                       </div>
-                                       <div>
-                                           <Label htmlFor="password-login">Password</Label>
-                                           <Input id="password-login" type="password" {...loginForm.register('password')} />
-                                           {loginForm.formState.errors.password && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.password.message}</p>}
-                                       </div>
-                                       <DialogFooter>
-                                            <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                                           <Button type="submit">Log In</Button>
-                                       </DialogFooter>
-                                   </form>
-                               </DialogContent>
-                           </Dialog>
-                       </p>
-                    </div>
+                   {authMode === 'login' ? (
+                        <LoginForm onLogin={saveUser} onSwitchToSignUp={() => setAuthMode('signup')} />
+                   ) : (
+                        <SignUpForm onUserSaved={saveUser} onSwitchToLogin={() => setAuthMode('login')} />
+                   )}
                 </div>
             </Card>
         </div>

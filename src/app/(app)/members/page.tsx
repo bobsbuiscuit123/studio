@@ -35,7 +35,8 @@ export default function MembersPage() {
   const { user } = useCurrentUser();
 
   useEffect(() => {
-    if (clubId) {
+    // We need to check for `window` to ensure this code only runs on the client.
+    if (typeof window !== 'undefined' && clubId) {
       const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
       const currentClub = clubs.find((c: any) => c.id === clubId);
       if (currentClub && currentClub.joinCode) {
@@ -61,8 +62,10 @@ export default function MembersPage() {
   };
 
   const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(joinCode);
-    toast({ title: "Copied to clipboard!" });
+    if (joinCode) {
+      navigator.clipboard.writeText(joinCode);
+      toast({ title: "Copied to clipboard!" });
+    }
   };
 
   const isOwner = role && role !== 'Member';
@@ -83,14 +86,18 @@ export default function MembersPage() {
                 <DialogHeader>
                     <DialogTitle>Invite Members with Join Code</DialogTitle>
                     <DialogDescription>
-                    Share this code with people you want to invite to your club.
+                    Share this code with people you want to invite to your club. This code is unique to your club and will not change.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                    <p className="text-center text-4xl font-bold tracking-widest bg-muted p-4 rounded-lg">{joinCode}</p>
+                    {joinCode ? (
+                        <p className="text-center text-4xl font-bold tracking-widest bg-muted p-4 rounded-lg">{joinCode}</p>
+                    ) : (
+                        <p className="text-center text-muted-foreground">Loading join code...</p>
+                    )}
                 </div>
                 <DialogFooter>
-                    <Button onClick={handleCopyToClipboard}>Copy Code</Button>
+                    <Button onClick={handleCopyToClipboard} disabled={!joinCode}>Copy Code</Button>
                 </DialogFooter>
                 </DialogContent>
             </Dialog>

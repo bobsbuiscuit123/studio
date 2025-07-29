@@ -5,13 +5,13 @@
 
 @layer base {
   :root {
-    --primary-hue: 275 60% 75%;
     --background: 270 43% 96%;
     --foreground: 275 10% 20%;
     --card: 0 0% 100%;
     --card-foreground: 275 10% 20%;
     --popover: 0 0% 100%;
     --popover-foreground: 275 10% 20%;
+    --primary-hue: 275 60% 75%;
     --primary: hsl(var(--primary-hue));
     --primary-foreground: 275 10% 10%;
     --secondary: 270 30% 92%;
@@ -31,14 +31,6 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --sidebar-background: 270 30% 92%;
-    --sidebar-foreground: 275 10% 20%;
-    --sidebar-primary: 275 60% 75%;
-    --sidebar-primary-foreground: 275 10% 10%;
-    --sidebar-accent: 275 40% 85%;
-    --sidebar-accent-foreground: 275 10% 10%;
-    --sidebar-border: 270 20% 85%;
-    --sidebar-ring: 275 60% 75%;
   }
  
   .dark {
@@ -66,14 +58,6 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    --sidebar-background: 275 10% 15%;
-    --sidebar-foreground: 270 30% 92%;
-    --sidebar-primary: 275 60% 75%;
-    --sidebar-primary-foreground: 275 10% 10%;
-    --sidebar-accent: 275 10% 25%;
-    --sidebar-accent-foreground: 270 30% 92%;
-    --sidebar-border: 275 10% 25%;
-    --sidebar-ring: 275 60% 75%;
   }
 }
 

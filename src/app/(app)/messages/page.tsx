@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { useMembers, useCurrentUser, useMessages } from '@/lib/data-hooks';
 import type { Member, Message } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
-import { SendHorizonal, ArrowLeft } from 'lucide-react';
+import { SendHorizonal, ArrowLeft, MessageSquare } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';

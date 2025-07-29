@@ -85,107 +85,109 @@ export default function SlidesPage() {
 
   return (
     <>
-    <div className="grid md:grid-cols-3 gap-8 print:hidden">
-      <div className="md:col-span-1">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
-            <CardDescription>
-              Describe the meeting content you want to generate slides for.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="prompt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Prompt</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="e.g., Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."
-                          className="min-h-[150px]"
-                          {...field} 
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? <Loader2 className="animate-spin" /> : "Generate"}
-                </Button>
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-      </div>
-      <div className="md:col-span-2">
-        <Card className="flex flex-col flex-grow">
-          <CardHeader className="flex flex-row items-start justify-between">
-            <div>
-              <CardTitle>Generated Slides</CardTitle>
+      <div id="interactive-content" className="grid md:grid-cols-3 gap-8">
+        <div className="md:col-span-1">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
               <CardDescription>
-                AI-generated slides will appear here.
+                Describe the meeting content you want to generate slides for.
               </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleDownload} disabled={!generatedContent}>
-                <Download className="mr-2 h-4 w-4"/>
-                Download as PDF
-              </Button>
-               <Button variant="ghost" size="icon" onClick={handleCopyToClipboard} disabled={!generatedContent}>
-                <Copy className="h-4 w-4"/>
-                <span className="sr-only">Copy All Content</span>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-grow flex items-center justify-center min-h-[500px]">
-            {isLoading && (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="prompt"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Prompt</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="e.g., Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."
+                            className="min-h-[150px]"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={isLoading} className="w-full">
+                    {isLoading ? <Loader2 className="animate-spin" /> : "Generate"}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="md:col-span-2">
+          <Card className="flex flex-col flex-grow">
+            <CardHeader className="flex flex-row items-start justify-between">
+              <div>
+                <CardTitle>Generated Slides</CardTitle>
+                <CardDescription>
+                  AI-generated slides will appear here.
+                </CardDescription>
               </div>
-            )}
-            {generatedContent && generatedContent.slides.length > 0 ? (
-                <Carousel className="w-full max-w-xl">
-                    <CarouselContent>
-                    {generatedContent.slides.map((slide, index) => (
-                        <CarouselItem key={index}>
-                            <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
-                                <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
-                                <ReactMarkdown className="prose prose-lg dark:prose-invert">
-                                    {slide.content}
-                                </ReactMarkdown>
-                            </Card>
-                        </CarouselItem>
-                    ))}
-                    </CarouselContent>
-                    <CarouselPrevious className="-left-12" />
-                    <CarouselNext className="-right-12" />
-                </Carousel>
-            ) : !isLoading && (
-              <div className="flex items-center justify-center h-full text-center text-muted-foreground">
-                  <p>Generated slides will be displayed here.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleDownload} disabled={!generatedContent}>
+                  <Download className="mr-2 h-4 w-4"/>
+                  Download as PDF
+                </Button>
+                <Button variant="ghost" size="icon" onClick={handleCopyToClipboard} disabled={!generatedContent}>
+                  <Copy className="h-4 w-4"/>
+                  <span className="sr-only">Copy All Content</span>
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-    {generatedContent && generatedContent.slides.length > 0 && (
-      <div id="print-content" className="hidden print:block">
-        {generatedContent.slides.map((slide, index) => (
-            <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-12 bg-white flex flex-col justify-center items-center text-center break-after-page text-black">
-                <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
-                <div className="prose prose-2xl">
-                  <ReactMarkdown>{slide.content}</ReactMarkdown>
+            </CardHeader>
+            <CardContent className="flex-grow flex items-center justify-center min-h-[500px]">
+              {isLoading && (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-            </div>
-        ))}
+              )}
+              {generatedContent && generatedContent.slides.length > 0 ? (
+                  <Carousel className="w-full max-w-xl">
+                      <CarouselContent>
+                      {generatedContent.slides.map((slide, index) => (
+                          <CarouselItem key={index}>
+                              <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
+                                  <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
+                                  <ReactMarkdown className="prose prose-lg dark:prose-invert">
+                                      {slide.content}
+                                  </ReactMarkdown>
+                              </Card>
+                          </CarouselItem>
+                      ))}
+                      </CarouselContent>
+                      <CarouselPrevious className="-left-12" />
+                      <CarouselNext className="-right-12" />
+                  </Carousel>
+              ) : !isLoading && (
+                <div className="flex items-center justify-center h-full text-center text-muted-foreground">
+                    <p>Generated slides will be displayed here.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
-    )}
+      {generatedContent && generatedContent.slides.length > 0 && (
+        <div id="print-content">
+          {generatedContent.slides.map((slide, index) => (
+              <div key={`print-${index}`} className="print-slide-page">
+                  <div className="print-slide-content">
+                    <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
+                    <div className="prose prose-2xl">
+                      <ReactMarkdown>{slide.content}</ReactMarkdown>
+                    </div>
+                  </div>
+              </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }

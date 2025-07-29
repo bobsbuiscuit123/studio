@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, Settings, User, LogOut, Home } from "lucide-react";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import { SettingsDialog } from "./settings-dialog";
@@ -40,11 +40,12 @@ export function AppHeader() {
   const [clubName, setClubName] = useState("");
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
-  const { user } = useCurrentUser();
+  const { user, clearUser } = useCurrentUser();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+  const router = useRouter();
   
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
@@ -79,6 +80,12 @@ export function AppHeader() {
       setHasUnreadSocials(socialPosts.some(p => !p.read));
     }
   }, [socialPosts, socialPostsLoading]);
+  
+  const handleLogout = () => {
+    clearUser();
+    localStorage.removeItem('selectedClubId');
+    router.push('/');
+  }
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
   
@@ -149,10 +156,7 @@ export function AppHeader() {
            <Link href="/">
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
-          <DropdownMenuItem onClick={() => {
-            localStorage.removeItem('selectedClubId');
-            window.location.href = '/';
-          }}><LogOut className="mr-2 h-4 w-4" />Logout & Switch Account</DropdownMenuItem>
+          <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

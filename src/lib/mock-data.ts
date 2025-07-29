@@ -1,10 +1,12 @@
 
+
 // This file is now primarily for defining data structures and default values,
 // as the actual data will be managed by our data hooks and local storage.
 
 export type User = {
   name: string;
   email: string;
+  password?: string; // Added for authentication
   avatar?: string;
 };
 

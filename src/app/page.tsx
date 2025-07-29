@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -43,6 +44,16 @@ const clubFormSchema = z.object({
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
     email: z.string().email("Please enter a valid email address."),
+    password: z.string().min(6, "Password must be at least 6 characters."),
+    confirmPassword: z.string(),
+}).refine(data => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+});
+
+const loginFormSchema = z.object({
+    email: z.string().email("Please enter a valid email address."),
+    password: z.string().min(1, "Password is required."),
 });
 
 const joinClubFormSchema = z.object({
@@ -57,60 +68,66 @@ type Club = {
 };
 
 function UserSetup({ onUserSaved }: { onUserSaved: (user: User) => void }) {
-    const { saveUser, clearUser } = useCurrentUser();
     const form = useForm<z.infer<typeof userFormSchema>>({
         resolver: zodResolver(userFormSchema),
-        defaultValues: { name: "", email: "" },
+        defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
     });
     const { toast } = useToast();
 
     const handleSaveUser = (values: z.infer<typeof userFormSchema>) => {
+        const allUsersString = localStorage.getItem('users') || '[]';
+        const allUsers: User[] = JSON.parse(allUsersString);
+
+        if (allUsers.some(u => u.email === values.email)) {
+            toast({ title: "User exists", description: "An account with this email already exists. Please log in.", variant: "destructive" });
+            return;
+        }
+
         const newUser: User = {
-            ...values,
+            name: values.name,
+            email: values.email,
+            password: values.password,
             avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`
         };
-        saveUser(newUser);
+
+        const updatedUsers = [...allUsers, newUser];
+        localStorage.setItem('users', JSON.stringify(updatedUsers));
+
         onUserSaved(newUser);
         toast({ title: `Welcome, ${values.name}!` });
     };
-
-    const handleDeleteAndResign = () => {
-        clearUser();
-        localStorage.clear(); // This is destructive, clears all clubs, etc.
-        toast({ title: "All your data has been deleted."});
-        window.location.reload();
-    }
-
+    
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-           <Card className="w-full max-w-md">
-                <CardHeader>
-                    <div className="flex justify-center items-center gap-4 mb-2">
-                        <Logo className="h-10 w-10 text-primary" />
-                        <CardTitle className="text-4xl">Welcome to ClubHub</CardTitle>
+        <div className="w-full max-w-md">
+            <CardHeader>
+                <CardTitle className="text-3xl">Create your Account</CardTitle>
+                <CardDescription>Get started with ClubHub by creating an account.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-4">
+                    <div>
+                        <Label htmlFor="name-signup">Full Name</Label>
+                        <Input id="name-signup" {...form.register('name')} placeholder="e.g., Alex Johnson" />
+                         {form.formState.errors.name && <p className="text-red-500 text-sm mt-1">{form.formState.errors.name.message}</p>}
                     </div>
-                    <CardDescription className="text-center">Let's get you set up. Please enter your details.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-4">
-                        <div>
-                            <Label htmlFor="name">Full Name</Label>
-                            <Input id="name" {...form.register('name')} placeholder="e.g., Alex Johnson" />
-                             {form.formState.errors.name && <p className="text-red-500 text-sm mt-1">{form.formState.errors.name.message}</p>}
-                        </div>
-                        <div>
-                           <Label htmlFor="email">Email Address</Label>
-                           <Input id="email" {...form.register('email')} placeholder="e.g., alex.j@example.com" />
-                            {form.formState.errors.email && <p className="text-red-500 text-sm mt-1">{form.formState.errors.email.message}</p>}
-                        </div>
-                        <Button type="submit" className="w-full">Save & Continue</Button>
-                    </form>
-                </CardContent>
-                <CardFooter className="flex-col gap-4">
-                     <p className="text-xs text-muted-foreground">This information is saved on your device.</p>
-                     <Button variant="destructive" size="sm" onClick={handleDeleteAndResign}><Trash2 className="mr-2"/>Clear My Info & Reset App</Button>
-                </CardFooter>
-           </Card>
+                    <div>
+                       <Label htmlFor="email-signup">Email Address</Label>
+                       <Input id="email-signup" {...form.register('email')} placeholder="e.g., alex.j@example.com" />
+                        {form.formState.errors.email && <p className="text-red-500 text-sm mt-1">{form.formState.errors.email.message}</p>}
+                    </div>
+                    <div>
+                       <Label htmlFor="password-signup">Password</Label>
+                       <Input id="password-signup" type="password" {...form.register('password')} />
+                        {form.formState.errors.password && <p className="text-red-500 text-sm mt-1">{form.formState.errors.password.message}</p>}
+                    </div>
+                     <div>
+                       <Label htmlFor="confirmPassword-signup">Confirm Password</Label>
+                       <Input id="confirmPassword-signup" type="password" {...form.register('confirmPassword')} />
+                        {form.formState.errors.confirmPassword && <p className="text-red-500 text-sm mt-1">{form.formState.errors.confirmPassword.message}</p>}
+                    </div>
+                    <Button type="submit" className="w-full">Create Account</Button>
+                </form>
+            </CardContent>
         </div>
     );
 }
@@ -123,6 +140,8 @@ export default function HomePage() {
   const { toast } = useToast();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -142,6 +161,11 @@ export default function HomePage() {
     defaultValues: { code: '' },
   });
 
+  const loginForm = useForm<z.infer<typeof loginFormSchema>>({
+    resolver: zodResolver(loginFormSchema),
+    defaultValues: { email: '', password: '' },
+  });
+
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
@@ -152,6 +176,25 @@ export default function HomePage() {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+   const handleLogin = (values: z.infer<typeof loginFormSchema>) => {
+      const allUsersString = localStorage.getItem('users') || '[]';
+      const allUsers: User[] = JSON.parse(allUsersString);
+      const foundUser = allUsers.find(u => u.email === values.email);
+
+      if (!foundUser) {
+          toast({ title: "User not found", description: "No account found with that email.", variant: "destructive" });
+          return;
+      }
+      if (foundUser.password !== values.password) {
+          toast({ title: "Invalid Password", description: "The password you entered is incorrect.", variant: "destructive" });
+          return;
+      }
+      
+      saveUser(foundUser);
+      toast({ title: `Welcome back, ${foundUser.name}!`});
+      setIsLoginOpen(false);
   };
   
   const handleCreateClub = (values: z.infer<typeof clubFormSchema>) => {
@@ -193,6 +236,7 @@ export default function HomePage() {
       announcements: [],
       socialPosts: [],
       transactions: [],
+      messages: [],
     }));
     toast({ title: 'Club created successfully!', description: `Your join code is ${newClub.joinCode}` });
     clubForm.reset();
@@ -241,11 +285,10 @@ export default function HomePage() {
     clubData.members = [...(clubData.members || []), newMember];
     localStorage.setItem(clubDataKey, JSON.stringify(clubData));
     
-    // Add club to user's list if not already there.
-    if (!clubs.some(c => c.id === clubToJoin.id)) {
-        const updatedUserClubs = [...clubs, clubToJoin];
-        setClubs(updatedUserClubs);
-    }
+    // This part is tricky. User is not directly associated with clubs in a list.
+    // Instead, we check which clubs the user is a member of.
+    // We can refresh the page or manually update the state to show the new club.
+    window.location.reload();
     
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
@@ -257,9 +300,8 @@ export default function HomePage() {
     localStorage.setItem('selectedClubId', clubId);
   };
 
-  const handleSwitchAccount = () => {
+  const handleLogout = () => {
     clearUser();
-    window.location.reload();
   }
   
   if (!isClient || userLoading) {
@@ -271,7 +313,55 @@ export default function HomePage() {
   }
 
   if (!user) {
-    return <UserSetup onUserSaved={(newUser) => saveUser(newUser)} />;
+    return (
+        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+             <Card className="w-full max-w-md">
+                <CardHeader className="items-center">
+                    <div className="flex justify-center items-center gap-4 mb-2">
+                        <Logo className="h-10 w-10 text-primary" />
+                        <CardTitle className="text-4xl">ClubHub</CardTitle>
+                    </div>
+                </CardHeader>
+
+                <div className="p-6 pt-0">
+                    <UserSetup onUserSaved={(newUser) => saveUser(newUser)} />
+
+                    <div className="mt-6 text-center">
+                       <p className="text-sm text-muted-foreground">
+                           Already have an account?{' '}
+                           <Dialog open={isLoginOpen} onOpenChange={setIsLoginOpen}>
+                               <DialogTrigger asChild>
+                                    <Button variant="link" className="p-0 h-auto">Log In</Button>
+                               </DialogTrigger>
+                               <DialogContent>
+                                   <DialogHeader>
+                                       <DialogTitle>Log In</DialogTitle>
+                                       <DialogDescription>Enter your credentials to access your account.</DialogDescription>
+                                   </DialogHeader>
+                                   <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+                                       <div>
+                                           <Label htmlFor="email-login">Email</Label>
+                                           <Input id="email-login" {...loginForm.register('email')} />
+                                           {loginForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.email.message}</p>}
+                                       </div>
+                                       <div>
+                                           <Label htmlFor="password-login">Password</Label>
+                                           <Input id="password-login" type="password" {...loginForm.register('password')} />
+                                           {loginForm.formState.errors.password && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.password.message}</p>}
+                                       </div>
+                                       <DialogFooter>
+                                            <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
+                                           <Button type="submit">Log In</Button>
+                                       </DialogFooter>
+                                   </form>
+                               </DialogContent>
+                           </Dialog>
+                       </p>
+                    </div>
+                </div>
+            </Card>
+        </div>
+    );
   }
   
   const userClubIds = new Set();
@@ -399,8 +489,8 @@ export default function HomePage() {
         )}
       </div>
        <div className="mt-8">
-            <Button variant="outline" onClick={handleSwitchAccount}>
-                <LogIn className="mr-2"/> Switch Account
+            <Button variant="outline" onClick={handleLogout}>
+                <LogIn className="mr-2"/> Log Out
             </Button>
        </div>
     </div>

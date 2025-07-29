@@ -30,6 +30,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useEffect, useState } from "react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const formSchema = z.object({
     name: z.string().min(2, "Name is too short"),
@@ -146,14 +147,10 @@ export default function MembersPage() {
             {members.map((member) => (
               <Card key={member.email}>
                 <CardHeader className="items-center text-center">
-                  <Image
-                    className="aspect-square w-24 h-24 rounded-full object-cover mb-2"
-                    src={member.avatar}
-                    alt={`${member.name}'s avatar`}
-                    width={96}
-                    height={96}
-                    data-ai-hint={member.dataAiHint || 'person'}
-                  />
+                    <Avatar className="w-24 h-24 mb-2 text-4xl">
+                        <AvatarImage src={member.avatar} alt={`${member.name}'s avatar`} data-ai-hint={member.dataAiHint || 'person'} />
+                        <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
                   <CardTitle>{member.name}</CardTitle>
                   <CardDescription>{member.role} {member.email === user?.email && "(You)"}</CardDescription>
                 </CardHeader>

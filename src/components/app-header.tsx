@@ -52,6 +52,10 @@ export function AppHeader() {
       }
     }
   }, []);
+  
+  const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
+  
+  const avatarBgColor = (user?.themeColor && !user?.avatar) ? `hsl(${user.themeColor.split(' ')[0]}, 60%, 80%)` : undefined;
 
   return (
     <>
@@ -85,8 +89,10 @@ export function AppHeader() {
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
             <Avatar>
-              <AvatarImage src={`https://placehold.co/100x100.png?text=${user?.name.charAt(0)}`} alt="User Avatar" data-ai-hint="person"/>
-              <AvatarFallback>{user?.name.charAt(0) || 'U'}</AvatarFallback>
+              <AvatarImage src={user?.avatar} alt="User Avatar" data-ai-hint="person"/>
+              <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
+                {getAvatarFallback(user?.name)}
+                </AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>

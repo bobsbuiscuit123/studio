@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { PlusCircle, ArrowRight, Trash2 } from 'lucide-react';
@@ -60,8 +60,12 @@ function UserSetup({ onUserSaved }: { onUserSaved: (user: User) => void }) {
     const { toast } = useToast();
 
     const handleSaveUser = (values: z.infer<typeof userFormSchema>) => {
-        saveUser(values);
-        onUserSaved(values);
+        const newUser: User = {
+            ...values,
+            avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`
+        };
+        saveUser(newUser);
+        onUserSaved(newUser);
         toast({ title: `Welcome, ${values.name}!` });
     };
 
@@ -114,6 +118,7 @@ export default function HomePage() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -201,7 +206,7 @@ export default function HomePage() {
         name: user.name,
         email: user.email,
         role: "President",
-        avatar: `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
+        avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
     }
 
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify({
@@ -214,6 +219,9 @@ export default function HomePage() {
     toast({ title: 'Club created successfully!' });
     form.reset();
     setPreviewImage(null);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+    }
   };
 
   const handleSelectClub = (clubId: string) => {
@@ -266,7 +274,7 @@ export default function HomePage() {
                 )}
                 <div className="flex flex-col gap-2">
                   <Label>Club Logo (Optional)</Label>
-                  <Input type="file" accept="image/*" onChange={handleImageChange} />
+                  <Input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageChange} />
                 </div>
                 {previewImage && <Image src={previewImage} alt="logo preview" width={100} height={100} className="rounded-md" />}
                 <DialogFooter>

@@ -5,6 +5,8 @@
 export type User = {
   name: string;
   email: string;
+  avatar?: string;
+  themeColor?: string;
 };
 
 export type Member = {

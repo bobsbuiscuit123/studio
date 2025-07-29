@@ -100,22 +100,50 @@ export function useCurrentUser() {
     try {
       const storedUser = localStorage.getItem('currentUser');
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        if (parsedUser.themeColor) {
+            applyTheme(parsedUser.themeColor);
+        }
       }
     } catch (error) {
       console.error('Error reading user from localStorage', error);
     }
     setLoading(false);
   }, []);
+  
+  const applyTheme = (color: string) => {
+    const root = document.documentElement;
+    root.style.setProperty('--primary-hue', color);
+    const [hue, saturation, lightness] = color.split(' ').map(parseFloat);
+    root.style.setProperty('--background', `${hue} ${saturation * 0.5}% 96%`);
+    root.style.setProperty('--foreground', `${hue} 10% 20%`);
+    root.style.setProperty('--card', `0 0% 100%`);
+    root.style.setProperty('--primary', `${hue} ${saturation}% ${lightness}%`);
+    root.style.setProperty('--primary-foreground', `${hue} 10% 10%`);
+    root.style.setProperty('--secondary', `${hue} 30% 92%`);
+    root.style.setProperty('--muted', `${hue} 30% 92%`);
+    root.style.setProperty('--accent', `${(hue + 180) % 360} 53% 79%`);
+    root.style.setProperty('--border', `${hue} 20% 88%`);
+    root.style.setProperty('--input', `${hue} 20% 88%`);
+    root.style.setProperty('--ring', `${hue} ${saturation}% ${lightness}%`);
+  }
 
-  const saveUser = (newUser: User) => {
-    setUser(newUser);
-    localStorage.setItem('currentUser', JSON.stringify(newUser));
+  const saveUser = (newUser: Partial<User>) => {
+    const updatedUser = { ...user, ...newUser } as User;
+    setUser(updatedUser);
+    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+    if (newUser.themeColor) {
+        applyTheme(newUser.themeColor);
+    }
   };
   
   const clearUser = () => {
     setUser(null);
     localStorage.removeItem('currentUser');
+    // Reset theme to default
+    const root = document.documentElement;
+    root.removeAttribute('style');
   }
 
   return { user, loading, saveUser, clearUser };

@@ -109,7 +109,7 @@ export default function MembersPage() {
        {loading ? <p>Loading...</p> : 
           members.length > 0 ? (
           <div className="grid gap-4 md:gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {members.filter(m => m.email !== user?.email).map((member) => (
+            {members.map((member) => (
               <Card key={member.email}>
                 <CardHeader className="items-center text-center">
                     <Avatar className="w-24 h-24 mb-2 text-4xl">
@@ -128,7 +128,11 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter>
-                  <Button className="w-full" onClick={() => handleMessage(member)}>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleMessage(member)}
+                    disabled={member.email === user?.email}
+                  >
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Message
                   </Button>

@@ -22,6 +22,7 @@ import Link from 'next/link';
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { SettingsDialog } from "./settings-dialog";
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
@@ -39,6 +40,7 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     const clubId = localStorage.getItem('selectedClubId');
@@ -52,6 +54,7 @@ export function AppHeader() {
   }, []);
 
   return (
+    <>
     <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
        <Sheet>
         <SheetTrigger asChild>
@@ -90,15 +93,24 @@ export function AppHeader() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{user?.name || "My Account"}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
-          <DropdownMenuItem><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
           <DropdownMenuSeparator />
            <Link href="/">
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
-          <DropdownMenuItem><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => {
+            const clubId = localStorage.getItem('selectedClubId');
+            localStorage.clear();
+            if (clubId) {
+              localStorage.setItem('selectedClubId', clubId);
+            }
+            window.location.href = '/';
+          }}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
+    <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+    </>
   );
 }

@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
-import html2pdf from 'html2pdf.js';
+
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,9 +59,10 @@ export default function SlidesPage() {
     }
   };
   
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const element = document.getElementById('print-content');
     if (element) {
+      const html2pdf = (await import('html2pdf.js')).default;
       const opt = {
         margin:       0,
         filename:     'meeting-slides.pdf',
@@ -188,8 +189,8 @@ export default function SlidesPage() {
           </div>
         </div>
       </div>
-      <div className="hidden print:block">
-          <div id="print-content">
+      <div className="hidden">
+          <div id="print-content" className="print:block">
           {generatedContent && generatedContent.slides.map((slide, index) => (
               <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
                     <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>

@@ -31,6 +31,13 @@ export type Slide = {
     content: string;
 }
 
+export type Presentation = {
+    id: number;
+    prompt: string;
+    slides: Slide[];
+    createdAt: string;
+}
+
 export type Announcement = {
   id: number;
   title: string;

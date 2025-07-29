@@ -5,8 +5,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Presentation, Download, Loader2, Copy, Share2 } from "lucide-react";
+import { Presentation, Download, Loader2, Copy, Share2, Eye, Trash2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
+import html2pdf from 'html2pdf.js';
 
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateMeetingSlides, GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, usePresentations } from "@/lib/data-hooks";
 import {
   Carousel,
   CarouselContent,
@@ -34,7 +35,18 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Announcement } from "@/lib/mock-data";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Announcement, Presentation as PresentationType } from "@/lib/mock-data";
 
 
 const formSchema = z.object({
@@ -46,7 +58,7 @@ const shareFormSchema = z.object({
 });
 
 export default function SlidesPage() {
-  const [generatedContent, setGeneratedContent] = useState<GenerateMeetingSlidesOutput | null>(null);
+  const [activePresentation, setActivePresentation] = useState<PresentationType | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
@@ -55,6 +67,10 @@ export default function SlidesPage() {
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { data: announcements, updateData: setAnnouncements } = useAnnouncements();
+  const { data: presentations, updateData: setPresentations, loading: presentationsLoading } = usePresentations();
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [printableContent, setPrintableContent] = useState<PresentationType | null>(null);
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,11 +87,18 @@ export default function SlidesPage() {
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
-    setGeneratedContent(null);
+    setActivePresentation(null);
     setGeneratedAnnouncement(null);
     try {
       const result = await generateMeetingSlides(values);
-      setGeneratedContent(result);
+      const newPresentation: PresentationType = {
+          id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
+          prompt: values.prompt,
+          slides: result.slides,
+          createdAt: new Date().toLocaleDateString(),
+      }
+      setPresentations([newPresentation, ...presentations]);
+      setActivePresentation(newPresentation);
       toast({ title: "Slides generated successfully!" });
     } catch (error) {
       toast({
@@ -88,35 +111,40 @@ export default function SlidesPage() {
     }
   };
   
-  const handleDownload = async () => {
-    const html2pdf = (await import('html2pdf.js')).default;
-    const element = document.getElementById('print-content');
-    if (element) {
-      const opt = {
-        margin:       0,
-        filename:     'meeting-slides.pdf',
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
-      };
-      html2pdf().from(element).set(opt).save();
-    }
+  const handleDownload = async (presentation: PresentationType) => {
+    setPrintableContent(presentation);
+    // Use a timeout to ensure the printable content is rendered before generating PDF
+    setTimeout(() => {
+        const element = document.getElementById(`print-content-${presentation.id}`);
+        if (element) {
+            const opt = {
+                margin:       0,
+                filename:     'meeting-slides.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+            };
+            html2pdf().from(element).set(opt).save().then(() => {
+                setPrintableContent(null); // Clean up after saving
+            });
+        }
+    }, 100);
   };
 
   const handleCopyToClipboard = () => {
-    if (generatedContent) {
-      const textToCopy = generatedContent.slides.map(slide => `## ${slide.title}\n\n${slide.content}`).join('\n\n---\n\n');
+    if (activePresentation) {
+      const textToCopy = activePresentation.slides.map(slide => `## ${slide.title}\n\n${slide.content}`).join('\n\n---\n\n');
       navigator.clipboard.writeText(textToCopy);
       toast({ title: "Copied all slide content to clipboard!" });
     }
   };
   
   const handleShare = async (values: z.infer<typeof shareFormSchema>) => {
-    if (!generatedContent) return;
+    if (!activePresentation) return;
     setIsSharing(true);
     setGeneratedAnnouncement(null);
     try {
-      const slidesContent = generatedContent.slides.map(s => `Slide: ${s.title}\n${s.content}`).join('\n\n');
+      const slidesContent = activePresentation.slides.map(s => `Slide: ${s.title}\n${s.content}`).join('\n\n');
       const announcementPrompt = `${values.prompt}\n\nHere is the content of the slides to announce:\n${slidesContent}`;
       
       const result = await generateClubAnnouncement({ prompt: announcementPrompt });
@@ -134,7 +162,7 @@ export default function SlidesPage() {
   };
 
   const handlePostAnnouncement = () => {
-    if (!generatedAnnouncement || !user || !generatedContent) return;
+    if (!generatedAnnouncement || !user || !activePresentation) return;
     const newAnnouncement: Announcement = {
       id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
       title: generatedAnnouncement.title,
@@ -142,7 +170,7 @@ export default function SlidesPage() {
       author: user.name,
       date: new Date().toLocaleDateString(),
       read: false,
-      slides: generatedContent.slides, // Attach slide data here
+      slides: activePresentation.slides, // Attach slide data here
     };
     setAnnouncements([newAnnouncement, ...announcements]);
     toast({ title: "Shared to announcements!" });
@@ -151,6 +179,15 @@ export default function SlidesPage() {
     shareForm.reset();
   };
 
+  const handleDelete = (id: number) => {
+    const updatedPresentations = presentations.filter(p => p.id !== id);
+    setPresentations(updatedPresentations);
+    if (activePresentation?.id === id) {
+        setActivePresentation(null);
+    }
+    toast({ title: "Presentation deleted" });
+    setDeletingId(null);
+  }
 
   if (role && role === 'Member') {
     return (
@@ -167,7 +204,7 @@ export default function SlidesPage() {
     <>
       <div id="interactive-content">
         <div className="grid md:grid-cols-3 gap-8">
-          <div className="md:col-span-1">
+          <div className="md:col-span-1 space-y-8">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
@@ -202,6 +239,46 @@ export default function SlidesPage() {
                 </Form>
               </CardContent>
             </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>History</CardTitle>
+                    <CardDescription>Previously generated presentations.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    {presentationsLoading ? <p>Loading...</p> : presentations.length > 0 ? (
+                        presentations.map(p => (
+                            <div key={p.id} className="border p-3 rounded-lg flex justify-between items-center">
+                                <div>
+                                    <p className="font-semibold truncate w-40" title={p.prompt}>{p.prompt}</p>
+                                    <p className="text-sm text-muted-foreground">{p.createdAt}</p>
+                                </div>
+                                <div className="flex gap-1">
+                                    <Button variant="ghost" size="icon" onClick={() => setActivePresentation(p)}><Eye/></Button>
+                                     <AlertDialog open={deletingId === p.id} onOpenChange={(open) => !open && setDeletingId(null)}>
+                                        <AlertDialogTrigger asChild>
+                                            <Button variant="ghost" size="icon" onClick={() => setDeletingId(p.id)}><Trash2 className="text-destructive"/></Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This will permanently delete this presentation. This action cannot be undone.
+                                            </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleDelete(p.id)}>Delete</AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-sm text-muted-foreground text-center py-4">No history yet.</p>
+                    )}
+                </CardContent>
+            </Card>
           </div>
           <div className="md:col-span-2">
             <Card className="flex flex-col flex-grow">
@@ -215,7 +292,7 @@ export default function SlidesPage() {
                 <div className="flex gap-2">
                    <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button variant="secondary" disabled={!generatedContent}>
+                      <Button variant="secondary" disabled={!activePresentation}>
                         <Share2 className="mr-2 h-4 w-4" />
                         Share
                       </Button>
@@ -284,11 +361,11 @@ export default function SlidesPage() {
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
-                  <Button variant="outline" onClick={handleDownload} disabled={!generatedContent}>
+                  <Button variant="outline" onClick={() => activePresentation && handleDownload(activePresentation)} disabled={!activePresentation}>
                     <Download className="mr-2 h-4 w-4"/>
                     Download as PDF
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={handleCopyToClipboard} disabled={!generatedContent}>
+                  <Button variant="ghost" size="icon" onClick={handleCopyToClipboard} disabled={!activePresentation}>
                     <Copy className="h-4 w-4"/>
                     <span className="sr-only">Copy All Content</span>
                   </Button>
@@ -300,10 +377,10 @@ export default function SlidesPage() {
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 )}
-                {generatedContent && generatedContent.slides.length > 0 ? (
+                {activePresentation && activePresentation.slides.length > 0 ? (
                     <Carousel className="w-full max-w-xl">
                         <CarouselContent>
-                        {generatedContent.slides.map((slide, index) => (
+                        {activePresentation.slides.map((slide, index) => (
                             <CarouselItem key={index}>
                                 <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
                                     <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
@@ -322,6 +399,7 @@ export default function SlidesPage() {
                 ) : !isLoading && (
                   <div className="flex items-center justify-center h-full text-center text-muted-foreground">
                       <p>Generated slides will be displayed here.</p>
+                      <p className="text-sm">Use the form on the left to generate a new presentation or select one from your history.</p>
                   </div>
                 )}
               </CardContent>
@@ -330,16 +408,18 @@ export default function SlidesPage() {
         </div>
       </div>
       <div className="hidden">
-          <div id="print-content" className="print:block">
-          {generatedContent && generatedContent.slides.map((slide, index) => (
-              <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
-                    <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
-                    <div className="prose prose-2xl">
-                      <ReactMarkdown>{slide.content}</ReactMarkdown>
+          {printableContent && (
+             <div id={`print-content-${printableContent.id}`} className="print:block">
+                {printableContent.slides.map((slide, index) => (
+                    <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
+                          <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
+                          <div className="prose prose-2xl">
+                            <ReactMarkdown>{slide.content}</ReactMarkdown>
+                          </div>
                     </div>
-              </div>
-          ))}
-          </div>
+                ))}
+            </div>
+          )}
       </div>
     </>
   );

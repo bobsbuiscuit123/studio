@@ -186,7 +186,7 @@ export default function HomePage() {
       joinCode: generateJoinCode(allClubs),
     };
 
-    const updatedClubs = [...allClubs, newClub];
+    const updatedClubs = [...clubs, newClub];
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
 

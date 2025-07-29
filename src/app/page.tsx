@@ -223,7 +223,7 @@ export default function HomePage() {
         return;
     }
     const allClubs: Club[] = JSON.parse(allClubsString);
-    const clubToJoin = allClubs.find(c => c.joinCode.toUpperCase() === values.code.toUpperCase());
+    const clubToJoin = allClubs.find(c => c.joinCode && c.joinCode.toUpperCase() === values.code.toUpperCase());
 
     if (!clubToJoin) {
         toast({ title: "Invalid Code", description: "No club found with that join code.", variant: "destructive" });

@@ -28,6 +28,12 @@ import {
     DialogTitle,
     DialogFooter
 } from "@/components/ui/dialog";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 
@@ -218,35 +224,47 @@ export default function CalendarPage() {
               Here's what's happening soon.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
              {loading ? <p>Loading...</p> : 
                 events.length > 0 ? (
-                  [...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event, index) => (
-                  <div key={index} className="p-4 rounded-lg bg-muted/50 space-y-2">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <p className="font-semibold">{event.title}</p>
-                            <p className="text-sm text-muted-foreground">
-                            {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
-                            </p>
-                        </div>
-                        {canEditContent && (
-                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(event)}>
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                        )}
-                    </div>
-                    <p className="text-sm">{event.description}</p>
-                    <p className="text-sm">
-                      <strong>Location:</strong> {event.location}
-                    </p>
-                    <Link href={generateGoogleCalendarLink(event)} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm">
-                        <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
-                      </Button>
-                    </Link>
-                  </div>
-                ))
+                  <Accordion type="single" collapsible className="w-full">
+                    {[...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event) => (
+                      <AccordionItem value={`item-${event.id}`} key={event.id}>
+                        <AccordionTrigger>
+                          <div className="flex justify-between items-center w-full">
+                            <div className="text-left">
+                              <p className="font-semibold">{event.title}</p>
+                              <p className="text-sm text-muted-foreground font-normal">
+                                {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                              </p>
+                            </div>
+                             {canEditContent && (
+                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="mr-4">
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                            )}
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3 pl-2">
+                             <p className="text-sm">
+                                <strong>Time: </strong> 
+                                {event.date.toLocaleString('en-US', { hour: '2-digit', minute:'2-digit' })}
+                             </p>
+                             <p className="text-sm">{event.description}</p>
+                             <p className="text-sm">
+                               <strong>Location:</strong> {event.location}
+                             </p>
+                             <Link href={generateGoogleCalendarLink(event)} target="_blank" rel="noopener noreferrer">
+                               <Button variant="outline" size="sm">
+                                 <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
+                               </Button>
+                             </Link>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
               ) : (
                  <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
               )
@@ -320,4 +338,3 @@ export default function CalendarPage() {
   );
 }
 
-    

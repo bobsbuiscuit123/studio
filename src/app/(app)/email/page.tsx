@@ -76,23 +76,23 @@ export default function EmailPage() {
     }
   };
   
-  const mailtoLink = useMemo(() => {
+  const gmailLink = useMemo(() => {
     const recipientEmails = members.map(m => m.email);
     if (recipientEmails.length === 0 || !emailContent.subject || !emailContent.body) {
       return "";
     }
     
-    const to = ''; // Bcc is preferred for privacy
     const bcc = recipientEmails.join(',');
     const subject = encodeURIComponent(emailContent.subject);
     const body = encodeURIComponent(emailContent.body);
     
-    const link = `mailto:${to}?bcc=${bcc}&subject=${subject}&body=${body}`;
+    const baseUrl = 'https://mail.google.com/mail/?view=cm&fs=1';
+    const link = `${baseUrl}&bcc=${bcc}&su=${subject}&body=${body}`;
 
     if (link.length > 2000) {
         toast({
             title: "Email is too long",
-            description: "The generated email (including recipients) is too long to open in your email client automatically. Please copy the content manually.",
+            description: "The generated email (including recipients) is too long to open in Gmail automatically. Please copy the content manually.",
             variant: "destructive",
             duration: 10000,
         });
@@ -104,8 +104,8 @@ export default function EmailPage() {
   const isEmailReady = useMemo(() => {
     // Manually trigger validation to ensure form state is up-to-date with state
     emailForm.trigger(); 
-    return emailForm.formState.isValid && members.length > 0 && mailtoLink !== "#";
-  }, [emailForm, members, mailtoLink]);
+    return emailForm.formState.isValid && members.length > 0 && gmailLink !== "#";
+  }, [emailForm, members, gmailLink]);
   
   if (role && role === 'Member') {
     return (
@@ -158,7 +158,7 @@ export default function EmailPage() {
         <Card className="md:col-span-2">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Mail /> 2. Review and Send</CardTitle>
-                <CardDescription>Review the AI-generated draft below. You can make edits before opening it in your email client.</CardDescription>
+                <CardDescription>Review the AI-generated draft below. You can make edits before opening it in Gmail.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Form {...emailForm}>
@@ -205,9 +205,9 @@ export default function EmailPage() {
                             )}
                         />
                         <Button asChild disabled={!isEmailReady || membersLoading} className="w-full">
-                            <Link href={isEmailReady ? mailtoLink : '#'} target="_blank" rel="noopener noreferrer">
+                            <Link href={isEmailReady ? gmailLink : '#'} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink />
-                                Open in Email Client for All ({membersLoading ? '...' : members.length}) Members
+                                Open in Gmail for All ({membersLoading ? '...' : members.length}) Members
                             </Link>
                         </Button>
                     </form>

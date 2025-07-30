@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage } from './mock-data';
+import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -64,7 +64,7 @@ export function useAnnouncements() {
 }
 
 export function useEvents() {
-    const { data, loading, updateData, clubId } = useClubData('events', []);
+    const { data, loading, updateData, clubId } = useClubData<ClubEvent[]>('events', []);
     
     // The events are stored as strings, so we need to convert them to Date objects
     const eventsWithDates = (data || []).map((event: any) => ({
@@ -77,7 +77,7 @@ export function useEvents() {
             ...event,
             date: event.date.toISOString(),
         }));
-        updateData(eventsWithStrings);
+        updateData(eventsWithStrings as any);
     }
     
     return { data: eventsWithDates, loading, updateData: updateEventsWithStrings, clubId };

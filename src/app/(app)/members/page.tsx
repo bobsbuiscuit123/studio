@@ -38,7 +38,7 @@ export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
   const { toast } = useToast();
   const [joinCode, setJoinCode] = useState('');
-  const { canEditContent, canManageRoles } = useCurrentUserRole();
+  const { canEditContent, canManageRoles, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const router = useRouter();
 
@@ -148,7 +148,7 @@ export default function MembersPage() {
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Message
                   </Button>
-                   {canManageRoles && member.email !== user?.email && (
+                   {canManageRoles && member.email !== user?.email && !(role === 'Admin' && member.role === 'President') && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="secondary" className="w-full">
@@ -156,9 +156,11 @@ export default function MembersPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Admin')}>
-                          Set as Admin
-                        </DropdownMenuItem>
+                        {role === 'President' && (
+                            <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Admin')}>
+                              Set as Admin
+                            </DropdownMenuItem>
+                        )}
                          <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Officer')}>
                           Set as Officer
                         </DropdownMenuItem>

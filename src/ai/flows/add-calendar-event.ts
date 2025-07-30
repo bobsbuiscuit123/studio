@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -58,15 +59,33 @@ const addCalendarEventFlow = ai.defineFlow(
     outputSchema: AddCalendarEventOutputSchema,
   },
   async input => {
-    const { output } = await addEventPrompt(input);
-    if (!output) {
-        throw new Error("Could not generate event from prompt.");
-    }
-    
-    // In a real application, you would save the event to a database here.
-    console.log('Adding event:', output);
-    createdEvents.push(output);
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    return output;
+    while (attempts < maxAttempts) {
+      try {
+        const { output } = await addEventPrompt(input);
+        if (!output) {
+            throw new Error("Could not generate event from prompt.");
+        }
+        
+        // In a real application, you would save the event to a database here.
+        console.log('Adding event:', output);
+        createdEvents.push(output);
+
+        return output;
+      } catch (error: any) {
+        attempts++;
+        if (attempts >= maxAttempts || !error.message.includes('503')) {
+          // If it's the last attempt or not a 503 error, rethrow.
+          throw error;
+        }
+        console.log(`Attempt ${attempts} failed. Retrying in 2 seconds...`);
+        // Wait for 2 seconds before the next attempt
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    throw new Error("Failed to generate event after multiple attempts.");
   }
 );

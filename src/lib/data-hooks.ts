@@ -171,28 +171,31 @@ export function useCurrentUserRole() {
     const { data: members, loading: membersLoading } = useMembers();
     const { user, loading: userLoading } = useCurrentUser();
     const [role, setRole] = useState<string | null>(null);
-    const [isOwner, setIsOwner] = useState(false);
+    const [canEditContent, setCanEditContent] = useState(false);
+    const [canManageRoles, setCanManageRoles] = useState(false);
     const [loading, setLoading] = useState(true);
 
 
     useEffect(() => {
         if (!membersLoading && !userLoading) {
-            let currentRole = null;
+            let currentRole: string | null = null;
             if (user && members && members.length > 0) {
                 const currentUserInClub = members.find((m: Member) => m.email === user.email);
-                if (currentUserInClub) {
-                    currentRole = currentUserInClub.role;
-                } else {
-                    currentRole = 'Member';
-                }
+                currentRole = currentUserInClub ? currentUserInClub.role : null;
             } else if (user) {
+                 // If there are no members yet, the first user is the President
                  currentRole = 'President';
             }
+            
             setRole(currentRole);
-            setIsOwner(currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer');
+            const canEdit = currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer';
+            const canManage = currentRole === 'President' || currentRole === 'Admin';
+            setCanEditContent(canEdit);
+            setCanManageRoles(canManage);
+
             setLoading(false);
         }
     }, [members, user, membersLoading, userLoading]);
 
-    return { role, isOwner, loading };
+    return { role, canEditContent, canManageRoles, loading };
 }

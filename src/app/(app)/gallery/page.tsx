@@ -41,7 +41,7 @@ const uploadFormSchema = z.object({
 
 export default function GalleryPage() {
   const { data: images, updateData: setImages, loading } = useGalleryImages();
-  const { isOwner } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +85,7 @@ export default function GalleryPage() {
   const handleUpload = (values: z.infer<typeof uploadFormSchema>) => {
     if (!user) return;
     
-    const newStatus = isOwner ? 'approved' : 'pending';
+    const newStatus = canEditContent ? 'approved' : 'pending';
     const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
     const newImages: GalleryImage[] = values.images.map((imgSrc, index) => ({
@@ -163,7 +163,7 @@ export default function GalleryPage() {
       <Card>
         <CardHeader>
           <CardTitle>Upload New Images</CardTitle>
-          <CardDescription>Add photos to the club's gallery. {isOwner ? "" : "Your photo will be submitted for approval."}</CardDescription>
+          <CardDescription>Add photos to the club's gallery. {canEditContent ? "" : "Your photo will be submitted for approval."}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(handleUpload)} className="space-y-4">
@@ -212,7 +212,7 @@ export default function GalleryPage() {
         </CardContent>
       </Card>
       
-      {isOwner && pendingImages.length > 0 && (
+      {canEditContent && pendingImages.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ShieldQuestion /> Pending Approvals</CardTitle>
@@ -284,7 +284,7 @@ export default function GalleryPage() {
                         <Button variant="outline" size="icon" onClick={() => handleDownload(image.src, `gallery-image-${image.id}.png`)}>
                             <Download className="h-4 w-4" />
                         </Button>
-                        {isOwner && (
+                        {canEditContent && (
                             <AlertDialog open={deletingImageId === image.id} onOpenChange={(open) => !open && setDeletingImageId(null)}>
                                 <AlertDialogTrigger asChild>
                                     <Button variant="destructive" size="icon" onClick={() => setDeletingImageId(image.id)}>

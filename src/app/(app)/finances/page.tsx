@@ -53,7 +53,7 @@ export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
-  const { isOwner } = useCurrentUserRole();
+  const { role } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof transactionFormSchema>>({
     resolver: zodResolver(transactionFormSchema),
@@ -86,6 +86,17 @@ export default function FinancesPage() {
     .filter((t) => t.amount < 0)
     .reduce((acc, t) => acc + t.amount, 0);
   const netBalance = totalIncome + totalExpenses;
+
+  if (role !== 'President' && role !== 'Admin') {
+    return (
+        <div className="flex items-center justify-center h-full">
+            <Card className="p-8 text-center">
+                <CardTitle>Access Denied</CardTitle>
+                <CardDescription>This page is only available to club Presidents and Admins.</CardDescription>
+            </Card>
+        </div>
+    )
+  }
   
   return (
     <>
@@ -127,7 +138,7 @@ export default function FinancesPage() {
                 Manually track your club's income and expenses.
               </CardDescription>
             </div>
-             {isOwner && (
+             {(role === 'President' || role === 'Admin') && (
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                     <Button><PlusCircle className="mr-2"/> Add Transaction</Button>

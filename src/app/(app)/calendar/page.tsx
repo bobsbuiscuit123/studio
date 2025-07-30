@@ -48,7 +48,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
-  const { isOwner } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   
   useEffect(() => {
     setDate(new Date());
@@ -177,7 +177,7 @@ export default function CalendarPage() {
         </Card>
       </div>
       <div className="space-y-4">
-        {isOwner && (
+        {canEditContent && (
             <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
@@ -230,7 +230,7 @@ export default function CalendarPage() {
                             {event.date.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute:'2-digit' })}
                             </p>
                         </div>
-                        {isOwner && (
+                        {canEditContent && (
                             <Button variant="ghost" size="icon" onClick={() => handleEditClick(event)}>
                                 <Pencil className="h-4 w-4" />
                             </Button>

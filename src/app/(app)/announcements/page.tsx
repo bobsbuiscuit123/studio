@@ -51,7 +51,7 @@ export default function AnnouncementsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
-  const { isOwner } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
@@ -163,7 +163,7 @@ export default function AnnouncementsPage() {
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">
-      {isOwner && (
+      {canEditContent && (
         <div className="md:col-span-1">
             <Card>
             <CardHeader>
@@ -202,7 +202,7 @@ export default function AnnouncementsPage() {
             </Card>
         </div>
       )}
-      <div className={isOwner ? "md:col-span-2" : "md:col-span-3"}>
+      <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
         <h2 className="text-2xl font-bold mb-4">Recent Announcements</h2>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
@@ -217,7 +217,7 @@ export default function AnnouncementsPage() {
                             {announcement.author} - {clubName} - {announcement.date}
                             </CardDescription>
                         </div>
-                        {isOwner && (
+                        {canEditContent && (
                             <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
                                 <Pencil className="h-4 w-4" />
                             </Button>
@@ -246,7 +246,7 @@ export default function AnnouncementsPage() {
           ) : (
             <Card className="flex items-center justify-center py-12">
               <CardContent>
-                <p className="text-muted-foreground">No announcements yet. {isOwner && "Create one to get started!"}</p>
+                <p className="text-muted-foreground">No announcements yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>
           )}

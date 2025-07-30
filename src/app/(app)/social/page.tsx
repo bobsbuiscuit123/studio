@@ -76,7 +76,7 @@ export default function SocialPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
-  const { isOwner } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
 
   useEffect(() => {
@@ -223,7 +223,7 @@ export default function SocialPage() {
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">
-      {isOwner && (
+      {canEditContent && (
         <div className="md:col-span-1">
             <Card>
             <CardHeader>
@@ -292,7 +292,7 @@ export default function SocialPage() {
             </Card>
         </div>
       )}
-       <div className={isOwner ? "md:col-span-2" : "md:col-span-3"}>
+       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
         <h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
         {loading ? <p>Loading...</p> : 
           socialPosts.length > 0 ? (
@@ -305,7 +305,7 @@ export default function SocialPage() {
                             <CardTitle>{post.title}</CardTitle>
                             <CardDescription>{post.author} - {post.date}</CardDescription>
                         </div>
-                        {isOwner && (
+                        {canEditContent && (
                             <div className="flex items-center gap-1">
                                 <Button variant="ghost" size="icon" onClick={() => handleEditClick(post)}>
                                     <Pencil className="h-4 w-4" />
@@ -402,7 +402,7 @@ export default function SocialPage() {
         ) : (
              <Card className="flex items-center justify-center py-12 md:col-span-2">
               <CardContent>
-                <p className="text-muted-foreground">No social posts yet. {isOwner && "Create one to get started!"}</p>
+                <p className="text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>
         )}

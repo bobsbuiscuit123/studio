@@ -63,7 +63,7 @@ export default function SlidesPage() {
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const { toast } = useToast();
-  const { isOwner, role } = useCurrentUserRole();
+  const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { data: announcements, updateData: setAnnouncements } = useAnnouncements();
   const { data: presentations, updateData: setPresentations, loading: presentationsLoading } = usePresentations();
@@ -189,12 +189,12 @@ export default function SlidesPage() {
     setDeletingId(null);
   }
 
-  if (role && !isOwner) {
+  if (role && role === 'Member') {
     return (
         <div className="flex items-center justify-center h-full">
             <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
-                <CardDescription>This page is only available to club administrators.</CardDescription>
+                <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>
         </div>
     )

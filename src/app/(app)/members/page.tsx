@@ -38,7 +38,7 @@ export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
   const { toast } = useToast();
   const [joinCode, setJoinCode] = useState('');
-  const { isOwner, role } = useCurrentUserRole();
+  const { canEditContent, canManageRoles } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const router = useRouter();
 
@@ -87,7 +87,7 @@ export default function MembersPage() {
     <div>
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-semibold">Member Directory</h1>
-        {isOwner && (
+        {canEditContent && (
             <div className="flex gap-2">
             <Dialog>
                 <DialogTrigger asChild>
@@ -148,7 +148,7 @@ export default function MembersPage() {
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Message
                   </Button>
-                   {role === 'President' && member.email !== user?.email && (
+                   {canManageRoles && member.email !== user?.email && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="secondary" className="w-full">
@@ -175,7 +175,7 @@ export default function MembersPage() {
         ) : (
            <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">No members have been added yet.</p>
-            {isOwner && <p className="text-muted-foreground">Share the join code to get started!</p>}
+            {canEditContent && <p className="text-muted-foreground">Share the join code to get started!</p>}
           </div>
         )}
     </div>

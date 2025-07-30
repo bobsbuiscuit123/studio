@@ -2,11 +2,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Megaphone, Loader2, Pencil, Download } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download, MessageSquare } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import ReactMarkdown from 'react-markdown';
+import { useRouter } from "next/navigation";
 
 
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers } from "@/lib/data-hooks";
 import type { Announcement } from "@/lib/mock-data";
 
 
@@ -48,14 +49,16 @@ const editFormSchema = z.object({
 
 export default function AnnouncementsPage() {
   const { data: announcements, updateData: setAnnouncements, loading } = useAnnouncements();
+  const { data: members, loading: membersLoading } = useMembers();
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
-  const { canEditContent } = useCurrentUserRole();
+  const { role, canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const router = useRouter();
 
 
   useEffect(() => {
@@ -139,7 +142,7 @@ export default function AnnouncementsPage() {
     try {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement(values);
       const newAnnouncement: Announcement = {
-        id: announcements.length + 1,
+        id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
         title: result.title,
         content: result.announcement,
         author: user?.name || "Club Admin",
@@ -159,6 +162,16 @@ export default function AnnouncementsPage() {
       setIsLoading(false);
     }
   };
+
+  const handleDiscussWithPresident = () => {
+    if (membersLoading) return;
+    const president = members.find(m => m.role === 'President');
+    if (president) {
+        router.push(`/messages?recipient=${president.email}`);
+    } else {
+        toast({ title: "Could not find President", description: "The club president could not be found to start a conversation.", variant: "destructive"});
+    }
+  }
   
   return (
     <>
@@ -229,18 +242,26 @@ export default function AnnouncementsPage() {
                       {announcement.content}
                     </p>
                   </CardContent>
-                   {announcement.slides && announcement.slides.length > 0 && (
-                    <CardFooter>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleDownloadSlides(announcement)}
-                        disabled={isDownloading && printableContent?.id === announcement.id}
-                      >
-                         {isDownloading && printableContent?.id === announcement.id ? <Loader2 className="animate-spin" /> : <Download className="mr-2" />}
-                         Download Associated Slides (PDF)
-                      </Button>
+                    <CardFooter className="flex-col items-start gap-2">
+                        {announcement.slides && announcement.slides.length > 0 && (
+                            <Button
+                                variant="outline"
+                                onClick={() => handleDownloadSlides(announcement)}
+                                disabled={isDownloading && printableContent?.id === announcement.id}
+                            >
+                                {isDownloading && printableContent?.id === announcement.id ? <Loader2 className="animate-spin" /> : <Download className="mr-2" />}
+                                Download Associated Slides (PDF)
+                            </Button>
+                        )}
+                        {role !== 'President' && (
+                            <Button
+                                variant="secondary"
+                                onClick={handleDiscussWithPresident}
+                            >
+                                <MessageSquare className="mr-2" /> Discuss with President
+                            </Button>
+                        )}
                     </CardFooter>
-                  )}
                 </Card>
               ))
           ) : (

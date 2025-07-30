@@ -36,7 +36,7 @@ import { Badge } from "@/components/ui/badge";
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
-  image: z.any().refine(files => files?.length > 0, "Image is required."),
+  images: z.array(z.string()).min(1, "At least one image is required."),
 });
 
 export default function GalleryPage() {
@@ -45,51 +45,70 @@ export default function GalleryPage() {
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
 
   const form = useForm<z.infer<typeof uploadFormSchema>>({
     resolver: zodResolver(uploadFormSchema),
-    defaultValues: { alt: "" },
+    defaultValues: { alt: "", images: [] },
   });
   
   const isOwner = role && role !== 'Member';
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string);
-        form.setValue("image", reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    const files = event.target.files;
+    if (files) {
+      const newImages: string[] = [];
+      const fileReaders: FileReader[] = [];
+
+      Array.from(files).forEach((file) => {
+        const reader = new FileReader();
+        fileReaders.push(reader);
+        reader.onloadend = () => {
+          newImages.push(reader.result as string);
+          if (newImages.length === files.length) {
+            const allImages = [...previewImages, ...newImages];
+            setPreviewImages(allImages);
+            form.setValue("images", allImages);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
     }
+  };
+  
+  const removePreviewImage = (index: number) => {
+    const updatedImages = [...previewImages];
+    updatedImages.splice(index, 1);
+    setPreviewImages(updatedImages);
+    form.setValue("images", updatedImages);
   };
 
   const handleUpload = (values: z.infer<typeof uploadFormSchema>) => {
     if (!user) return;
     
     const newStatus = isOwner ? 'approved' : 'pending';
-    
-    const newImage: GalleryImage = {
-      id: images.length > 0 ? Math.max(...images.map(i => i.id)) + 1 : 1,
-      src: values.image,
+    const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
+
+    const newImages: GalleryImage[] = values.images.map((imgSrc, index) => ({
+      id: lastId + index + 1,
+      src: imgSrc,
       alt: values.alt || "",
       author: user.name,
       date: new Date().toLocaleDateString(),
       likes: 0,
       liked: false,
       status: newStatus,
-    };
+    }));
+    
 
-    setImages([newImage, ...images]);
+    setImages([...newImages, ...images]);
     toast({ 
-      title: newStatus === 'approved' ? "Image uploaded successfully!" : "Image submitted for approval!",
+      title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
       description: newStatus === 'pending' ? "An admin will review your submission shortly." : undefined,
     });
     form.reset();
-    setPreviewImage(null);
+    setPreviewImages([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -145,53 +164,52 @@ export default function GalleryPage() {
     <div className="flex flex-col gap-8">
       <Card>
         <CardHeader>
-          <CardTitle>Upload a New Image</CardTitle>
-          <CardDescription>Add a photo to the club's gallery. {isOwner ? "" : "Your photo will be submitted for approval."}</CardDescription>
+          <CardTitle>Upload New Images</CardTitle>
+          <CardDescription>Add photos to the club's gallery. {isOwner ? "" : "Your photo will be submitted for approval."}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={form.handleSubmit(handleUpload)} className="grid md:grid-cols-3 gap-4 items-end">
-            <div className="md:col-span-1 space-y-2">
+          <form onSubmit={form.handleSubmit(handleUpload)} className="space-y-4">
+            <div className="space-y-2">
               <label htmlFor="alt">Image Description (Optional)</label>
-              <Input id="alt" {...form.register("alt")} placeholder="e.g., Team photo at the 2024 regional competition." />
+              <Input id="alt" {...form.register("alt")} placeholder="e.g., Team photos at the 2024 regional competition." />
               {form.formState.errors.alt && <p className="text-red-500 text-sm">{form.formState.errors.alt.message}</p>}
             </div>
-             <div className="flex items-center gap-4">
-               <div className="space-y-2">
-                  <label>Image File</label>
-                  <div>
-                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      <Upload className="mr-2" />
-                      Choose Image
-                      </Button>
-                      <Input
-                      type="file"
-                      className="hidden"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      />
-                      {form.formState.errors.image && <p className="text-red-500 text-sm">{form.formState.errors.image.message}</p>}
-                  </div>
-               </div>
-              {previewImage && (
-                  <div className="relative">
-                      <Image src={previewImage} alt="Preview" width={100} height={100} className="rounded-md aspect-square object-cover" />
-                      <Button
-                          variant="destructive"
-                          size="icon"
-                          className="absolute top-1 right-1 h-6 w-6"
-                          onClick={() => {
-                              setPreviewImage(null);
-                              form.setValue("image", null);
-                              if(fileInputRef.current) fileInputRef.current.value = "";
-                          }}
-                      >
-                          <X className="h-4 w-4" />
-                      </Button>
+             <div className="space-y-2">
+                <label>Image Files</label>
+                <div>
+                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="mr-2" />
+                    Choose Images
+                    </Button>
+                    <Input
+                    type="file"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/*"
+                    multiple
+                    />
+                    {form.formState.errors.images && <p className="text-red-500 text-sm mt-2">{form.formState.errors.images.message}</p>}
+                </div>
+             </div>
+              {previewImages.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                      {previewImages.map((image, index) => (
+                           <div key={index} className="relative">
+                                <Image src={image} alt={`Preview ${index}`} width={150} height={150} className="rounded-md aspect-square object-cover" />
+                                <Button
+                                    variant="destructive"
+                                    size="icon"
+                                    className="absolute top-1 right-1 h-6 w-6"
+                                    onClick={() => removePreviewImage(index)}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                      ))}
                   </div>
               )}
-             </div>
-            <Button type="submit" className="w-full md:w-auto">Upload Image</Button>
+            <Button type="submit" className="w-full md:w-auto">Upload {previewImages.length > 0 ? previewImages.length : ''} Image{previewImages.length > 1 ? 's' : ''}</Button>
           </form>
         </CardContent>
       </Card>

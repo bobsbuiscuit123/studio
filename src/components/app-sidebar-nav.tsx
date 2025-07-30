@@ -14,6 +14,7 @@ import {
   MessageSquare,
   GalleryHorizontal,
   CheckCircle,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from './ui/badge';
@@ -32,6 +33,7 @@ const allNavItems = [
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' },
+  { href: '/email', icon: Mail, label: 'Email', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
   { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
   { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'social' },
@@ -40,7 +42,11 @@ const allNavItems = [
 export function AppSidebarNav({ role, notifications }: { role: string; notifications: NotificationMap }) {
   const pathname = usePathname();
 
-  const navItems = allNavItems.filter(item => item.roles.includes(role));
+  const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
+    if (a.label === 'Finances' || a.label === 'Meeting Slides' || a.label === 'Email') return 1;
+    if (b.label === 'Finances' || b.label === 'Meeting Slides' || b.label === 'Email') return -1;
+    return 0;
+  });
 
   return (
     <>

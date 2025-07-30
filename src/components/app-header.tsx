@@ -46,6 +46,7 @@ const pageTitles: { [key: string]: string } = {
   "/social": "Social Media",
   "/messages": "Messages",
   "/attendance": "Attendance",
+  "/email": "Bulk Email",
 };
 
 function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, email: string) => void; }) {

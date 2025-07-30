@@ -8,6 +8,8 @@ import {
   CalendarDays,
   Landmark,
   UsersRound,
+  Megaphone,
+  Network,
 } from "lucide-react";
 import {
   Card,
@@ -26,15 +28,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useMembers, useEvents, useMessages, useCurrentUser } from "@/lib/data-hooks";
+import { useMembers, useEvents, useMessages, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
   const { data: members, loading: membersLoading, clubId } = useMembers();
   const { data: events, loading: eventsLoading } = useEvents();
+  const { data: announcements, loading: announcementsLoading } = useAnnouncements();
+  const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
   const { user, loading: userLoading } = useCurrentUser();
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const router = useRouter();
@@ -57,8 +61,34 @@ export default function Dashboard() {
       }
     }
   }, [messagesLoading, user, allMessages, toast]);
+  
+  const mostRecentActivity = useMemo(() => {
+    if (announcementsLoading || socialPostsLoading || eventsLoading) return null;
 
-  if (membersLoading || eventsLoading || !clubId || userLoading) {
+    const allActivities = [
+        ...announcements.map(a => ({...a, type: 'announcement', date: new Date(a.date), link: '/announcements' })),
+        ...socialPosts.map(p => ({...p, type: 'social', date: new Date(p.date), link: '/social' })),
+        ...events.map(e => ({...e, type: 'event', date: e.date, link: '/calendar' }))
+    ];
+
+    if (allActivities.length === 0) return null;
+
+    return allActivities.sort((a, b) => b.date.getTime() - a.date.getTime())[0];
+
+  }, [announcements, socialPosts, events, announcementsLoading, socialPostsLoading, eventsLoading]);
+
+  const activityIcon = useMemo(() => {
+    if (!mostRecentActivity) return Activity;
+    switch (mostRecentActivity.type) {
+      case 'announcement': return Megaphone;
+      case 'social': return Network;
+      case 'event': return CalendarDays;
+      default: return Activity;
+    }
+  }, [mostRecentActivity]);
+
+
+  if (membersLoading || eventsLoading || !clubId || userLoading || announcementsLoading || socialPostsLoading) {
     return (
        <div className="flex flex-col gap-4 md:gap-8">
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
@@ -131,13 +161,26 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recent Activity</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
+            {React.createElement(activityIcon, { className: "h-4 w-4 text-muted-foreground" })}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Stay Updated</div>
-            <p className="text-xs text-muted-foreground">
-              Activity from all club channels.
-            </p>
+            {mostRecentActivity ? (
+                 <Link href={mostRecentActivity.link}>
+                    <div className="text-2xl font-bold hover:underline truncate" title={mostRecentActivity.title}>
+                        {mostRecentActivity.title}
+                    </div>
+                    <p className="text-xs text-muted-foreground capitalize">
+                        {mostRecentActivity.type} from {mostRecentActivity.date.toLocaleDateString()}
+                    </p>
+                </Link>
+            ) : (
+                <>
+                 <div className="text-2xl font-bold">No Activity</div>
+                    <p className="text-xs text-muted-foreground">
+                    No recent club activity.
+                    </p>
+                </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -217,3 +260,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

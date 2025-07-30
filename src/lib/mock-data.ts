@@ -24,6 +24,8 @@ export type ClubEvent = {
   title: string;
   description: string;
   location: string;
+  checkInCode?: string;
+  attendees?: string[]; // Array of member emails
 };
 
 export type Slide = {

@@ -149,7 +149,7 @@ export function AppHeader() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>{user?.name || "My Account"}</DropdownMenuLabel>
+          <DropdownMenuLabel>{user?.name || "My Account"} ({role})</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>

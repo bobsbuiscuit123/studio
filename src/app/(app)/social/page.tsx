@@ -76,7 +76,7 @@ export default function SocialPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
-  const { role } = useCurrentUserRole();
+  const { isOwner } = useCurrentUserRole();
   const { user } = useCurrentUser();
 
   useEffect(() => {
@@ -219,8 +219,6 @@ export default function SocialPage() {
       setIsLoading(false);
     }
   };
-
-  const isOwner = role && role !== 'Member';
 
   return (
     <>

@@ -171,26 +171,28 @@ export function useCurrentUserRole() {
     const { data: members, loading: membersLoading } = useMembers();
     const { user, loading: userLoading } = useCurrentUser();
     const [role, setRole] = useState<string | null>(null);
+    const [isOwner, setIsOwner] = useState(false);
     const [loading, setLoading] = useState(true);
 
 
     useEffect(() => {
         if (!membersLoading && !userLoading) {
+            let currentRole = null;
             if (user && members && members.length > 0) {
                 const currentUserInClub = members.find((m: Member) => m.email === user.email);
                 if (currentUserInClub) {
-                    setRole(currentUserInClub.role);
+                    currentRole = currentUserInClub.role;
                 } else {
-                    // If user is not in the member list, they can't have a role
-                    setRole('Member');
+                    currentRole = 'Member';
                 }
             } else if (user) {
-                // If there's a user but no members list (e.g. new club), default to President
-                 setRole('President');
+                 currentRole = 'President';
             }
+            setRole(currentRole);
+            setIsOwner(currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer');
             setLoading(false);
         }
     }, [members, user, membersLoading, userLoading]);
 
-    return { role, loading };
+    return { role, isOwner, loading };
 }

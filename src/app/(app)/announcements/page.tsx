@@ -51,7 +51,7 @@ export default function AnnouncementsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
-  const { role } = useCurrentUserRole();
+  const { isOwner } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
@@ -160,8 +160,6 @@ export default function AnnouncementsPage() {
     }
   };
   
-  const isOwner = role && role !== 'Member';
-
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -52,7 +53,7 @@ export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
-  const { role } = useCurrentUserRole();
+  const { isOwner } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof transactionFormSchema>>({
     resolver: zodResolver(transactionFormSchema),
@@ -86,8 +87,6 @@ export default function FinancesPage() {
     .reduce((acc, t) => acc + t.amount, 0);
   const netBalance = totalIncome + totalExpenses;
   
-  const isOwner = role && role !== 'Member';
-
   return (
     <>
     <div className="flex flex-col gap-4">

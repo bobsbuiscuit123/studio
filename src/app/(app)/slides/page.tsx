@@ -7,7 +7,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy, Share2, Eye, Trash2 } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
-import html2pdf from 'html2pdf.js';
 
 
 import { Button } from "@/components/ui/button";
@@ -64,7 +63,7 @@ export default function SlidesPage() {
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const { toast } = useToast();
-  const { role } = useCurrentUserRole();
+  const { isOwner, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { data: announcements, updateData: setAnnouncements } = useAnnouncements();
   const { data: presentations, updateData: setPresentations, loading: presentationsLoading } = usePresentations();
@@ -114,9 +113,10 @@ export default function SlidesPage() {
   const handleDownload = async (presentation: PresentationType) => {
     setPrintableContent(presentation);
     // Use a timeout to ensure the printable content is rendered before generating PDF
-    setTimeout(() => {
+    setTimeout(async () => {
         const element = document.getElementById(`print-content-${presentation.id}`);
         if (element) {
+            const html2pdf = (await import('html2pdf.js')).default;
             const opt = {
                 margin:       0,
                 filename:     'meeting-slides.pdf',
@@ -189,7 +189,7 @@ export default function SlidesPage() {
     setDeletingId(null);
   }
 
-  if (role && role === 'Member') {
+  if (role && !isOwner) {
     return (
         <div className="flex items-center justify-center h-full">
             <Card className="p-8 text-center">

@@ -12,7 +12,7 @@ export type User = {
 
 export type Member = {
   name: string;
-  role: string;
+  role: 'President' | 'Admin' | 'Officer' | 'Member';
   avatar: string;
   email: string;
   dataAiHint?: string;

@@ -24,15 +24,15 @@ type NotificationMap = {
 }
 
 const allNavItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Member'], notificationKey: null },
-  { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'], notificationKey: 'announcements' },
-  { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'], notificationKey: null },
-  { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Member'], notificationKey: null },
-  { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'], notificationKey: null },
-  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Member'], notificationKey: 'messages' },
-  { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'], notificationKey: null },
-  { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin'], notificationKey: null },
-  { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Member'], notificationKey: 'social' },
+  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'announcements' },
+  { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' },
+  { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
+  { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
+  { href: '/social', icon: Network, label: 'Social Media', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'social' },
 ];
 
 export function AppSidebarNav({ role, notifications }: { role: string; notifications: NotificationMap }) {

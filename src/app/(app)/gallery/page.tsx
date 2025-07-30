@@ -41,7 +41,7 @@ const uploadFormSchema = z.object({
 
 export default function GalleryPage() {
   const { data: images, updateData: setImages, loading } = useGalleryImages();
-  const { role } = useCurrentUserRole();
+  const { isOwner } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -53,8 +53,6 @@ export default function GalleryPage() {
     defaultValues: { alt: "", images: [] },
   });
   
-  const isOwner = role && role !== 'Member';
-
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {

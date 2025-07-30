@@ -48,7 +48,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
-  const { role } = useCurrentUserRole();
+  const { isOwner } = useCurrentUserRole();
   
   useEffect(() => {
     setDate(new Date());
@@ -131,8 +131,6 @@ export default function CalendarPage() {
     return url.toString();
   };
   
-  const isOwner = role && role !== 'Member';
-
   return (
     <>
     <div className="grid gap-8 md:grid-cols-3">

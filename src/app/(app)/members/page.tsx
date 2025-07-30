@@ -1,7 +1,7 @@
 
 "use client";
 
-import { MessageSquare, Mail, Share2 } from "lucide-react";
+import { MessageSquare, Mail, Share2, ChevronDown } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -23,16 +23,22 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 
 export default function MembersPage() {
-  const { data: members, loading, clubId } = useMembers();
+  const { data: members, updateData: setMembers, loading, clubId } = useMembers();
   const { toast } = useToast();
   const [joinCode, setJoinCode] = useState('');
-  const { role } = useCurrentUserRole();
+  const { isOwner, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const router = useRouter();
 
@@ -69,7 +75,13 @@ export default function MembersPage() {
     }
   };
 
-  const isOwner = role && role !== 'Member';
+  const handleRoleChange = (memberEmail: string, newRole: 'President' | 'Admin' | 'Officer' | 'Member') => {
+    const updatedMembers = members.map(m =>
+      m.email === memberEmail ? { ...m, role: newRole } : m
+    );
+    setMembers(updatedMembers);
+    toast({ title: "Member role updated successfully!" });
+  };
   
   return (
     <div>
@@ -127,7 +139,7 @@ export default function MembersPage() {
                     {member.email}
                   </a>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex-col gap-2">
                   <Button
                     className="w-full"
                     onClick={() => handleMessage(member)}
@@ -136,6 +148,26 @@ export default function MembersPage() {
                     <MessageSquare className="mr-2 h-4 w-4" />
                     Message
                   </Button>
+                   {role === 'President' && member.email !== user?.email && (
+                     <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="secondary" className="w-full">
+                          Manage Role <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Admin')}>
+                          Set as Admin
+                        </DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Officer')}>
+                          Set as Officer
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleRoleChange(member.email, 'Member')}>
+                          Set as Member
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
                 </CardFooter>
               </Card>
             ))}

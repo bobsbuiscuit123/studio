@@ -16,13 +16,12 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Menu, Settings, User, LogOut, Home } from "lucide-react";
+import { Menu, LogOut, Home } from "lucide-react";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
-import { SettingsDialog } from "./settings-dialog";
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
@@ -34,6 +33,7 @@ const pageTitles: { [key: string]: string } = {
   "/slides": "Meeting Slides",
   "/social": "Social Media",
   "/messages": "Messages",
+  "/attendance": "Attendance",
 };
 
 export function AppHeader() {
@@ -42,7 +42,6 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
   const { user, clearUser } = useCurrentUser();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
@@ -151,9 +150,6 @@ export function AppHeader() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{user?.name || "My Account"} ({role})</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><User className="mr-2 h-4 w-4" />Profile</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => setIsSettingsOpen(true)}><Settings className="mr-2 h-4 w-4" />Settings</DropdownMenuItem>
-          <DropdownMenuSeparator />
            <Link href="/">
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
@@ -161,7 +157,6 @@ export function AppHeader() {
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
-    <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </>
   );
 }

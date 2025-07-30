@@ -35,6 +35,7 @@ import { Logo } from '@/components/icons';
 import { useRouter } from 'next/navigation';
 import { Member, User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
+import { sendResetPasswordEmail } from '@/ai/flows/send-reset-password-email';
 
 const clubFormSchema = z.object({
   name: z.string().min(4, 'Club name must be at least 4 characters.'),
@@ -55,6 +56,11 @@ const loginFormSchema = z.object({
     email: z.string().email("Please enter a valid email address."),
     password: z.string().min(1, "Password is required."),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email("Please enter a valid email address."),
+});
+
 
 const joinClubFormSchema = z.object({
     code: z.string().length(4, "Join code must be 4 characters long.").regex(/^[A-Z0-9]{4}$/, "Code must be uppercase letters and numbers."),
@@ -143,6 +149,12 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
         resolver: zodResolver(loginFormSchema),
         defaultValues: { email: '', password: '' },
     });
+    const forgotPasswordForm = useForm<z.infer<typeof forgotPasswordSchema>>({
+        resolver: zodResolver(forgotPasswordSchema),
+        defaultValues: { email: "" },
+    });
+    const [isForgotPassDialogOpen, setIsForgotPassDialogOpen] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     const { toast } = useToast();
 
      const handleLogin = (values: z.infer<typeof loginFormSchema>) => {
@@ -162,8 +174,26 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
         onLogin(foundUser);
         toast({ title: `Welcome back, ${foundUser.name}!`});
     };
+    
+    const handleForgotPassword = async (values: z.infer<typeof forgotPasswordSchema>) => {
+        setIsSending(true);
+        try {
+            const result = await sendResetPasswordEmail(values);
+            toast({
+                title: "Request Sent",
+                description: result.message,
+            });
+            setIsForgotPassDialogOpen(false);
+            forgotPasswordForm.reset();
+        } catch (error) {
+             toast({ title: "Error", description: "Failed to send reset email. Please try again.", variant: "destructive" });
+        } finally {
+            setIsSending(false);
+        }
+    }
 
     return (
+        <>
          <div className="w-full max-w-md">
              <CardHeader>
                 <CardTitle className="text-3xl">Log In to ClubHub</CardTitle>
@@ -177,7 +207,12 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                         {loginForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.email.message}</p>}
                     </div>
                     <div>
-                        <Label htmlFor="password-login">Password</Label>
+                        <div className="flex justify-between items-center">
+                            <Label htmlFor="password-login">Password</Label>
+                            <Button type="button" variant="link" className="p-0 h-auto text-xs" onClick={() => setIsForgotPassDialogOpen(true)}>
+                                Forgot Password?
+                            </Button>
+                        </div>
                         <Input id="password-login" type="password" {...loginForm.register('password')} />
                         {loginForm.formState.errors.password && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.password.message}</p>}
                     </div>
@@ -191,6 +226,29 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                 </p>
             </CardFooter>
         </div>
+        
+        <Dialog open={isForgotPassDialogOpen} onOpenChange={setIsForgotPassDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Reset Your Password</DialogTitle>
+                    <DialogDescription>
+                        Enter your email address and we'll send you a link to reset your password.
+                    </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={forgotPasswordForm.handleSubmit(handleForgotPassword)} className="space-y-4 pt-4">
+                    <div>
+                        <Label htmlFor="email-forgot">Email Address</Label>
+                        <Input id="email-forgot" {...forgotPasswordForm.register('email')} placeholder="e.g., alex.j@example.com" />
+                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.formState.errors.email.message}</p>}
+                    </div>
+                     <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
+                        <Button type="submit" disabled={isSending}>{isSending ? "Sending..." : "Send Reset Link"}</Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 }
 

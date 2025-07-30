@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const uploadFormSchema = z.object({
-  alt: z.string().min(3, "Please provide a brief description of the image."),
+  alt: z.string().optional(),
   image: z.any().refine(files => files?.length > 0, "Image is required."),
 });
 
@@ -69,7 +69,7 @@ export default function GalleryPage() {
     const newImage: GalleryImage = {
       id: images.length > 0 ? Math.max(...images.map(i => i.id)) + 1 : 1,
       src: values.image,
-      alt: values.alt,
+      alt: values.alt || "",
       author: user.name,
       date: new Date().toLocaleDateString(),
       likes: 0,
@@ -128,7 +128,7 @@ export default function GalleryPage() {
           <CardContent>
             <form onSubmit={form.handleSubmit(handleUpload)} className="grid md:grid-cols-3 gap-4 items-end">
               <div className="md:col-span-1 space-y-2">
-                <label htmlFor="alt">Image Description</label>
+                <label htmlFor="alt">Image Description (Optional)</label>
                 <Input id="alt" {...form.register("alt")} placeholder="e.g., Team photo at the 2024 regional competition." />
                 {form.formState.errors.alt && <p className="text-red-500 text-sm">{form.formState.errors.alt.message}</p>}
               </div>

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -48,12 +48,17 @@ export default function EmailPage() {
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
-    values: emailContent, // Use state to control form values
+    values: emailContent, 
     defaultValues: {
         subject: '',
         body: '',
     }
   });
+
+  // Re-validate the form whenever emailContent changes
+  useEffect(() => {
+    emailForm.trigger();
+  }, [emailContent, emailForm]);
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
     setIsGenerating(true);
@@ -100,11 +105,7 @@ export default function EmailPage() {
     return link;
   }, [emailContent, members, toast]);
 
-  const isEmailReady = useMemo(() => {
-    // Manually trigger validation to ensure form state is up-to-date with state
-    emailForm.trigger(); 
-    return emailForm.formState.isValid && members.length > 0 && gmailLink !== "#";
-  }, [emailForm, members, gmailLink]);
+  const isEmailReady = emailContent.subject && emailContent.body && members.length > 0 && gmailLink !== "#";
   
   if (role && role === 'Member') {
     return (
@@ -207,7 +208,7 @@ export default function EmailPage() {
                             href={isEmailReady ? gmailLink : undefined} 
                             target="_blank" 
                             rel="noopener noreferrer"
-                            className={!isEmailReady || membersLoading ? 'pointer-events-none' : ''}
+                            className={!isEmailReady ? 'pointer-events-none' : ''}
                           >
                             <Button 
                                 type="button"

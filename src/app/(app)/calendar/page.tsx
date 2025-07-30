@@ -54,6 +54,7 @@ export default function CalendarPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const { canEditContent } = useCurrentUserRole();
   
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function CalendarPage() {
 
   const handleEditClick = (event: ClubEvent) => {
     setEditingEvent(event);
+    setSelectedEvent(null); // Close the details dialog if open
     editForm.reset({
       title: event.title,
       description: event.description,
@@ -92,7 +94,7 @@ export default function CalendarPage() {
   };
 
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
     setIsLoading(true);
     try {
       const result: AddCalendarEventOutput = await addCalendarEvent(values);
@@ -170,9 +172,13 @@ export default function CalendarPage() {
                     <div className="flex flex-col h-full items-start justify-start">
                       <p>{date.getDate()}</p>
                       {dayEvents.map((event, i) => (
-                        <div key={i} className="text-xs bg-primary/20 text-primary-foreground rounded-sm px-1 w-full truncate">
+                        <button 
+                            key={i} 
+                            className="text-xs bg-primary/20 text-primary-foreground rounded-sm px-1 w-full truncate text-left hover:bg-primary/40"
+                            onClick={() => setSelectedEvent(event)}
+                        >
                           {event.title}
-                        </div>
+                        </button>
                       ))}
                     </div>
                   );
@@ -231,19 +237,19 @@ export default function CalendarPage() {
                     {[...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event) => (
                       <AccordionItem value={`item-${event.id}`} key={event.id}>
                         <div className="flex justify-between items-center w-full py-4">
-                          <AccordionTrigger className="flex-grow p-0">
-                            <div className="text-left">
-                              <p className="font-semibold">{event.title}</p>
-                              <p className="text-sm text-muted-foreground font-normal">
-                                {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                              </p>
-                            </div>
-                          </AccordionTrigger>
-                          {canEditContent && (
-                            <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="ml-4 shrink-0">
-                                <Pencil className="h-4 w-4" />
-                            </Button>
-                           )}
+                            <AccordionTrigger className="flex-grow p-0">
+                                <div className="text-left">
+                                <p className="font-semibold">{event.title}</p>
+                                <p className="text-sm text-muted-foreground font-normal">
+                                    {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                </p>
+                                </div>
+                            </AccordionTrigger>
+                            {canEditContent && (
+                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="ml-4 shrink-0">
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                            )}
                         </div>
                         <AccordionContent>
                           <div className="space-y-3 pl-2">
@@ -273,6 +279,38 @@ export default function CalendarPage() {
         </Card>
       </div>
     </div>
+    {/* Event Details Dialog */}
+    {selectedEvent && (
+        <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{selectedEvent.title}</DialogTitle>
+                    <CardDescription>
+                         {selectedEvent.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                         {' at '}
+                         {selectedEvent.date.toLocaleString('en-US', { hour: '2-digit', minute:'2-digit' })}
+                    </CardDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <p>{selectedEvent.description}</p>
+                    <p><strong>Location:</strong> {selectedEvent.location}</p>
+                </div>
+                <DialogFooter className="sm:justify-between gap-2">
+                    <Link href={generateGoogleCalendarLink(selectedEvent)} target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline">
+                            <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
+                        </Button>
+                    </Link>
+                    {canEditContent && (
+                        <Button onClick={() => handleEditClick(selectedEvent)}>
+                            <Pencil className="mr-2 h-4 w-4" /> Edit Event
+                        </Button>
+                    )}
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )}
+    {/* Edit Event Dialog */}
     {editingEvent && (
         <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
           <DialogContent>

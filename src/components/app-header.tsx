@@ -10,18 +10,30 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Sheet,
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Menu, LogOut, Home } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Menu, LogOut, Home, User } from "lucide-react";
 import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import type { User as UserType } from "@/lib/mock-data";
+
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
@@ -36,12 +48,54 @@ const pageTitles: { [key: string]: string } = {
   "/attendance": "Attendance",
 };
 
+function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, avatar: string) => void; }) {
+  const [name, setName] = useState(user?.name || '');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
+
+  useEffect(() => {
+    setName(user?.name || '');
+    setAvatar(user?.avatar || '');
+  }, [user]);
+
+  const handleSave = () => {
+    onSave(name, avatar);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Profile Settings</DialogTitle>
+          <DialogDescription>
+            Update your name and avatar here.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="avatar">Avatar URL</Label>
+            <Input id="avatar" value={avatar} onChange={(e) => setAvatar(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AppHeader() {
   const pathname = usePathname();
   const [clubName, setClubName] = useState("");
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
-  const { user, clearUser } = useCurrentUser();
+  const { user, saveUser, clearUser } = useCurrentUser();
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
@@ -50,6 +104,7 @@ export function AppHeader() {
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
 
   useEffect(() => {
@@ -85,6 +140,10 @@ export function AppHeader() {
     clearUser();
     localStorage.removeItem('selectedClubId');
     router.push('/');
+  }
+
+  const handleSaveProfile = (name: string, avatar: string) => {
+    saveUser({ name, avatar });
   }
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
@@ -150,6 +209,10 @@ export function AppHeader() {
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>{user?.name || "My Account"} ({role})</DropdownMenuLabel>
           <DropdownMenuSeparator />
+           <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
            <Link href="/">
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
@@ -157,6 +220,7 @@ export function AppHeader() {
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
+    <ProfileDialog isOpen={isProfileOpen} onOpenChange={setIsProfileOpen} user={user} onSave={handleSaveProfile} />
     </>
   );
 }

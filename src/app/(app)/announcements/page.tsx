@@ -1,13 +1,14 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import { Megaphone, Loader2, Pencil, Download, MessageSquare } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Megaphone, Loader2, Pencil, Download, MessageSquare, Image as ImageIcon, X } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import ReactMarkdown from 'react-markdown';
 import { useRouter } from "next/navigation";
+import NextImage from 'next/image';
 
 
 import { Button } from "@/components/ui/button";
@@ -36,10 +37,18 @@ import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/f
 import { useToast } from "@/hooks/use-toast";
 import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers } from "@/lib/data-hooks";
 import type { Announcement } from "@/lib/mock-data";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
+  photos: z.array(z.string()).optional(),
 });
 
 const editFormSchema = z.object({
@@ -59,6 +68,8 @@ export default function AnnouncementsPage() {
   const [printableContent, setPrintableContent] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
 
 
   useEffect(() => {
@@ -107,12 +118,42 @@ export default function AnnouncementsPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
+      photos: [],
     },
   });
 
   const editForm = useForm<z.infer<typeof editFormSchema>>({
     resolver: zodResolver(editFormSchema),
   });
+
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files) {
+      const newImages: string[] = [];
+      const fileReaders: FileReader[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        fileReaders.push(reader);
+        reader.onloadend = () => {
+          newImages.push(reader.result as string);
+          if (newImages.length === files.length) {
+            const allImages = [...previewImages, ...newImages];
+            setPreviewImages(allImages);
+            form.setValue("photos", allImages);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  const removePreviewImage = (index: number) => {
+    const newImages = [...previewImages];
+    newImages.splice(index, 1);
+    setPreviewImages(newImages);
+    form.setValue("photos", newImages);
+  }
   
   const handleEditClick = (announcement: Announcement) => {
     setEditingAnnouncement(announcement);
@@ -140,18 +181,25 @@ export default function AnnouncementsPage() {
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
-      const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement(values);
+      const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement({
+        prompt: values.prompt,
+        photoDataUris: form.getValues("photos"),
+      });
       const newAnnouncement: Announcement = {
         id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
         title: result.title,
         content: result.announcement,
         author: user?.name || "Club Admin",
         date: new Date().toLocaleDateString(),
+        images: previewImages.length > 0 ? previewImages : [],
+        dataAiHint: "club event",
         read: false,
       };
       setAnnouncements([newAnnouncement, ...announcements]);
       toast({ title: "Announcement generated successfully!" });
       form.reset();
+      setPreviewImages([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
       toast({
         title: "Error",
@@ -202,6 +250,39 @@ export default function AnnouncementsPage() {
                         </FormItem>
                     )}
                     />
+                    <FormItem>
+                      <FormLabel>Images (Optional)</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                            <ImageIcon className="mr-2" />
+                            Upload Images
+                        </Button>
+                        <FormControl>
+                            <Input 
+                            type="file" 
+                            accept="image/*"
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            onChange={handleImageChange}
+                            multiple
+                            />
+                        </FormControl>
+                      </div>
+                    </FormItem>
+
+                    {previewImages.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2">
+                          {previewImages.map((image, index) => (
+                          <div key={index} className="relative">
+                              <NextImage src={image} alt={`Preview ${index + 1}`} width={200} height={200} className="rounded-md w-full h-auto aspect-square object-cover" />
+                              <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePreviewImage(index)}>
+                                  <X className="h-4 w-4"/>
+                              </Button>
+                          </div>
+                          ))}
+                      </div>
+                    )}
+
                     <Button type="submit" disabled={isLoading} className="w-full">
                     {isLoading ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -237,7 +318,24 @@ export default function AnnouncementsPage() {
                         )}
                     </div>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-4">
+                    {announcement.images && announcement.images.length > 0 && (
+                      <Carousel className="w-full max-w-sm mx-auto">
+                        <CarouselContent>
+                          {announcement.images.map((image, index) => (
+                            <CarouselItem key={index}>
+                                <NextImage src={image} alt={`announcement image ${index+1}`} width={400} height={300} className="rounded-lg aspect-[4/3] object-cover" data-ai-hint={announcement.dataAiHint} />
+                            </CarouselItem>
+                          ))}
+                        </CarouselContent>
+                        {announcement.images.length > 1 && (
+                          <>
+                            <CarouselPrevious />
+                            <CarouselNext />
+                          </>
+                        )}
+                      </Carousel>
+                    )}
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                       {announcement.content}
                     </p>

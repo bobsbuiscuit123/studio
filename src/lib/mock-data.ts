@@ -48,6 +48,8 @@ export type Announcement = {
   date: string;
   read: boolean;
   slides?: Slide[];
+  images?: string[];
+  dataAiHint?: string;
 };
 
 export type Comment = {

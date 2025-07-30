@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Mail, Loader2, Send, Wand2, Users, ExternalLink } from "lucide-react";
+import { Mail, Loader2, Wand2, Users, ExternalLink } from "lucide-react";
+import Link from 'next/link';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -39,7 +40,7 @@ export default function EmailPage() {
   const { toast } = useToast();
   
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedEmail, setGeneratedEmail] = useState<GenerateEmailOutput | null>(null);
+  const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -48,19 +49,14 @@ export default function EmailPage() {
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
-    defaultValues: {
-        subject: "",
-        body: "",
-    },
+    values: emailContent, // Use state to control form values
   });
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
     setIsGenerating(true);
-    setGeneratedEmail(null);
     try {
       const result = await generateEmail(values);
-      setGeneratedEmail(result);
-      emailForm.reset({
+      setEmailContent({
         subject: result.subject,
         body: result.body,
       });
@@ -75,33 +71,35 @@ export default function EmailPage() {
       setIsGenerating(false);
     }
   };
-
-  const handleOpenEmailClient = (values: z.infer<typeof emailFormSchema>) => {
+  
+  const mailtoLink = useMemo(() => {
     const recipientEmails = members.map(m => m.email);
-    if (recipientEmails.length === 0) {
-      toast({ title: "No members to email", description: "There are no members in this club.", variant: "destructive"});
-      return;
+    if (recipientEmails.length === 0 || !emailContent.subject || !emailContent.body) {
+      return "";
     }
     
-    const to = recipientEmails.join(',');
-    const subject = encodeURIComponent(values.subject);
-    const body = encodeURIComponent(values.body);
+    const to = ''; // Bcc is preferred for privacy
+    const bcc = recipientEmails.join(',');
+    const subject = encodeURIComponent(emailContent.subject);
+    const body = encodeURIComponent(emailContent.body);
     
-    const mailtoLink = `mailto:${to}?subject=${subject}&body=${body}`;
+    const link = `mailto:${to}?bcc=${bcc}&subject=${subject}&body=${body}`;
 
-    // Mailto links have character limits, which can be an issue with many recipients or a long body.
-    if (mailtoLink.length > 2000) {
+    if (link.length > 2000) {
         toast({
             title: "Email is too long",
             description: "The generated email (including recipients) is too long to open in your email client automatically. Please copy the content manually.",
             variant: "destructive",
             duration: 10000,
         });
-        return;
+        return "#"; // Return a non-functional link
     }
+    return link;
+  }, [emailContent, members, toast]);
 
-    window.location.href = mailtoLink;
-  };
+  const isEmailReady = useMemo(() => {
+    return emailForm.formState.isValid && members.length > 0 && mailtoLink !== "#";
+  }, [emailForm.formState.isValid, members, mailtoLink]);
   
   if (role && role === 'Member') {
     return (
@@ -158,7 +156,7 @@ export default function EmailPage() {
             </CardHeader>
             <CardContent>
                 <Form {...emailForm}>
-                    <form onSubmit={emailForm.handleSubmit(handleOpenEmailClient)} className="space-y-4">
+                    <form className="space-y-4">
                         <FormField
                             control={emailForm.control}
                             name="subject"
@@ -166,7 +164,14 @@ export default function EmailPage() {
                                 <FormItem>
                                     <FormLabel>Subject</FormLabel>
                                     <FormControl>
-                                        <Input {...field} placeholder="Email Subject" />
+                                        <Input 
+                                            {...field}
+                                            onChange={(e) => {
+                                                field.onChange(e);
+                                                setEmailContent(prev => ({...prev, subject: e.target.value}));
+                                            }}
+                                            placeholder="Email Subject" 
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
@@ -179,15 +184,25 @@ export default function EmailPage() {
                                 <FormItem>
                                     <FormLabel>Body</FormLabel>
                                     <FormControl>
-                                        <Textarea className="min-h-[300px]" {...field} placeholder="Email Body" />
+                                        <Textarea 
+                                            className="min-h-[300px]" 
+                                            {...field} 
+                                            onChange={(e) => {
+                                                field.onChange(e);
+                                                setEmailContent(prev => ({...prev, body: e.target.value}));
+                                            }}
+                                            placeholder="Email Body" 
+                                        />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
-                         <Button type="submit" disabled={!generatedEmail || membersLoading} className="w-full">
-                            <ExternalLink />
-                            Open in Email Client for All ({membersLoading ? '...' : members.length}) Members
+                        <Button asChild disabled={!isEmailReady || membersLoading} className="w-full">
+                            <Link href={isEmailReady ? mailtoLink : '#'}>
+                                <ExternalLink />
+                                Open in Email Client for All ({membersLoading ? '...' : members.length}) Members
+                            </Link>
                         </Button>
                     </form>
                 </Form>

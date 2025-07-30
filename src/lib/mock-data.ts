@@ -40,6 +40,12 @@ export type Presentation = {
     createdAt: string;
 }
 
+export type Attachment = {
+  name: string;
+  dataUri: string;
+  type: string;
+};
+
 export type Announcement = {
   id: number;
   title: string;
@@ -48,8 +54,7 @@ export type Announcement = {
   date: string;
   read: boolean;
   slides?: Slide[];
-  images?: string[];
-  dataAiHint?: string;
+  attachments?: Attachment[];
 };
 
 export type Comment = {

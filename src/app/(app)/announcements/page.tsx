@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Megaphone, Loader2, Pencil, Download, MessageSquare, Image as ImageIcon, X } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download, MessageSquare, Paperclip, X, File as FileIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -36,19 +36,12 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
 import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers } from "@/lib/data-hooks";
-import type { Announcement } from "@/lib/mock-data";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
+import type { Announcement, Attachment } from "@/lib/mock-data";
 
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
-  photos: z.array(z.string()).optional(),
+  attachments: z.array(z.custom<Attachment>()).optional(),
 });
 
 const editFormSchema = z.object({
@@ -69,7 +62,7 @@ export default function AnnouncementsPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
 
   useEffect(() => {
@@ -118,7 +111,7 @@ export default function AnnouncementsPage() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       prompt: "",
-      photos: [],
+      attachments: [],
     },
   });
 
@@ -126,33 +119,34 @@ export default function AnnouncementsPage() {
     resolver: zodResolver(editFormSchema),
   });
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const newImages: string[] = [];
-      const fileReaders: FileReader[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+      const newAttachments: Attachment[] = [];
+      Array.from(files).forEach(file => {
         const reader = new FileReader();
-        fileReaders.push(reader);
         reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            const allImages = [...previewImages, ...newImages];
-            setPreviewImages(allImages);
-            form.setValue("photos", allImages);
+          newAttachments.push({
+            name: file.name,
+            dataUri: reader.result as string,
+            type: file.type,
+          });
+          if (newAttachments.length === files.length) {
+            const allAttachments = [...attachments, ...newAttachments];
+            setAttachments(allAttachments);
+            form.setValue("attachments", allAttachments);
           }
         };
         reader.readAsDataURL(file);
-      }
+      });
     }
   };
 
-  const removePreviewImage = (index: number) => {
-    const newImages = [...previewImages];
-    newImages.splice(index, 1);
-    setPreviewImages(newImages);
-    form.setValue("photos", newImages);
+  const removeAttachment = (index: number) => {
+    const newAttachments = [...attachments];
+    newAttachments.splice(index, 1);
+    setAttachments(newAttachments);
+    form.setValue("attachments", newAttachments);
   }
   
   const handleEditClick = (announcement: Announcement) => {
@@ -177,13 +171,21 @@ export default function AnnouncementsPage() {
     setPrintableContent(announcement);
     setIsDownloading(true);
   };
+  
+  const handleDownloadAttachment = (attachment: Attachment) => {
+    const link = document.createElement("a");
+    link.href = attachment.dataUri;
+    link.download = attachment.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement({
         prompt: values.prompt,
-        photoDataUris: form.getValues("photos"),
       });
       const newAnnouncement: Announcement = {
         id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
@@ -191,14 +193,13 @@ export default function AnnouncementsPage() {
         content: result.announcement,
         author: user?.name || "Club Admin",
         date: new Date().toLocaleDateString(),
-        images: previewImages.length > 0 ? previewImages : [],
-        dataAiHint: "club event",
+        attachments: attachments,
         read: false,
       };
       setAnnouncements([newAnnouncement, ...announcements]);
       toast({ title: "Announcement generated successfully!" });
       form.reset();
-      setPreviewImages([]);
+      setAttachments([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
       toast({
@@ -251,31 +252,33 @@ export default function AnnouncementsPage() {
                     )}
                     />
                     <FormItem>
-                      <FormLabel>Images (Optional)</FormLabel>
+                      <FormLabel>Attachments (Optional)</FormLabel>
                       <div className="flex items-center gap-2">
                         <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                            <ImageIcon className="mr-2" />
-                            Upload Images
+                            <Paperclip className="mr-2" />
+                            Add Files
                         </Button>
                         <FormControl>
                             <Input 
                             type="file" 
-                            accept="image/*"
                             ref={fileInputRef} 
                             className="hidden" 
-                            onChange={handleImageChange}
+                            onChange={handleFileChange}
                             multiple
                             />
                         </FormControl>
                       </div>
                     </FormItem>
 
-                    {previewImages.length > 0 && (
-                      <div className="grid grid-cols-2 gap-2">
-                          {previewImages.map((image, index) => (
-                          <div key={index} className="relative">
-                              <NextImage src={image} alt={`Preview ${index + 1}`} width={200} height={200} className="rounded-md w-full h-auto aspect-square object-cover" />
-                              <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePreviewImage(index)}>
+                    {attachments.length > 0 && (
+                      <div className="space-y-2">
+                          {attachments.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
+                              <div className="flex items-center gap-2 truncate">
+                                <FileIcon className="h-4 w-4 shrink-0" />
+                                <span className="truncate">{file.name}</span>
+                              </div>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttachment(index)}>
                                   <X className="h-4 w-4"/>
                               </Button>
                           </div>
@@ -319,26 +322,27 @@ export default function AnnouncementsPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {announcement.images && announcement.images.length > 0 && (
-                      <Carousel className="w-full max-w-sm mx-auto">
-                        <CarouselContent>
-                          {announcement.images.map((image, index) => (
-                            <CarouselItem key={index}>
-                                <NextImage src={image} alt={`announcement image ${index+1}`} width={400} height={300} className="rounded-lg aspect-[4/3] object-cover" data-ai-hint={announcement.dataAiHint} />
-                            </CarouselItem>
-                          ))}
-                        </CarouselContent>
-                        {announcement.images.length > 1 && (
-                          <>
-                            <CarouselPrevious />
-                            <CarouselNext />
-                          </>
-                        )}
-                      </Carousel>
-                    )}
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                       {announcement.content}
                     </p>
+                    {announcement.attachments && announcement.attachments.length > 0 && (
+                        <div>
+                            <h4 className="font-semibold text-sm mb-2">Attachments</h4>
+                            <div className="space-y-2">
+                                {announcement.attachments.map((file, index) => (
+                                    <div key={index} className="flex items-center justify-between text-sm p-2 border rounded-md">
+                                        <div className="flex items-center gap-2 truncate">
+                                            <FileIcon className="h-4 w-4 shrink-0" />
+                                            <span className="truncate">{file.name}</span>
+                                        </div>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDownloadAttachment(file)}>
+                                            <Download className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                   </CardContent>
                     <CardFooter className="flex-col items-start gap-2">
                         {announcement.slides && announcement.slides.length > 0 && (

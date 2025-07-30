@@ -94,7 +94,7 @@ export default function CalendarPage() {
   };
 
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
     setIsLoading(true);
     try {
       const result: AddCalendarEventOutput = await addCalendarEvent(values);
@@ -172,13 +172,13 @@ export default function CalendarPage() {
                     <div className="flex flex-col h-full items-start justify-start">
                       <p>{date.getDate()}</p>
                       {dayEvents.map((event, i) => (
-                        <button 
+                        <div
                             key={i} 
-                            className="text-xs bg-primary/20 text-primary-foreground rounded-sm px-1 w-full truncate text-left hover:bg-primary/40"
+                            className="cursor-pointer text-xs bg-primary/20 text-primary-foreground rounded-sm px-1 w-full truncate text-left hover:bg-primary/40"
                             onClick={() => setSelectedEvent(event)}
                         >
                           {event.title}
-                        </button>
+                        </div>
                       ))}
                     </div>
                   );

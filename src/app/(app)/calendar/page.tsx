@@ -230,21 +230,21 @@ export default function CalendarPage() {
                   <Accordion type="single" collapsible className="w-full">
                     {[...events].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event) => (
                       <AccordionItem value={`item-${event.id}`} key={event.id}>
-                        <AccordionTrigger>
-                          <div className="flex justify-between items-center w-full">
+                        <div className="flex justify-between items-center w-full py-4">
+                          <AccordionTrigger className="flex-grow p-0">
                             <div className="text-left">
                               <p className="font-semibold">{event.title}</p>
                               <p className="text-sm text-muted-foreground font-normal">
                                 {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                               </p>
                             </div>
-                             {canEditContent && (
-                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="mr-4">
-                                    <Pencil className="h-4 w-4" />
-                                </Button>
-                            )}
-                          </div>
-                        </AccordionTrigger>
+                          </AccordionTrigger>
+                          {canEditContent && (
+                            <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="ml-4 shrink-0">
+                                <Pencil className="h-4 w-4" />
+                            </Button>
+                           )}
+                        </div>
                         <AccordionContent>
                           <div className="space-y-3 pl-2">
                              <p className="text-sm">
@@ -337,4 +337,3 @@ export default function CalendarPage() {
     </>
   );
 }
-

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Mail, Loader2, Send, Wand2, Users } from "lucide-react";
+import { Mail, Loader2, Send, Wand2, Users, ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +22,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
 import { generateEmail, GenerateEmailOutput } from "@/ai/flows/generate-email";
-import { sendBulkEmail } from "@/ai/flows/send-bulk-email";
 
 
 const promptFormSchema = z.object({
@@ -40,7 +39,6 @@ export default function EmailPage() {
   const { toast } = useToast();
   
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [generatedEmail, setGeneratedEmail] = useState<GenerateEmailOutput | null>(null);
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
@@ -78,40 +76,31 @@ export default function EmailPage() {
     }
   };
 
-  const handleSendEmail = async (values: z.infer<typeof emailFormSchema>) => {
-    setIsSending(true);
-    try {
-      const recipientEmails = members.map(m => m.email);
-      if (recipientEmails.length === 0) {
-        toast({ title: "No members to email", description: "There are no members in this club.", variant: "destructive"});
-        return;
-      }
-
-      const result = await sendBulkEmail({
-        subject: values.subject,
-        body: values.body,
-        recipients: recipientEmails,
-      });
-
-      toast({
-        title: "Email Sent!",
-        description: result.message,
-      });
-
-      // Reset forms
-      promptForm.reset();
-      emailForm.reset({ subject: "", body: "" });
-      setGeneratedEmail(null);
-
-    } catch (error) {
-        toast({
-            title: "Error",
-            description: "Failed to send email.",
-            variant: "destructive",
-        });
-    } finally {
-        setIsSending(false);
+  const handleOpenEmailClient = (values: z.infer<typeof emailFormSchema>) => {
+    const recipientEmails = members.map(m => m.email);
+    if (recipientEmails.length === 0) {
+      toast({ title: "No members to email", description: "There are no members in this club.", variant: "destructive"});
+      return;
     }
+    
+    const to = recipientEmails.join(',');
+    const subject = encodeURIComponent(values.subject);
+    const body = encodeURIComponent(values.body);
+    
+    const mailtoLink = `mailto:${to}?subject=${subject}&body=${body}`;
+
+    // Mailto links have character limits, which can be an issue with many recipients or a long body.
+    if (mailtoLink.length > 2000) {
+        toast({
+            title: "Email is too long",
+            description: "The generated email (including recipients) is too long to open in your email client automatically. Please copy the content manually.",
+            variant: "destructive",
+            duration: 10000,
+        });
+        return;
+    }
+
+    window.location.href = mailtoLink;
   };
   
   if (role && role === 'Member') {
@@ -165,11 +154,11 @@ export default function EmailPage() {
         <Card className="md:col-span-2">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Mail /> 2. Review and Send</CardTitle>
-                <CardDescription>Review the AI-generated draft below. You can make edits before sending.</CardDescription>
+                <CardDescription>Review the AI-generated draft below. You can make edits before opening it in your email client.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Form {...emailForm}>
-                    <form onSubmit={emailForm.handleSubmit(handleSendEmail)} className="space-y-4">
+                    <form onSubmit={emailForm.handleSubmit(handleOpenEmailClient)} className="space-y-4">
                         <FormField
                             control={emailForm.control}
                             name="subject"
@@ -196,9 +185,9 @@ export default function EmailPage() {
                                 </FormItem>
                             )}
                         />
-                         <Button type="submit" disabled={!generatedEmail || isSending || membersLoading} className="w-full">
-                            {isSending ? <Loader2 className="animate-spin" /> : <Send />}
-                            Send to All ({membersLoading ? '...' : members.length}) Members
+                         <Button type="submit" disabled={!generatedEmail || membersLoading} className="w-full">
+                            <ExternalLink />
+                            Open in Email Client for All ({membersLoading ? '...' : members.length}) Members
                         </Button>
                     </form>
                 </Form>
@@ -207,7 +196,7 @@ export default function EmailPage() {
                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Users className="h-4 w-4" />
                     {members.length > 0 
-                        ? `This email will be sent to all ${members.length} members of the club.`
+                        ? `This email will be addressed to all ${members.length} members of the club.`
                         : "There are currently no members in this club."
                     }
                  </div>

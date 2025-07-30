@@ -8,32 +8,61 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { useMembers, useCurrentUser, useMessages } from '@/lib/data-hooks';
-import type { Member, Message } from '@/lib/mock-data';
+import { useMembers, useCurrentUser, useMessages, useGroupChats } from '@/lib/data-hooks';
+import type { Member, Message, GroupChat, GroupMessage } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
-import { SendHorizonal, ArrowLeft, MessageSquare } from 'lucide-react';
+import { SendHorizonal, ArrowLeft, MessageSquare, Users, Plus } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+
 
 const messageFormSchema = z.object({
   text: z.string().min(1, "Message cannot be empty."),
+});
+
+const groupChatFormSchema = z.object({
+  name: z.string().min(3, "Group name must be at least 3 characters."),
+  members: z.array(z.string()).min(1, "You must select at least one member."),
 });
 
 function MessagesContent() {
   const { data: members, loading: membersLoading } = useMembers();
   const { user, loading: userLoading } = useCurrentUser();
   const searchParams = useSearchParams();
-  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
-  const { allMessages, updateData: setAllMessages, data: messages, setConversation } = useMessages(user?.email);
+  const { toast } = useToast();
+  
+  const [selectedConversation, setSelectedConversation] = useState<{ type: 'dm' | 'group', id: string } | null>(null);
+  
+  const { allMessages, updateData: setAllMessages, data: dmMessages, setConversation: setDmConversation } = useMessages(user?.email);
+  const { data: groupChats, updateData: setGroupChats } = useGroupChats();
+
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  const form = useForm<z.infer<typeof messageFormSchema>>({
+  const messageForm = useForm<z.infer<typeof messageFormSchema>>({
     resolver: zodResolver(messageFormSchema),
     defaultValues: { text: "" },
   });
 
-  const markConversationAsRead = useCallback((recipientEmail: string) => {
+  const groupForm = useForm<z.infer<typeof groupChatFormSchema>>({
+    resolver: zodResolver(groupChatFormSchema),
+    defaultValues: { name: "", members: [] },
+  });
+
+  const markDmAsRead = useCallback((recipientEmail: string) => {
     if (!user || !allMessages) return;
     
     let wasMessageUpdated = false;
@@ -50,35 +79,38 @@ function MessagesContent() {
     }
   }, [user, allMessages, setAllMessages]);
 
-  useEffect(() => {
-    if (selectedMember) {
-      markConversationAsRead(selectedMember.email);
-    }
-  }, [selectedMember, markConversationAsRead]);
+  const markGroupAsRead = useCallback((groupId: string) => {
+    if(!user) return;
+    const updatedGroups = groupChats.map(g => {
+      if (g.id === groupId) {
+        return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
+      }
+      return g;
+    });
+    setGroupChats(updatedGroups);
+  }, [user, groupChats, setGroupChats]);
 
+
+  useEffect(() => {
+    if (selectedConversation?.type === 'dm') {
+      markDmAsRead(selectedConversation.id);
+    } else if (selectedConversation?.type === 'group') {
+      markGroupAsRead(selectedConversation.id);
+    }
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+
+  // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
     if (!membersLoading && !userLoading && members.length > 0 && user) {
       const recipientEmail = searchParams.get('recipient');
-      let memberToSelect: Member | null = null;
-
       if (recipientEmail) {
-        memberToSelect = members.find((m: Member) => m.email === recipientEmail) || null;
-      } else {
-        const otherMembers = members.filter((m: Member) => m.email !== user?.email);
-        if (otherMembers.length > 0) {
-          const memberWithUnread = otherMembers.find(m => 
-            allMessages.some(msg => msg.senderEmail === m.email && msg.recipientEmail === user.email && !msg.read)
-          );
-          memberToSelect = memberWithUnread || otherMembers[0];
+        const memberToSelect = members.find((m: Member) => m.email === recipientEmail) || null;
+        if(memberToSelect) {
+            handleSelectConversation('dm', memberToSelect.email);
         }
       }
-      
-      if(memberToSelect) {
-        setSelectedMember(memberToSelect);
-        setConversation(memberToSelect.email);
-      }
     }
-  }, [searchParams, members, user, membersLoading, userLoading, allMessages, setConversation]);
+  }, [searchParams, members, user, membersLoading, userLoading]);
   
   useEffect(() => {
     if (viewportRef.current) {
@@ -88,26 +120,64 @@ function MessagesContent() {
             }
         }, 0);
     }
-  }, [messages]);
+  }, [dmMessages, groupChats, selectedConversation]);
 
   const handleSendMessage = (values: z.infer<typeof messageFormSchema>) => {
-    if (!user || !selectedMember) return;
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      senderEmail: user.email,
-      recipientEmail: selectedMember.email,
-      text: values.text,
-      timestamp: new Date(),
-      read: false,
-    };
-    setAllMessages([...allMessages, newMessage]);
-    form.reset();
+    if (!user || !selectedConversation) return;
+
+    if (selectedConversation.type === 'dm') {
+        const newMessage: Message = {
+            id: Date.now().toString(),
+            senderEmail: user.email,
+            recipientEmail: selectedConversation.id,
+            text: values.text,
+            timestamp: new Date(),
+            read: false,
+        };
+        setAllMessages([...allMessages, newMessage]);
+    } else if (selectedConversation.type === 'group') {
+        const newMessage: GroupMessage = {
+            id: Date.now().toString(),
+            senderEmail: user.email,
+            authorName: user.name,
+            authorAvatar: user.avatar,
+            text: values.text,
+            timestamp: new Date(),
+        };
+        const updatedGroups = groupChats.map(g => {
+            if (g.id === selectedConversation.id) {
+                const membersToMarkUnread = g.memberEmails.filter(email => email !== user.email);
+                return { ...g, messages: [...g.messages, newMessage], unreadFor: [...new Set([...(g.unreadFor || []), ...membersToMarkUnread])] };
+            }
+            return g;
+        });
+        setGroupChats(updatedGroups);
+    }
+    
+    messageForm.reset();
   };
   
-  const handleSelectMember = (member: Member) => {
-    setSelectedMember(member);
-    setConversation(member.email);
-  }
+  const handleSelectConversation = (type: 'dm' | 'group', id: string) => {
+    setSelectedConversation({ type, id });
+    if (type === 'dm') {
+      setDmConversation(id);
+    }
+  };
+
+  const handleCreateGroup = (values: z.infer<typeof groupChatFormSchema>>) => {
+    if (!user) return;
+    const newGroup: GroupChat = {
+        id: `group_${Date.now()}`,
+        name: values.name,
+        memberEmails: [...values.members, user.email],
+        messages: [],
+        unreadFor: values.members,
+    };
+    setGroupChats([...groupChats, newGroup]);
+    toast({ title: "Group chat created!", description: `You created the group "${values.name}".`});
+    groupForm.reset();
+    return true; // Indicate success to close dialog
+  };
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : '';
   
@@ -122,26 +192,133 @@ function MessagesContent() {
   };
 
   const otherMembers = members.filter((m: Member) => m.email !== user?.email);
+  const selectedGroup = selectedConversation?.type === 'group' 
+    ? groupChats.find(g => g.id === selectedConversation.id)
+    : null;
+  const selectedMember = selectedConversation?.type === 'dm'
+    ? members.find(m => m.email === selectedConversation.id)
+    : null;
+
+  const currentMessages = selectedConversation?.type === 'group'
+    ? selectedGroup?.messages || []
+    : dmMessages;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)]">
-      {/* Member List */}
-      <div className={cn("border-r bg-muted/40 flex flex-col", selectedMember && "hidden md:flex")}>
-        <div className="p-4 border-b">
+      {/* Conversation List */}
+      <div className={cn("border-r bg-muted/40 flex flex-col", selectedConversation && "hidden md:flex")}>
+        <div className="p-4 border-b flex justify-between items-center">
           <h2 className="text-xl font-semibold">Conversations</h2>
+           <Dialog>
+            <DialogTrigger asChild>
+                <Button variant="ghost" size="icon"><Plus/></Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Create a New Group Chat</DialogTitle>
+                    <DialogDescription>Name your group and select members to add.</DialogDescription>
+                </DialogHeader>
+                 <Form {...groupForm}>
+                    <form 
+                        onSubmit={groupForm.handleSubmit((values) => {
+                           const success = handleCreateGroup(values);
+                           if (success) {
+                             const closeButton = document.getElementById('close-group-dialog');
+                             closeButton?.click();
+                           }
+                        })}
+                        className="space-y-4"
+                    >
+                        <FormField
+                            control={groupForm.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <Label>Group Name</Label>
+                                    <Input {...field} placeholder="e.g., Event Planning Committee" />
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={groupForm.control}
+                            name="members"
+                            render={() => (
+                                <FormItem>
+                                    <Label>Members</Label>
+                                    <ScrollArea className="h-48 border rounded-md p-2">
+                                    {otherMembers.map(member => (
+                                        <FormField
+                                            key={member.email}
+                                            control={groupForm.control}
+                                            name="members"
+                                            render={({ field }) => (
+                                                <FormItem className="flex flex-row items-start space-x-3 space-y-0 py-2">
+                                                    <FormControl>
+                                                        <Checkbox
+                                                            checked={field.value?.includes(member.email)}
+                                                            onCheckedChange={(checked) => {
+                                                                return checked
+                                                                    ? field.onChange([...field.value, member.email])
+                                                                    : field.onChange(field.value?.filter(value => value !== member.email));
+                                                            }}
+                                                        />
+                                                    </FormControl>
+                                                    <Label className="font-normal">{member.name}</Label>
+                                                </FormItem>
+                                            )}
+                                        />
+                                    ))}
+                                    </ScrollArea>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <DialogFooter>
+                            <DialogClose asChild><Button id="close-group-dialog" type="button" variant="ghost">Cancel</Button></DialogClose>
+                            <Button type="submit">Create Group</Button>
+                        </DialogFooter>
+                    </form>
+                 </Form>
+            </DialogContent>
+           </Dialog>
         </div>
         <ScrollArea className="flex-1">
-          {membersLoading ? <p className="p-4">Loading members...</p> : (
-            otherMembers.map((member) => {
+          {membersLoading ? <p className="p-4">Loading...</p> : (
+            <>
+            {groupChats.map(group => {
+              const hasUnread = user ? (group.unreadFor || []).includes(user.email) : false;
+              return (
+                 <div
+                    key={group.id}
+                    className={cn(
+                    "flex items-center gap-3 p-3 cursor-pointer hover:bg-muted relative",
+                    selectedConversation?.id === group.id && "bg-muted"
+                    )}
+                    onClick={() => handleSelectConversation('group', group.id)}
+                >
+                    {hasUnread && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />}
+                    <Avatar className="h-10 w-10">
+                        <AvatarFallback><Users/></AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                    <p className={cn("font-semibold", hasUnread && "font-bold")}>{group.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">{group.memberEmails.length} members</p>
+                    </div>
+                </div>
+              );
+            })}
+
+            {otherMembers.map((member) => {
               const hasUnread = allMessages.some(msg => msg.senderEmail === member.email && msg.recipientEmail === user?.email && !msg.read);
               return (
               <div
                 key={member.email}
                 className={cn(
                   "flex items-center gap-3 p-3 cursor-pointer hover:bg-muted relative",
-                  selectedMember?.email === member.email && "bg-muted"
+                  selectedConversation?.id === member.email && "bg-muted"
                 )}
-                onClick={() => handleSelectMember(member)}
+                onClick={() => handleSelectConversation('dm', member.email)}
               >
                 {hasUnread && <span className="absolute left-1 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary" />}
                 <Avatar className="h-10 w-10">
@@ -153,37 +330,51 @@ function MessagesContent() {
                 <div className="flex-1">
                   <p className={cn("font-semibold", hasUnread && "font-bold")}>{member.name}</p>
                   <p className="text-sm text-muted-foreground truncate">
-                    {/* Placeholder for last message */}
+                    Direct Message
                   </p>
                 </div>
               </div>
             )})
+            }
+            </>
           )}
         </ScrollArea>
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col", !selectedMember && "hidden md:flex")}>
-        {selectedMember ? (
+      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
+        {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b">
-               <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedMember(null)}>
+               <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
               <Avatar className="h-10 w-10">
-                <AvatarImage src={selectedMember.avatar} />
-                 <AvatarFallback style={{backgroundColor: stringToColor(selectedMember.name)}}>
-                    {getAvatarFallback(selectedMember.name)}
-                 </AvatarFallback>
+                {selectedConversation.type === 'dm' && selectedMember && <>
+                    <AvatarImage src={selectedMember.avatar} />
+                    <AvatarFallback style={{backgroundColor: stringToColor(selectedMember.name)}}>
+                        {getAvatarFallback(selectedMember.name)}
+                    </AvatarFallback>
+                </>}
+                 {selectedConversation.type === 'group' && <>
+                    <AvatarFallback><Users/></AvatarFallback>
+                </>}
               </Avatar>
               <div>
-                <h3 className="text-lg font-semibold">{selectedMember.name}</h3>
-                <p className="text-sm text-muted-foreground">{selectedMember.role}</p>
+                <h3 className="text-lg font-semibold">{selectedMember?.name || selectedGroup?.name}</h3>
+                <p className="text-sm text-muted-foreground">
+                    {selectedMember?.role || (selectedGroup ? `${selectedGroup.memberEmails.length} members` : '')}
+                </p>
               </div>
             </div>
             <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
               <div className="space-y-4">
-                {messages.map((msg) => (
+                {currentMessages.map((msg) => {
+                  const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
+                  const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
+                  const senderAvatar = selectedConversation.type === 'group' ? (msg as GroupMessage).authorAvatar : sender?.avatar;
+
+                  return (
                   <div
                     key={msg.id}
                     className={cn(
@@ -193,9 +384,9 @@ function MessagesContent() {
                   >
                      {msg.senderEmail !== user?.email && (
                        <Avatar className="h-8 w-8">
-                         <AvatarImage src={selectedMember.avatar} />
-                          <AvatarFallback style={{backgroundColor: stringToColor(selectedMember.name)}}>
-                            {getAvatarFallback(selectedMember.name)}
+                         <AvatarImage src={senderAvatar} />
+                          <AvatarFallback style={{backgroundColor: stringToColor(senderName || "")}}>
+                            {getAvatarFallback(senderName)}
                           </AvatarFallback>
                        </Avatar>
                      )}
@@ -207,8 +398,11 @@ function MessagesContent() {
                           : "bg-muted"
                       )}
                     >
+                      {selectedConversation.type === 'group' && msg.senderEmail !== user?.email && (
+                          <p className="text-xs font-semibold mb-1">{senderName}</p>
+                      )}
                       <p>{msg.text}</p>
-                       <p className={cn("text-xs mt-1", msg.senderEmail === user?.email ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
+                       <p className={cn("text-xs mt-1 text-right", msg.senderEmail === user?.email ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
@@ -221,14 +415,14 @@ function MessagesContent() {
                        </Avatar>
                      )}
                   </div>
-                ))}
+                )})}
               </div>
             </ScrollArea>
             <Separator />
             <div className="p-4 bg-background">
-               <form onSubmit={form.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
+               <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
-                  {...form.register('text')}
+                  {...messageForm.register('text')}
                   placeholder="Type a message..."
                   autoComplete="off"
                   className="flex-1"
@@ -237,8 +431,8 @@ function MessagesContent() {
                   <SendHorizonal />
                 </Button>
               </form>
-               {form.formState.errors.text && (
-                  <p className="text-destructive text-sm mt-1">{form.formState.errors.text.message}</p>
+               {messageForm.formState.errors.text && (
+                  <p className="text-destructive text-sm mt-1">{messageForm.formState.errors.text.message}</p>
                 )}
             </div>
           </>
@@ -246,7 +440,7 @@ function MessagesContent() {
           <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
             <MessageSquare className="h-16 w-16 mb-4" />
             <h2 className="text-2xl font-semibold">Your Messages</h2>
-            <p>Select a member to start a conversation.</p>
+            <p>Select a conversation to start chatting.</p>
           </div>
         )}
       </div>

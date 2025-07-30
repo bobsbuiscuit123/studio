@@ -94,3 +94,20 @@ export type GalleryImage = {
   liked: boolean;
   status: 'pending' | 'approved';
 };
+
+export type GroupMessage = {
+  id: string;
+  senderEmail: string;
+  authorName: string;
+  authorAvatar?: string;
+  text: string;
+  timestamp: Date;
+};
+
+export type GroupChat = {
+  id: string;
+  name: string;
+  memberEmails: string[];
+  messages: GroupMessage[];
+  unreadFor?: string[]; // Tracks who has unread messages
+};

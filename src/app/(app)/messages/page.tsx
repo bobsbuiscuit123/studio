@@ -28,6 +28,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 
 
 const messageFormSchema = z.object({
@@ -164,7 +165,7 @@ function MessagesContent() {
     }
   };
 
-  const handleCreateGroup = (values: z.infer<typeof groupChatFormSchema>>) => {
+  const handleCreateGroup = (values: z.infer<typeof groupChatFormSchema>) => {
     if (!user) return;
     const newGroup: GroupChat = {
         id: `group_${Date.now()}`,
@@ -235,7 +236,9 @@ function MessagesContent() {
                             render={({ field }) => (
                                 <FormItem>
                                     <Label>Group Name</Label>
-                                    <Input {...field} placeholder="e.g., Event Planning Committee" />
+                                    <FormControl>
+                                      <Input {...field} placeholder="e.g., Event Planning Committee" />
+                                    </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
@@ -259,7 +262,7 @@ function MessagesContent() {
                                                             checked={field.value?.includes(member.email)}
                                                             onCheckedChange={(checked) => {
                                                                 return checked
-                                                                    ? field.onChange([...field.value, member.email])
+                                                                    ? field.onChange([...(field.value || []), member.email])
                                                                     : field.onChange(field.value?.filter(value => value !== member.email));
                                                             }}
                                                         />
@@ -456,3 +459,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

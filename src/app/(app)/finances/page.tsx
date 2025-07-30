@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +54,7 @@ export default function FinancesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.infer<typeof transactionFormSchema>>({
     resolver: zodResolver(transactionFormSchema),
@@ -64,6 +65,52 @@ export default function FinancesPage() {
       status: "Paid",
     },
   });
+  
+  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      try {
+        const lines = text.split('\n').slice(1); // Skip header row
+        const newTransactions: Transaction[] = lines
+          .map(line => {
+            const [date, description, amountStr] = line.split(',');
+            if (!date || !description || !amountStr) return null;
+            
+            const amount = parseFloat(amountStr);
+            if (isNaN(amount)) return null;
+
+            return {
+              id: `${Date.now()}-${Math.random()}`,
+              date: new Date(date).toLocaleDateString(),
+              description: description.trim(),
+              amount: amount,
+              status: 'Paid',
+            } as Transaction;
+          })
+          .filter((t): t is Transaction => t !== null);
+        
+        if (newTransactions.length > 0) {
+            setTransactions([...newTransactions, ...transactions]);
+            toast({ title: "Import Successful", description: `${newTransactions.length} transactions were imported.`});
+        } else {
+            toast({ title: "Import Failed", description: "Could not find any valid transactions in the file. Please ensure it is a CSV with Date,Description,Amount columns.", variant: "destructive" });
+        }
+
+      } catch (error) {
+        toast({ title: "Import Error", description: "Failed to parse the CSV file.", variant: "destructive"});
+        console.error("CSV parsing error:", error);
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset file input
+    if(event.target) event.target.value = '';
+  };
+
 
   const handleAddTransaction = (values: z.infer<typeof transactionFormSchema>) => {
     const newTransaction: Transaction = {
@@ -135,64 +182,77 @@ export default function FinancesPage() {
             <div>
               <CardTitle>Transaction History</CardTitle>
               <CardDescription>
-                Manually track your club's income and expenses.
+                Track your club's income and expenses. Import from RevTrak or add manually.
               </CardDescription>
             </div>
              {(role === 'President' || role === 'Admin') && (
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                    <DialogTrigger asChild>
-                    <Button><PlusCircle className="mr-2"/> Add Transaction</Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add a New Transaction</DialogTitle>
-                        <DialogDescription>
-                        Enter the details for the transaction. Use a negative number for expenses.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
-                        <div>
-                        <Label htmlFor="description">Description</Label>
-                        <Input id="description" {...form.register('description')} />
-                        {form.formState.errors.description && <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>}
-                        </div>
-                        <div>
-                        <Label htmlFor="amount">Amount</Label>
-                        <Input id="amount" type="number" step="0.01" {...form.register('amount')} />
-                        {form.formState.errors.amount && <p className="text-red-500 text-sm">{form.formState.errors.amount.message}</p>}
-                        </div>
-                        <div>
-                        <Label htmlFor="date">Date</Label>
-                        <Input id="date" type="date" {...form.register('date')} />
-                        {form.formState.errors.date && <p className="text-red-500 text-sm">{form.formState.errors.date.message}</p>}
-                        </div>
-                        <div>
-                        <Label>Status</Label>
-                        <RadioGroup
-                            defaultValue={form.getValues('status')}
-                            onValueChange={(value) => form.setValue('status', value as 'Paid' | 'Pending')}
-                            className="flex gap-4 mt-2"
-                        >
-                            <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="Paid" id="paid" />
-                            <Label htmlFor="paid">Paid</Label>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => importFileRef.current?.click()}>
+                        <Upload className="mr-2"/> Import from RevTrak
+                    </Button>
+                    <Input 
+                        type="file" 
+                        ref={importFileRef}
+                        className="hidden"
+                        accept=".csv"
+                        onChange={handleFileImport}
+                    />
+
+                    <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                        <DialogTrigger asChild>
+                        <Button><PlusCircle className="mr-2"/> Add Transaction</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Add a New Transaction</DialogTitle>
+                            <DialogDescription>
+                            Enter the details for the transaction. Use a negative number for expenses.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
+                            <div>
+                            <Label htmlFor="description">Description</Label>
+                            <Input id="description" {...form.register('description')} />
+                            {form.formState.errors.description && <p className="text-red-500 text-sm">{form.formState.errors.description.message}</p>}
                             </div>
-                            <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="Pending" id="pending" />
-                            <Label htmlFor="pending">Pending</Label>
+                            <div>
+                            <Label htmlFor="amount">Amount</Label>
+                            <Input id="amount" type="number" step="0.01" {...form.register('amount')} />
+                            {form.formState.errors.amount && <p className="text-red-500 text-sm">{form.formState.errors.amount.message}</p>}
                             </div>
-                        </RadioGroup>
-                        {form.formState.errors.status && <p className="text-red-500 text-sm">{form.formState.errors.status.message}</p>}
-                        </div>
-                        <DialogFooter>
-                            <DialogClose asChild>
-                            <Button type="button" variant="ghost">Cancel</Button>
-                            </DialogClose>
-                            <Button type="submit">Add Transaction</Button>
-                        </DialogFooter>
-                    </form>
-                    </DialogContent>
-                </Dialog>
+                            <div>
+                            <Label htmlFor="date">Date</Label>
+                            <Input id="date" type="date" {...form.register('date')} />
+                            {form.formState.errors.date && <p className="text-red-500 text-sm">{form.formState.errors.date.message}</p>}
+                            </div>
+                            <div>
+                            <Label>Status</Label>
+                            <RadioGroup
+                                defaultValue={form.getValues('status')}
+                                onValueChange={(value) => form.setValue('status', value as 'Paid' | 'Pending')}
+                                className="flex gap-4 mt-2"
+                            >
+                                <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="Paid" id="paid" />
+                                <Label htmlFor="paid">Paid</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="Pending" id="pending" />
+                                <Label htmlFor="pending">Pending</Label>
+                                </div>
+                            </RadioGroup>
+                            {form.formState.errors.status && <p className="text-red-500 text-sm">{form.formState.errors.status.message}</p>}
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild>
+                                <Button type="button" variant="ghost">Cancel</Button>
+                                </DialogClose>
+                                <Button type="submit">Add Transaction</Button>
+                            </DialogFooter>
+                        </form>
+                        </DialogContent>
+                    </Dialog>
+                </div>
              )}
         </CardHeader>
         <CardContent>

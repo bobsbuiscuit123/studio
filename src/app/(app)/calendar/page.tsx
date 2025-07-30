@@ -86,7 +86,7 @@ export default function CalendarPage() {
   const handleUpdateEvent = (values: z.infer<typeof editFormSchema>) => {
     if (!editingEvent) return;
     const updatedEvents = events.map((event) =>
-      event.id === editingEvent.id ? { ...event, ...values, date: new Date(values.date) } : event
+      event.id === editingEvent.id ? { ...event, title: values.title, description: values.description, location: values.location, date: new Date(values.date) } : event
     );
     setEvents(updatedEvents);
     toast({ title: "Event updated!" });

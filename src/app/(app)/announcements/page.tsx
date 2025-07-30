@@ -39,12 +39,12 @@ import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers } from
 import type { Announcement, Attachment } from "@/lib/mock-data";
 
 
-const formSchema = z.object({
+const promptFormSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
   attachments: z.array(z.custom<Attachment>()).optional(),
 });
 
-const editFormSchema = z.object({
+const announcementFormSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters long."),
     content: z.string().min(10, "Content must be at least 10 characters long."),
 });
@@ -63,6 +63,8 @@ export default function AnnouncementsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
+  const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
 
 
   useEffect(() => {
@@ -107,16 +109,16 @@ export default function AnnouncementsPage() {
   }, [printableContent, isDownloading]);
 
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
+  const promptForm = useForm<z.infer<typeof promptFormSchema>>({
+    resolver: zodResolver(promptFormSchema),
     defaultValues: {
       prompt: "",
       attachments: [],
     },
   });
 
-  const editForm = useForm<z.infer<typeof editFormSchema>>({
-    resolver: zodResolver(editFormSchema),
+  const announcementForm = useForm<z.infer<typeof announcementFormSchema>>({
+    resolver: zodResolver(announcementFormSchema),
   });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -134,7 +136,7 @@ export default function AnnouncementsPage() {
           if (newAttachments.length === files.length) {
             const allAttachments = [...attachments, ...newAttachments];
             setAttachments(allAttachments);
-            form.setValue("attachments", allAttachments);
+            promptForm.setValue("attachments", allAttachments);
           }
         };
         reader.readAsDataURL(file);
@@ -146,25 +148,31 @@ export default function AnnouncementsPage() {
     const newAttachments = [...attachments];
     newAttachments.splice(index, 1);
     setAttachments(newAttachments);
-    form.setValue("attachments", newAttachments);
+    promptForm.setValue("attachments", newAttachments);
   }
   
   const handleEditClick = (announcement: Announcement) => {
     setEditingAnnouncement(announcement);
-    editForm.reset({
+    announcementForm.reset({
         title: announcement.title,
         content: announcement.content,
     });
   };
+  
+  const handleDialogClose = () => {
+    setEditingAnnouncement(null); 
+    setIsPostDialogOpen(false); 
+    setGeneratedAnnouncement(null);
+  }
 
-  const handleUpdateAnnouncement = (values: z.infer<typeof editFormSchema>) => {
+  const handleUpdateAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
     if (!editingAnnouncement) return;
     const updatedAnnouncements = announcements.map((ann) =>
         ann.id === editingAnnouncement.id ? { ...ann, ...values } : ann
     );
     setAnnouncements(updatedAnnouncements);
     toast({ title: "Announcement updated!" });
-    setEditingAnnouncement(null);
+    handleDialogClose();
   };
   
   const handleDownloadSlides = async (announcement: Announcement) => {
@@ -181,26 +189,18 @@ export default function AnnouncementsPage() {
     document.body.removeChild(link);
   };
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
     setIsLoading(true);
     try {
       const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement({
         prompt: values.prompt,
       });
-      const newAnnouncement: Announcement = {
-        id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
-        title: result.title,
-        content: result.announcement,
-        author: user?.name || "Club Admin",
-        date: new Date().toLocaleDateString(),
-        attachments: attachments,
-        read: false,
-      };
-      setAnnouncements([newAnnouncement, ...announcements]);
-      toast({ title: "Announcement generated successfully!" });
-      form.reset();
-      setAttachments([]);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setGeneratedAnnouncement(result);
+      announcementForm.reset({
+          title: result.title,
+          content: result.announcement
+      });
+      setIsPostDialogOpen(true);
     } catch (error) {
       toast({
         title: "Error",
@@ -210,6 +210,25 @@ export default function AnnouncementsPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handlePostAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
+    if (!user) return;
+    const newAnnouncement: Announcement = {
+        id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
+        title: values.title,
+        content: values.content,
+        author: user?.name || "Club Admin",
+        date: new Date().toLocaleDateString(),
+        attachments: attachments,
+        read: false,
+    };
+    setAnnouncements([newAnnouncement, ...announcements]);
+    toast({ title: "Announcement posted successfully!" });
+    promptForm.reset();
+    setAttachments([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    handleDialogClose();
   };
 
   const handleDiscussWithPresident = () => {
@@ -233,10 +252,10 @@ export default function AnnouncementsPage() {
                 <CardDescription>Describe the announcement you want to create.</CardDescription>
             </CardHeader>
             <CardContent>
-                <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                <Form {...promptForm}>
+                <form onSubmit={promptForm.handleSubmit(handleSubmit)} className="space-y-4">
                     <FormField
-                    control={form.control}
+                    control={promptForm.control}
                     name="prompt"
                     render={({ field }) => (
                         <FormItem>
@@ -376,63 +395,74 @@ export default function AnnouncementsPage() {
         </div>
       </div>
     </div>
-     {editingAnnouncement && (
-        <Dialog open={!!editingAnnouncement} onOpenChange={() => setEditingAnnouncement(null)}>
-          <DialogContent>
+    
+    <Dialog open={!!editingAnnouncement || isPostDialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Announcement</DialogTitle>
+                <DialogTitle>{editingAnnouncement ? "Edit Announcement" : "Review and Post Announcement"}</DialogTitle>
+                {!editingAnnouncement && (
+                    <DialogDescription>Review the AI-generated announcement below. You can make edits before posting.</DialogDescription>
+                )}
             </DialogHeader>
-            <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(handleUpdateAnnouncement)} className="space-y-4">
-                <FormField
-                  control={editForm.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Title</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={editForm.control}
-                  name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Content</FormLabel>
-                      <FormControl>
-                        <Textarea className="min-h-[200px]" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                  <Button type="button" variant="ghost" onClick={() => setEditingAnnouncement(null)}>Cancel</Button>
-                  <Button type="submit">Save Changes</Button>
-                </DialogFooter>
-              </form>
+            <Form {...announcementForm}>
+                <form 
+                    id="announcement-form"
+                    onSubmit={announcementForm.handleSubmit(editingAnnouncement ? handleUpdateAnnouncement : handlePostAnnouncement)}
+                    className="space-y-4"
+                >
+                    <FormField
+                        control={announcementForm.control}
+                        name="title"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Title</FormLabel>
+                                <FormControl>
+                                    <Input {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={announcementForm.control}
+                        name="content"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Content</FormLabel>
+                                <FormControl>
+                                    <Textarea className="min-h-[200px]" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </form>
             </Form>
-          </DialogContent>
-        </Dialog>
-      )}
-      <div className="hidden">
-        {printableContent && (
-             <div id={`print-announcement-${printableContent.id}`} className="print:block">
-                {printableContent.slides.map((slide: any, index: number) => (
-                    <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
-                          <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
-                          <div className="prose prose-2xl">
-                            <ReactMarkdown>{slide.content}</ReactMarkdown>
-                          </div>
-                    </div>
-                ))}
-            </div>
-        )}
-      </div>
+            <DialogFooter>
+                <Button type="button" variant="ghost" onClick={handleDialogClose}>Cancel</Button>
+                <Button type="submit" form="announcement-form">
+                    {editingAnnouncement ? "Save Changes" : "Post Announcement"}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <div className="hidden">
+    {printableContent && (
+            <div id={`print-announcement-${printableContent.id}`} className="print:block">
+            {printableContent.slides.map((slide: any, index: number) => (
+                <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
+                        <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
+                        <div className="prose prose-2xl">
+                        <ReactMarkdown>{slide.content}</ReactMarkdown>
+                        </div>
+                </div>
+            ))}
+        </div>
+    )}
+    </div>
     </>
   );
 }
+
+    

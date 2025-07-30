@@ -178,10 +178,14 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
     const handleForgotPassword = async (values: z.infer<typeof forgotPasswordSchema>) => {
         setIsSending(true);
         try {
-            const result = await sendResetPasswordEmail(values);
+            const allUsersString = localStorage.getItem('users') || '[]';
+            const allUsers: User[] = JSON.parse(allUsersString);
+
+            const result = await sendResetPasswordEmail({ email: values.email, allUsers });
             toast({
-                title: "Request Sent",
+                title: result.success ? "Password Recovery" : "Error",
                 description: result.message,
+                variant: result.success ? "default" : "destructive",
             });
             setIsForgotPassDialogOpen(false);
             forgotPasswordForm.reset();
@@ -232,7 +236,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                 <DialogHeader>
                     <DialogTitle>Reset Your Password</DialogTitle>
                     <DialogDescription>
-                        Enter your email address and we'll send you a link to reset your password.
+                        Enter your email address and we'll help you recover your password.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={forgotPasswordForm.handleSubmit(handleForgotPassword)} className="space-y-4 pt-4">
@@ -243,7 +247,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                     </div>
                      <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSending}>{isSending ? "Sending..." : "Send Reset Link"}</Button>
+                        <Button type="submit" disabled={isSending}>{isSending ? "Recovering..." : "Recover Password"}</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>

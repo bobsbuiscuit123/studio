@@ -10,9 +10,11 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
+import type { User } from '@/lib/mock-data';
 
 const SendResetPasswordEmailInputSchema = z.object({
   email: z.string().email().describe('The email address to send the reset link to.'),
+  allUsers: z.custom<User[]>().describe("The list of all users to search through."),
 });
 export type SendResetPasswordEmailInput = z.infer<
   typeof SendResetPasswordEmailInputSchema
@@ -39,16 +41,23 @@ const sendResetPasswordEmailFlow = ai.defineFlow(
     inputSchema: SendResetPasswordEmailInputSchema,
     outputSchema: SendResetPasswordEmailOutputSchema,
   },
-  async (input) => {
-    // In a real application, you would integrate with an email service like SendGrid or Resend
-    // and generate a secure, single-use token to include in the reset link.
-    // For this demo, we will just log to the console and return a success message.
-    
-    console.log(`Password reset requested for: ${input.email}. In a real app, an email would be sent.`);
+  async ({ email, allUsers }) => {
+    // In a real application, you would look up the user in a database.
+    // For this prototype, we search the provided list.
+    const user = allUsers.find(u => u.email === email);
 
-    return {
-        success: true,
-        message: `If an account with the email ${input.email} exists, a password reset link has been sent.`,
-    };
+    if (user && user.password) {
+        console.log(`Password reset requested for: ${email}. Password is ${user.password}`);
+        return {
+            success: true,
+            message: `Password for ${email} is: ${user.password}`,
+        };
+    } else {
+         console.log(`Password reset requested for non-existent user: ${email}.`);
+        return {
+            success: false,
+            message: `No account with the email ${email} exists.`,
+        };
+    }
   }
 );

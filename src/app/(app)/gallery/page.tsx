@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, ThumbsUp, Download, X, Trash2 } from "lucide-react";
+import { Upload, ThumbsUp, Download, X, Trash2, Check, ShieldQuestion } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
@@ -51,6 +52,8 @@ export default function GalleryPage() {
     resolver: zodResolver(uploadFormSchema),
     defaultValues: { alt: "" },
   });
+  
+  const isOwner = role && role !== 'Member';
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -66,6 +69,9 @@ export default function GalleryPage() {
 
   const handleUpload = (values: z.infer<typeof uploadFormSchema>) => {
     if (!user) return;
+    
+    const newStatus = isOwner ? 'approved' : 'pending';
+    
     const newImage: GalleryImage = {
       id: images.length > 0 ? Math.max(...images.map(i => i.id)) + 1 : 1,
       src: values.image,
@@ -74,10 +80,14 @@ export default function GalleryPage() {
       date: new Date().toLocaleDateString(),
       likes: 0,
       liked: false,
+      status: newStatus,
     };
 
     setImages([newImage, ...images]);
-    toast({ title: "Image uploaded successfully!" });
+    toast({ 
+      title: newStatus === 'approved' ? "Image uploaded successfully!" : "Image submitted for approval!",
+      description: newStatus === 'pending' ? "An admin will review your submission shortly." : undefined,
+    });
     form.reset();
     setPreviewImage(null);
     if (fileInputRef.current) {
@@ -114,62 +124,111 @@ export default function GalleryPage() {
     toast({ title: "Image deleted successfully" });
     setDeletingImageId(null);
   };
-
-  const isOwner = role && role !== 'Member';
+  
+  const handleApproval = (imageId: number, newStatus: 'approved' | 'rejected') => {
+    if (newStatus === 'approved') {
+      const updatedImages = images.map(img => 
+        img.id === imageId ? { ...img, status: 'approved' } : img
+      );
+      setImages(updatedImages);
+      toast({ title: "Image approved!" });
+    } else { // 'rejected'
+      setImages(images.filter(img => img.id !== imageId));
+      toast({ title: "Image rejected and removed." });
+    }
+  };
+  
+  const approvedImages = images.filter(img => img.status === 'approved');
+  const pendingImages = images.filter(img => img.status === 'pending');
 
   return (
     <div className="flex flex-col gap-8">
-      {isOwner && (
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload a New Image</CardTitle>
+          <CardDescription>Add a photo to the club's gallery. {isOwner ? "" : "Your photo will be submitted for approval."}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={form.handleSubmit(handleUpload)} className="grid md:grid-cols-3 gap-4 items-end">
+            <div className="md:col-span-1 space-y-2">
+              <label htmlFor="alt">Image Description (Optional)</label>
+              <Input id="alt" {...form.register("alt")} placeholder="e.g., Team photo at the 2024 regional competition." />
+              {form.formState.errors.alt && <p className="text-red-500 text-sm">{form.formState.errors.alt.message}</p>}
+            </div>
+             <div className="flex items-center gap-4">
+               <div className="space-y-2">
+                  <label>Image File</label>
+                  <div>
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                      <Upload className="mr-2" />
+                      Choose Image
+                      </Button>
+                      <Input
+                      type="file"
+                      className="hidden"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="image/*"
+                      />
+                      {form.formState.errors.image && <p className="text-red-500 text-sm">{form.formState.errors.image.message}</p>}
+                  </div>
+               </div>
+              {previewImage && (
+                  <div className="relative">
+                      <Image src={previewImage} alt="Preview" width={100} height={100} className="rounded-md aspect-square object-cover" />
+                      <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6"
+                          onClick={() => {
+                              setPreviewImage(null);
+                              form.setValue("image", null);
+                              if(fileInputRef.current) fileInputRef.current.value = "";
+                          }}
+                      >
+                          <X className="h-4 w-4" />
+                      </Button>
+                  </div>
+              )}
+             </div>
+            <Button type="submit" className="w-full md:w-auto">Upload Image</Button>
+          </form>
+        </CardContent>
+      </Card>
+      
+      {isOwner && pendingImages.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Upload a New Image</CardTitle>
-            <CardDescription>Add a photo to the club's gallery.</CardDescription>
+            <CardTitle className="flex items-center gap-2"><ShieldQuestion /> Pending Approvals</CardTitle>
+            <CardDescription>These images were submitted by members and are waiting for your review.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={form.handleSubmit(handleUpload)} className="grid md:grid-cols-3 gap-4 items-end">
-              <div className="md:col-span-1 space-y-2">
-                <label htmlFor="alt">Image Description (Optional)</label>
-                <Input id="alt" {...form.register("alt")} placeholder="e.g., Team photo at the 2024 regional competition." />
-                {form.formState.errors.alt && <p className="text-red-500 text-sm">{form.formState.errors.alt.message}</p>}
-              </div>
-               <div className="flex items-center gap-4">
-                 <div className="space-y-2">
-                    <label>Image File</label>
-                    <div>
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                        <Upload className="mr-2" />
-                        Choose Image
-                        </Button>
-                        <Input
-                        type="file"
-                        className="hidden"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        />
-                        {form.formState.errors.image && <p className="text-red-500 text-sm">{form.formState.errors.image.message}</p>}
-                    </div>
-                 </div>
-                {previewImage && (
-                    <div className="relative">
-                        <Image src={previewImage} alt="Preview" width={100} height={100} className="rounded-md aspect-square object-cover" />
-                        <Button
-                            variant="destructive"
-                            size="icon"
-                            className="absolute top-1 right-1 h-6 w-6"
-                            onClick={() => {
-                                setPreviewImage(null);
-                                form.setValue("image", null);
-                                if(fileInputRef.current) fileInputRef.current.value = "";
-                            }}
-                        >
-                            <X className="h-4 w-4" />
-                        </Button>
-                    </div>
-                )}
-               </div>
-              <Button type="submit" className="w-full md:w-auto">Upload Image</Button>
-            </form>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {pendingImages.map((image) => (
+                <Card key={`pending-${image.id}`} className="overflow-hidden flex flex-col">
+                  <CardContent className="p-0 relative">
+                    <Image
+                      src={image.src}
+                      alt={image.alt}
+                      width={400}
+                      height={400}
+                      className="aspect-square object-cover w-full"
+                    />
+                     <Badge className="absolute top-2 left-2">Pending</Badge>
+                  </CardContent>
+                  <div className="p-4 flex flex-col flex-grow">
+                    <p className="font-semibold text-sm">{image.alt || "No description"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Uploaded by {image.author} on {image.date}
+                    </p>
+                  </div>
+                   <CardFooter className="flex gap-2">
+                      <Button size="sm" className="w-full" onClick={() => handleApproval(image.id, 'approved')}><Check className="mr-2"/> Approve</Button>
+                      <Button size="sm" variant="destructive" className="w-full" onClick={() => handleApproval(image.id, 'rejected')}><X className="mr-2"/> Deny</Button>
+                   </CardFooter>
+                </Card>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -178,9 +237,9 @@ export default function GalleryPage() {
         <h2 className="text-2xl font-bold mb-4">Club Gallery</h2>
         {loading ? (
           <p>Loading gallery...</p>
-        ) : images.length > 0 ? (
+        ) : approvedImages.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {images.map((image) => (
+            {approvedImages.map((image) => (
               <Card key={image.id} className="overflow-hidden flex flex-col">
                 <CardContent className="p-0">
                   <Image
@@ -239,7 +298,7 @@ export default function GalleryPage() {
         ) : (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
              <p className="text-muted-foreground">The gallery is empty.</p>
-             {isOwner && <p className="text-muted-foreground">Upload an image to get started!</p>}
+             <p className="text-muted-foreground">Upload an image to get started!</p>
           </div>
         )}
       </div>

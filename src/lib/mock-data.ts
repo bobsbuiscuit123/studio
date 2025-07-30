@@ -92,4 +92,5 @@ export type GalleryImage = {
   date: string;
   likes: number;
   liked: boolean;
+  status: 'pending' | 'approved';
 };

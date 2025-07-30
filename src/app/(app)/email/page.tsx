@@ -50,6 +50,10 @@ export default function EmailPage() {
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
     values: emailContent, // Use state to control form values
+    defaultValues: {
+        subject: '',
+        body: '',
+    }
   });
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
@@ -98,8 +102,10 @@ export default function EmailPage() {
   }, [emailContent, members, toast]);
 
   const isEmailReady = useMemo(() => {
+    // Manually trigger validation to ensure form state is up-to-date with state
+    emailForm.trigger(); 
     return emailForm.formState.isValid && members.length > 0 && mailtoLink !== "#";
-  }, [emailForm.formState.isValid, members, mailtoLink]);
+  }, [emailForm, members, mailtoLink]);
   
   if (role && role === 'Member') {
     return (
@@ -199,7 +205,7 @@ export default function EmailPage() {
                             )}
                         />
                         <Button asChild disabled={!isEmailReady || membersLoading} className="w-full">
-                            <Link href={isEmailReady ? mailtoLink : '#'}>
+                            <Link href={isEmailReady ? mailtoLink : '#'} target="_blank" rel="noopener noreferrer">
                                 <ExternalLink />
                                 Open in Email Client for All ({membersLoading ? '...' : members.length}) Members
                             </Link>

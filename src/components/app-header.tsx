@@ -48,17 +48,17 @@ const pageTitles: { [key: string]: string } = {
   "/attendance": "Attendance",
 };
 
-function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, avatar: string) => void; }) {
+function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, email: string) => void; }) {
   const [name, setName] = useState(user?.name || '');
-  const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [email, setEmail] = useState(user?.email || '');
 
   useEffect(() => {
     setName(user?.name || '');
-    setAvatar(user?.avatar || '');
+    setEmail(user?.email || '');
   }, [user]);
 
   const handleSave = () => {
-    onSave(name, avatar);
+    onSave(name, email);
     onOpenChange(false);
   };
 
@@ -68,7 +68,7 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
         <DialogHeader>
           <DialogTitle>Profile Settings</DialogTitle>
           <DialogDescription>
-            Update your name and avatar here.
+            Update your name and email here.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -77,8 +77,8 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="avatar">Avatar URL</Label>
-            <Input id="avatar" value={avatar} onChange={(e) => setAvatar(e.target.value)} />
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
@@ -142,8 +142,8 @@ export function AppHeader() {
     router.push('/');
   }
 
-  const handleSaveProfile = (name: string, avatar: string) => {
-    saveUser({ name, avatar });
+  const handleSaveProfile = (name: string, email: string) => {
+    saveUser({ name, email });
   }
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';

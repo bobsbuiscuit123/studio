@@ -94,7 +94,7 @@ export default function CalendarPage() {
   };
 
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
       const result: AddCalendarEventOutput = await addCalendarEvent(values);

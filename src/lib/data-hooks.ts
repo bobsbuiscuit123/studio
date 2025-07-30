@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, GroupChat } from './mock-data';
+import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, GroupChat, Slide } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -25,7 +25,22 @@ function useClubData<T>(key: string, initialData: T) {
         if (isMounted) {
           if (storedClubData) {
             const parsedData = JSON.parse(storedClubData);
-            setData(parsedData[key] || initialData);
+            
+            // Data migration for presentations to add slide IDs
+            if (key === 'presentations' && parsedData[key]) {
+              const presentations = parsedData[key] as Presentation[];
+              const migratedPresentations = presentations.map(p => ({
+                ...p,
+                slides: p.slides.map((s, index) => ({
+                  ...s,
+                  id: s.id || `${p.id}-${index}`
+                }))
+              }));
+              setData(migratedPresentations as T);
+            } else {
+              setData(parsedData[key] || initialData);
+            }
+
           } else {
              setData(initialData);
           }

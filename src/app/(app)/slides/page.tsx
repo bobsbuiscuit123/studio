@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Presentation, Download, Loader2, Copy, Share2, Eye, Trash2 } from "lucide-react";
+import { Presentation, Download, Loader2, Copy, Share2, Eye, Trash2, Pencil } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 
 
@@ -14,7 +14,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateMeetingSlides, GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
+import { Input } from "@/components/ui/input";
+import { generateMeetingSlides } from "@/ai/flows/generate-meeting-slides";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useCurrentUserRole, useCurrentUser, useAnnouncements, usePresentations } from "@/lib/data-hooks";
 import {
@@ -45,7 +46,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Announcement, Presentation as PresentationType } from "@/lib/mock-data";
+import { Announcement, Presentation as PresentationType, Slide } from "@/lib/mock-data";
 
 
 const formSchema = z.object({
@@ -56,8 +57,20 @@ const shareFormSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt for the announcement."),
 });
 
+const slideFormSchema = z.object({
+  title: z.string().min(1, "Title cannot be empty."),
+  content: z.string().min(1, "Content cannot be empty."),
+});
+
+type EditingSlideState = {
+  presentationId: number;
+  slideId: string;
+  slide: Slide;
+};
+
 export default function SlidesPage() {
   const [activePresentation, setActivePresentation] = useState<PresentationType | null>(null);
+  const [editingSlide, setEditingSlide] = useState<EditingSlideState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
@@ -82,6 +95,48 @@ export default function SlidesPage() {
     resolver: zodResolver(shareFormSchema),
     defaultValues: { prompt: "" },
   });
+  
+  const slideForm = useForm<z.infer<typeof slideFormSchema>>({
+    resolver: zodResolver(slideFormSchema),
+  });
+
+  const handleEditSlideClick = (presentation: PresentationType, slide: Slide) => {
+    setEditingSlide({
+      presentationId: presentation.id,
+      slideId: slide.id,
+      slide: slide,
+    });
+    slideForm.reset({
+      title: slide.title,
+      content: slide.content,
+    });
+  };
+
+  const handleUpdateSlide = (values: z.infer<typeof slideFormSchema>) => {
+    if (!editingSlide) return;
+
+    const updatedPresentations = presentations.map((p) => {
+      if (p.id === editingSlide.presentationId) {
+        return {
+          ...p,
+          slides: p.slides.map((s) =>
+            s.id === editingSlide.slideId ? { ...s, ...values } : s
+          ),
+        };
+      }
+      return p;
+    });
+
+    setPresentations(updatedPresentations);
+
+    const updatedActivePresentation = updatedPresentations.find(p => p.id === editingSlide.presentationId);
+    if(updatedActivePresentation) {
+      setActivePresentation(updatedActivePresentation);
+    }
+    
+    toast({ title: "Slide updated!" });
+    setEditingSlide(null);
+  };
 
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
@@ -93,7 +148,7 @@ export default function SlidesPage() {
       const newPresentation: PresentationType = {
           id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
           prompt: values.prompt,
-          slides: result.slides,
+          slides: result.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
           createdAt: new Date().toLocaleDateString(),
       }
       setPresentations([newPresentation, ...presentations]);
@@ -382,7 +437,10 @@ export default function SlidesPage() {
                         <CarouselContent>
                         {activePresentation.slides.map((slide, index) => (
                             <CarouselItem key={index}>
-                                <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg">
+                                <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg relative">
+                                    <Button variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => handleEditSlideClick(activePresentation, slide)}>
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
                                     <h2 className="text-3xl font-bold mb-4">{slide.title}</h2>
                                     <div className="prose prose-lg dark:prose-invert">
                                         <ReactMarkdown>
@@ -398,8 +456,10 @@ export default function SlidesPage() {
                     </Carousel>
                 ) : !isLoading && (
                   <div className="flex items-center justify-center h-full text-center text-muted-foreground">
-                      <p>Generated slides will be displayed here.</p>
-                      <p className="text-sm">Use the form on the left to generate a new presentation or select one from your history.</p>
+                      <div>
+                        <p>Generated slides will be displayed here.</p>
+                        <p className="text-sm">Use the form on the left to generate a new presentation or select one from your history.</p>
+                      </div>
                   </div>
                 )}
               </CardContent>
@@ -407,6 +467,50 @@ export default function SlidesPage() {
           </div>
         </div>
       </div>
+      <Dialog open={!!editingSlide} onOpenChange={() => setEditingSlide(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Edit Slide</DialogTitle>
+                <DialogDescription>
+                    Make changes to the slide title and content below.
+                </DialogDescription>
+            </DialogHeader>
+            <Form {...slideForm}>
+                <form onSubmit={slideForm.handleSubmit(handleUpdateSlide)} className="space-y-4 pt-4">
+                    <FormField
+                        control={slideForm.control}
+                        name="title"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Slide Title</FormLabel>
+                                <FormControl>
+                                    <Input {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={slideForm.control}
+                        name="content"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Slide Content (Markdown supported)</FormLabel>
+                                <FormControl>
+                                    <Textarea className="min-h-[200px] font-mono" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <DialogFooter>
+                        <Button type="button" variant="ghost" onClick={() => setEditingSlide(null)}>Cancel</Button>
+                        <Button type="submit">Save Changes</Button>
+                    </DialogFooter>
+                </form>
+            </Form>
+        </DialogContent>
+      </Dialog>
       <div className="hidden">
           {printableContent && (
              <div id={`print-content-${printableContent.id}`} className="print:block">

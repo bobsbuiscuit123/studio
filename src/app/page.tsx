@@ -388,8 +388,6 @@ export default function HomePage() {
     clubData.members = [...(clubData.members || []), newMember];
     localStorage.setItem(clubDataKey, JSON.stringify(clubData));
     
-    window.location.reload();
-    
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
     handleSelectClub(clubToJoin.id);

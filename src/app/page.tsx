@@ -36,6 +36,7 @@ import { useRouter } from 'next/navigation';
 import { Member, User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
 import { sendResetPasswordEmail } from '@/ai/flows/send-reset-password-email';
+import { faker } from '@faker-js/faker';
 
 const clubFormSchema = z.object({
   name: z.string().min(4, 'Club name must be at least 4 characters.'),
@@ -305,10 +306,13 @@ export default function HomePage() {
     const allClubsString = localStorage.getItem('clubs') || '[]';
     const allClubs: Club[] = JSON.parse(allClubsString);
     
-    const newJoinCode = values.name.replace(/\s/g, '').substring(0, 4).toUpperCase();
-    if (allClubs.some(club => club.joinCode === newJoinCode)) {
-        toast({ title: "Club Name Unavailable", description: "A club with a similar name already exists. Please choose a different name.", variant: "destructive"});
-        return;
+    let newJoinCode = '';
+    let isCodeUnique = false;
+    while (!isCodeUnique) {
+        newJoinCode = faker.string.alphanumeric(4).toUpperCase();
+        if (!allClubs.some(club => club.joinCode === newJoinCode)) {
+            isCodeUnique = true;
+        }
     }
 
     const newClub: Club = {

@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Mail, Loader2, Wand2, Users, ExternalLink } from "lucide-react";
-import Link from 'next/link';
 
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
-import { generateEmail, GenerateEmailOutput } from "@/ai/flows/generate-email";
+import { generateEmail } from "@/ai/flows/generate-email";
 
 
 const promptFormSchema = z.object({
@@ -204,12 +203,21 @@ export default function EmailPage() {
                                 </FormItem>
                             )}
                         />
-                        <Button asChild disabled={!isEmailReady || membersLoading} className="w-full">
-                            <Link href={isEmailReady ? gmailLink : '#'} target="_blank" rel="noopener noreferrer">
+                         <a 
+                            href={isEmailReady ? gmailLink : undefined} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className={!isEmailReady || membersLoading ? 'pointer-events-none' : ''}
+                          >
+                            <Button 
+                                type="button"
+                                disabled={!isEmailReady || membersLoading} 
+                                className="w-full"
+                            >
                                 <ExternalLink />
                                 Open in Gmail for All ({membersLoading ? '...' : members.length}) Members
-                            </Link>
-                        </Button>
+                            </Button>
+                        </a>
                     </form>
                 </Form>
             </CardContent>

@@ -29,7 +29,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -44,7 +45,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateSocialMediaPost } from "@/ai/flows/generate-social-media-post";
+import { generateSocialMediaPost, GenerateSocialMediaPostOutput } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
@@ -58,7 +59,7 @@ const formSchema = z.object({
   photos: z.array(z.string()).optional(),
 });
 
-const editFormSchema = z.object({
+const postFormSchema = z.object({
     title: z.string().min(3, "Title is too short."),
     content: z.string().min(10, "Post content is too short.").max(280, "Post content cannot exceed 280 characters."),
 });
@@ -67,11 +68,14 @@ const commentFormSchema = z.object({
     comment: z.string().min(1, "Comment cannot be empty."),
 });
 
+type GeneratedPost = GenerateSocialMediaPostOutput & { images: string[], dataAiHint?: string };
+
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
+  const [postToReview, setPostToReview] = useState<GeneratedPost | null>(null);
   const [deletingPostId, setDeletingPostId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -95,8 +99,8 @@ export default function SocialPage() {
     },
   });
   
-  const editForm = useForm<z.infer<typeof editFormSchema>>({
-    resolver: zodResolver(editFormSchema),
+  const postForm = useForm<z.infer<typeof postFormSchema>>({
+    resolver: zodResolver(postFormSchema),
   });
 
   const commentForm = useForm<z.infer<typeof commentFormSchema>>({
@@ -137,10 +141,11 @@ export default function SocialPage() {
   
   const handleEditClick = (post: SocialPost) => {
     setEditingPost(post);
-    editForm.reset({ title: post.title, content: post.content });
+    setPostToReview(null);
+    postForm.reset({ title: post.title, content: post.content });
   };
   
-  const handleUpdatePost = (values: z.infer<typeof editFormSchema>) => {
+  const handleUpdatePost = (values: z.infer<typeof postFormSchema>) => {
     if (!editingPost) return;
     const updatedPosts = socialPosts.map((post) =>
       post.id === editingPost.id ? { ...post, ...values } : post
@@ -173,8 +178,9 @@ export default function SocialPage() {
   };
 
   const handleAddComment = (postId: number, values: z.infer<typeof commentFormSchema>) => {
+    if (!user) return;
     const newComment: Comment = {
-      author: user?.name || "Club Member",
+      author: user.name,
       text: values.comment,
     };
     const updatedPosts = socialPosts.map((post) =>
@@ -184,31 +190,19 @@ export default function SocialPage() {
     commentForm.reset();
   };
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     try {
       const result = await generateSocialMediaPost({
         prompt: values.prompt,
         photoDataUris: form.getValues("photos"),
       });
-      const newPost: SocialPost = {
-        id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
-        title: result.title,
-        content: result.postText,
-        images: previewImages.length > 0 ? previewImages : [],
+      setPostToReview({
+        ...result,
+        images: previewImages,
         dataAiHint: "tech club",
-        author: user?.name || "AI Assistant",
-        date: new Date().toLocaleDateString(),
-        likes: 0,
-        liked: false,
-        comments: [],
-        read: false,
-      };
-      setSocialPosts([newPost, ...socialPosts]);
-      toast({ title: "Social media post generated successfully!" });
-      form.reset();
-      setPreviewImages([]);
-      if(fileInputRef.current) fileInputRef.current.value = "";
+      });
+      postForm.reset({ title: result.title, content: result.postText });
     } catch (error) {
       toast({
         title: "Error",
@@ -219,6 +213,34 @@ export default function SocialPage() {
       setIsLoading(false);
     }
   };
+
+  const handlePostSubmit = (values: z.infer<typeof postFormSchema>) => {
+    if (!user || !postToReview) return;
+    const newPost: SocialPost = {
+      id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
+      title: values.title,
+      content: values.content,
+      images: postToReview.images,
+      dataAiHint: postToReview.dataAiHint,
+      author: user.name,
+      date: new Date().toLocaleDateString(),
+      likes: 0,
+      liked: false,
+      comments: [],
+      read: false,
+    };
+    setSocialPosts([newPost, ...socialPosts]);
+    toast({ title: "Social media post published successfully!" });
+    form.reset();
+    setPreviewImages([]);
+    if(fileInputRef.current) fileInputRef.current.value = "";
+    setPostToReview(null);
+  }
+
+  const handleDialogClose = () => {
+    setEditingPost(null);
+    setPostToReview(null);
+  }
 
   return (
     <>
@@ -232,7 +254,7 @@ export default function SocialPage() {
             </CardHeader>
             <CardContent>
                 <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                <form onSubmit={form.handleSubmit(handleGenerateSubmit)} className="space-y-4">
                     <FormField
                     control={form.control}
                     name="prompt"
@@ -408,49 +430,56 @@ export default function SocialPage() {
         )}
       </div>
     </div>
-    {editingPost && (
-        <Dialog open={!!editingPost} onOpenChange={() => setEditingPost(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Social Media Post</DialogTitle>
-            </DialogHeader>
-            <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(handleUpdatePost)} className="space-y-4">
-                 <FormField
-                  control={editForm.control}
-                  name="title"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Title</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={editForm.control}
-                  name="content"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Post Text</FormLabel>
-                      <FormControl>
-                        <Textarea className="min-h-[150px]" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <DialogFooter>
-                    <Button type="button" variant="ghost" onClick={() => setEditingPost(null)}>Cancel</Button>
-                    <Button type="submit">Save Changes</Button>
-                </DialogFooter>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-    )}
+    <Dialog open={!!editingPost || !!postToReview} onOpenChange={handleDialogClose}>
+        <DialogContent>
+        <DialogHeader>
+            <DialogTitle>{editingPost ? "Edit Social Media Post" : "Review and Post"}</DialogTitle>
+            <DialogDescription>
+                {editingPost ? "Make changes to your post below." : "Review the AI-generated post. You can make edits before publishing."}
+            </DialogDescription>
+        </DialogHeader>
+        <Form {...postForm}>
+            <form 
+            id="post-form"
+            onSubmit={postForm.handleSubmit(editingPost ? handleUpdatePost : handlePostSubmit)} 
+            className="space-y-4"
+            >
+                <FormField
+                control={postForm.control}
+                name="title"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl>
+                    <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                )}
+            />
+                <FormField
+                control={postForm.control}
+                name="content"
+                render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Post Text</FormLabel>
+                    <FormControl>
+                    <Textarea className="min-h-[150px]" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                </FormItem>
+                )}
+            />
+            </form>
+        </Form>
+        <DialogFooter>
+            <Button type="button" variant="ghost" onClick={handleDialogClose}>Cancel</Button>
+            <Button type="submit" form="post-form">
+                {editingPost ? "Save Changes" : "Publish Post"}
+            </Button>
+        </DialogFooter>
+        </DialogContent>
+    </Dialog>
     </>
   );
 }

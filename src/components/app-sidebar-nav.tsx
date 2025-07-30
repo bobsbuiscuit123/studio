@@ -12,6 +12,7 @@ import {
   Network,
   Landmark,
   MessageSquare,
+  GalleryHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from './ui/badge';
@@ -26,6 +27,7 @@ const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Member'], notificationKey: null },
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Member'], notificationKey: 'announcements' },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Member'], notificationKey: null },
+  { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Member'], notificationKey: null },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Member'], notificationKey: null },
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Member'], notificationKey: 'messages' },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'], notificationKey: null },

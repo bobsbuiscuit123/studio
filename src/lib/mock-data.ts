@@ -83,3 +83,13 @@ export type Message = {
     timestamp: Date;
     read: boolean;
 }
+
+export type GalleryImage = {
+  id: number;
+  src: string;
+  alt: string;
+  author: string;
+  date: string;
+  likes: number;
+  liked: boolean;
+};

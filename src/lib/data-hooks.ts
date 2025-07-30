@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Message, Announcement, SocialPost, Presentation } from './mock-data';
+import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -98,6 +98,10 @@ export function useTransactions() {
 
 export function usePresentations() {
     return useClubData<Presentation[]>('presentations', []);
+}
+
+export function useGalleryImages() {
+    return useClubData<GalleryImage[]>('galleryImages', []);
 }
 
 export function useMessages(userEmail?: string | null) {

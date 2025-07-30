@@ -28,6 +28,7 @@ const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
   "/announcements": "Announcements",
   "/calendar": "Calendar",
+  "/gallery": "Gallery",
   "/finances": "Finances",
   "/members": "Members",
   "/slides": "Meeting Slides",

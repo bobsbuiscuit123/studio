@@ -50,6 +50,10 @@ export default function EmailPage() {
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
+    defaultValues: {
+        subject: "",
+        body: "",
+    },
   });
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
@@ -96,7 +100,7 @@ export default function EmailPage() {
 
       // Reset forms
       promptForm.reset();
-      emailForm.reset();
+      emailForm.reset({ subject: "", body: "" });
       setGeneratedEmail(null);
 
     } catch (error) {

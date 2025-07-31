@@ -90,8 +90,9 @@ export default function GalleryPage() {
 
     const newImages: GalleryImage[] = values.images.map((imgSrc, index) => ({
       id: lastId + index + 1,
-      src: imgSrc,
-      alt: values.alt || "",
+      // Use placeholder to avoid storing large data URIs in localStorage
+      src: `https://placehold.co/400x400.png`,
+      alt: values.alt || "User uploaded image",
       author: user.name,
       date: new Date().toLocaleDateString(),
       likes: 0,
@@ -103,7 +104,7 @@ export default function GalleryPage() {
     setImages([...newImages, ...images]);
     toast({ 
       title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
-      description: newStatus === 'pending' ? "An admin will review your submission shortly." : undefined,
+      description: newStatus === 'pending' ? "An admin will review your submission shortly." : "Note: Images are placeholders in this prototype.",
     });
     form.reset();
     setPreviewImages([]);

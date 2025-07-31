@@ -20,6 +20,8 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetHeader,
+  SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -171,8 +173,11 @@ export function AppHeader() {
             <span className="sr-only">Toggle Menu</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="flex flex-col">
-          <nav className="grid gap-2 text-lg font-medium">
+        <SheetContent side="left" className="flex flex-col p-0">
+           <SheetHeader className="p-6">
+            <SheetTitle className="sr-only">Main Menu</SheetTitle>
+          </SheetHeader>
+          <nav className="grid gap-2 text-lg font-medium px-6">
             <Link
               href="/"
               className="flex items-center gap-2 text-lg font-semibold mb-4"

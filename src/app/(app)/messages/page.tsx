@@ -41,8 +41,10 @@ const groupChatFormSchema = z.object({
 
 function MessagesContent({
   selectedConversation,
+  onSendMessage,
 }: {
   selectedConversation: Conversation | null;
+  onSendMessage: (newMessage: Message) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
@@ -92,7 +94,7 @@ function MessagesContent({
             ));
         }
     }
-  }, [convoId, allMessages, groupChats, selectedConversation, setAllMessages, setGroupChats, user]);
+  }, [convoId]); // Simplified dependency array
 
 
   useEffect(() => {
@@ -111,25 +113,8 @@ function MessagesContent({
       timestamp: new Date().toISOString(),
       read: true,
     };
-
-    if (selectedConversation.type === 'dm') {
-      const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-      setAllMessages(prev => {
-        const updatedDms = { ...prev };
-        if (!updatedDms[dmKey]) {
-            updatedDms[dmKey] = [];
-        }
-        updatedDms[dmKey] = [...updatedDms[dmKey], newMessage];
-        return updatedDms;
-      });
-    } else { // group chat
-      setGroupChats((prevChats: GroupChat[]) => prevChats.map(chat => {
-        if (chat.id === selectedConversation.chat.id) {
-          return { ...chat, messages: [...chat.messages, newMessage] };
-        }
-        return chat;
-      }));
-    }
+    
+    onSendMessage(newMessage);
     
     setMessage("");
     setSuggestedReply("");
@@ -396,7 +381,7 @@ function NewGroupChatDialog({ onGroupCreated }: { onGroupCreated: (group: GroupC
 function MessagesPageComponent() {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
+  const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
   const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
   const [searchQuery, setSearchQuery] = useState("");
   const searchParams = useSearchParams();
@@ -416,6 +401,29 @@ function MessagesPageComponent() {
   const handleGroupCreated = (newGroup: GroupChat) => {
     setGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
     setSelectedConversation({ type: 'group', chat: newGroup });
+  };
+  
+   const handleSendMessage = (newMessage: Message) => {
+    if (!user || !selectedConversation) return;
+
+    if (selectedConversation.type === 'dm') {
+      const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
+      setAllMessages(prev => {
+        const updatedDms = { ...prev };
+        if (!updatedDms[dmKey]) {
+            updatedDms[dmKey] = [];
+        }
+        updatedDms[dmKey] = [...updatedDms[dmKey], newMessage];
+        return updatedDms;
+      });
+    } else { // group chat
+      setGroupChats((prevChats: GroupChat[]) => prevChats.map(chat => {
+        if (chat.id === selectedConversation.chat.id) {
+          return { ...chat, messages: [...chat.messages, newMessage] };
+        }
+        return chat;
+      }));
+    }
   };
 
   const getUnreadCount = useCallback((convo: Conversation): number => {
@@ -542,7 +550,8 @@ function MessagesPageComponent() {
       </aside>
       <main className="overflow-hidden h-full">
         <MessagesContent 
-            selectedConversation={selectedConversation} 
+            selectedConversation={selectedConversation}
+            onSendMessage={handleSendMessage}
         />
       </main>
     </div>
@@ -559,3 +568,5 @@ export default function MessagesPage() {
         </React.Suspense>
     )
 }
+
+    

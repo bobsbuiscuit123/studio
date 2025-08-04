@@ -198,7 +198,7 @@ function MessagesContent() {
     if (viewportRef.current) {
         viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
     }
-  }, [currentMessages]);
+  }, [currentMessages, selectedConversation]);
 
 
   return (
@@ -367,7 +367,7 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-grow" viewportRef={viewportRef}>
+            <ScrollArea className="flex-1" viewportRef={viewportRef}>
                 <div className="flex flex-col justify-end p-4 gap-4 min-h-full">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;

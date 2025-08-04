@@ -96,10 +96,9 @@ function MessagesContent({
             }
         }
     }
-    // Use a timeout to avoid cascading updates within the same render cycle.
     setTimeout(markAsRead, 0);
 
-  }, [convoId, allMessages, groupChats]);
+  }, [convoId]);
 
 
   useEffect(() => {
@@ -425,12 +424,14 @@ function MessagesPageComponent() {
         return updatedDms;
       });
     } else { // group chat
-      setGroupChats((prevChats) => prevChats.map(chat => {
-        if (chat.id === selectedConversation.chat.id) {
-          return { ...chat, messages: [...chat.messages, newMessage] };
-        }
-        return chat;
-      }));
+      setGroupChats((prevChats) => {
+        return prevChats.map(chat => {
+            if (chat.id === selectedConversation.chat.id) {
+            return { ...chat, messages: [...chat.messages, newMessage] };
+            }
+            return chat;
+        });
+      });
     }
   };
 

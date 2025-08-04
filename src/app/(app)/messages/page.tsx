@@ -345,10 +345,10 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b">
+            <div className="flex items-center gap-4 p-3 border-b flex-shrink-0">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -421,8 +421,7 @@ function MessagesContent() {
                 )})}
               </div>
             </ScrollArea>
-            <Separator />
-            <div className="p-4 bg-background">
+            <div className="p-4 bg-background border-t flex-shrink-0">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}
@@ -459,3 +458,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

@@ -82,19 +82,22 @@ function MessagesContent() {
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
     
-    let wasGroupUpdated = false;
-    const updatedGroups = groupChats.map(g => {
-        if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
-            wasGroupUpdated = true;
-            return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
-        }
-        return g;
-    });
+    setGroupChats((prevGroups) => {
+      let wasGroupUpdated = false;
+      const updatedGroups = prevGroups.map(g => {
+          if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
+              wasGroupUpdated = true;
+              return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
+          }
+          return g;
+      });
 
-    if (wasGroupUpdated) {
-        setGroupChats(updatedGroups);
-    }
-  }, [user, groupChats, setGroupChats]);
+      if (wasGroupUpdated) {
+          return updatedGroups;
+      }
+      return prevGroups;
+    });
+  }, [user, setGroupChats]);
 
 
   useEffect(() => {
@@ -103,7 +106,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -347,10 +350,10 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b shrink-0">
+            <div className="flex items-center gap-4 p-3 border-b flex-shrink-0">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -423,7 +426,7 @@ function MessagesContent() {
                     )})}
                 </div>
             </ScrollArea>
-            <div className="p-4 bg-background border-t shrink-0">
+            <div className="p-4 bg-background border-t flex-shrink-0">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}

@@ -54,8 +54,8 @@ function MessagesContent({
 
   const markDmAsRead = useCallback((partnerEmail: string) => {
     if (!user) return;
-    const dmKey = [user.email, partnerEmail].sort().join(':');
     setAllMessages(prevMessages => {
+        const dmKey = [user.email, partnerEmail].sort().join(':');
         const currentDm = prevMessages[dmKey] || [];
         if (currentDm.some(m => !m.read)) {
             const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
@@ -69,22 +69,23 @@ function MessagesContent({
   }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
+      if (!user) return;
       setGroupChats(prevChats => {
-          const chatExists = prevChats.find(chat => chat.id === chatId);
-          if (chatExists && chatExists.messages.some(m => !m.read)) {
-              return prevChats.map(chat => {
-                  if (chat.id === chatId) {
-                      return {
-                          ...chat,
-                          messages: chat.messages.map(m => ({ ...m, read: true })),
-                      };
-                  }
-                  return chat;
-              });
+          const chatToUpdate = prevChats.find(chat => chat.id === chatId);
+          if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
+            return prevChats.map(chat => {
+                if (chat.id === chatId) {
+                    return {
+                        ...chat,
+                        messages: chat.messages.map(m => ({ ...m, read: true })),
+                    };
+                }
+                return chat;
+            });
           }
           return prevChats;
       });
-  }, [setGroupChats]);
+  }, [user, setGroupChats]);
 
 
   useEffect(() => {
@@ -449,6 +450,7 @@ export default function MessagesPage() {
     return filtered.sort((a, b) => {
         const lastMsgA = getLastMessage(a);
         const lastMsgB = getLastMessage(b);
+        if (!lastMsgA && !lastMsgB) return 0;
         if (!lastMsgA) return 1;
         if (!lastMsgB) return -1;
         return new Date(lastMsgB.timestamp).getTime() - new Date(lastMsgA.timestamp).getTime();
@@ -465,7 +467,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] gap-0">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
       <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold">Chats</h2>

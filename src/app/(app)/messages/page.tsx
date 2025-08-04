@@ -75,25 +75,21 @@ function MessagesContent() {
     });
 
     if (wasMessageUpdated) {
-        setAllMessages(updatedMessages);
+      setAllMessages(updatedMessages);
     }
   }, [user, allMessages, setAllMessages]);
 
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
     
-    let wasGroupUpdated = false;
     const updatedGroups = groupChats.map(g => {
         if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
-            wasGroupUpdated = true;
             return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
         }
         return g;
     });
+    setGroupChats(updatedGroups);
 
-    if (wasGroupUpdated) {
-        setGroupChats(updatedGroups);
-    }
   }, [user, groupChats, setGroupChats]);
 
 
@@ -347,7 +343,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b flex-shrink-0">
@@ -460,3 +456,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

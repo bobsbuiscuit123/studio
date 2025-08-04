@@ -33,7 +33,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import type { User as UserType } from "@/lib/mock-data";
 
 
@@ -46,7 +46,6 @@ const pageTitles: { [key: string]: string } = {
   "/members": "Members",
   "/slides": "Meeting Slides",
   "/social": "Social Media",
-  "/messages": "Messages",
   "/attendance": "Attendance",
   "/email": "Bulk Email",
 };
@@ -99,12 +98,10 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
   const router = useRouter();
   
-  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -120,12 +117,6 @@ export function AppHeader() {
       }
     }
   }, []);
-
-  useEffect(() => {
-    if (!messagesLoading && user && allMessages) {
-        setHasUnreadMessages(allMessages.some(m => m.recipientEmail === user.email && !m.read));
-    }
-  }, [allMessages, user, messagesLoading]);
   
   useEffect(() => {
     if (!announcementsLoading) {
@@ -188,7 +179,6 @@ export function AppHeader() {
             <AppSidebarNav 
               role={role || ''} 
               notifications={{
-                messages: hasUnreadMessages,
                 announcements: hasUnreadAnnouncements,
                 social: hasUnreadSocials,
               }}

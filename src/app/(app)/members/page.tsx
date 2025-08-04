@@ -1,7 +1,7 @@
 
 "use client";
 
-import { MessageSquare, Mail, Share2, ChevronDown } from "lucide-react";
+import { Mail, Share2, ChevronDown } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useMembers, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
-import type { Member } from "@/lib/mock-data";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -32,7 +31,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useRouter } from "next/navigation";
 
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
@@ -40,7 +38,6 @@ export default function MembersPage() {
   const [joinCode, setJoinCode] = useState('');
   const { canEditContent, canManageRoles, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
-  const router = useRouter();
 
   useEffect(() => {
     if (clubId) {
@@ -62,10 +59,6 @@ export default function MembersPage() {
     }
     const hue = hash % 360;
     return `hsl(${hue}, 70%, 80%)`;
-  };
-
-  const handleMessage = (member: Member) => {
-    router.push(`/messages?recipient=${member.email}`);
   };
 
   const handleCopyToClipboard = () => {
@@ -140,14 +133,6 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
-                  <Button
-                    className="w-full"
-                    onClick={() => handleMessage(member)}
-                    disabled={member.email === user?.email}
-                  >
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Message
-                  </Button>
                    {canManageRoles && member.email !== user?.email && !(role === 'Admin' && member.role === 'President') && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>

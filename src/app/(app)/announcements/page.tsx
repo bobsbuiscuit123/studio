@@ -2,14 +2,12 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Megaphone, Loader2, Pencil, Download, MessageSquare, Paperclip, X, File as FileIcon } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import ReactMarkdown from 'react-markdown';
 import { useRouter } from "next/navigation";
-import NextImage from 'next/image';
-
 
 import { Button } from "@/components/ui/button";
 import {
@@ -35,7 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { Announcement, Attachment } from "@/lib/mock-data";
 
 
@@ -51,16 +49,14 @@ const announcementFormSchema = z.object({
 
 export default function AnnouncementsPage() {
   const { data: announcements, updateData: setAnnouncements, loading } = useAnnouncements();
-  const { data: members, loading: membersLoading } = useMembers();
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
-  const { role, canEditContent } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
@@ -230,16 +226,6 @@ export default function AnnouncementsPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
     handleDialogClose();
   };
-
-  const handleDiscussWithPresident = () => {
-    if (membersLoading) return;
-    const president = members.find(m => m.role === 'President');
-    if (president) {
-        router.push(`/messages?recipient=${president.email}`);
-    } else {
-        toast({ title: "Could not find President", description: "The club president could not be found to start a conversation.", variant: "destructive"});
-    }
-  }
   
   return (
     <>
@@ -374,14 +360,6 @@ export default function AnnouncementsPage() {
                                 Download Associated Slides (PDF)
                             </Button>
                         )}
-                        {role !== 'President' && (
-                            <Button
-                                variant="secondary"
-                                onClick={handleDiscussWithPresident}
-                            >
-                                <MessageSquare className="mr-2" /> Discuss with President
-                            </Button>
-                        )}
                     </CardFooter>
                 </Card>
               ))
@@ -464,5 +442,3 @@ export default function AnnouncementsPage() {
     </>
   );
 }
-
-    

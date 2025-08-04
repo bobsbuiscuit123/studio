@@ -85,15 +85,6 @@ export type Transaction = {
   status: 'Paid' | 'Pending';
 };
 
-export type Message = {
-    id: string;
-    senderEmail: string;
-    recipientEmail: string;
-    text: string;
-    timestamp: Date;
-    read: boolean;
-}
-
 export type GalleryImage = {
   id: number;
   src: string;
@@ -103,21 +94,4 @@ export type GalleryImage = {
   likes: number;
   liked: boolean;
   status: 'pending' | 'approved';
-};
-
-export type GroupMessage = {
-  id: string;
-  senderEmail: string;
-  authorName: string;
-  authorAvatar?: string;
-  text: string;
-  timestamp: Date;
-};
-
-export type GroupChat = {
-  id: string;
-  name: string;
-  memberEmails: string[];
-  messages: GroupMessage[];
-  unreadFor?: string[]; // Tracks who has unread messages
 };

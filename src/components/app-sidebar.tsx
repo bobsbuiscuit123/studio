@@ -4,25 +4,17 @@
 import Link from "next/link";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole, useCurrentUser, useMessages, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import { useEffect, useState } from "react";
 
 export function AppSidebar() {
   const { role } = useCurrentUserRole();
   const { user } = useCurrentUser();
-  const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
   
-  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
-
-  useEffect(() => {
-    if (!messagesLoading && user && allMessages) {
-        setHasUnreadMessages(allMessages.some(m => m.recipientEmail === user.email && !m.read));
-    }
-  }, [allMessages, user, messagesLoading]);
 
   useEffect(() => {
     if (!announcementsLoading) {
@@ -50,7 +42,6 @@ export function AppSidebar() {
             <AppSidebarNav 
               role={role || ''} 
               notifications={{
-                messages: hasUnreadMessages,
                 announcements: hasUnreadAnnouncements,
                 social: hasUnreadSocials,
               }}

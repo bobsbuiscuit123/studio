@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Message, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, GroupChat, Slide } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -119,62 +119,6 @@ export function usePresentations() {
 export function useGalleryImages() {
     return useClubData<GalleryImage[]>('galleryImages', []);
 }
-
-export function useGroupChats() {
-    const { data, loading, updateData, clubId } = useClubData<GroupChat[]>('groupChats', []);
-
-    const groupsWithDates = (data || []).map(group => ({
-        ...group,
-        messages: (group.messages || []).map(message => ({
-            ...message,
-            timestamp: new Date(message.timestamp)
-        })).sort((a,b) => a.timestamp.getTime() - b.timestamp.getTime())
-    }));
-
-    const updateGroupChatsWithStrings = (newGroups: any[]) => {
-        const groupsWithStrings = newGroups.map(group => ({
-            ...group,
-            messages: (group.messages || []).map((message: any) => ({
-                ...message,
-                timestamp: message.timestamp.toISOString()
-            }))
-        }));
-        updateData(groupsWithStrings as any);
-    }
-
-    return { data: groupsWithDates, loading, updateData: updateGroupChatsWithStrings, clubId };
-}
-
-
-export function useMessages(userEmail?: string | null) {
-    const { data: allMessages, loading, updateData, clubId } = useClubData<Message[]>('messages', []);
-
-    const [conversation, setConversation] = useState<Message[]>([]);
-    const [recipientEmail, setRecipientEmail] = useState<string | null>(null);
-
-    useEffect(() => {
-        if (userEmail && recipientEmail && allMessages) {
-            const currentConversation = allMessages.filter(
-                (msg) =>
-                    (msg.senderEmail === userEmail && msg.recipientEmail === recipientEmail) ||
-                    (msg.senderEmail === recipientEmail && msg.recipientEmail === userEmail)
-            );
-            setConversation(currentConversation.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()));
-        } else {
-            setConversation([]);
-        }
-    }, [allMessages, userEmail, recipientEmail]);
-    
-    return { 
-        data: conversation, 
-        allMessages, 
-        loading, 
-        updateData: updateData, 
-        setConversation: setRecipientEmail,
-        clubId 
-    };
-}
-
 
 export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);

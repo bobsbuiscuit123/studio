@@ -32,9 +32,9 @@ export function AppSidebar() {
   }, [socialPosts, socialPostsLoading]);
 
   useEffect(() => {
-    if (!messagesLoading && !groupsLoading && user) {
-        const unreadDms = Object.values(allMessages).flat().some(m => !m.read && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => !m.read && m.sender !== user.email));
+    if (!messagesLoading && !groupsLoading && user && allMessages) {
+        const unreadDms = Object.values(allMessages).flat().some(m => !m.readBy.includes(user.email) && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => !m.readBy.includes(user.email) && m.sender !== user.email));
         setHasUnreadMessages(unreadDms || unreadGroups);
     }
   }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);

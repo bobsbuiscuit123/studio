@@ -101,7 +101,7 @@ export type Message = {
     senderName: string;
     text: string;
     timestamp: string; // ISO string
-    read: boolean;
+    readBy: string[]; // array of user emails
 }
 
 export type GroupChat = {
@@ -111,5 +111,3 @@ export type GroupChat = {
     members: string[]; // array of emails
     messages: Message[];
 }
-
-    

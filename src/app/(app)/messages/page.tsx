@@ -97,7 +97,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -341,7 +341,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
+       <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b shrink-0">
@@ -454,5 +454,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

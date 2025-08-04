@@ -345,10 +345,10 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("relative", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b flex-shrink-0">
+            <div className="flex items-center gap-4 p-3 border-b absolute top-0 left-0 right-0 h-[69px] bg-background z-10">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -370,7 +370,7 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-1" viewportRef={viewportRef}>
+            <ScrollArea className="absolute top-[69px] bottom-[84px] left-0 right-0" viewportRef={viewportRef}>
               <div className="space-y-4 p-4">
                 {currentMessages.map((msg) => {
                   const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
@@ -421,7 +421,7 @@ function MessagesContent() {
                 )})}
               </div>
             </ScrollArea>
-            <div className="p-4 bg-background border-t flex-shrink-0">
+            <div className="p-4 bg-background border-t absolute bottom-0 left-0 right-0 h-[84px]">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}

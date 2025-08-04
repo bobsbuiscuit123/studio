@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMembers, useCurrentUser, useMessages, useGroupChats } from "@/lib/data-hooks";
 import type { Member, User, Message, GroupChat } from '@/lib/mock-data';
 import { cn } from "@/lib/utils";
-import { Send, Plus, Users, MessageSquare, Loader2, Wand2 } from 'lucide-react';
+import { Send, Plus, Users, MessageSquare, Loader2, Wand2, Search } from 'lucide-react';
+import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { generateChatReply } from "@/ai/flows/generate-chat-reply";
+import { Label } from '@/components/ui/label';
 
 type Conversation = 
   | { type: 'dm'; partner: Member }
@@ -33,14 +35,13 @@ type Conversation =
 const groupChatFormSchema = z.object({
   name: z.string().min(3, "Group name must be at least 3 characters."),
   members: z.array(z.string()).min(1, "You must select at least one member."),
+  avatar: z.any().optional(),
 });
 
 function MessagesContent({
   selectedConversation,
-  onSelectConversation,
 }: {
   selectedConversation: Conversation | null;
-  onSelectConversation: (conversation: Conversation | null) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
@@ -65,18 +66,18 @@ function MessagesContent({
   }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
-    setGroupChats(prevChats => 
-        prevChats.map(chat => {
-            if (chat.id === chatId) {
-                return {
-                    ...chat,
-                    messages: chat.messages.map(m => ({ ...m, read: true })),
-                };
-            }
-            return chat;
-        })
-    );
-  }, [setGroupChats]);
+    const currentChats = groupChats;
+    const updatedChats = currentChats.map(chat => {
+        if (chat.id === chatId) {
+            return {
+                ...chat,
+                messages: chat.messages.map(m => ({ ...m, read: true })),
+            };
+        }
+        return chat;
+    });
+    setGroupChats(updatedChats);
+  }, [groupChats, setGroupChats]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -86,8 +87,7 @@ function MessagesContent({
         markGroupAsRead(selectedConversation.chat.id);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   useEffect(() => {
     if (scrollAreaViewport.current) {
@@ -151,10 +151,10 @@ function MessagesContent({
 
   if (!selectedConversation || !user) {
     return (
-      <div className="flex-grow flex flex-col items-center justify-center text-center h-full bg-gray-50 dark:bg-gray-800/50">
-        <MessageSquare className="w-16 h-16 text-gray-400" />
+      <div className="flex-grow flex flex-col items-center justify-center text-center h-full bg-muted/20 dark:bg-card rounded-r-xl">
+        <MessageSquare className="w-16 h-16 text-muted-foreground" />
         <h2 className="mt-4 text-2xl font-semibold">Select a conversation</h2>
-        <p className="mt-2 text-gray-500">Choose a person or group from the left to start chatting.</p>
+        <p className="mt-2 text-muted-foreground">Choose a person or group from the left to start chatting.</p>
       </div>
     );
   }
@@ -162,31 +162,34 @@ function MessagesContent({
   const currentMessages = selectedConversation.type === 'dm'
     ? allMessages[[user.email, selectedConversation.partner.email].sort().join(':')] || []
     : groupChats.find(chat => chat.id === selectedConversation.chat.id)?.messages || [];
+  
+  const convoName = selectedConversation.type === 'dm' ? selectedConversation.partner.name : selectedConversation.chat.name;
+  const convoAvatar = selectedConversation.type === 'dm' ? selectedConversation.partner.avatar : selectedConversation.chat.avatar;
+  const convoFallback = convoName.charAt(0);
+
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900/50 rounded-r-xl">
+    <div className="flex flex-col h-full bg-card rounded-r-xl border-t border-b border-r">
       {/* Header */}
       <header className="flex items-center gap-4 p-4 border-b shrink-0">
         <Avatar>
-            <AvatarImage src={selectedConversation.type === 'dm' ? selectedConversation.partner.avatar : undefined} />
+            <AvatarImage src={convoAvatar} />
             <AvatarFallback>
-            {selectedConversation.type === 'dm' 
-                ? selectedConversation.partner.name.charAt(0) 
-                : selectedConversation.chat.name.charAt(0)}
+            {selectedConversation.type === 'group' ? <Users className="h-5 w-5"/> : convoFallback}
             </AvatarFallback>
         </Avatar>
         <div>
             <h3 className="font-semibold">
-                {selectedConversation.type === 'dm' ? selectedConversation.partner.name : selectedConversation.chat.name}
+                {convoName}
             </h3>
             {selectedConversation.type === 'group' && (
-                <p className="text-xs text-gray-500">{selectedConversation.chat.members.length} members</p>
+                <p className="text-xs text-muted-foreground">{selectedConversation.chat.members.length} members</p>
             )}
         </div>
       </header>
 
       {/* Messages */}
-      <ScrollArea className="flex-grow p-4" viewportRef={scrollAreaViewport}>
+      <ScrollArea className="flex-grow p-4 bg-muted/20" viewportRef={scrollAreaViewport}>
         <div className="space-y-4">
           {currentMessages.map((msg, index) => (
             <div
@@ -203,7 +206,7 @@ function MessagesContent({
                   "max-w-xs md:max-w-md lg:max-w-lg rounded-2xl px-4 py-2 text-sm",
                   msg.sender === user.email
                     ? "bg-primary text-primary-foreground rounded-br-none"
-                    : "bg-gray-200 dark:bg-gray-700 rounded-bl-none"
+                    : "bg-card rounded-bl-none shadow-sm"
                 )}
               >
                 {msg.sender !== user.email && (
@@ -217,7 +220,7 @@ function MessagesContent({
       </ScrollArea>
       
       {/* Input */}
-      <div className="p-4 border-t bg-background shrink-0">
+      <div className="p-4 border-t bg-card shrink-0">
          {suggestedReply && (
             <div className="flex items-center gap-2 mb-2">
                 <p className="text-xs text-muted-foreground">Suggested:</p>
@@ -254,6 +257,8 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
     const { user } = useCurrentUser();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const form = useForm<z.infer<typeof groupChatFormSchema>>({
         resolver: zodResolver(groupChatFormSchema),
@@ -263,6 +268,18 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
         },
     });
 
+    const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewImage(reader.result as string);
+          form.setValue('avatar', reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+
     const onSubmit = (values: z.infer<typeof groupChatFormSchema>) => {
         if (!user) return;
         const newGroupChat: GroupChat = {
@@ -270,11 +287,13 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
             name: values.name,
             members: [...values.members, user.email],
             messages: [],
+            avatar: values.avatar || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
         };
         setGroupChats([...groupChats, newGroupChat]);
         toast({ title: "Group chat created!" });
         setIsOpen(false);
         form.reset();
+        setPreviewImage(null);
     };
     
     if (!user) return null;
@@ -282,7 +301,13 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
     const availableMembers = members.filter(m => m.email !== user.email);
 
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            setIsOpen(open);
+            if (!open) {
+                form.reset();
+                setPreviewImage(null);
+            }
+        }}>
             <DialogTrigger asChild>{children}</DialogTrigger>
             <DialogContent>
                 <DialogHeader>
@@ -293,31 +318,50 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
                 </DialogHeader>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                     <div className="space-y-4 py-4">
-                        <div>
-                            <label htmlFor="group-name" className="text-sm font-medium">Group Name</label>
-                            <Input id="group-name" {...form.register('name')} placeholder="e.g., Event Planning Committee"/>
-                            {form.formState.errors.name && <p className="text-sm text-destructive mt-1">{form.formState.errors.name.message}</p>}
+                        <div className="flex items-center gap-4">
+                            <div className="relative">
+                                <Avatar className="w-20 h-20 text-3xl">
+                                    <AvatarImage src={previewImage || undefined}/>
+                                    <AvatarFallback>
+                                        <Users/>
+                                    </AvatarFallback>
+                                </Avatar>
+                                <Button type="button" size="icon" className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full" onClick={() => fileInputRef.current?.click()}>
+                                  <Plus className="h-4 w-4"/>
+                                </Button>
+                                <Input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageChange} />
+                            </div>
+                            <div className="flex-grow">
+                                <Label htmlFor="group-name">Group Name</Label>
+                                <Input id="group-name" {...form.register('name')} placeholder="e.g., Event Planning"/>
+                                {form.formState.errors.name && <p className="text-sm text-destructive mt-1">{form.formState.errors.name.message}</p>}
+                            </div>
                         </div>
+
                         <div className="space-y-2">
-                             <label className="text-sm font-medium">Members</label>
+                             <Label>Members</Label>
                              {form.formState.errors.members && <p className="text-sm text-destructive">{form.formState.errors.members.message}</p>}
-                             <div className="max-h-60 overflow-y-auto space-y-2 p-1">
+                             <ScrollArea className="max-h-40 w-full rounded-md border p-2">
                              {membersLoading ? (
                                 <p>Loading members...</p>
                              ) : availableMembers.length > 0 ? (
                                 availableMembers.map(member => (
-                                <div key={member.email} className="flex items-center space-x-2">
+                                <div key={member.email} className="flex items-center space-x-3 py-2">
                                     <Checkbox
                                         id={`member-${member.email}`}
                                         onCheckedChange={(checked) => {
                                             const currentMembers = form.getValues('members');
-                                            if (checked) {
-                                                form.setValue('members', [...currentMembers, member.email]);
-                                            } else {
-                                                form.setValue('members', currentMembers.filter(email => email !== member.email));
-                                            }
+                                            const newMembers = checked 
+                                                ? [...currentMembers, member.email]
+                                                : currentMembers.filter(email => email !== member.email);
+                                            form.setValue('members', newMembers, { shouldValidate: true });
                                         }}
+                                        checked={form.watch('members').includes(member.email)}
                                     />
+                                    <Avatar className="h-8 w-8">
+                                        <AvatarImage src={member.avatar} />
+                                        <AvatarFallback>{member.name.charAt(0)}</AvatarFallback>
+                                    </Avatar>
                                     <label htmlFor={`member-${member.email}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                         {member.name}
                                     </label>
@@ -325,7 +369,7 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
                              ))) : (
                                 <p className="text-sm text-muted-foreground">No other members in this club.</p>
                              )}
-                            </div>
+                            </ScrollArea>
                         </div>
                     </div>
                     <DialogFooter>
@@ -343,6 +387,7 @@ export default function MessagesPage() {
   const { data: members, loading: membersLoading } = useMembers();
   const { data: allMessages, loading: messagesLoading } = useMessages();
   const { data: groupChats, loading: groupsLoading } = useGroupChats();
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
 
@@ -351,9 +396,9 @@ export default function MessagesPage() {
     if (convo.type === 'dm') {
         const dmKey = [user.email, convo.partner.email].sort().join(':');
         const messages = allMessages[dmKey] || [];
-        return messages.filter(m => !m.read && m.sender !== user.email).length;
-    } else {
-        return convo.chat.messages.filter(m => !m.read && m.sender !== user.email).length;
+        return messages.filter(m => m.sender !== user.email && !m.read).length;
+    } else { // group
+        return convo.chat.messages.filter(m => m.sender !== user.email && !m.read).length;
     }
   }, [user, allMessages]);
   
@@ -363,10 +408,44 @@ export default function MessagesPage() {
           const dmKey = [user.email, convo.partner.email].sort().join(':');
           const messages = allMessages[dmKey] || [];
           return messages.length > 0 ? messages[messages.length - 1] : null;
-      } else {
+      } else { // group
           return convo.chat.messages.length > 0 ? convo.chat.messages[convo.chat.messages.length - 1] : null;
       }
   }
+
+  const sortedAndFilteredConversations = useMemo(() => {
+    if (!user) return [];
+    
+    const directMessagePartners = members.filter(m => m.email !== user.email);
+  
+    const dmConversations: Conversation[] = directMessagePartners.map(partner => ({
+        type: 'dm',
+        partner
+    }));
+    
+    const groupConversations: Conversation[] = groupChats
+      .filter(chat => chat.members && chat.members.includes(user.email))
+      .map(chat => ({
+          type: 'group',
+          chat
+      }));
+
+    const allConversations = [...groupConversations, ...dmConversations];
+    
+    const filtered = allConversations.filter(convo => {
+      const name = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
+      return name.toLowerCase().includes(searchQuery.toLowerCase());
+    });
+
+    return filtered.sort((a, b) => {
+        const lastMsgA = getLastMessage(a);
+        const lastMsgB = getLastMessage(b);
+        if (!lastMsgA) return 1;
+        if (!lastMsgB) return -1;
+        return new Date(lastMsgB.timestamp).getTime() - new Date(lastMsgA.timestamp).getTime();
+    });
+  }, [user, members, groupChats, allMessages, searchQuery]);
+
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
@@ -376,32 +455,9 @@ export default function MessagesPage() {
     return <div>Please log in to view messages.</div>;
   }
 
-  const directMessagePartners = members.filter(m => m.email !== user.email);
-  
-  const dmConversations: Conversation[] = directMessagePartners.map(partner => ({
-      type: 'dm',
-      partner
-  }));
-  
-  const groupConversations: Conversation[] = groupChats
-    .filter(chat => chat.members && chat.members.includes(user.email))
-    .map(chat => ({
-        type: 'group',
-        chat
-    }));
-
-  const allConversations = [...groupConversations, ...dmConversations].sort((a, b) => {
-      const lastMsgA = getLastMessage(a);
-      const lastMsgB = getLastMessage(b);
-      if (!lastMsgA) return 1;
-      if (!lastMsgB) return -1;
-      return new Date(lastMsgB.timestamp).getTime() - new Date(lastMsgA.timestamp).getTime();
-  });
-
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-4">
-      <aside className="flex flex-col bg-white dark:bg-gray-900 border-r rounded-l-xl">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] gap-0">
+      <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold">Chats</h2>
            <NewGroupChatDialog>
@@ -411,8 +467,14 @@ export default function MessagesPage() {
               </Button>
             </NewGroupChatDialog>
         </header>
+        <div className="p-2 border-b">
+            <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search" className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            </div>
+        </div>
         <ScrollArea className="flex-grow">
-          {allConversations.map((convo, index) => {
+          {sortedAndFilteredConversations.map((convo, index) => {
             const unreadCount = getUnreadCount(convo);
             const lastMessage = getLastMessage(convo);
             const isSelected = selectedConversation?.type === convo.type && (
@@ -421,30 +483,30 @@ export default function MessagesPage() {
             );
             
             const convoName = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
-            const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : undefined;
+            const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : convo.chat.avatar;
+            const fallbackInitial = convoName.charAt(0);
 
             return (
               <div
-                key={index}
+                key={convo.type === 'dm' ? convo.partner.email : convo.chat.id}
                 onClick={() => setSelectedConversation(convo)}
                 className={cn(
-                  "flex items-center gap-4 p-3 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800",
-                  isSelected && "bg-primary/10 dark:bg-primary/20"
+                  "flex items-center gap-4 p-3 cursor-pointer hover:bg-muted/50",
+                  isSelected && "bg-muted"
                 )}
               >
                 <Avatar>
                   <AvatarImage src={convoAvatar} />
                   <AvatarFallback>
-                    {convo.type === 'group' && <Users className="w-4 h-4"/>}
-                    {convo.type === 'dm' && convoName.charAt(0)}
+                    {convo.type === 'group' ? <Users className="w-4 h-4"/> : fallbackInitial}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-grow truncate">
                   <h4 className="font-semibold truncate">{convoName}</h4>
-                  {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-gray-500")}>{lastMessage.text}</p>}
+                  {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-muted-foreground")}>{lastMessage.text}</p>}
                 </div>
                 {unreadCount > 0 && (
-                  <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center shrink-0">
                     {unreadCount}
                   </div>
                 )}
@@ -454,8 +516,10 @@ export default function MessagesPage() {
         </ScrollArea>
       </aside>
       <main className="h-full overflow-hidden">
-        <MessagesContent selectedConversation={selectedConversation} onSelectConversation={setSelectedConversation} />
+        <MessagesContent selectedConversation={selectedConversation} />
       </main>
     </div>
   );
 }
+
+    

@@ -107,6 +107,9 @@ export type Message = {
 export type GroupChat = {
     id: string;
     name: string;
+    avatar?: string;
     members: string[]; // array of emails
     messages: Message[];
 }
+
+    

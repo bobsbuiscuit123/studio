@@ -41,8 +41,10 @@ const groupChatFormSchema = z.object({
 
 function MessagesContent({
   selectedConversation,
+  setSelectedConversation,
 }: {
   selectedConversation: Conversation | null;
+  setSelectedConversation: (conversation: Conversation | null) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
@@ -53,52 +55,29 @@ function MessagesContent({
   const [suggestedReply, setSuggestedReply] = useState("");
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
 
-  const markDmAsRead = useCallback((partnerEmail: string) => {
-    if (!user) return;
-    const dmKey = [user.email, partnerEmail].sort().join(':');
-    setAllMessages(prevMessages => {
-        const currentDm = prevMessages[dmKey] || [];
-        const hasUnread = currentDm.some(m => !m.read);
-        if (!hasUnread) return prevMessages;
-
-        const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
-        return {
-            ...prevMessages,
-            [dmKey]: newMessagesForDm
-        };
-    });
-  }, [user, setAllMessages]);
-
-  const markGroupAsRead = useCallback((chatId: string) => {
-    if (!user) return;
-    setGroupChats((prevChats: GroupChat[]) => {
-        const chatIndex = prevChats.findIndex(chat => chat.id === chatId);
-        if (chatIndex === -1) return prevChats;
-
-        const chatToUpdate = prevChats[chatIndex];
-        const hasUnread = chatToUpdate.messages.some(m => !m.read && m.sender !== user.email);
-        if (!hasUnread) return prevChats;
-
-        const updatedChat = {
-            ...chatToUpdate,
-            messages: chatToUpdate.messages.map(m => ({ ...m, read: true })),
-        };
-        const newChats = [...prevChats];
-        newChats[chatIndex] = updatedChat;
-        return newChats;
-    });
-  }, [user, setGroupChats]);
-
-
   useEffect(() => {
-    if (selectedConversation) {
-        if (selectedConversation.type === 'dm') {
-            markDmAsRead(selectedConversation.partner.email);
-        } else {
-            markGroupAsRead(selectedConversation.chat.id);
+    if (selectedConversation && user) {
+      if (selectedConversation.type === 'dm') {
+        const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
+        const currentDm = allMessages[dmKey] || [];
+        if (currentDm.some(m => !m.read)) {
+            setAllMessages(prev => ({
+                ...prev,
+                [dmKey]: prev[dmKey].map(m => ({...m, read: true}))
+            }));
         }
+      } else {
+        const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
+        if (chat && chat.messages.some(m => !m.read && m.sender !== user.email)) {
+            setGroupChats(prev => prev.map(c => 
+                c.id === chat.id 
+                    ? {...c, messages: c.messages.map(m => ({...m, read: true}))} 
+                    : c
+            ));
+        }
+      }
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation, allMessages, groupChats, user, setAllMessages, setGroupChats]);
 
 
   useEffect(() => {
@@ -405,13 +384,13 @@ function MessagesPageComponent() {
 
   useEffect(() => {
     const recipientEmail = searchParams.get('recipient');
-    if (recipientEmail && members.length > 0) {
+    if (recipientEmail && members.length > 0 && !selectedConversation) {
       const recipientMember = members.find(m => m.email === recipientEmail);
       if (recipientMember) {
         setSelectedConversation({ type: 'dm', partner: recipientMember });
       }
     }
-  }, [searchParams, members]);
+  }, [searchParams, members, selectedConversation]);
 
   const getUnreadCount = useCallback((convo: Conversation): number => {
     if (!user) return 0;
@@ -422,7 +401,7 @@ function MessagesPageComponent() {
     } else { // group
         return convo.chat.messages.filter(m => m.sender !== user.email && !m.read).length;
     }
-  }, [user, allMessages]);
+  }, [user, allMessages, groupChats]);
   
   const getLastMessage = useCallback((convo: Conversation): Message | null => {
       if (!user) return null;
@@ -433,7 +412,7 @@ function MessagesPageComponent() {
       } else { // group
           return convo.chat.messages.length > 0 ? convo.chat.messages[convo.chat.messages.length - 1] : null;
       }
-  }, [user, allMessages]);
+  }, [user, allMessages, groupChats]);
 
   const sortedAndFilteredConversations = useMemo(() => {
     if (!user) return [];
@@ -452,14 +431,14 @@ function MessagesPageComponent() {
           chat
       }));
 
-    const allConversations = [...groupConversations, ...dmConversations];
+    let allConversations = [...groupConversations, ...dmConversations];
     
-    const filtered = allConversations.filter(convo => {
+    allConversations = allConversations.filter(convo => {
       const name = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
       return name.toLowerCase().includes(searchQuery.toLowerCase());
     });
 
-    return filtered.sort((a, b) => {
+    return allConversations.sort((a, b) => {
         const lastMsgA = getLastMessage(a);
         const lastMsgB = getLastMessage(b);
         if (!lastMsgA && !lastMsgB) return 0;
@@ -539,7 +518,7 @@ function MessagesPageComponent() {
         </ScrollArea>
       </aside>
       <main className="h-full overflow-hidden">
-        <MessagesContent selectedConversation={selectedConversation} />
+        <MessagesContent selectedConversation={selectedConversation} setSelectedConversation={setSelectedConversation} />
       </main>
     </div>
   );
@@ -549,7 +528,7 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-full">
+            <div className="h-[calc(100vh-8rem)]">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>

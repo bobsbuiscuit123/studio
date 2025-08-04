@@ -498,49 +498,51 @@ function MessagesPageComponent() {
                 <Input placeholder="Search" className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
         </div>
-        <ScrollArea className="flex-grow">
-          {sortedAndFilteredConversations.map((convo) => {
-            const unreadCount = getUnreadCount(convo);
-            const lastMessage = getLastMessage(convo);
-            const isSelected = selectedConversation?.type === convo.type && (
-                (selectedConversation.type === 'dm' && convo.type === 'dm' && selectedConversation.partner.email === convo.partner.email) ||
-                (selectedConversation.type === 'group' && convo.type === 'group' && selectedConversation.chat.id === convo.chat.id)
-            );
-            
-            const convoName = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
-            const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : convo.chat.avatar;
-            const fallbackInitial = convoName.charAt(0);
+        <ScrollArea className="flex-1">
+          <div className="p-2">
+            {sortedAndFilteredConversations.map((convo) => {
+              const unreadCount = getUnreadCount(convo);
+              const lastMessage = getLastMessage(convo);
+              const isSelected = selectedConversation?.type === convo.type && (
+                  (selectedConversation.type === 'dm' && convo.type === 'dm' && selectedConversation.partner.email === convo.partner.email) ||
+                  (selectedConversation.type === 'group' && convo.type === 'group' && selectedConversation.chat.id === convo.chat.id)
+              );
+              
+              const convoName = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
+              const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : convo.chat.avatar;
+              const fallbackInitial = convoName.charAt(0);
 
-            return (
-              <div
-                key={convo.type === 'dm' ? convo.partner.email : convo.chat.id}
-                onClick={() => setSelectedConversation(convo)}
-                className={cn(
-                  "flex items-center gap-4 p-3 cursor-pointer hover:bg-muted/50",
-                  isSelected && "bg-muted"
-                )}
-              >
-                <Avatar>
-                  <AvatarImage src={convoAvatar} />
-                  <AvatarFallback>
-                    {convo.type === 'group' ? <Users className="w-4 h-4"/> : fallbackInitial}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-grow truncate">
-                  <h4 className="font-semibold truncate">{convoName}</h4>
-                  {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-muted-foreground")}>{lastMessage.text}</p>}
-                </div>
-                {unreadCount > 0 && (
-                  <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center shrink-0">
-                    {unreadCount}
+              return (
+                <div
+                  key={convo.type === 'dm' ? convo.partner.email : convo.chat.id}
+                  onClick={() => setSelectedConversation(convo)}
+                  className={cn(
+                    "flex items-center gap-4 p-3 cursor-pointer hover:bg-muted/50 rounded-lg",
+                    isSelected && "bg-muted"
+                  )}
+                >
+                  <Avatar>
+                    <AvatarImage src={convoAvatar} />
+                    <AvatarFallback>
+                      {convo.type === 'group' ? <Users className="w-4 h-4"/> : fallbackInitial}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-grow truncate">
+                    <h4 className="font-semibold truncate">{convoName}</h4>
+                    {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-muted-foreground")}>{lastMessage.text}</p>}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  {unreadCount > 0 && (
+                    <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center shrink-0">
+                      {unreadCount}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </ScrollArea>
       </aside>
-      <main className="h-full bg-card border-t border-b border-r rounded-r-xl overflow-hidden">
+      <main className="bg-card border-t border-b border-r rounded-r-xl overflow-hidden">
         <MessagesContent 
             selectedConversation={selectedConversation} 
             setSelectedConversation={setSelectedConversation}
@@ -553,10 +555,12 @@ function MessagesPageComponent() {
 // Wrapping the component to use Suspense for searchParams
 export default function MessagesPage() {
     return (
-        <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-[calc(100vh-8rem)]">
+        <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>}>
+            <div className="h-full">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>
     )
 }
+
+    

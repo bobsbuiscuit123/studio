@@ -84,13 +84,13 @@ function MessagesContent({
                 const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
                 setAllMessages(prev => {
                     const newDms = {...prev};
-                    newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, readBy: [...m.readBy, user.email]}));
+                    newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, readBy: [...(m.readBy || []), user.email]}));
                     return newDms;
                 });
             } else {
                 setGroupChats(prev => prev.map(c => 
                     c.id === selectedConversation.chat.id 
-                        ? {...c, messages: c.messages.map(m => ({...m, readBy: [...m.readBy, user.email]}))} 
+                        ? {...c, messages: c.messages.map(m => ({...m, readBy: [...(m.readBy || []), user.email]}))} 
                         : c
                 ));
             }
@@ -440,9 +440,9 @@ function MessagesPageComponent() {
     if (convo.type === 'dm') {
         const dmKey = [user.email, convo.partner.email].sort().join(':');
         const messages = allMessages[dmKey] || [];
-        return messages.filter(m => m.sender !== user.email && !m.readBy.includes(user.email)).length;
+        return messages.filter(m => m.sender !== user.email && m.readBy && !m.readBy.includes(user.email)).length;
     } else { // group
-        return convo.chat.messages.filter(m => m.sender !== user.email && !m.readBy.includes(user.email)).length;
+        return convo.chat.messages.filter(m => m.sender !== user.email && m.readBy && !m.readBy.includes(user.email)).length;
     }
   }, [user, allMessages, groupChats]);
   

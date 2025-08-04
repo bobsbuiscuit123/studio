@@ -12,7 +12,7 @@ export default function AppLayout({
       <div className="print:hidden">
         <AppSidebar />
       </div>
-      <div className="flex flex-col h-screen">
+      <div className="flex flex-col">
         <div className="print:hidden">
           <AppHeader />
         </div>

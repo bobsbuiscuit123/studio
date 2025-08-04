@@ -41,10 +41,8 @@ const groupChatFormSchema = z.object({
 
 function MessagesContent({
   selectedConversation,
-  setSelectedConversation,
 }: {
   selectedConversation: Conversation | null;
-  setSelectedConversation: (conversation: Conversation | null) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
@@ -94,7 +92,7 @@ function MessagesContent({
             ));
         }
     }
-  }, [convoId]);
+  }, [convoId, allMessages, groupChats, selectedConversation, setAllMessages, setGroupChats, user]);
 
 
   useEffect(() => {
@@ -178,7 +176,7 @@ function MessagesContent({
 
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-card border-t border-b border-r rounded-r-xl">
       {/* Header */}
       <header className="flex items-center gap-4 p-4 border-b bg-card shrink-0">
         <Avatar>
@@ -486,8 +484,8 @@ function MessagesPageComponent() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
-      <aside className="flex flex-col h-full bg-card border rounded-l-xl">
+    <div className="grid grid-cols-[300px_1fr] h-full gap-0">
+      <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center shrink-0">
           <h2 className="text-xl font-bold">Chats</h2>
            <NewGroupChatDialog onGroupCreated={handleGroupCreated} />
@@ -542,10 +540,9 @@ function MessagesPageComponent() {
           </div>
         </ScrollArea>
       </aside>
-      <main className="bg-card border-t border-b border-r rounded-r-xl overflow-hidden h-full">
+      <main className="overflow-hidden h-full">
         <MessagesContent 
             selectedConversation={selectedConversation} 
-            setSelectedConversation={setSelectedConversation}
         />
       </main>
     </div>
@@ -556,7 +553,7 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-[calc(100vh-8rem)]">
+            <div className="h-[calc(100vh-8rem)] overflow-hidden">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>

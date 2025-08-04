@@ -205,7 +205,7 @@ function MessagesContent() {
     : dmMessages;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] border">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-10rem)]">
       {/* Conversation List */}
       <div className={cn("border-r bg-muted/40 flex flex-col", selectedConversation && "hidden md:flex")}>
         <div className="p-4 border-b flex justify-between items-center">

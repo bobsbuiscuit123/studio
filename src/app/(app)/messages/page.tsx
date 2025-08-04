@@ -56,34 +56,41 @@ function MessagesContent({
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!selectedConversation || !user) return;
+    if (!selectedConversation || !user || !allMessages) return;
 
     let unreadMessagesExist = false;
 
     if (selectedConversation.type === 'dm') {
       const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-      const currentDm = (allMessages && allMessages[dmKey]) || [];
+      const currentDm = allMessages[dmKey] || [];
       if (currentDm.some(m => !m.read)) {
         unreadMessagesExist = true;
-        setAllMessages(prev => {
-          const newDms = {...prev};
-          newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, read: true}));
-          return newDms;
-        });
       }
     } else { // group chat
         const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
         if (chat && chat.messages.some(m => !m.read && m.sender !== user.email)) {
             unreadMessagesExist = true;
+        }
+    }
+    
+    // Only update if there are unread messages to prevent loops
+    if (unreadMessagesExist) {
+        if (selectedConversation.type === 'dm') {
+            const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
+            setAllMessages(prev => {
+                const newDms = {...prev};
+                newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, read: true}));
+                return newDms;
+            });
+        } else { // group chat
             setGroupChats(prev => prev.map(c => 
-                c.id === chat.id 
+                c.id === selectedConversation.chat.id 
                     ? {...c, messages: c.messages.map(m => ({...m, read: true}))} 
                     : c
             ));
         }
     }
-}, [selectedConversation?.type === 'dm' ? selectedConversation.partner.email : selectedConversation?.chat.id, user]);
-
+}, [selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id]);
 
 
   useEffect(() => {
@@ -105,12 +112,14 @@ function MessagesContent({
 
     if (selectedConversation.type === 'dm') {
       const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-      const updatedMessages = { ...allMessages };
-      if (!updatedMessages[dmKey]) {
-        updatedMessages[dmKey] = [];
-      }
-      updatedMessages[dmKey].push(newMessage);
-      setAllMessages(updatedMessages);
+      setAllMessages(prev => {
+        const updatedDms = { ...prev };
+        if (!updatedDms[dmKey]) {
+            updatedDms[dmKey] = [];
+        }
+        updatedDms[dmKey] = [...updatedDms[dmKey], newMessage];
+        return updatedDms;
+      });
     } else { // group chat
       setGroupChats((prevChats: GroupChat[]) => prevChats.map(chat => {
         if (chat.id === selectedConversation.chat.id) {
@@ -249,7 +258,6 @@ function MessagesContent({
 
 function NewGroupChatDialog({ children, onGroupCreated }: { children: React.ReactNode; onGroupCreated: (group: GroupChat) => void; }) {
     const { data: members, loading: membersLoading } = useMembers();
-    const { data: groupChats, updateData: setGroupChats } = useGroupChats();
     const { user } = useCurrentUser();
     const { toast } = useToast();
     const [isOpen, setIsOpen] = useState(false);
@@ -285,9 +293,8 @@ function NewGroupChatDialog({ children, onGroupCreated }: { children: React.Reac
             messages: [],
             avatar: values.avatar || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
         };
-        setGroupChats((prev: GroupChat[]) => [...prev, newGroupChat]);
-        toast({ title: "Group chat created!" });
         onGroupCreated(newGroupChat);
+        toast({ title: "Group chat created!" });
         setIsOpen(false);
         form.reset();
         setPreviewImage(null);
@@ -383,7 +390,7 @@ function MessagesPageComponent() {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
   const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupsLoading } = useGroupChats();
+  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
   const [searchQuery, setSearchQuery] = useState("");
   const searchParams = useSearchParams();
 
@@ -398,6 +405,11 @@ function MessagesPageComponent() {
       }
     }
   }, [searchParams, members, selectedConversation]);
+
+  const handleGroupCreated = (newGroup: GroupChat) => {
+    setGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
+    setSelectedConversation({ type: 'group', chat: newGroup });
+  };
 
   const getUnreadCount = useCallback((convo: Conversation): number => {
     if (!user || !allMessages || !groupChats) return 0;
@@ -465,70 +477,68 @@ function MessagesPageComponent() {
   }
 
   return (
-    <div className="h-full">
-        <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
-          <aside className="flex flex-col bg-card border rounded-l-xl">
-            <header className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Chats</h2>
-               <NewGroupChatDialog onGroupCreated={(group) => setSelectedConversation({ type: 'group', chat: group })}>
-                  <Button variant="ghost" size="icon">
-                    <Plus className="w-5 h-5" />
-                    <span className="sr-only">New Group Chat</span>
-                  </Button>
-                </NewGroupChatDialog>
-            </header>
-            <div className="p-2 border-b">
-                <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search" className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                </div>
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
+      <aside className="flex flex-col bg-card border rounded-l-xl">
+        <header className="p-4 border-b flex justify-between items-center">
+          <h2 className="text-xl font-bold">Chats</h2>
+           <NewGroupChatDialog onGroupCreated={handleGroupCreated}>
+              <Button variant="ghost" size="icon">
+                <Plus className="w-5 h-5" />
+                <span className="sr-only">New Group Chat</span>
+              </Button>
+            </NewGroupChatDialog>
+        </header>
+        <div className="p-2 border-b">
+            <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input placeholder="Search" className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <ScrollArea className="flex-grow">
-              {sortedAndFilteredConversations.map((convo) => {
-                const unreadCount = getUnreadCount(convo);
-                const lastMessage = getLastMessage(convo);
-                const isSelected = selectedConversation?.type === convo.type && (
-                    (selectedConversation.type === 'dm' && convo.type === 'dm' && selectedConversation.partner.email === convo.partner.email) ||
-                    (selectedConversation.type === 'group' && convo.type === 'group' && selectedConversation.chat.id === convo.chat.id)
-                );
-                
-                const convoName = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
-                const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : convo.chat.avatar;
-                const fallbackInitial = convoName.charAt(0);
-
-                return (
-                  <div
-                    key={convo.type === 'dm' ? convo.partner.email : convo.chat.id}
-                    onClick={() => setSelectedConversation(convo)}
-                    className={cn(
-                      "flex items-center gap-4 p-3 cursor-pointer hover:bg-muted/50",
-                      isSelected && "bg-muted"
-                    )}
-                  >
-                    <Avatar>
-                      <AvatarImage src={convoAvatar} />
-                      <AvatarFallback>
-                        {convo.type === 'group' ? <Users className="w-4 h-4"/> : fallbackInitial}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-grow truncate">
-                      <h4 className="font-semibold truncate">{convoName}</h4>
-                      {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-muted-foreground")}>{lastMessage.text}</p>}
-                    </div>
-                    {unreadCount > 0 && (
-                      <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center shrink-0">
-                        {unreadCount}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </ScrollArea>
-          </aside>
-          <main className="h-full overflow-hidden">
-            <MessagesContent selectedConversation={selectedConversation} setSelectedConversation={setSelectedConversation} />
-          </main>
         </div>
+        <ScrollArea className="flex-grow">
+          {sortedAndFilteredConversations.map((convo) => {
+            const unreadCount = getUnreadCount(convo);
+            const lastMessage = getLastMessage(convo);
+            const isSelected = selectedConversation?.type === convo.type && (
+                (selectedConversation.type === 'dm' && convo.type === 'dm' && selectedConversation.partner.email === convo.partner.email) ||
+                (selectedConversation.type === 'group' && convo.type === 'group' && selectedConversation.chat.id === convo.chat.id)
+            );
+            
+            const convoName = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
+            const convoAvatar = convo.type === 'dm' ? convo.partner.avatar : convo.chat.avatar;
+            const fallbackInitial = convoName.charAt(0);
+
+            return (
+              <div
+                key={convo.type === 'dm' ? convo.partner.email : convo.chat.id}
+                onClick={() => setSelectedConversation(convo)}
+                className={cn(
+                  "flex items-center gap-4 p-3 cursor-pointer hover:bg-muted/50",
+                  isSelected && "bg-muted"
+                )}
+              >
+                <Avatar>
+                  <AvatarImage src={convoAvatar} />
+                  <AvatarFallback>
+                    {convo.type === 'group' ? <Users className="w-4 h-4"/> : fallbackInitial}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-grow truncate">
+                  <h4 className="font-semibold truncate">{convoName}</h4>
+                  {lastMessage && <p className={cn("text-xs truncate", unreadCount > 0 ? "text-primary font-bold" : "text-muted-foreground")}>{lastMessage.text}</p>}
+                </div>
+                {unreadCount > 0 && (
+                  <div className="bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center shrink-0">
+                    {unreadCount}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </ScrollArea>
+      </aside>
+      <main className="h-full overflow-hidden">
+        <MessagesContent selectedConversation={selectedConversation} setSelectedConversation={setSelectedConversation} />
+      </main>
     </div>
   );
 }
@@ -537,7 +547,7 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-[calc(100vh-8rem)]">
+            <div className="h-full">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>

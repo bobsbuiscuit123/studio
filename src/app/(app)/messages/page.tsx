@@ -345,7 +345,7 @@ function MessagesContent() {
       <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b">
+            <div className="flex items-center gap-4 p-3 border-b shrink-0">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -367,8 +367,8 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-1" viewportRef={viewportRef}>
-                <div className="flex flex-col justify-end p-4 gap-4 min-h-full">
+            <ScrollArea className="flex-grow" viewportRef={viewportRef}>
+                <div className="p-4 space-y-4">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                     const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
@@ -418,7 +418,7 @@ function MessagesContent() {
                     )})}
                 </div>
             </ScrollArea>
-            <div className="p-4 bg-background border-t">
+            <div className="p-4 bg-background border-t shrink-0">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}
@@ -455,3 +455,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

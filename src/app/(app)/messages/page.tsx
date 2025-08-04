@@ -89,21 +89,22 @@ function MessagesContent() {
   const markGroupAsRead = useCallback((groupId: string) => {
     if (!user) return;
   
-    setGroupChats((currentGroups) => {
-      const groupIndex = currentGroups.findIndex(g => g.id === groupId);
-      if (groupIndex === -1 || !(currentGroups[groupIndex].unreadFor || []).includes(user.email)) {
-        return currentGroups;
-      }
-      
-      const updatedGroups = [...currentGroups];
-      updatedGroups[groupIndex] = {
-        ...updatedGroups[groupIndex],
-        unreadFor: (updatedGroups[groupIndex].unreadFor || []).filter(email => email !== user.email)
-      };
-      
-      return updatedGroups;
-    });
-  }, [user, setGroupChats]);
+    const currentGroups = groupChats;
+    const groupIndex = currentGroups.findIndex(g => g.id === groupId);
+
+    if (groupIndex === -1 || !(currentGroups[groupIndex].unreadFor || []).includes(user.email)) {
+      return; 
+    }
+  
+    const updatedGroups = [...currentGroups];
+    updatedGroups[groupIndex] = {
+      ...updatedGroups[groupIndex],
+      unreadFor: (updatedGroups[groupIndex].unreadFor || []).filter(email => email !== user.email)
+    };
+    
+    setGroupChats(updatedGroups);
+
+  }, [user, groupChats, setGroupChats]);
 
 
   useEffect(() => {
@@ -112,7 +113,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {

@@ -94,7 +94,7 @@ function MessagesContent({
             ));
         }
     }
-}, [convoId, allMessages, groupChats, user, setAllMessages, setGroupChats, selectedConversation]);
+  }, [convoId]);
 
 
   useEffect(() => {
@@ -478,7 +478,7 @@ function MessagesPageComponent() {
 
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>;
+    return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
   }
   
   if (!user) {

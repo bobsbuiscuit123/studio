@@ -58,41 +58,35 @@ function MessagesContent({
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestedReply, setSuggestedReply] = useState("");
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
+  
+  const convoId = selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id;
 
   useEffect(() => {
-    if (!selectedConversation || !user || !allMessages || !groupChats) return;
-
-    let unreadMessagesExist = false;
-    let convoId: string | undefined;
+    if (!selectedConversation || !user) return;
+    
+    let convoHasUnread = false;
     if (selectedConversation.type === 'dm') {
-      convoId = selectedConversation.partner.email;
+        const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
+        const messages = allMessages[dmKey] || [];
+        if (messages.some(m => !m.read && m.sender !== user.email)) {
+            convoHasUnread = true;
+        }
     } else {
-      convoId = selectedConversation.chat.id;
-    }
-
-    if (selectedConversation.type === 'dm') {
-      const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-      const currentDm = allMessages[dmKey] || [];
-      if (currentDm.some(m => !m.read)) {
-        unreadMessagesExist = true;
-      }
-    } else { // group chat
         const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
         if (chat && chat.messages.some(m => !m.read && m.sender !== user.email)) {
-            unreadMessagesExist = true;
+            convoHasUnread = true;
         }
     }
     
-    // Only update if there are unread messages to prevent loops
-    if (unreadMessagesExist) {
-        if (selectedConversation.type === 'dm') {
+    if (convoHasUnread) {
+         if (selectedConversation.type === 'dm') {
             const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
             setAllMessages(prev => {
                 const newDms = {...prev};
                 newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, read: true}));
                 return newDms;
             });
-        } else { // group chat
+        } else {
             setGroupChats(prev => prev.map(c => 
                 c.id === selectedConversation.chat.id 
                     ? {...c, messages: c.messages.map(m => ({...m, read: true}))} 
@@ -100,7 +94,7 @@ function MessagesContent({
             ));
         }
     }
-}, [selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id, groupChats, allMessages, user, setAllMessages, setGroupChats]);
+}, [convoId, groupChats, allMessages, user, setAllMessages, setGroupChats]);
 
 
   useEffect(() => {
@@ -428,7 +422,10 @@ function MessagesPageComponent() {
   }, [searchParams, members, selectedConversation]);
 
   const handleGroupCreated = (newGroup: GroupChat) => {
-    handleSetGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
+    const updater = (prev: GroupChat[]) => [...(prev || []), newGroup];
+    const newChats = updater(groupChats);
+    setLocalGroupChats(newChats);
+    setGroupChats(newChats);
     setSelectedConversation({ type: 'group', chat: newGroup });
   };
 
@@ -500,7 +497,7 @@ function MessagesPageComponent() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
       <aside className="flex flex-col bg-card border rounded-l-xl">
-        <header className="p-4 border-b flex justify-between items-center">
+        <header className="p-4 border-b flex justify-between items-center shrink-0">
           <h2 className="text-xl font-bold">Chats</h2>
            <NewGroupChatDialog onGroupCreated={handleGroupCreated}>
               <Button variant="ghost" size="icon">
@@ -509,7 +506,7 @@ function MessagesPageComponent() {
               </Button>
             </NewGroupChatDialog>
         </header>
-        <div className="p-2 border-b">
+        <div className="p-2 border-b shrink-0">
             <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search" className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />

@@ -61,6 +61,13 @@ function MessagesContent() {
     resolver: zodResolver(groupChatFormSchema),
     defaultValues: { name: "", members: [] },
   });
+  
+  // Scrolls the chat to the bottom when new messages arrive
+  useEffect(() => {
+    if (viewportRef.current) {
+        viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+    }
+  }, [dmMessages, groupChats, selectedConversation]);
 
   const markDmAsRead = useCallback((recipientEmail: string) => {
     if (!user) return;
@@ -80,16 +87,22 @@ function MessagesContent() {
   }, [user, allMessages, setAllMessages]);
 
   const markGroupAsRead = useCallback((groupId: string) => {
-    if(!user) return;
-    
-    const updatedGroups = groupChats.map(g => {
-        if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
-            return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
-        }
-        return g;
-    });
-    setGroupChats(updatedGroups);
+     if (!user) return;
 
+    const currentGroups = groupChats;
+    const groupIndex = currentGroups.findIndex(g => g.id === groupId);
+
+    if (groupIndex === -1 || !(currentGroups[groupIndex].unreadFor || []).includes(user.email)) {
+        return; 
+    }
+    
+    const updatedGroups = [...currentGroups];
+    updatedGroups[groupIndex] = {
+        ...updatedGroups[groupIndex],
+        unreadFor: (updatedGroups[groupIndex].unreadFor || []).filter(email => email !== user.email)
+    };
+    
+    setGroupChats(updatedGroups);
   }, [user, groupChats, setGroupChats]);
 
 
@@ -99,7 +112,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -194,13 +207,6 @@ function MessagesContent() {
   const currentMessages = selectedConversation?.type === 'group'
     ? selectedGroup?.messages || []
     : dmMessages;
-
-  useEffect(() => {
-    if (viewportRef.current) {
-        viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
-    }
-  }, [currentMessages, selectedConversation]);
-
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-8.5rem)] overflow-hidden">
@@ -346,7 +352,7 @@ function MessagesContent() {
       <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b flex-shrink-0">
+            <div className="flex items-center gap-4 p-3 border-b shrink-0">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -368,8 +374,9 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
-                <div className="space-y-4">
+            
+            <ScrollArea className="flex-grow" viewportRef={viewportRef}>
+                <div className="space-y-4 p-4">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                     const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
@@ -419,7 +426,7 @@ function MessagesContent() {
                     )})}
                 </div>
             </ScrollArea>
-            <div className="p-4 bg-background border-t flex-shrink-0">
+            <div className="p-4 bg-background border-t shrink-0">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}
@@ -456,5 +463,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

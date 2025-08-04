@@ -99,7 +99,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -199,7 +199,7 @@ function MessagesContent() {
     if (viewportRef.current) {
         viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
     }
-  }, [currentMessages]);
+  }, [currentMessages, selectedConversation]);
 
 
   return (
@@ -368,7 +368,7 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-grow p-4" viewportRef={viewportRef}>
+            <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
                 <div className="space-y-4">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;

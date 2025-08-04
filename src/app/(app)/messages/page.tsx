@@ -62,39 +62,44 @@ function MessagesContent({
 
   useEffect(() => {
     if (!user || !selectedConversation) return;
-    
-    let convoHasUnread = false;
-    let currentMessages: Message[] = [];
-    
-    if (selectedConversation.type === 'dm') {
-        const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-        currentMessages = allMessages[dmKey] || [];
-    } else {
-        const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
-        currentMessages = chat ? chat.messages : [];
-    }
 
-    if (currentMessages.some(m => !m.read && m.sender !== user.email)) {
-        convoHasUnread = true;
-    }
-    
-    if (convoHasUnread) {
-         if (selectedConversation.type === 'dm') {
+    const markAsRead = () => {
+        let convoHasUnread = false;
+        let currentMessages: Message[] = [];
+        
+        if (selectedConversation.type === 'dm') {
             const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-            setAllMessages(prev => {
-                const newDms = {...prev};
-                newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, read: true}));
-                return newDms;
-            });
+            currentMessages = allMessages[dmKey] || [];
         } else {
-            setGroupChats(prev => prev.map(c => 
-                c.id === selectedConversation.chat.id 
-                    ? {...c, messages: c.messages.map(m => ({...m, read: true}))} 
-                    : c
-            ));
+            const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
+            currentMessages = chat ? chat.messages : [];
+        }
+
+        if (currentMessages.some(m => !m.read && m.sender !== user.email)) {
+            convoHasUnread = true;
+        }
+        
+        if (convoHasUnread) {
+             if (selectedConversation.type === 'dm') {
+                const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
+                setAllMessages(prev => {
+                    const newDms = {...prev};
+                    newDms[dmKey] = (newDms[dmKey] || []).map(m => ({...m, read: true}));
+                    return newDms;
+                });
+            } else {
+                setGroupChats(prev => prev.map(c => 
+                    c.id === selectedConversation.chat.id 
+                        ? {...c, messages: c.messages.map(m => ({...m, read: true}))} 
+                        : c
+                ));
+            }
         }
     }
-  }, [convoId]); // Simplified dependency array
+    // Use a timeout to avoid cascading updates within the same render cycle.
+    setTimeout(markAsRead, 0);
+
+  }, [convoId, allMessages, groupChats]);
 
 
   useEffect(() => {
@@ -399,8 +404,11 @@ function MessagesPageComponent() {
   }, [searchParams, members, selectedConversation]);
 
   const handleGroupCreated = (newGroup: GroupChat) => {
-    setGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
-    setSelectedConversation({ type: 'group', chat: newGroup });
+    setGroupChats((prev) => {
+        const updatedChats = [...(prev || []), newGroup];
+        setSelectedConversation({ type: 'group', chat: newGroup });
+        return updatedChats;
+    });
   };
   
    const handleSendMessage = (newMessage: Message) => {
@@ -417,7 +425,7 @@ function MessagesPageComponent() {
         return updatedDms;
       });
     } else { // group chat
-      setGroupChats((prevChats: GroupChat[]) => prevChats.map(chat => {
+      setGroupChats((prevChats) => prevChats.map(chat => {
         if (chat.id === selectedConversation.chat.id) {
           return { ...chat, messages: [...chat.messages, newMessage] };
         }
@@ -568,5 +576,3 @@ export default function MessagesPage() {
         </React.Suspense>
     )
 }
-
-    

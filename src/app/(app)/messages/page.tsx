@@ -113,16 +113,6 @@ function MessagesContent() {
     }
   }, [searchParams, members, user, membersLoading, userLoading]);
   
-  useEffect(() => {
-    if (viewportRef.current) {
-        setTimeout(() => {
-            if (viewportRef.current) {
-                viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
-            }
-        }, 0);
-    }
-  }, [dmMessages, groupChats, selectedConversation]);
-
   const handleSendMessage = (values: z.infer<typeof messageFormSchema>) => {
     if (!user || !selectedConversation) return;
 
@@ -200,9 +190,11 @@ function MessagesContent() {
     ? members.find(m => m.email === selectedConversation.id)
     : null;
 
-  const currentMessages = selectedConversation?.type === 'group'
+  const currentMessages = (selectedConversation?.type === 'group'
     ? selectedGroup?.messages || []
-    : dmMessages;
+    : dmMessages
+  ).slice().reverse();
+
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-10rem)]">
@@ -345,10 +337,10 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("relative", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
-            <div className="flex items-center gap-4 p-3 border-b absolute top-0 left-0 right-0 h-[69px] bg-background z-10">
+            <div className="flex items-center gap-4 p-3 border-b">
                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSelectedConversation(null)}>
                   <ArrowLeft />
                 </Button>
@@ -370,8 +362,8 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="absolute top-[69px] bottom-[84px] left-0 right-0" viewportRef={viewportRef}>
-              <div className="space-y-4 p-4">
+            <ScrollArea className="flex-1">
+              <div className="flex flex-col-reverse p-4 gap-4">
                 {currentMessages.map((msg) => {
                   const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                   const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
@@ -421,7 +413,7 @@ function MessagesContent() {
                 )})}
               </div>
             </ScrollArea>
-            <div className="p-4 bg-background border-t absolute bottom-0 left-0 right-0 h-[84px]">
+            <div className="p-4 bg-background border-t">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
                   {...messageForm.register('text')}
@@ -458,5 +450,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

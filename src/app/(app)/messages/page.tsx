@@ -98,8 +98,7 @@ function MessagesContent({
             markGroupAsRead(selectedConversation.chat.id);
         }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
 
   useEffect(() => {

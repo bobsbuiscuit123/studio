@@ -97,7 +97,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -341,7 +341,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-       <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b shrink-0">
@@ -367,7 +367,7 @@ function MessagesContent() {
               </div>
             </div>
             <ScrollArea className="flex-grow bg-background/90" viewportRef={viewportRef}>
-              <div className="p-4 space-y-4">
+                <div className="p-4 space-y-4">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                     const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;

@@ -43,7 +43,7 @@ export function AppSidebarNav({ role, notifications }: { role: string; notificat
 
   const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
     // Custom sort order if needed, for now just an example
-    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Slides', 'Social Media'];
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 

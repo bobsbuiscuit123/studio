@@ -81,13 +81,19 @@ function MessagesContent() {
 
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
+    
+    let wasGroupUpdated = false;
     const updatedGroups = groupChats.map(g => {
         if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
+            wasGroupUpdated = true;
             return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
         }
         return g;
     });
-    setGroupChats(updatedGroups);
+
+    if (wasGroupUpdated) {
+        setGroupChats(updatedGroups);
+    }
   }, [user, groupChats, setGroupChats]);
 
 
@@ -97,7 +103,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {

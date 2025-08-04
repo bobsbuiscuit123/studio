@@ -52,14 +52,10 @@ function MessagesContent({
   const [suggestedReply, setSuggestedReply] = useState("");
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!selectedConversation || !user) return;
-
-    if (selectedConversation.type === 'dm') {
-      const partnerEmail = selectedConversation.partner.email;
-      const dmKey = [user.email, partnerEmail].sort().join(':');
-      
-      setAllMessages(prevMessages => {
+  const markDmAsRead = useCallback((partnerEmail: string) => {
+    if (!user) return;
+    const dmKey = [user.email, partnerEmail].sort().join(':');
+    setAllMessages(prevMessages => {
         const currentDm = prevMessages[dmKey] || [];
         if (currentDm.some(m => !m.read)) {
             const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
@@ -69,26 +65,38 @@ function MessagesContent({
             };
         }
         return prevMessages;
+    });
+  }, [user, setAllMessages]);
+
+  const markGroupAsRead = useCallback((chatId: string) => {
+      setGroupChats(prevChats => {
+          const chatExists = prevChats.find(chat => chat.id === chatId);
+          if (chatExists && chatExists.messages.some(m => !m.read)) {
+              return prevChats.map(chat => {
+                  if (chat.id === chatId) {
+                      return {
+                          ...chat,
+                          messages: chat.messages.map(m => ({ ...m, read: true })),
+                      };
+                  }
+                  return chat;
+              });
+          }
+          return prevChats;
       });
+  }, [setGroupChats]);
+
+
+  useEffect(() => {
+    if (!selectedConversation || !user) return;
+
+    if (selectedConversation.type === 'dm') {
+      markDmAsRead(selectedConversation.partner.email);
     } else { // group
-        const chatId = selectedConversation.chat.id;
-        setGroupChats(prevChats => {
-            const chatExists = prevChats.find(chat => chat.id === chatId);
-            if (chatExists && chatExists.messages.some(m => !m.read)) {
-                return prevChats.map(chat => {
-                    if (chat.id === chatId) {
-                        return {
-                            ...chat,
-                            messages: chat.messages.map(m => ({ ...m, read: true })),
-                        };
-                    }
-                    return chat;
-                });
-            }
-            return prevChats;
-        });
+      markGroupAsRead(selectedConversation.chat.id);
     }
-  }, [selectedConversation, user, setAllMessages, setGroupChats]);
+  }, [selectedConversation, user, markDmAsRead, markGroupAsRead]);
+
 
   useEffect(() => {
     if (scrollAreaViewport.current) {
@@ -403,7 +411,7 @@ export default function MessagesPage() {
     }
   }, [user, allMessages]);
   
-  const getLastMessage = (convo: Conversation): Message | null => {
+  const getLastMessage = useCallback((convo: Conversation): Message | null => {
       if (!user) return null;
        if (convo.type === 'dm') {
           const dmKey = [user.email, convo.partner.email].sort().join(':');
@@ -412,7 +420,7 @@ export default function MessagesPage() {
       } else { // group
           return convo.chat.messages.length > 0 ? convo.chat.messages[convo.chat.messages.length - 1] : null;
       }
-  }
+  }, [user, allMessages]);
 
   const sortedAndFilteredConversations = useMemo(() => {
     if (!user) return [];
@@ -522,5 +530,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    

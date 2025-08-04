@@ -205,7 +205,7 @@ function MessagesContent() {
     : dmMessages;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)]">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] border">
       {/* Conversation List */}
       <div className={cn("border-r bg-muted/40 flex flex-col", selectedConversation && "hidden md:flex")}>
         <div className="p-4 border-b flex justify-between items-center">
@@ -345,7 +345,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b">
@@ -370,8 +370,8 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-1 p-4" viewportRef={viewportRef}>
-              <div className="space-y-4">
+            <ScrollArea className="flex-1" viewportRef={viewportRef}>
+              <div className="space-y-4 p-4">
                 {currentMessages.map((msg) => {
                   const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                   const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
@@ -459,5 +459,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

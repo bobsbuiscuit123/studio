@@ -144,13 +144,13 @@ export function useGroupChats() {
             ...group,
             messages: (group.messages || []).map((message: any) => ({
                 ...message,
-                timestamp: message.timestamp.toISOString(),
+                timestamp: message.timestamp instanceof Date ? message.timestamp.toISOString() : message.timestamp,
             })),
         }));
         updateData(groupsWithStrings);
     };
 
-    return { data: data, loading, updateData: updateGroupChatsWithStrings, clubId };
+    return { data, loading, updateData: updateGroupChatsWithStrings, clubId };
 }
 
 

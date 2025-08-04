@@ -97,7 +97,8 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {

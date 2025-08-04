@@ -7,13 +7,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { useMembers, useCurrentUser, useMessages, useGroupChats } from '@/lib/data-hooks';
 import type { Member, Message, GroupChat, GroupMessage } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 import { SendHorizonal, ArrowLeft, MessageSquare, Users, Plus } from 'lucide-react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from 'zod';
 import {
   Dialog,
@@ -78,7 +77,7 @@ function MessagesContent() {
     if (wasMessageUpdated) {
         setAllMessages(updatedMessages);
     }
-  }, [user, allMessages, setAllMessages]);
+  }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
@@ -198,11 +197,11 @@ function MessagesContent() {
     if (viewportRef.current) {
         viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
     }
-  }, [currentMessages, selectedConversation]);
+  }, [currentMessages]);
 
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-10rem)] overflow-hidden">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-8.5rem)]">
       {/* Conversation List */}
       <div className={cn("border-r bg-muted/40 flex flex-col", selectedConversation && "hidden md:flex")}>
         <div className="p-4 border-b flex justify-between items-center">
@@ -342,7 +341,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col h-full overflow-hidden", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b shrink-0">
@@ -455,6 +454,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-
-    

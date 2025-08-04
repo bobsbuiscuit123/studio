@@ -42,40 +42,40 @@ const groupChatFormSchema = z.object({
 function MessagesContent({
   selectedConversation,
   setSelectedConversation,
-  groupChats,
-  setGroupChats,
 }: {
   selectedConversation: Conversation | null;
   setSelectedConversation: (conversation: Conversation | null) => void;
-  groupChats: GroupChat[];
-  setGroupChats: (chats: GroupChat[] | ((prev: GroupChat[]) => GroupChat[])) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
-  const { loading: groupsLoading } = useGroupChats();
+  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
 
   const [message, setMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [suggestedReply, setSuggestedReply] = useState("");
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
   
-  const convoId = selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id;
+  const convoId = useMemo(() => {
+    if (!selectedConversation) return null;
+    return selectedConversation.type === 'dm' ? selectedConversation.partner.email : selectedConversation.chat.id;
+  }, [selectedConversation]);
 
   useEffect(() => {
     if (!selectedConversation || !user) return;
     
     let convoHasUnread = false;
+    let currentMessages: Message[] = [];
+    
     if (selectedConversation.type === 'dm') {
         const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-        const messages = allMessages[dmKey] || [];
-        if (messages.some(m => !m.read && m.sender !== user.email)) {
-            convoHasUnread = true;
-        }
+        currentMessages = allMessages[dmKey] || [];
     } else {
         const chat = groupChats.find(c => c.id === selectedConversation.chat.id);
-        if (chat && chat.messages.some(m => !m.read && m.sender !== user.email)) {
-            convoHasUnread = true;
-        }
+        currentMessages = chat ? chat.messages : [];
+    }
+
+    if (currentMessages.some(m => !m.read && m.sender !== user.email)) {
+        convoHasUnread = true;
     }
     
     if (convoHasUnread) {
@@ -94,7 +94,7 @@ function MessagesContent({
             ));
         }
     }
-}, [convoId, groupChats, allMessages, user, setAllMessages, setGroupChats]);
+}, [convoId, allMessages, groupChats, user, setAllMessages, setGroupChats, selectedConversation]);
 
 
   useEffect(() => {
@@ -178,9 +178,9 @@ function MessagesContent({
 
 
   return (
-    <div className="flex flex-col h-full bg-card rounded-r-xl border-t border-b border-r">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <header className="flex items-center gap-4 p-4 border-b shrink-0">
+      <header className="flex items-center gap-4 p-4 border-b bg-card shrink-0">
         <Avatar>
             <AvatarImage src={convoAvatar} />
             <AvatarFallback>
@@ -260,7 +260,7 @@ function MessagesContent({
   );
 }
 
-function NewGroupChatDialog({ children, onGroupCreated }: { children: React.ReactNode; onGroupCreated: (group: GroupChat) => void; }) {
+function NewGroupChatDialog({ onGroupCreated }: { onGroupCreated: (group: GroupChat) => void; }) {
     const { data: members, loading: membersLoading } = useMembers();
     const { user } = useCurrentUser();
     const { toast } = useToast();
@@ -316,7 +316,12 @@ function NewGroupChatDialog({ children, onGroupCreated }: { children: React.Reac
                 setPreviewImage(null);
             }
         }}>
-            <DialogTrigger asChild>{children}</DialogTrigger>
+            <DialogTrigger asChild>
+                <Button variant="ghost" size="icon">
+                    <Plus className="w-5 h-5" />
+                    <span className="sr-only">New Group Chat</span>
+                </Button>
+            </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Create a new group chat</DialogTitle>
@@ -394,22 +399,11 @@ function MessagesPageComponent() {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
   const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
-  const [groupChats, setLocalGroupChats] = useState<GroupChat[]>([]);
+  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
   const [searchQuery, setSearchQuery] = useState("");
   const searchParams = useSearchParams();
 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-
-  useEffect(() => {
-    setLocalGroupChats(data || []);
-  }, [data]);
-  
-  const handleSetGroupChats = (updater: GroupChat[] | ((prev: GroupChat[]) => GroupChat[])) => {
-    const newChats = typeof updater === 'function' ? updater(groupChats) : updater;
-    setLocalGroupChats(newChats);
-    setGroupChats(newChats);
-  }
 
   useEffect(() => {
     const recipientEmail = searchParams.get('recipient');
@@ -422,10 +416,7 @@ function MessagesPageComponent() {
   }, [searchParams, members, selectedConversation]);
 
   const handleGroupCreated = (newGroup: GroupChat) => {
-    const updater = (prev: GroupChat[]) => [...(prev || []), newGroup];
-    const newChats = updater(groupChats);
-    setLocalGroupChats(newChats);
-    setGroupChats(newChats);
+    setGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
     setSelectedConversation({ type: 'group', chat: newGroup });
   };
 
@@ -499,12 +490,7 @@ function MessagesPageComponent() {
       <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center shrink-0">
           <h2 className="text-xl font-bold">Chats</h2>
-           <NewGroupChatDialog onGroupCreated={handleGroupCreated}>
-              <Button variant="ghost" size="icon">
-                <Plus className="w-5 h-5" />
-                <span className="sr-only">New Group Chat</span>
-              </Button>
-            </NewGroupChatDialog>
+           <NewGroupChatDialog onGroupCreated={handleGroupCreated} />
         </header>
         <div className="p-2 border-b shrink-0">
             <div className="relative">
@@ -554,12 +540,10 @@ function MessagesPageComponent() {
           })}
         </ScrollArea>
       </aside>
-      <main className="h-full overflow-hidden">
+      <main className="h-full bg-card border-t border-b border-r rounded-r-xl overflow-hidden">
         <MessagesContent 
             selectedConversation={selectedConversation} 
             setSelectedConversation={setSelectedConversation}
-            groupChats={groupChats}
-            setGroupChats={handleSetGroupChats}
         />
       </main>
     </div>
@@ -570,7 +554,7 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-full">
+            <div className="h-[calc(100vh-8rem)]">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>

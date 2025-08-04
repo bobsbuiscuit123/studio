@@ -147,7 +147,7 @@ function MessagesContent({
 
   if (!selectedConversation || !user) {
     return (
-      <div className="flex-grow flex flex-col items-center justify-center text-center h-full bg-muted/20 dark:bg-card rounded-r-xl">
+      <div className="flex-grow flex flex-col items-center justify-center text-center h-full bg-muted/20 dark:bg-card">
         <MessageSquare className="w-16 h-16 text-muted-foreground" />
         <h2 className="mt-4 text-2xl font-semibold">Select a conversation</h2>
         <p className="mt-2 text-muted-foreground">Choose a person or group from the left to start chatting.</p>
@@ -501,8 +501,8 @@ function MessagesPageComponent() {
   }
 
   return (
-    <div className="grid grid-cols-[300px_1fr] h-full gap-0">
-      <aside className="flex flex-col bg-card border rounded-l-xl">
+    <div className="grid grid-cols-[300px_1fr] h-full gap-0 overflow-hidden">
+      <aside className="flex flex-col bg-card border rounded-l-xl border-r">
         <header className="p-4 border-b flex justify-between items-center shrink-0">
           <h2 className="text-xl font-bold">Chats</h2>
            <NewGroupChatDialog onGroupCreated={handleGroupCreated} />
@@ -557,7 +557,7 @@ function MessagesPageComponent() {
           </div>
         </ScrollArea>
       </aside>
-      <main className="overflow-hidden h-full">
+      <main className="h-full overflow-hidden">
         <MessagesContent 
             selectedConversation={selectedConversation}
             onSendMessage={handleSendMessage}

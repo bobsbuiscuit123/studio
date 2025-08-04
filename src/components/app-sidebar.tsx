@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
 import { useEffect, useState } from "react";
 
 export function AppSidebar() {
@@ -12,9 +12,12 @@ export function AppSidebar() {
   const { user } = useCurrentUser();
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+  const { data: allMessages, loading: messagesLoading } = useMessages();
+  const { data: groupChats, loading: groupsLoading } = useGroupChats();
   
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
 
   useEffect(() => {
     if (!announcementsLoading) {
@@ -28,22 +31,31 @@ export function AppSidebar() {
     }
   }, [socialPosts, socialPostsLoading]);
 
+  useEffect(() => {
+    if (!messagesLoading && !groupsLoading && user) {
+        const unreadDms = Object.values(allMessages).flat().some(m => !m.read && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => !m.read && m.sender !== user.email));
+        setHasUnreadMessages(unreadDms || unreadGroups);
+    }
+  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
+
   return (
     <div className="hidden border-r bg-muted/40 md:block">
       <div className="flex h-full max-h-screen flex-col gap-2">
-        <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
+        <div className="flex h-14 shrink-0 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href="/" className="flex items-center gap-2 font-semibold">
             <Logo className="h-6 w-6" />
             <span className="">ClubHub</span>
           </Link>
         </div>
-        <div className="flex-1">
+        <div className="flex-1 overflow-y-auto">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             <AppSidebarNav 
               role={role || ''} 
               notifications={{
                 announcements: hasUnreadAnnouncements,
                 social: hasUnreadSocials,
+                messages: hasUnreadMessages,
               }}
             />
           </nav>

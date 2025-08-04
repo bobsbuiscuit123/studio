@@ -14,17 +14,20 @@ import {
   GalleryHorizontal,
   CheckCircle,
   Mail,
+  MessagesSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type NotificationMap = {
   announcements: boolean;
   social: boolean;
+  messages: boolean;
 }
 
 const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'announcements' },
+  { href: '/messages', icon: MessagesSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/attendance', icon: CheckCircle, label: 'Attendance', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
@@ -39,9 +42,9 @@ export function AppSidebarNav({ role, notifications }: { role: string; notificat
   const pathname = usePathname();
 
   const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
-    if (a.label === 'Finances' || a.label === 'Meeting Slides' || a.label === 'Email') return 1;
-    if (b.label === 'Finances' || b.label === 'Meeting Slides' || b.label === 'Email') return -1;
-    return 0;
+    // Custom sort order if needed, for now just an example
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Slides', 'Social Media'];
+    return order.indexOf(a.label) - order.indexOf(b.label);
   });
 
   return (

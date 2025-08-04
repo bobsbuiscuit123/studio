@@ -33,7 +33,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
 import type { User as UserType } from "@/lib/mock-data";
 
 
@@ -48,6 +48,7 @@ const pageTitles: { [key: string]: string } = {
   "/social": "Social Media",
   "/attendance": "Attendance",
   "/email": "Bulk Email",
+  "/messages": "Messages",
 };
 
 function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, email: string) => void; }) {
@@ -100,10 +101,13 @@ export function AppHeader() {
   const { user, saveUser, clearUser } = useCurrentUser();
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+  const { data: allMessages, loading: messagesLoading } = useMessages();
+  const { data: groupChats, loading: groupsLoading } = useGroupChats();
   const router = useRouter();
   
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
 
@@ -129,6 +133,14 @@ export function AppHeader() {
       setHasUnreadSocials(socialPosts.some(p => !p.read));
     }
   }, [socialPosts, socialPostsLoading]);
+
+  useEffect(() => {
+    if (!messagesLoading && !groupsLoading && user) {
+        const unreadDms = Object.values(allMessages).flat().some(m => !m.read && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => !m.read && m.sender !== user.email));
+        setHasUnreadMessages(unreadDms || unreadGroups);
+    }
+  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
   
   const handleLogout = () => {
     clearUser();
@@ -156,7 +168,7 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
+    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6 shrink-0">
        <Sheet>
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="sm:hidden">
@@ -181,6 +193,7 @@ export function AppHeader() {
               notifications={{
                 announcements: hasUnreadAnnouncements,
                 social: hasUnreadSocials,
+                messages: hasUnreadMessages,
               }}
             />
           </nav>

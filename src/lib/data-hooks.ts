@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -57,20 +57,23 @@ function useClubData<T>(key: string, initialData: T) {
     return () => { isMounted = false; };
   }, [clubId, key, JSON.stringify(initialData)]);
 
-  const updateData = useCallback((newData: T) => {
+  const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
-      setData(newData);
+      
+      const valueToStore = newData instanceof Function ? newData(data) : newData;
+      setData(valueToStore);
+
       try {
         const storedClubData = localStorage.getItem(clubDataKey);
         const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-        parsedData[key] = newData;
+        parsedData[key] = valueToStore;
         localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
       } catch (error) {
         console.error(`Error writing ${key} to localStorage`, error);
       }
     }
-  }, [clubId, key]);
+  }, [clubId, key, data]);
 
   return { data, loading, updateData, clubId };
 }
@@ -119,6 +122,36 @@ export function usePresentations() {
 export function useGalleryImages() {
     return useClubData<GalleryImage[]>('galleryImages', []);
 }
+
+export function useMessages() {
+    return useClubData<{[dmKey: string]: Message[]}>('messages', {});
+}
+
+export function useGroupChats() {
+    const { data, loading, updateData, clubId } = useClubData<GroupChat[]>('groupChats', []);
+
+    const groupsWithDateObjects = (data || []).map(group => ({
+        ...group,
+        messages: (group.messages || []).map(message => ({
+            ...message,
+            timestamp: new Date(message.timestamp),
+        })),
+    }));
+
+    const updateGroupChatsWithStrings = (newGroups: GroupChat[]) => {
+        const groupsWithStrings = newGroups.map(group => ({
+            ...group,
+            messages: (group.messages || []).map((message: any) => ({
+                ...message,
+                timestamp: message.timestamp.toISOString(),
+            })),
+        }));
+        updateData(groupsWithStrings as any);
+    };
+
+    return { data, loading, updateData, clubId };
+}
+
 
 export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);

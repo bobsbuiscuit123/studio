@@ -341,7 +341,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-       <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
+       <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b shrink-0">
@@ -366,9 +366,9 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-grow p-4 bg-background/90" viewportRef={viewportRef}>
-              <div className="flex flex-col-reverse gap-4">
-                    {[...currentMessages].reverse().map((msg) => {
+            <ScrollArea className="flex-grow bg-background/90" viewportRef={viewportRef}>
+              <div className="p-4 flex flex-col justify-end min-h-full">
+                    {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                     const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
                     const senderAvatar = selectedConversation.type === 'group' ? (msg as GroupMessage).authorAvatar : sender?.avatar;
@@ -377,7 +377,7 @@ function MessagesContent() {
                     <div
                         key={msg.id}
                         className={cn(
-                        "flex items-end gap-2",
+                        "flex items-end gap-2 my-2",
                         msg.senderEmail === user?.email ? "justify-end" : "justify-start"
                         )}
                     >
@@ -454,3 +454,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

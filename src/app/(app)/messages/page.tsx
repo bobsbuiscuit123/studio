@@ -87,23 +87,23 @@ function MessagesContent() {
   }, [user, allMessages, setAllMessages]);
 
   const markGroupAsRead = useCallback((groupId: string) => {
-     if (!user) return;
-
-    const currentGroups = groupChats;
-    const groupIndex = currentGroups.findIndex(g => g.id === groupId);
-
-    if (groupIndex === -1 || !(currentGroups[groupIndex].unreadFor || []).includes(user.email)) {
-        return; 
-    }
-    
-    const updatedGroups = [...currentGroups];
-    updatedGroups[groupIndex] = {
+    if (!user) return;
+  
+    setGroupChats((currentGroups) => {
+      const groupIndex = currentGroups.findIndex(g => g.id === groupId);
+      if (groupIndex === -1 || !(currentGroups[groupIndex].unreadFor || []).includes(user.email)) {
+        return currentGroups;
+      }
+      
+      const updatedGroups = [...currentGroups];
+      updatedGroups[groupIndex] = {
         ...updatedGroups[groupIndex],
         unreadFor: (updatedGroups[groupIndex].unreadFor || []).filter(email => email !== user.email)
-    };
-    
-    setGroupChats(updatedGroups);
-  }, [user, groupChats, setGroupChats]);
+      };
+      
+      return updatedGroups;
+    });
+  }, [user, setGroupChats]);
 
 
   useEffect(() => {
@@ -349,7 +349,7 @@ function MessagesContent() {
       </div>
 
       {/* Chat Window */}
-      <div className={cn("flex flex-col h-full", !selectedConversation && "hidden md:flex")}>
+      <div className={cn("flex flex-col", !selectedConversation && "hidden md:flex")}>
         {selectedConversation ? (
           <>
             <div className="flex items-center gap-4 p-3 border-b shrink-0">

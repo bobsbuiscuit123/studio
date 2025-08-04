@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useMembers, useCurrentUser, useMessages, useGroupChats } from "@/lib/data-hooks";
-import type { Member, User, Message, GroupChat } from '@/lib/mock-data';
+import type { Member, User, Message, GroupChat } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Send, Plus, Users, MessageSquare, Loader2, Wand2, Search } from 'lucide-react';
 import Image from 'next/image';
@@ -42,13 +42,17 @@ const groupChatFormSchema = z.object({
 function MessagesContent({
   selectedConversation,
   setSelectedConversation,
+  groupChats,
+  setGroupChats,
 }: {
   selectedConversation: Conversation | null;
   setSelectedConversation: (conversation: Conversation | null) => void;
+  groupChats: GroupChat[];
+  setGroupChats: (chats: GroupChat[] | ((prev: GroupChat[]) => GroupChat[])) => void;
 }) {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+  const { loading: groupsLoading } = useGroupChats();
 
   const [message, setMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,9 +60,15 @@ function MessagesContent({
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!selectedConversation || !user || !allMessages) return;
+    if (!selectedConversation || !user || !allMessages || !groupChats) return;
 
     let unreadMessagesExist = false;
+    let convoId: string | undefined;
+    if (selectedConversation.type === 'dm') {
+      convoId = selectedConversation.partner.email;
+    } else {
+      convoId = selectedConversation.chat.id;
+    }
 
     if (selectedConversation.type === 'dm') {
       const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
@@ -90,7 +100,7 @@ function MessagesContent({
             ));
         }
     }
-}, [selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id]);
+}, [selectedConversation?.type === 'dm' ? selectedConversation?.partner.email : selectedConversation?.chat.id, groupChats, allMessages, user, setAllMessages, setGroupChats]);
 
 
   useEffect(() => {
@@ -166,7 +176,7 @@ function MessagesContent({
 
   const currentMessages = selectedConversation.type === 'dm'
     ? (allMessages && allMessages[[user.email, selectedConversation.partner.email].sort().join(':')]) || []
-    : groupChats.find(chat => chat.id === selectedConversation.chat.id)?.messages || [];
+    : (groupChats.find(chat => chat.id === selectedConversation.chat.id)?.messages) || [];
   
   const convoName = selectedConversation.type === 'dm' ? selectedConversation.partner.name : selectedConversation.chat.name;
   const convoAvatar = selectedConversation.type === 'dm' ? selectedConversation.partner.avatar : selectedConversation.chat.avatar;
@@ -390,11 +400,22 @@ function MessagesPageComponent() {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
   const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+  const { data, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+  const [groupChats, setLocalGroupChats] = useState<GroupChat[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const searchParams = useSearchParams();
 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+
+  useEffect(() => {
+    setLocalGroupChats(data || []);
+  }, [data]);
+  
+  const handleSetGroupChats = (updater: GroupChat[] | ((prev: GroupChat[]) => GroupChat[])) => {
+    const newChats = typeof updater === 'function' ? updater(groupChats) : updater;
+    setLocalGroupChats(newChats);
+    setGroupChats(newChats);
+  }
 
   useEffect(() => {
     const recipientEmail = searchParams.get('recipient');
@@ -407,7 +428,7 @@ function MessagesPageComponent() {
   }, [searchParams, members, selectedConversation]);
 
   const handleGroupCreated = (newGroup: GroupChat) => {
-    setGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
+    handleSetGroupChats((prev: GroupChat[]) => [...(prev || []), newGroup]);
     setSelectedConversation({ type: 'group', chat: newGroup });
   };
 
@@ -537,7 +558,12 @@ function MessagesPageComponent() {
         </ScrollArea>
       </aside>
       <main className="h-full overflow-hidden">
-        <MessagesContent selectedConversation={selectedConversation} setSelectedConversation={setSelectedConversation} />
+        <MessagesContent 
+            selectedConversation={selectedConversation} 
+            setSelectedConversation={setSelectedConversation}
+            groupChats={groupChats}
+            setGroupChats={handleSetGroupChats}
+        />
       </main>
     </div>
   );

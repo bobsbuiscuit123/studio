@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -98,6 +99,14 @@ const assistantPrompt = ai.definePrompt({
   The user's request is: {{{query}}}
   If you use a tool, summarize the result to the user.
   If you can't help with a request, say so.`,
+  config: {
+    safetySettings: [
+        {
+            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            threshold: 'BLOCK_ONLY_HIGH',
+        }
+    ]
+  }
 });
 
 const assistantFlow = ai.defineFlow(

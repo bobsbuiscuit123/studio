@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Mail, Share2, ChevronDown } from "lucide-react";
+import { Mail, Share2, ChevronDown, MessageSquare } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -31,6 +31,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
@@ -38,6 +40,7 @@ export default function MembersPage() {
   const [joinCode, setJoinCode] = useState('');
   const { canEditContent, canManageRoles, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
+  const router = useRouter();
 
   useEffect(() => {
     if (clubId) {
@@ -133,6 +136,14 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
+                    {member.email !== user?.email && (
+                        <Link href={`/messages?recipient=${member.email}`} className="w-full">
+                            <Button variant="outline" className="w-full">
+                                <MessageSquare className="mr-2 h-4 w-4" />
+                                Message
+                            </Button>
+                        </Link>
+                    )}
                    {canManageRoles && member.email !== user?.email && !(role === 'Admin' && member.role === 'President') && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>

@@ -27,6 +27,7 @@ import * as z from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { generateChatReply } from "@/ai/flows/generate-chat-reply";
 import { Label } from '@/components/ui/label';
+import { useSearchParams } from 'next/navigation';
 
 type Conversation = 
   | { type: 'dm'; partner: Member }
@@ -54,38 +55,38 @@ function MessagesContent({
 
   const markDmAsRead = useCallback((partnerEmail: string) => {
     if (!user) return;
-    setAllMessages(prevMessages => {
-        const dmKey = [user.email, partnerEmail].sort().join(':');
-        const currentDm = prevMessages[dmKey] || [];
-        if (currentDm.some(m => !m.read)) {
+    const dmKey = [user.email, partnerEmail].sort().join(':');
+    const hasUnread = (allMessages[dmKey] || []).some(m => !m.read);
+    
+    if (hasUnread) {
+        setAllMessages(prevMessages => {
+            const currentDm = prevMessages[dmKey] || [];
             const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
             return {
                 ...prevMessages,
                 [dmKey]: newMessagesForDm
             };
-        }
-        return prevMessages;
-    });
-  }, [user, setAllMessages]);
+        });
+    }
+  }, [user, allMessages, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
     if (!user) return;
-    setGroupChats(prevChats => {
-      const chatToUpdate = prevChats.find(chat => chat.id === chatId);
-      if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
-        return prevChats.map(chat => {
-          if (chat.id === chatId) {
-            return {
-              ...chat,
-              messages: chat.messages.map(m => ({ ...m, read: true })),
-            };
-          }
-          return chat;
+    const chatToUpdate = groupChats.find(chat => chat.id === chatId);
+    if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
+        setGroupChats(prevChats => {
+            return prevChats.map(chat => {
+                if (chat.id === chatId) {
+                    return {
+                        ...chat,
+                        messages: chat.messages.map(m => ({ ...m, read: true })),
+                    };
+                }
+                return chat;
+            });
         });
-      }
-      return prevChats;
-    });
-  }, [user, setGroupChats]);
+    }
+  }, [user, groupChats, setGroupChats]);
 
 
   useEffect(() => {
@@ -392,14 +393,25 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
     );
 }
 
-export default function MessagesPage() {
+function MessagesPageComponent() {
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
   const { data: allMessages, loading: messagesLoading } = useMessages();
   const { data: groupChats, loading: groupsLoading } = useGroupChats();
   const [searchQuery, setSearchQuery] = useState("");
+  const searchParams = useSearchParams();
 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+
+  useEffect(() => {
+    const recipientEmail = searchParams.get('recipient');
+    if (recipientEmail && members.length > 0) {
+      const recipientMember = members.find(m => m.email === recipientEmail);
+      if (recipientMember) {
+        setSelectedConversation({ type: 'dm', partner: recipientMember });
+      }
+    }
+  }, [searchParams, members]);
 
   const getUnreadCount = useCallback((convo: Conversation): number => {
     if (!user) return 0;
@@ -459,7 +471,7 @@ export default function MessagesPage() {
 
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>;
+    return <div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>;
   }
   
   if (!user) {
@@ -531,4 +543,13 @@ export default function MessagesPage() {
       </main>
     </div>
   );
+}
+
+// Wrapping the component to use Suspense for searchParams
+export default function MessagesPage() {
+    return (
+        <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
+            <MessagesPageComponent />
+        </React.Suspense>
+    )
 }

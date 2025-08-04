@@ -53,19 +53,20 @@ function MessagesContent({
 
   const markDmAsRead = useCallback((partnerEmail: string) => {
     if (!user) return;
+    const dmKey = [user.email, partnerEmail].sort().join(':');
+
     setAllMessages(prevMessages => {
-        const newMessages = {...prevMessages};
-        const dmKey = [user.email, partnerEmail].sort().join(':');
-        if (newMessages[dmKey]) {
-            newMessages[dmKey] = newMessages[dmKey].map(m => ({ ...m, read: true }));
-        }
-        return newMessages;
+        const newMessagesForDm = (prevMessages[dmKey] || []).map(m => ({ ...m, read: true }));
+        return {
+            ...prevMessages,
+            [dmKey]: newMessagesForDm
+        };
     });
   }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
-    setGroupChats(prevChats => {
-        const newChats = prevChats.map(chat => {
+    setGroupChats(prevChats => 
+        prevChats.map(chat => {
             if (chat.id === chatId) {
                 return {
                     ...chat,
@@ -73,9 +74,8 @@ function MessagesContent({
                 };
             }
             return chat;
-        });
-        return newChats;
-    });
+        })
+    );
   }, [setGroupChats]);
 
   useEffect(() => {
@@ -86,7 +86,8 @@ function MessagesContent({
         markGroupAsRead(selectedConversation.chat.id);
       }
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation]);
 
   useEffect(() => {
     if (scrollAreaViewport.current) {
@@ -165,7 +166,7 @@ function MessagesContent({
   return (
     <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900/50 rounded-r-xl">
       {/* Header */}
-      <header className="flex items-center gap-4 p-4 border-b">
+      <header className="flex items-center gap-4 p-4 border-b shrink-0">
         <Avatar>
             <AvatarImage src={selectedConversation.type === 'dm' ? selectedConversation.partner.avatar : undefined} />
             <AvatarFallback>
@@ -383,7 +384,7 @@ export default function MessagesPage() {
   }));
   
   const groupConversations: Conversation[] = groupChats
-    .filter(chat => chat.members.includes(user.email))
+    .filter(chat => chat.members && chat.members.includes(user.email))
     .map(chat => ({
         type: 'group',
         chat

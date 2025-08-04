@@ -98,7 +98,7 @@ function MessagesContent({
     }
     setTimeout(markAsRead, 0);
 
-  }, [convoId]);
+  }, [convoId, user, allMessages, groupChats, selectedConversation, setAllMessages, setGroupChats]);
 
 
   useEffect(() => {
@@ -571,7 +571,7 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="animate-spin" /></div>}>
-            <div className="h-[calc(100vh-8rem)] overflow-hidden">
+            <div className="h-[calc(100vh-8rem)]">
                 <MessagesPageComponent />
             </div>
         </React.Suspense>

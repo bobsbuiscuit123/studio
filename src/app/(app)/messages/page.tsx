@@ -56,36 +56,36 @@ function MessagesContent({
   const markDmAsRead = useCallback((partnerEmail: string) => {
     if (!user) return;
     const dmKey = [user.email, partnerEmail].sort().join(':');
-    const currentDm = allMessages[dmKey] || [];
-    const hasUnread = currentDm.some(m => !m.read);
-    
-    if (hasUnread) {
-        setAllMessages(prevMessages => {
-            const newMessagesForDm = (prevMessages[dmKey] || []).map(m => ({ ...m, read: true }));
-            return {
-                ...prevMessages,
-                [dmKey]: newMessagesForDm
-            };
-        });
-    }
-  }, [user, allMessages, setAllMessages]);
+    setAllMessages(prevMessages => {
+        const currentDm = prevMessages[dmKey] || [];
+        const hasUnread = currentDm.some(m => !m.read);
+        if (!hasUnread) return prevMessages;
+
+        const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
+        return {
+            ...prevMessages,
+            [dmKey]: newMessagesForDm
+        };
+    });
+  }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
     if (!user) return;
     setGroupChats((prevChats: GroupChat[]) => {
-        const chatToUpdate = prevChats.find(chat => chat.id === chatId);
-        if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
-            return prevChats.map(chat => {
-                if (chat.id === chatId) {
-                    return {
-                        ...chat,
-                        messages: chat.messages.map(m => ({ ...m, read: true })),
-                    };
-                }
-                return chat;
-            });
-        }
-        return prevChats;
+        const chatIndex = prevChats.findIndex(chat => chat.id === chatId);
+        if (chatIndex === -1) return prevChats;
+
+        const chatToUpdate = prevChats[chatIndex];
+        const hasUnread = chatToUpdate.messages.some(m => !m.read && m.sender !== user.email);
+        if (!hasUnread) return prevChats;
+
+        const updatedChat = {
+            ...chatToUpdate,
+            messages: chatToUpdate.messages.map(m => ({ ...m, read: true })),
+        };
+        const newChats = [...prevChats];
+        newChats[chatIndex] = updatedChat;
+        return newChats;
     });
   }, [user, setGroupChats]);
 
@@ -98,7 +98,8 @@ function MessagesContent({
             markGroupAsRead(selectedConversation.chat.id);
         }
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation]);
 
 
   useEffect(() => {
@@ -422,7 +423,7 @@ function MessagesPageComponent() {
     } else { // group
         return convo.chat.messages.filter(m => m.sender !== user.email && !m.read).length;
     }
-  }, [user, allMessages, groupChats]);
+  }, [user, allMessages]);
   
   const getLastMessage = useCallback((convo: Conversation): Message | null => {
       if (!user) return null;
@@ -433,7 +434,7 @@ function MessagesPageComponent() {
       } else { // group
           return convo.chat.messages.length > 0 ? convo.chat.messages[convo.chat.messages.length - 1] : null;
       }
-  }, [user, allMessages, groupChats]);
+  }, [user, allMessages]);
 
   const sortedAndFilteredConversations = useMemo(() => {
     if (!user) return [];
@@ -446,7 +447,7 @@ function MessagesPageComponent() {
     }));
     
     const groupConversations: Conversation[] = groupChats
-      .filter(chat => chat.members && chat.members.includes(user.email))
+      .filter(chat => chat && chat.members && chat.members.includes(user.email))
       .map(chat => ({
           type: 'group',
           chat
@@ -479,7 +480,7 @@ function MessagesPageComponent() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] gap-0">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
       <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold">Chats</h2>
@@ -497,7 +498,7 @@ function MessagesPageComponent() {
             </div>
         </div>
         <ScrollArea className="flex-grow">
-          {sortedAndFilteredConversations.map((convo, index) => {
+          {sortedAndFilteredConversations.map((convo) => {
             const unreadCount = getUnreadCount(convo);
             const lastMessage = getLastMessage(convo);
             const isSelected = selectedConversation?.type === convo.type && (
@@ -549,7 +550,11 @@ function MessagesPageComponent() {
 export default function MessagesPage() {
     return (
         <React.Suspense fallback={<div className="flex items-center justify-center h-[calc(100vh-8rem)]"><Loader2 className="animate-spin" /></div>}>
-            <MessagesPageComponent />
+            <div className="h-full">
+                <MessagesPageComponent />
+            </div>
         </React.Suspense>
     )
 }
+
+    

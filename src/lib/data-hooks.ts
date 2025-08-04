@@ -61,9 +61,13 @@ function useClubData<T>(key: string, initialData: T) {
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
       
+      // Correctly handle functional updates to get the new state
       const valueToStore = newData instanceof Function ? newData(data) : newData;
+      
+      // Update the local state first to ensure UI reactivity
       setData(valueToStore);
 
+      // Then, update localStorage with the same new value
       try {
         const storedClubData = localStorage.getItem(clubDataKey);
         const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
@@ -139,7 +143,7 @@ export function useGroupChats() {
     }));
 
     const updateGroupChatsWithStrings = (newData: GroupChat[] | ((prevData: GroupChat[]) => GroupChat[])) => {
-        const valueToStore = newData instanceof Function ? newData(data) : newData;
+        const valueToStore = newData instanceof Function ? newData(data as GroupChat[]) : newData;
         const groupsWithStrings = valueToStore.map(group => ({
             ...group,
             messages: (group.messages || []).map((message: any) => ({

@@ -52,42 +52,43 @@ function MessagesContent({
   const [suggestedReply, setSuggestedReply] = useState("");
   const scrollAreaViewport = useRef<HTMLDivElement>(null);
 
-  const markDmAsRead = useCallback((partnerEmail: string) => {
-    if (!user) return;
-    const dmKey = [user.email, partnerEmail].sort().join(':');
+  useEffect(() => {
+    if (!selectedConversation || !user) return;
 
-    setAllMessages(prevMessages => {
-        const newMessagesForDm = (prevMessages[dmKey] || []).map(m => ({ ...m, read: true }));
-        return {
-            ...prevMessages,
-            [dmKey]: newMessagesForDm
-        };
-    });
-  }, [user, setAllMessages]);
-
-  const markGroupAsRead = useCallback((chatId: string) => {
-    const currentChats = groupChats;
-    const updatedChats = currentChats.map(chat => {
-        if (chat.id === chatId) {
+    if (selectedConversation.type === 'dm') {
+      const partnerEmail = selectedConversation.partner.email;
+      const dmKey = [user.email, partnerEmail].sort().join(':');
+      
+      setAllMessages(prevMessages => {
+        const currentDm = prevMessages[dmKey] || [];
+        if (currentDm.some(m => !m.read)) {
+            const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
             return {
-                ...chat,
-                messages: chat.messages.map(m => ({ ...m, read: true })),
+                ...prevMessages,
+                [dmKey]: newMessagesForDm
             };
         }
-        return chat;
-    });
-    setGroupChats(updatedChats);
-  }, [groupChats, setGroupChats]);
-
-  useEffect(() => {
-    if (selectedConversation) {
-      if (selectedConversation.type === 'dm') {
-        markDmAsRead(selectedConversation.partner.email);
-      } else {
-        markGroupAsRead(selectedConversation.chat.id);
-      }
+        return prevMessages;
+      });
+    } else { // group
+        const chatId = selectedConversation.chat.id;
+        setGroupChats(prevChats => {
+            const chatExists = prevChats.find(chat => chat.id === chatId);
+            if (chatExists && chatExists.messages.some(m => !m.read)) {
+                return prevChats.map(chat => {
+                    if (chat.id === chatId) {
+                        return {
+                            ...chat,
+                            messages: chat.messages.map(m => ({ ...m, read: true })),
+                        };
+                    }
+                    return chat;
+                });
+            }
+            return prevChats;
+        });
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation, user, setAllMessages, setGroupChats]);
 
   useEffect(() => {
     if (scrollAreaViewport.current) {
@@ -444,7 +445,7 @@ export default function MessagesPage() {
         if (!lastMsgB) return -1;
         return new Date(lastMsgB.timestamp).getTime() - new Date(lastMsgA.timestamp).getTime();
     });
-  }, [user, members, groupChats, allMessages, searchQuery]);
+  }, [user, members, groupChats, allMessages, searchQuery, getLastMessage]);
 
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {

@@ -82,22 +82,19 @@ function MessagesContent() {
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
     
-    setGroupChats((prevGroups) => {
-      let wasGroupUpdated = false;
-      const updatedGroups = prevGroups.map(g => {
-          if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
-              wasGroupUpdated = true;
-              return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
-          }
-          return g;
-      });
-
-      if (wasGroupUpdated) {
-          return updatedGroups;
-      }
-      return prevGroups;
+    let wasGroupUpdated = false;
+    const updatedGroups = groupChats.map(g => {
+        if (g.id === groupId && (g.unreadFor || []).includes(user.email)) {
+            wasGroupUpdated = true;
+            return { ...g, unreadFor: (g.unreadFor || []).filter(email => email !== user.email) };
+        }
+        return g;
     });
-  }, [user, setGroupChats]);
+
+    if (wasGroupUpdated) {
+        setGroupChats(updatedGroups);
+    }
+  }, [user, groupChats, setGroupChats]);
 
 
   useEffect(() => {
@@ -106,7 +103,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {

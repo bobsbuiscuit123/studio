@@ -59,7 +59,7 @@ function MessagesContent({
     if (selectedConversation && user) {
       if (selectedConversation.type === 'dm') {
         const dmKey = [user.email, selectedConversation.partner.email].sort().join(':');
-        const currentDm = allMessages[dmKey] || [];
+        const currentDm = (allMessages && allMessages[dmKey]) || [];
         if (currentDm.some(m => !m.read)) {
             setAllMessages(prev => ({
                 ...prev,
@@ -77,7 +77,7 @@ function MessagesContent({
         }
       }
     }
-  }, [selectedConversation, allMessages, groupChats, user, setAllMessages, setGroupChats]);
+  }, [selectedConversation, user, setAllMessages, setGroupChats]);
 
 
   useEffect(() => {
@@ -150,7 +150,7 @@ function MessagesContent({
   }
 
   const currentMessages = selectedConversation.type === 'dm'
-    ? allMessages[[user.email, selectedConversation.partner.email].sort().join(':')] || []
+    ? (allMessages && allMessages[[user.email, selectedConversation.partner.email].sort().join(':')]) || []
     : groupChats.find(chat => chat.id === selectedConversation.chat.id)?.messages || [];
   
   const convoName = selectedConversation.type === 'dm' ? selectedConversation.partner.name : selectedConversation.chat.name;
@@ -393,7 +393,7 @@ function MessagesPageComponent() {
   }, [searchParams, members, selectedConversation]);
 
   const getUnreadCount = useCallback((convo: Conversation): number => {
-    if (!user) return 0;
+    if (!user || !allMessages || !groupChats) return 0;
     if (convo.type === 'dm') {
         const dmKey = [user.email, convo.partner.email].sort().join(':');
         const messages = allMessages[dmKey] || [];
@@ -404,7 +404,7 @@ function MessagesPageComponent() {
   }, [user, allMessages, groupChats]);
   
   const getLastMessage = useCallback((convo: Conversation): Message | null => {
-      if (!user) return null;
+      if (!user || !allMessages || !groupChats) return null;
        if (convo.type === 'dm') {
           const dmKey = [user.email, convo.partner.email].sort().join(':');
           const messages = allMessages[dmKey] || [];
@@ -424,7 +424,7 @@ function MessagesPageComponent() {
         partner
     }));
     
-    const groupConversations: Conversation[] = groupChats
+    const groupConversations: Conversation[] = (groupChats || [])
       .filter(chat => chat && chat.members && chat.members.includes(user.email))
       .map(chat => ({
           type: 'group',
@@ -534,3 +534,5 @@ export default function MessagesPage() {
         </React.Suspense>
     )
 }
+
+    

@@ -63,7 +63,7 @@ function MessagesContent() {
   });
 
   const markDmAsRead = useCallback((recipientEmail: string) => {
-    if (!user || !allMessages) return;
+    if (!user) return;
     
     let wasMessageUpdated = false;
     const updatedMessages = allMessages.map((msg) => {
@@ -77,7 +77,7 @@ function MessagesContent() {
     if (wasMessageUpdated) {
         setAllMessages(updatedMessages);
     }
-  }, [user, setAllMessages]);
+  }, [user, allMessages, setAllMessages]);
 
   const markGroupAsRead = useCallback((groupId: string) => {
     if(!user) return;
@@ -97,7 +97,8 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -454,3 +455,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

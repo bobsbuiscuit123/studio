@@ -366,57 +366,59 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-grow bg-background/90" viewportRef={viewportRef}>
-                <div className="p-4 space-y-4">
-                    {currentMessages.map((msg) => {
-                    const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
-                    const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
-                    const senderAvatar = selectedConversation.type === 'group' ? (msg as GroupMessage).authorAvatar : sender?.avatar;
+            <div className="flex-grow flex flex-col overflow-hidden">
+                <ScrollArea className="flex-grow" viewportRef={viewportRef}>
+                    <div className="p-4 space-y-4 flex flex-col justify-end min-h-full">
+                        {currentMessages.map((msg) => {
+                        const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
+                        const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
+                        const senderAvatar = selectedConversation.type === 'group' ? (msg as GroupMessage).authorAvatar : sender?.avatar;
 
-                    return (
-                    <div
-                        key={msg.id}
-                        className={cn(
-                        "flex items-end gap-2",
-                        msg.senderEmail === user?.email ? "justify-end" : "justify-start"
-                        )}
-                    >
-                        {msg.senderEmail !== user?.email && (
-                        <Avatar className="h-8 w-8">
-                            <AvatarImage src={senderAvatar} />
-                            <AvatarFallback style={{backgroundColor: stringToColor(senderName || "")}}>
-                                {getAvatarFallback(senderName)}
-                            </AvatarFallback>
-                        </Avatar>
-                        )}
+                        return (
                         <div
-                        className={cn(
-                            "max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-4 py-2",
-                            msg.senderEmail === user?.email
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted"
-                        )}
+                            key={msg.id}
+                            className={cn(
+                            "flex items-end gap-2",
+                            msg.senderEmail === user?.email ? "justify-end" : "justify-start"
+                            )}
                         >
-                        {selectedConversation.type === 'group' && msg.senderEmail !== user?.email && (
-                            <p className="text-xs font-semibold mb-1">{senderName}</p>
-                        )}
-                        <p>{msg.text}</p>
-                        <p className={cn("text-xs mt-1 text-right", msg.senderEmail === user?.email ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
-                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
+                            {msg.senderEmail !== user?.email && (
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={senderAvatar} />
+                                <AvatarFallback style={{backgroundColor: stringToColor(senderName || "")}}>
+                                    {getAvatarFallback(senderName)}
+                                </AvatarFallback>
+                            </Avatar>
+                            )}
+                            <div
+                            className={cn(
+                                "max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-4 py-2",
+                                msg.senderEmail === user?.email
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            )}
+                            >
+                            {selectedConversation.type === 'group' && msg.senderEmail !== user?.email && (
+                                <p className="text-xs font-semibold mb-1">{senderName}</p>
+                            )}
+                            <p>{msg.text}</p>
+                            <p className={cn("text-xs mt-1 text-right", msg.senderEmail === user?.email ? "text-primary-foreground/70" : "text-muted-foreground/70")}>
+                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            </div>
+                            {msg.senderEmail === user?.email && user && (
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={user.avatar} />
+                                <AvatarFallback style={{backgroundColor: stringToColor(user.name)}}>
+                                    {getAvatarFallback(user.name)}
+                                </AvatarFallback>
+                            </Avatar>
+                            )}
                         </div>
-                        {msg.senderEmail === user?.email && user && (
-                        <Avatar className="h-8 w-8">
-                            <AvatarImage src={user.avatar} />
-                            <AvatarFallback style={{backgroundColor: stringToColor(user.name)}}>
-                                {getAvatarFallback(user.name)}
-                            </AvatarFallback>
-                        </Avatar>
-                        )}
+                        )})}
                     </div>
-                    )})}
-                </div>
-            </ScrollArea>
+                </ScrollArea>
+            </div>
             <div className="p-4 bg-background border-t shrink-0">
                <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-center gap-2">
                 <Input
@@ -454,3 +456,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

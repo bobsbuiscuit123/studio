@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -32,8 +33,8 @@ export function AppSidebar() {
 
   useEffect(() => {
     if (!messagesLoading && !groupsLoading && user && allMessages) {
-        const unreadDms = Object.values(allMessages).flat().some(m => !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => !m.readBy.includes(user.email) && m.sender !== user.email));
+        const unreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
         setHasUnreadMessages(unreadDms || unreadGroups);
     }
   }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);

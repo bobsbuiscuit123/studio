@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { useMembers, useEvents, useMessages, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
+import { useMembers, useEvents, useMessages, useCurrentUser, useAnnouncements, useSocialPosts, useTransactions } from "@/lib/data-hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -40,6 +40,7 @@ export default function Dashboard() {
   const { data: events, loading: eventsLoading } = useEvents();
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+  const { data: transactions, loading: transactionsLoading } = useTransactions();
   const { user, loading: userLoading } = useCurrentUser();
   const { allMessages, loading: messagesLoading } = useMessages(user?.email);
   const router = useRouter();
@@ -88,8 +89,13 @@ export default function Dashboard() {
     }
   }, [mostRecentActivity]);
 
+  const netBalance = useMemo(() => {
+    if (transactionsLoading || !transactions) return 0;
+    return transactions.reduce((acc, t) => acc + t.amount, 0);
+  }, [transactions, transactionsLoading]);
 
-  if (membersLoading || eventsLoading || !clubId || userLoading || announcementsLoading || socialPostsLoading) {
+
+  if (membersLoading || eventsLoading || !clubId || userLoading || announcementsLoading || socialPostsLoading || transactionsLoading) {
     return (
        <div className="flex flex-col gap-4 md:gap-8">
       <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
@@ -153,9 +159,9 @@ export default function Dashboard() {
             <Landmark className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">$0.00</div>
+            <div className="text-2xl font-bold">${netBalance.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">
-              Connect to a payment provider.
+              Current net balance of all transactions.
             </p>
           </CardContent>
         </Card>
@@ -261,5 +267,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
-    

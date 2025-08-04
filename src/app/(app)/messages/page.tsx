@@ -69,34 +69,34 @@ function MessagesContent({
   }, [user, setAllMessages]);
 
   const markGroupAsRead = useCallback((chatId: string) => {
-      if (!user) return;
-      setGroupChats(prevChats => {
-          const chatToUpdate = prevChats.find(chat => chat.id === chatId);
-          if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
-            return prevChats.map(chat => {
-                if (chat.id === chatId) {
-                    return {
-                        ...chat,
-                        messages: chat.messages.map(m => ({ ...m, read: true })),
-                    };
-                }
-                return chat;
-            });
+    if (!user) return;
+    setGroupChats(prevChats => {
+      const chatToUpdate = prevChats.find(chat => chat.id === chatId);
+      if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
+        return prevChats.map(chat => {
+          if (chat.id === chatId) {
+            return {
+              ...chat,
+              messages: chat.messages.map(m => ({ ...m, read: true })),
+            };
           }
-          return prevChats;
-      });
+          return chat;
+        });
+      }
+      return prevChats;
+    });
   }, [user, setGroupChats]);
 
 
   useEffect(() => {
-    if (!selectedConversation || !user) return;
-
-    if (selectedConversation.type === 'dm') {
-      markDmAsRead(selectedConversation.partner.email);
-    } else { // group
-      markGroupAsRead(selectedConversation.chat.id);
+    if (selectedConversation) {
+        if (selectedConversation.type === 'dm') {
+            markDmAsRead(selectedConversation.partner.email);
+        } else {
+            markGroupAsRead(selectedConversation.chat.id);
+        }
     }
-  }, [selectedConversation, user, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
 
   useEffect(() => {
@@ -410,7 +410,7 @@ export default function MessagesPage() {
     } else { // group
         return convo.chat.messages.filter(m => m.sender !== user.email && !m.read).length;
     }
-  }, [user, allMessages]);
+  }, [user, allMessages, groupChats]);
   
   const getLastMessage = useCallback((convo: Conversation): Message | null => {
       if (!user) return null;
@@ -421,7 +421,7 @@ export default function MessagesPage() {
       } else { // group
           return convo.chat.messages.length > 0 ? convo.chat.messages[convo.chat.messages.length - 1] : null;
       }
-  }, [user, allMessages]);
+  }, [user, allMessages, groupChats]);
 
   const sortedAndFilteredConversations = useMemo(() => {
     if (!user) return [];
@@ -467,7 +467,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-full gap-0">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] h-[calc(100vh-8rem)] gap-0">
       <aside className="flex flex-col bg-card border rounded-l-xl">
         <header className="p-4 border-b flex justify-between items-center">
           <h2 className="text-xl font-bold">Chats</h2>

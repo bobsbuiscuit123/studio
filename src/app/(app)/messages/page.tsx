@@ -366,7 +366,7 @@ function MessagesContent() {
                 </p>
               </div>
             </div>
-            <ScrollArea className="flex-grow bg-background/90" viewportRef={viewportRef}>
+            <ScrollArea className="flex-1 bg-background/90" viewportRef={viewportRef}>
               <div className="p-4 flex flex-col justify-end min-h-full">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
@@ -454,5 +454,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

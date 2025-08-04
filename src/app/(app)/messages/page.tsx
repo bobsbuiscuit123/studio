@@ -97,8 +97,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedConversation]);
+  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -368,7 +367,7 @@ function MessagesContent() {
               </div>
             </div>
             <ScrollArea className="flex-grow" viewportRef={viewportRef}>
-                <div className="p-4 space-y-4 flex flex-col justify-end min-h-full">
+              <div className="p-4 space-y-4">
                     {currentMessages.map((msg) => {
                     const sender = selectedConversation.type === 'group' ? members.find(m => m.email === (msg as GroupMessage).senderEmail) : (msg as Message).senderEmail === user?.email ? user : selectedMember;
                     const senderName = selectedConversation.type === 'group' ? (msg as GroupMessage).authorName : sender?.name;
@@ -455,3 +454,5 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
+
+    

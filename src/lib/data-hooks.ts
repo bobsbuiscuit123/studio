@@ -138,18 +138,19 @@ export function useGroupChats() {
         })),
     }));
 
-    const updateGroupChatsWithStrings = (newGroups: GroupChat[]) => {
-        const groupsWithStrings = newGroups.map(group => ({
+    const updateGroupChatsWithStrings = (newData: GroupChat[] | ((prevData: GroupChat[]) => GroupChat[])) => {
+        const valueToStore = newData instanceof Function ? newData(data) : newData;
+        const groupsWithStrings = valueToStore.map(group => ({
             ...group,
             messages: (group.messages || []).map((message: any) => ({
                 ...message,
                 timestamp: message.timestamp.toISOString(),
             })),
         }));
-        updateData(groupsWithStrings as any);
+        updateData(groupsWithStrings);
     };
 
-    return { data, loading, updateData, clubId };
+    return { data: data, loading, updateData: updateGroupChatsWithStrings, clubId };
 }
 
 

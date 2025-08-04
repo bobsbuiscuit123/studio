@@ -56,12 +56,12 @@ function MessagesContent({
   const markDmAsRead = useCallback((partnerEmail: string) => {
     if (!user) return;
     const dmKey = [user.email, partnerEmail].sort().join(':');
-    const hasUnread = (allMessages[dmKey] || []).some(m => !m.read);
+    const currentDm = allMessages[dmKey] || [];
+    const hasUnread = currentDm.some(m => !m.read);
     
     if (hasUnread) {
         setAllMessages(prevMessages => {
-            const currentDm = prevMessages[dmKey] || [];
-            const newMessagesForDm = currentDm.map(m => ({ ...m, read: true }));
+            const newMessagesForDm = (prevMessages[dmKey] || []).map(m => ({ ...m, read: true }));
             return {
                 ...prevMessages,
                 [dmKey]: newMessagesForDm
@@ -72,9 +72,9 @@ function MessagesContent({
 
   const markGroupAsRead = useCallback((chatId: string) => {
     if (!user) return;
-    const chatToUpdate = groupChats.find(chat => chat.id === chatId);
-    if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
-        setGroupChats(prevChats => {
+    setGroupChats((prevChats: GroupChat[]) => {
+        const chatToUpdate = prevChats.find(chat => chat.id === chatId);
+        if (chatToUpdate && chatToUpdate.messages.some(m => !m.read && m.sender !== user.email)) {
             return prevChats.map(chat => {
                 if (chat.id === chatId) {
                     return {
@@ -84,9 +84,10 @@ function MessagesContent({
                 }
                 return chat;
             });
-        });
-    }
-  }, [user, groupChats, setGroupChats]);
+        }
+        return prevChats;
+    });
+  }, [user, setGroupChats]);
 
 
   useEffect(() => {
@@ -126,13 +127,12 @@ function MessagesContent({
       updatedMessages[dmKey].push(newMessage);
       setAllMessages(updatedMessages);
     } else { // group chat
-      const updatedGroupChats = groupChats.map(chat => {
+      setGroupChats((prevChats: GroupChat[]) => prevChats.map(chat => {
         if (chat.id === selectedConversation.chat.id) {
           return { ...chat, messages: [...chat.messages, newMessage] };
         }
         return chat;
-      });
-      setGroupChats(updatedGroupChats);
+      }));
     }
     
     setMessage("");
@@ -300,7 +300,7 @@ function NewGroupChatDialog({ children }: { children: React.ReactNode }) {
             messages: [],
             avatar: values.avatar || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
         };
-        setGroupChats([...groupChats, newGroupChat]);
+        setGroupChats((prev: GroupChat[]) => [...prev, newGroupChat]);
         toast({ title: "Group chat created!" });
         setIsOpen(false);
         form.reset();

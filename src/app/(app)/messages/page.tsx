@@ -97,7 +97,7 @@ function MessagesContent() {
     } else if (selectedConversation?.type === 'group') {
       markGroupAsRead(selectedConversation.id);
     }
-  }, [selectedConversation, markDmAsRead, markGroupAsRead]);
+  }, [selectedConversation]);
 
   // Effect to handle initial conversation selection from URL or default
   useEffect(() => {
@@ -201,7 +201,7 @@ function MessagesContent() {
 
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-8.5rem)]">
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] border rounded-lg h-[calc(100vh-8.5rem)] overflow-hidden">
       {/* Conversation List */}
       <div className={cn("border-r bg-muted/40 flex flex-col", selectedConversation && "hidden md:flex")}>
         <div className="p-4 border-b flex justify-between items-center">
@@ -454,5 +454,3 @@ export default function MessagesPage() {
         </Suspense>
     )
 }
-
-    

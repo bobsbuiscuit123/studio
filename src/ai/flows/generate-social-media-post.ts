@@ -49,7 +49,7 @@ const prompt = ai.definePrompt({
   User Prompt: {{{prompt}}}
 
   {{#if photoDataUris}}
-  Here are photos for the post: 
+  Here are photos for the post:
   {{#each photoDataUris}}
     {{media url=this}}
   {{/each}}
@@ -73,6 +73,7 @@ const generateSocialMediaPostFlow = ai.defineFlow(
       throw new Error("Could not generate social media post.");
     }
 
+    // Ensure images is always an array, even if the model omits it.
     return {
         ...output,
         images: output.images || [],

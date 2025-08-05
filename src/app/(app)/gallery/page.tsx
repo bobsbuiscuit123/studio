@@ -194,8 +194,10 @@ export default function GalleryPage() {
     }
   };
   
-  const approvedImages = images.filter(img => img.status === 'approved');
-  const pendingImages = images.filter(img => img.status === 'pending');
+  const isValidImage = (image: GalleryImage) => typeof image.src === 'string' && image.src.startsWith('data:image/');
+
+  const approvedImages = images.filter(img => img.status === 'approved' && isValidImage(img));
+  const pendingImages = images.filter(img => img.status === 'pending' && isValidImage(img));
 
   return (
     <div className="flex flex-col gap-8">
@@ -368,3 +370,5 @@ export default function GalleryPage() {
     </div>
   );
 }
+
+    

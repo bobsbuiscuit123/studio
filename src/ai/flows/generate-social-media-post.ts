@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -52,6 +53,8 @@ const prompt = ai.definePrompt({
     {{media url=this}}
   {{/each}}
   Create an engaging image caption to go along with these photos.
+  {{else}}
+  Do not generate an image caption if no photos are provided.
   {{/if}}
   `,
 });

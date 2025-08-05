@@ -194,7 +194,7 @@ export default function MessagesPage() {
     };
     
     const getLastMessageTimestamp = (conversation: Conversation): string => {
-        if (!user || !allMessages) return '1970-01-01T00:00:00.000Z'; // old date for conversations with no messages
+        if (!user) return '1970-01-01T00:00:00.000Z'; // old date for conversations with no messages
 
         let messages: Message[] = [];
         if (conversation.type === 'dm') {
@@ -245,7 +245,7 @@ export default function MessagesPage() {
     });
 
     const activeMessages = (() => {
-        if (!activeConversation || !user || !allMessages) return [];
+        if (!activeConversation || !user) return [];
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             return allMessages[conversationId] || [];

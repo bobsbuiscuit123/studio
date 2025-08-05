@@ -1,6 +1,6 @@
 
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
@@ -172,34 +172,30 @@ export function useCurrentUser() {
 export function useCurrentUserRole() {
     const { data: members, loading: membersLoading } = useMembers();
     const { user, loading: userLoading } = useCurrentUser();
-    const [role, setRole] = useState<string | null>(null);
-    const [canEditContent, setCanEditContent] = useState(false);
-    const [canManageRoles, setCanManageRoles] = useState(false);
-    const [loading, setLoading] = useState(true);
 
-
-    useEffect(() => {
-        if (!membersLoading && !userLoading) {
-            let currentRole: string | null = null;
-            if (user && members && members.length > 0) {
-                const currentUserInClub = members.find((m: Member) => m.email === user.email);
-                currentRole = currentUserInClub ? currentUserInClub.role : null;
-            } else if (user) {
-                 // If there are no members yet, the first user is the President
-                 currentRole = 'President';
-            }
-            
-            setRole(currentRole);
-            const canEdit = currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer';
-            const canManage = currentRole === 'President' || currentRole === 'Admin';
-            setCanEditContent(canEdit);
-            setCanManageRoles(canManage);
-
-            setLoading(false);
+    const roleData = useMemo(() => {
+        if (membersLoading || userLoading) {
+            return { role: null, canEditContent: false, canManageRoles: false, loading: true };
         }
+
+        let currentRole: string | null = null;
+        if (user && members) {
+            const currentUserInClub = members.find((m: Member) => m.email === user.email);
+            currentRole = currentUserInClub ? currentUserInClub.role : null;
+        }
+
+        const canEdit = currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer';
+        const canManage = currentRole === 'President' || currentRole === 'Admin';
+        
+        return {
+            role: currentRole,
+            canEditContent: canEdit,
+            canManageRoles: canManage,
+            loading: false,
+        };
     }, [members, user, membersLoading, userLoading]);
 
-    return { role, canEditContent, canManageRoles, loading };
+    return roleData;
 }
 
 export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance';
@@ -213,7 +209,7 @@ export function useNotifications() {
     const { data: galleryImages, updateData: setGalleryImages, loading: galleryImagesLoading } = useGalleryImages();
     const { user, loading: userLoading } = useCurrentUser();
     const [clubId, setClubId] = useState<string | null>(null);
-    const { role } = useCurrentUserRole();
+    const { role, loading: roleLoading } = useCurrentUserRole();
 
     useEffect(() => {
         setClubId(localStorage.getItem('selectedClubId'));
@@ -228,7 +224,7 @@ export function useNotifications() {
         attendance: false,
     });
 
-    const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading;
+    const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading || roleLoading;
 
     const calculateUnread = useCallback(() => {
         if (loading || !user) return;
@@ -256,10 +252,12 @@ export function useNotifications() {
             gallery: hasUnreadGallery,
             attendance: hasUnreadAttendance,
         };
-
+        
+        // Only update state if the unread status has actually changed.
         if (JSON.stringify(newUnread) !== JSON.stringify(unread)) {
-            setUnread(newUnread);
+          setUnread(newUnread);
         }
+
     }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, unread]);
 
 
@@ -276,7 +274,7 @@ export function useNotifications() {
             try {
                 const storedClubData = localStorage.getItem(clubDataKey);
                 const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                const currentData = parsedData[dataKey] || [];
+                const currentData = parsedData[dataKey] || (dataKey === 'messages' ? {} : []);
                 const updatedData = updateFn(currentData);
                 parsedData[dataKey] = updatedData;
                 localStorage.setItem(clubDataKey, JSON.stringify(parsedData));

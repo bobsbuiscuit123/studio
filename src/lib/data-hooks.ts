@@ -1,6 +1,5 @@
 
 
-
 import { useState, useEffect, useCallback } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
 
@@ -214,6 +213,7 @@ export function useNotifications() {
     const { data: galleryImages, updateData: setGalleryImages, loading: galleryImagesLoading } = useGalleryImages();
     const { user, loading: userLoading } = useCurrentUser();
     const [clubId, setClubId] = useState<string | null>(null);
+    const { role } = useCurrentUserRole();
 
     useEffect(() => {
         setClubId(localStorage.getItem('selectedClubId'));
@@ -243,8 +243,6 @@ export function useNotifications() {
         const hasUnreadEvents = events.some(e => !e.read);
         const hasUnreadGallery = galleryImages.some(i => i.status === 'approved' && !i.read);
         
-        // President/Admin specific notification
-        const { role } = useCurrentUserRole();
         let hasUnreadAttendance = false;
         if (role === 'President' || role === 'Admin') {
             hasUnreadAttendance = events.some(e => e.attendees && e.attendees.length > (e.lastViewedAttendees || 0));
@@ -262,7 +260,7 @@ export function useNotifications() {
         if (JSON.stringify(newUnread) !== JSON.stringify(unread)) {
             setUnread(newUnread);
         }
-    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, unread, useCurrentUserRole]);
+    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, unread]);
 
 
     useEffect(() => {

@@ -225,8 +225,8 @@ export function useNotifications() {
         const hasUnreadAnnouncements = announcements.some(a => !a.read);
         const hasUnreadSocials = socialPosts.some(p => !p.read);
         
-        const unreadDms = Object.values(allMessages || {}).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
+        const unreadDms = Object.values(allMessages || {}).flat().some(m => m.readBy && !m.readBy.includes(user.email!) && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email!) && m.sender !== user.email));
         const hasUnreadMessages = unreadDms || unreadGroups;
         
         const hasUnreadEvents = events.some(e => !e.read);
@@ -258,29 +258,7 @@ export function useNotifications() {
                 setSocialPosts(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'messages':
-                setAllMessages(prev => {
-                    const readDms = JSON.parse(JSON.stringify(prev));
-                    Object.keys(readDms).forEach(convoId => {
-                        const messages = readDms[convoId];
-                        if (Array.isArray(messages)) {
-                            messages.forEach((msg: Message) => {
-                               if (msg.readBy && !msg.readBy.includes(user.email)) {
-                                    msg.readBy.push(user.email);
-                               }
-                            });
-                        }
-                    });
-                    return readDms;
-                });
-                setGroupChats(prev => prev.map(chat => ({
-                    ...chat,
-                    messages: chat.messages.map(msg => {
-                        if (msg.readBy && !msg.readBy.includes(user.email)) {
-                             return {...msg, readBy: [...msg.readBy, user.email]};
-                        }
-                        return msg;
-                    })
-                })));
+                // This will be handled by the component now to avoid loops
                 break;
             case 'calendar':
                 setEvents(prev => prev.map(item => ({...item, read: true } as any)));
@@ -292,7 +270,7 @@ export function useNotifications() {
                 setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [user, setAnnouncements, setSocialPosts, setAllMessages, setGroupChats, setEvents, setGalleryImages]);
+    }, [user, setAnnouncements, setSocialPosts, setEvents, setGalleryImages]);
 
     return { unread, loading, markAllAsRead };
 }

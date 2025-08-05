@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -60,13 +61,9 @@ export default function MessagesPage() {
     const scrollToBottom = () => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [activeConversation, allMessages, groupChats]);
     
-    const stableSetAllMessages = useCallback(setAllMessages, []);
-    const stableSetGroupChats = useCallback(setGroupChats, []);
+    const stableSetAllMessages = useCallback(setAllMessages, [setAllMessages]);
+    const stableSetGroupChats = useCallback(setGroupChats, [setGroupChats]);
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');
@@ -121,7 +118,8 @@ export default function MessagesPage() {
             }));
           }
       }
-    }, [activeConversation, user?.email, allMessages, stableSetAllMessages, stableSetGroupChats]);
+      scrollToBottom();
+    }, [activeConversation, user?.email, allMessages, stableSetAllMessages, groupChats, stableSetGroupChats]);
 
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
@@ -214,7 +212,7 @@ export default function MessagesPage() {
         return messages[messages.length - 1].timestamp;
     };
     
-    const hasUnreadMessages = (conversation: Conversation): boolean => {
+    const hasUnreadMessages = useCallback((conversation: Conversation): boolean => {
         if (!user || !user.email) return false;
         let messages: Message[] = [];
 
@@ -226,7 +224,7 @@ export default function MessagesPage() {
             messages = currentChat ? currentChat.messages : [];
         }
         return messages.some(m => !m.readBy.includes(user.email!) && m.sender !== user.email);
-    };
+    }, [user, allMessages, groupChats]);
 
     const conversations: Conversation[] = [
       ...groupChats.map(chat => ({ type: 'group', chat } as Conversation)),

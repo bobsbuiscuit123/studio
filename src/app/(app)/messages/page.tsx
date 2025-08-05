@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -67,11 +67,12 @@ export default function MessagesPage() {
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');
-        if (targetMemberString) {
+        if (targetMemberString && !membersLoading && members.length > 0) {
             try {
                 const targetMember: Member = JSON.parse(targetMemberString);
-                if (targetMember && targetMember.email) {
-                    setActiveConversation({ type: 'dm', partner: targetMember });
+                const fullMember = members.find(m => m.email === targetMember.email);
+                if (fullMember) {
+                    setActiveConversation({ type: 'dm', partner: fullMember });
                 }
             } catch (e) {
                 console.error("Failed to parse messageTarget from localStorage", e);
@@ -79,47 +80,56 @@ export default function MessagesPage() {
                 localStorage.removeItem('messageTarget');
             }
         }
-    }, []);
+    }, [membersLoading, members]);
+
+    const stableSetAllMessages = useCallback(setAllMessages, []);
+    const stableSetGroupChats = useCallback(setGroupChats, []);
 
     useEffect(() => {
         if (!activeConversation || !user?.email) return;
 
         if (activeConversation.type === 'dm') {
-            const conversationId = getConversationId(user.email, activeConversation.partner.email);
-            const currentMessages = allMessages[conversationId] || [];
-            let changed = false;
+            stableSetAllMessages(prev => {
+                const conversationId = getConversationId(user.email!, activeConversation.partner.email);
+                const currentMessages = prev[conversationId] || [];
+                let changed = false;
 
-            const updatedMessages = currentMessages.map(msg => {
-                if (!msg.readBy.includes(user.email!)) {
-                    changed = true;
-                    return { ...msg, readBy: [...msg.readBy, user.email!] };
+                const updatedMessages = currentMessages.map(msg => {
+                    if (!msg.readBy.includes(user.email!)) {
+                        changed = true;
+                        return { ...msg, readBy: [...msg.readBy, user.email!] };
+                    }
+                    return msg;
+                });
+
+                if (changed) {
+                    return { ...prev, [conversationId]: updatedMessages };
                 }
-                return msg;
+                return prev;
             });
-
-            if (changed) {
-                setAllMessages(prev => ({ ...prev, [conversationId]: updatedMessages }));
-            }
         } else { // group
-            const chat = activeConversation.chat;
-            let changed = false;
-            
-            const updatedMessages = chat.messages.map(msg => {
-                if (!msg.readBy.includes(user.email!)) {
-                    changed = true;
-                    return { ...msg, readBy: [...msg.readBy, user.email!] };
-                }
-                return msg;
-            });
-            if (changed) {
-                 const updatedGroupChats = groupChats.map(g => 
-                    g.id === chat.id ? { ...g, messages: updatedMessages } : g
-                 );
-                 setGroupChats(updatedGroupChats);
-            }
-        }
+            stableSetGroupChats(prev => {
+                const chat = activeConversation.chat;
+                let changed = false;
 
-    }, [activeConversation, user?.email, allMessages, groupChats, setAllMessages, setGroupChats]);
+                const updatedChats = prev.map(g => {
+                    if (g.id === chat.id) {
+                        const updatedMessages = g.messages.map(msg => {
+                            if (!msg.readBy.includes(user.email!)) {
+                                changed = true;
+                                return { ...msg, readBy: [...msg.readBy, user.email!] };
+                            }
+                            return msg;
+                        });
+                        return { ...g, messages: updatedMessages };
+                    }
+                    return g;
+                });
+                
+                return changed ? updatedChats : prev;
+            });
+        }
+    }, [activeConversation, user?.email, stableSetAllMessages, stableSetGroupChats]);
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),
@@ -143,8 +153,7 @@ export default function MessagesPage() {
 
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
-            const updatedMessages = [...(allMessages[conversationId] || []), newMessage];
-            setAllMessages(prev => ({ ...prev, [conversationId]: updatedMessages }));
+            setAllMessages(prev => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), newMessage] }));
         } else { // group
              const updatedGroupChats = groupChats.map(chat => 
                 chat.id === activeConversation.chat.id
@@ -211,9 +220,9 @@ export default function MessagesPage() {
 
         return messages[messages.length - 1].timestamp;
     };
-
+    
     const hasUnreadMessages = (conversation: Conversation): boolean => {
-        if (!user) return false;
+        if (!user || !user.email) return false;
         let messages: Message[] = [];
 
         if (conversation.type === 'dm') {
@@ -223,7 +232,7 @@ export default function MessagesPage() {
             const currentChat = groupChats.find(g => g.id === conversation.chat.id);
             messages = currentChat ? currentChat.messages : [];
         }
-        return messages.some(m => !m.readBy.includes(user.email) && m.sender !== user.email);
+        return messages.some(m => !m.readBy.includes(user.email!) && m.sender !== user.email);
     };
 
     const conversations: Conversation[] = [

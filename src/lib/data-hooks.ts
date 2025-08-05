@@ -259,34 +259,7 @@ export function useNotifications() {
                 setSocialPosts(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'messages':
-                setAllMessages(prev => {
-                    const newMessages = JSON.parse(JSON.stringify(prev));
-                    for (const convoId in newMessages) {
-                        if(Array.isArray(newMessages[convoId])) {
-                            newMessages[convoId].forEach((msg: Message) => {
-                                if (!msg.readBy.includes(userEmail)) {
-                                    msg.readBy.push(userEmail);
-                                }
-                            });
-                        }
-                    }
-                    return newMessages;
-                });
-                setGroupChats(prev => {
-                    const newGroups = JSON.parse(JSON.stringify(prev));
-                    if(Array.isArray(newGroups)) {
-                        newGroups.forEach((group: GroupChat) => {
-                            if(Array.isArray(group.messages)) {
-                                group.messages.forEach((msg: Message) => {
-                                     if (!msg.readBy.includes(userEmail)) {
-                                        msg.readBy.push(userEmail);
-                                    }
-                                });
-                            }
-                        });
-                    }
-                    return newGroups;
-                });
+                // This is now handled in the messages page component to prevent loops
                 break;
             case 'calendar':
                 setEvents(prev => prev.map(item => ({...item, read: true } as any)));
@@ -298,7 +271,7 @@ export function useNotifications() {
                 setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [user, setAnnouncements, setSocialPosts, setAllMessages, setGroupChats, setEvents, setGalleryImages]);
+    }, [user, setAnnouncements, setSocialPosts, setEvents, setGalleryImages]);
 
     return { unread, loading, markAllAsRead };
 }

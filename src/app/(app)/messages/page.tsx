@@ -65,6 +65,46 @@ export default function MessagesPage() {
     const stableSetAllMessages = useCallback(setAllMessages, [setAllMessages]);
     const stableSetGroupChats = useCallback(setGroupChats, [setGroupChats]);
 
+    // Effect to handle marking all messages as read on component mount (for sidebar notification)
+    useEffect(() => {
+        if (!user?.email || messagesLoading || groupsLoading) return;
+        const userEmail = user.email;
+
+        // Mark DMs as read
+        stableSetAllMessages(prev => {
+            const newMessages = JSON.parse(JSON.stringify(prev));
+            let changed = false;
+            for (const convoId in newMessages) {
+                if (Array.isArray(newMessages[convoId])) {
+                    newMessages[convoId].forEach((msg: Message) => {
+                        if (!msg.readBy.includes(userEmail)) {
+                            msg.readBy.push(userEmail);
+                            changed = true;
+                        }
+                    });
+                }
+            }
+            return changed ? newMessages : prev;
+        });
+
+        // Mark Group Chats as read
+        stableSetGroupChats(prev => {
+            let changed = false;
+            const newGroups = prev.map(group => {
+                const newMessages = group.messages.map(msg => {
+                    if (!msg.readBy.includes(userEmail)) {
+                        changed = true;
+                        return { ...msg, readBy: [...msg.readBy, userEmail] };
+                    }
+                    return msg;
+                });
+                return { ...group, messages: newMessages };
+            });
+            return changed ? newGroups : prev;
+        });
+    }, [user?.email, messagesLoading, groupsLoading, stableSetAllMessages, stableSetGroupChats]);
+
+
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');
         if (targetMemberString && !membersLoading && members.length > 0) {
@@ -82,17 +122,19 @@ export default function MessagesPage() {
         }
     }, [membersLoading, members]);
 
+    // Effect to mark messages in the *active* conversation as read
     useEffect(() => {
       if (!activeConversation || !user?.email) return;
+      const userEmail = user.email;
 
       if (activeConversation.type === 'dm') {
-        const conversationId = getConversationId(user.email, activeConversation.partner.email);
+        const conversationId = getConversationId(userEmail, activeConversation.partner.email);
         const currentMessages = allMessages[conversationId] || [];
-        if (currentMessages.some(m => !m.readBy.includes(user.email!))) {
+        if (currentMessages.some(m => !m.readBy.includes(userEmail))) {
             stableSetAllMessages(prev => {
                 const updatedMessages = (prev[conversationId] || []).map(msg => {
-                    if (!msg.readBy.includes(user.email!)) {
-                        return { ...msg, readBy: [...msg.readBy, user.email!] };
+                    if (!msg.readBy.includes(userEmail)) {
+                        return { ...msg, readBy: [...msg.readBy, userEmail] };
                     }
                     return msg;
                 });
@@ -101,14 +143,14 @@ export default function MessagesPage() {
         }
       } else { // group
           const chat = activeConversation.chat;
-          if (chat.messages.some(m => !m.readBy.includes(user.email!))) {
+          if (chat.messages.some(m => !m.readBy.includes(userEmail))) {
             stableSetGroupChats(prev => prev.map(g => {
                 if (g.id === chat.id) {
                     return {
                         ...g,
                         messages: g.messages.map(msg => {
-                            if (!msg.readBy.includes(user.email!)) {
-                                return { ...msg, readBy: [...msg.readBy, user.email!] };
+                            if (!msg.readBy.includes(userEmail)) {
+                                return { ...msg, readBy: [...msg.readBy, userEmail] };
                             }
                             return msg;
                         })
@@ -212,7 +254,7 @@ export default function MessagesPage() {
         return messages[messages.length - 1].timestamp;
     };
     
-    const hasUnreadMessages = useCallback((conversation: Conversation): boolean => {
+    const hasUnreadMessages = (conversation: Conversation): boolean => {
         if (!user || !user.email) return false;
         let messages: Message[] = [];
 
@@ -224,7 +266,7 @@ export default function MessagesPage() {
             messages = currentChat ? currentChat.messages : [];
         }
         return messages.some(m => !m.readBy.includes(user.email!) && m.sender !== user.email);
-    }, [user, allMessages, groupChats]);
+    };
 
     const conversations: Conversation[] = [
       ...groupChats.map(chat => ({ type: 'group', chat } as Conversation)),

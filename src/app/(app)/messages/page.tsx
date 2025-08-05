@@ -66,12 +66,12 @@ export default function MessagesPage() {
     }, [activeConversation, allMessages, groupChats]);
     
     useEffect(() => {
-        if (!user || messagesLoading) return;
+        if (!user || messagesLoading || !allMessages) return;
     
         const markAsRead = (messages: Message[]) => {
             let changed = false;
             messages.forEach(msg => {
-                if (!msg.readBy.includes(user.email)) {
+                if (msg.readBy && !msg.readBy.includes(user.email)) {
                     msg.readBy.push(user.email);
                     changed = true;
                 }
@@ -165,13 +165,13 @@ export default function MessagesPage() {
     };
     
     const getUnreadCount = (conversation: Conversation): number => {
-        if (!user) return 0;
+        if (!user || !allMessages) return 0;
         if (conversation.type === 'dm') {
             const convoId = getConversationId(user.email, conversation.partner.email);
             const messages = allMessages[convoId] || [];
-            return messages.filter(m => !m.readBy.includes(user.email) && m.sender !== user.email).length;
+            return messages.filter(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email).length;
         } else { // group
-            return conversation.chat.messages.filter(m => !m.readBy.includes(user.email) && m.sender !== user.email).length;
+            return conversation.chat.messages.filter(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email).length;
         }
     }
 
@@ -190,7 +190,7 @@ export default function MessagesPage() {
     });
 
     const activeMessages = (() => {
-        if (!activeConversation || !user) return [];
+        if (!activeConversation || !user || !allMessages) return [];
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             return allMessages[conversationId] || [];
@@ -402,5 +402,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    

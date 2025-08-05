@@ -84,10 +84,11 @@ export default function MessagesPage() {
     useEffect(() => {
         if (!activeConversation || !user) return;
 
+        let changed = false;
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             const currentMessages = allMessages[conversationId] || [];
-            let changed = false;
+            
             const updatedMessages = currentMessages.map(msg => {
                 if (!msg.readBy.includes(user.email)) {
                     changed = true;
@@ -101,7 +102,7 @@ export default function MessagesPage() {
             }
         } else { // group
             const chat = activeConversation.chat;
-            let changed = false;
+            
             const updatedMessages = chat.messages.map(msg => {
                 if (!msg.readBy.includes(user.email)) {
                     changed = true;
@@ -117,7 +118,7 @@ export default function MessagesPage() {
             }
         }
 
-    }, [activeConversation, user, allMessages, groupChats, setAllMessages, setGroupChats]);
+    }, [activeConversation, user?.email]);
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),
@@ -150,7 +151,6 @@ export default function MessagesPage() {
                 : chat
              );
              setGroupChats(updatedGroupChats);
-             // Also update the active conversation to reflect the new message immediately
              const updatedChat = updatedGroupChats.find(chat => chat.id === activeConversation.chat.id);
              if (updatedChat) {
                 setActiveConversation({ type: 'group', chat: updatedChat });
@@ -211,8 +211,8 @@ export default function MessagesPage() {
         return messages[messages.length - 1].timestamp;
     };
 
-    const getUnreadCount = (conversation: Conversation): number => {
-        if (!user) return 0;
+    const hasUnreadMessages = (conversation: Conversation): boolean => {
+        if (!user) return false;
         let messages: Message[] = [];
 
         if (conversation.type === 'dm') {
@@ -222,8 +222,7 @@ export default function MessagesPage() {
             const currentChat = groupChats.find(g => g.id === conversation.chat.id);
             messages = currentChat ? currentChat.messages : [];
         }
-
-        return messages.filter(m => !m.readBy.includes(user.email) && m.sender !== user.email).length;
+        return messages.some(m => !m.readBy.includes(user.email) && m.sender !== user.email);
     };
 
     const conversations: Conversation[] = [
@@ -232,7 +231,6 @@ export default function MessagesPage() {
         .filter(m => m.email !== user?.email)
         .map(partner => ({ type: 'dm', partner } as Conversation))
     ].filter((convo, index, self) => {
-      // Remove duplicate DMs (since we create one for each member)
       if (convo.type === 'dm') {
         const firstIndex = self.findIndex(c => c.type === 'dm' && c.partner.email === convo.partner.email);
         return index === firstIndex;
@@ -250,7 +248,6 @@ export default function MessagesPage() {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             return allMessages[conversationId] || [];
         }
-        // Ensure we get the latest state for the active group chat
         const currentChat = groupChats.find(g => g.id === activeConversation.chat.id);
         return currentChat ? currentChat.messages : [];
     })();
@@ -350,11 +347,11 @@ export default function MessagesPage() {
                         </Dialog>
                         <Separator className="my-2" />
                         {conversations.map((convo) => {
-                            const unreadCount = getUnreadCount(convo);
                             const name = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
                             const avatar = convo.type === 'dm' ? convo.partner.avatar : undefined;
                             const fallbackText = convo.type === 'dm' ? convo.partner.name.charAt(0) : convo.chat.name.charAt(0);
                             const icon = convo.type === 'group' ? <Users className="h-10 w-10 text-muted-foreground p-2 bg-muted rounded-full"/> : null;
+                            const isUnread = hasUnreadMessages(convo);
 
                             return (
                             <div
@@ -374,10 +371,8 @@ export default function MessagesPage() {
                                 <div className="flex-1 truncate">
                                 <p className="font-semibold">{name}</p>
                                 </div>
-                                {unreadCount > 0 && (
-                                    <span className="bg-primary text-primary-foreground text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
-                                        {unreadCount}
-                                    </span>
+                                {isUnread && (
+                                    <span className="ml-auto h-2 w-2 rounded-full bg-primary"></span>
                                 )}
                             </div>
                         )})}
@@ -459,5 +454,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    

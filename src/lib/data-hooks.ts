@@ -303,3 +303,4 @@ export function useNotifications() {
 
     return { unread, loading, markAllAsRead };
 }
+

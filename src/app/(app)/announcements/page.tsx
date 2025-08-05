@@ -75,14 +75,6 @@ export default function AnnouncementsPage() {
   }, []);
 
   useEffect(() => {
-    // Mark all announcements as read when the page is viewed
-    if (announcements && announcements.some(a => !a.read)) {
-        const updatedAnnouncements = announcements.map(a => ({ ...a, read: true }));
-        setAnnouncements(updatedAnnouncements);
-    }
-  }, [announcements, setAnnouncements]);
-  
-  useEffect(() => {
     if (printableContent && isDownloading) {
       const generatePdf = async () => {
         const html2pdf = (await import('html2pdf.js')).default;

@@ -49,22 +49,13 @@ const editFormSchema = z.object({
 });
 
 export default function CalendarPage() {
-  const [date, setDate] = useState<Date | undefined>();
+  const [date, setDate] = useState<Date | undefined>(new Date());
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const { canEditContent } = useCurrentUserRole();
-  
-  useEffect(() => {
-    setDate(new Date());
-    // Mark all events as read
-    if (events && events.some(e => !e.read)) {
-        const updatedEvents = events.map(e => ({...e, read: true }));
-        setEvents(updatedEvents);
-    }
-  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

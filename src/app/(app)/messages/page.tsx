@@ -64,30 +64,6 @@ export default function MessagesPage() {
     useEffect(() => {
         scrollToBottom();
     }, [activeConversation, allMessages, groupChats]);
-    
-    useEffect(() => {
-        if (!user || messagesLoading || !allMessages || groupsLoading) return;
-
-        // On mount and when user changes, clear all message notifications
-        const anyUnreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email));
-        if (anyUnreadDms) {
-            const readDms = { ...allMessages };
-            Object.keys(readDms).forEach(convoId => {
-                readDms[convoId] = readDms[convoId].map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email] }));
-            });
-            setAllMessages(readDms);
-        }
-        
-        const anyUnreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email)));
-        if (anyUnreadGroups) {
-            const readGroups = groupChats.map(chat => ({
-                ...chat,
-                messages: chat.messages.map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email]}))
-            }));
-            setGroupChats(readGroups);
-        }
-
-    }, [user, messagesLoading, groupsLoading]);
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');

@@ -8,7 +8,7 @@ import { useCurrentUserRole, useNotifications } from "@/lib/data-hooks";
 
 export function AppSidebar() {
   const { role } = useCurrentUserRole();
-  const { unread } = useNotifications();
+  const { unread, markAllAsRead } = useNotifications();
 
   return (
     <div className="hidden border-r bg-muted/40 md:block">
@@ -24,6 +24,7 @@ export function AppSidebar() {
             <AppSidebarNav 
               role={role || ''} 
               notifications={unread}
+              onLinkClick={(key) => markAllAsRead(key)}
             />
           </nav>
         </div>

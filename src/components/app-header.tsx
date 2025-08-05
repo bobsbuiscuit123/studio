@@ -99,7 +99,7 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const { unread } = useNotifications();
+  const { unread, markAllAsRead } = useNotifications();
   const router = useRouter();
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -154,19 +154,22 @@ export function AppHeader() {
            <SheetHeader className="p-6">
             <SheetTitle className="sr-only">Main Menu</SheetTitle>
           </SheetHeader>
-          <nav className="grid gap-2 text-lg font-medium px-6">
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-lg font-semibold mb-4"
-            >
-              <Logo className="h-6 w-6" />
-              <span>ClubHub</span>
-            </Link>
-            <AppSidebarNav 
-              role={role || ''} 
-              notifications={unread}
-            />
-          </nav>
+          <div className="flex-1 overflow-y-auto">
+            <nav className="grid gap-2 text-lg font-medium px-6">
+              <Link
+                href="/"
+                className="flex items-center gap-2 text-lg font-semibold mb-4"
+              >
+                <Logo className="h-6 w-6" />
+                <span>ClubHub</span>
+              </Link>
+              <AppSidebarNav 
+                role={role || ''} 
+                notifications={unread}
+                onLinkClick={(key) => markAllAsRead(key)}
+              />
+            </nav>
+          </div>
         </SheetContent>
       </Sheet>
 

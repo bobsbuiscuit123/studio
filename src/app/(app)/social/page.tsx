@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -82,14 +82,6 @@ export default function SocialPage() {
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
-
-  useEffect(() => {
-    // Mark all posts as read when the page is viewed
-    if (socialPosts && socialPosts.some(p => !p.read)) {
-        const updatedPosts = socialPosts.map(p => ({ ...p, read: true }));
-        setSocialPosts(updatedPosts);
-    }
-  }, [socialPosts, setSocialPosts]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

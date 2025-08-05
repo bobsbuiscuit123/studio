@@ -1,5 +1,6 @@
 
 
+
 import { useState, useEffect, useCallback } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
 
@@ -202,14 +203,21 @@ export function useCurrentUserRole() {
     return { role, canEditContent, canManageRoles, loading };
 }
 
+export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance';
+
 export function useNotifications() {
-    const { data: announcements, loading: announcementsLoading } = useAnnouncements();
-    const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-    const { data: allMessages, loading: messagesLoading } = useMessages();
-    const { data: groupChats, loading: groupsLoading } = useGroupChats();
-    const { data: events, loading: eventsLoading } = useEvents();
-    const { data: galleryImages, loading: galleryImagesLoading } = useGalleryImages();
+    const { data: announcements, updateData: setAnnouncements, loading: announcementsLoading } = useAnnouncements();
+    const { data: socialPosts, updateData: setSocialPosts, loading: socialPostsLoading } = useSocialPosts();
+    const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
+    const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+    const { data: events, updateData: setEvents, loading: eventsLoading } = useEvents();
+    const { data: galleryImages, updateData: setGalleryImages, loading: galleryImagesLoading } = useGalleryImages();
     const { user, loading: userLoading } = useCurrentUser();
+    const [clubId, setClubId] = useState<string | null>(null);
+
+    useEffect(() => {
+        setClubId(localStorage.getItem('selectedClubId'));
+    }, []);
 
     const [unread, setUnread] = useState({
         announcements: false,
@@ -222,39 +230,118 @@ export function useNotifications() {
 
     const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading;
 
-    useEffect(() => {
+    const calculateUnread = useCallback(() => {
         if (loading || !user) return;
 
-        const calculateUnread = () => {
-            const hasUnreadAnnouncements = announcements.some(a => !a.read);
-            const hasUnreadSocials = socialPosts.some(p => !p.read);
-            
-            const unreadDms = Object.values(allMessages || {}).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-            const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
-            const hasUnreadMessages = unreadDms || unreadGroups;
-            
-            const hasUnreadEvents = events.some(e => !e.read);
-            const hasUnreadGallery = galleryImages.some(i => i.status === 'approved' && !i.read);
-            const hasUnreadAttendance = events.some(e => e.attendees && e.attendees.length > (e.lastViewedAttendees || 0));
+        const hasUnreadAnnouncements = announcements.some(a => !a.read);
+        const hasUnreadSocials = socialPosts.some(p => !p.read);
+        
+        const unreadDms = Object.values(allMessages || {}).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
+        const hasUnreadMessages = unreadDms || unreadGroups;
+        
+        const hasUnreadEvents = events.some(e => !e.read);
+        const hasUnreadGallery = galleryImages.some(i => i.status === 'approved' && !i.read);
+        
+        // President/Admin specific notification
+        const { role } = useCurrentUserRole();
+        let hasUnreadAttendance = false;
+        if (role === 'President' || role === 'Admin') {
+            hasUnreadAttendance = events.some(e => e.attendees && e.attendees.length > (e.lastViewedAttendees || 0));
+        }
 
-            const newUnread = {
-                announcements: hasUnreadAnnouncements,
-                social: hasUnreadSocials,
-                messages: hasUnreadMessages,
-                calendar: hasUnreadEvents,
-                gallery: hasUnreadGallery,
-                attendance: hasUnreadAttendance,
-            };
+        const newUnread = {
+            announcements: hasUnreadAnnouncements,
+            social: hasUnreadSocials,
+            messages: hasUnreadMessages,
+            calendar: hasUnreadEvents,
+            gallery: hasUnreadGallery,
+            attendance: hasUnreadAttendance,
+        };
 
-            // Only update state if the unread status has actually changed
-            if (JSON.stringify(newUnread) !== JSON.stringify(unread)) {
-                setUnread(newUnread);
+        if (JSON.stringify(newUnread) !== JSON.stringify(unread)) {
+            setUnread(newUnread);
+        }
+    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, unread, useCurrentUserRole]);
+
+
+    useEffect(() => {
+        calculateUnread();
+    }, [calculateUnread]);
+
+    const markAllAsRead = useCallback((key: NotificationKey) => {
+        if (!clubId || !user) return;
+
+        // Create a function to update data in localStorage
+        const updateClubData = (dataKey: string, updateFn: (data: any) => any) => {
+            const clubDataKey = `club_${clubId}`;
+            try {
+                const storedClubData = localStorage.getItem(clubDataKey);
+                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                const currentData = parsedData[dataKey] || [];
+                const updatedData = updateFn(currentData);
+                parsedData[dataKey] = updatedData;
+                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+            } catch (error) {
+                console.error(`Error writing ${dataKey} to localStorage`, error);
             }
         };
 
+        switch (key) {
+            case 'announcements':
+                updateClubData('announcements', (data: Announcement[]) => data.map(item => ({ ...item, read: true })));
+                setAnnouncements(prev => prev.map(item => ({ ...item, read: true })));
+                break;
+            case 'social':
+                updateClubData('socialPosts', (data: SocialPost[]) => data.map(item => ({ ...item, read: true })));
+                setSocialPosts(prev => prev.map(item => ({ ...item, read: true })));
+                break;
+            case 'messages':
+                updateClubData('messages', (data: {[key: string]: Message[]}) => {
+                    Object.keys(data).forEach(convoId => {
+                        data[convoId] = data[convoId].map(msg => ({ ...msg, readBy: [...(msg.readBy || []), user.email] }));
+                    });
+                    return data;
+                });
+                 updateClubData('groupChats', (data: GroupChat[]) => {
+                    return data.map(chat => ({
+                        ...chat,
+                        messages: chat.messages.map(msg => ({ ...msg, readBy: [...(msg.readBy || []), user.email] }))
+                    }));
+                });
+                setAllMessages(prev => {
+                    const readDms = { ...prev };
+                    Object.keys(readDms).forEach(convoId => {
+                        readDms[convoId] = readDms[convoId].map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email] }));
+                    });
+                    return readDms;
+                });
+                setGroupChats(prev => prev.map(chat => ({
+                    ...chat,
+                    messages: chat.messages.map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email]}))
+                })));
+                break;
+            case 'calendar':
+                updateClubData('events', (data: ClubEvent[]) => data.map(item => ({ ...item, read: true })));
+                // The useEvents hook handles date conversion, so we need to call its update function
+                setEvents(prev => prev.map(item => ({...item, read: true } as any)));
+                break;
+            case 'gallery':
+                updateClubData('galleryImages', (data: GalleryImage[]) => data.map(item => ({ ...item, read: true })));
+                setGalleryImages(prev => prev.map(item => ({ ...item, read: true })));
+                break;
+            case 'attendance':
+                // For attendance, we update `lastViewedAttendees` to the current count
+                updateClubData('events', (data: ClubEvent[]) => data.map(item => ({ ...item, lastViewedAttendees: item.attendees?.length || 0 })));
+                setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
+                break;
+        }
+
+        // Force a recalculation after updating the data
         calculateUnread();
 
-    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, unread]);
+    }, [clubId, user, setAnnouncements, setSocialPosts, setAllMessages, setGroupChats, setEvents, setGalleryImages, calculateUnread]);
 
-    return { unread, loading };
+
+    return { unread, loading, markAllAsRead };
 }

@@ -55,31 +55,30 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, JSON.stringify(initialData)]);
+  }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
       
-      // Correctly handle functional updates to get the new state
-      const valueToStore = newData instanceof Function ? newData(data) : newData;
-      
-      // Update the local state first to ensure UI reactivity
-      setData(valueToStore);
-
-      // Then, update localStorage with the same new value
-      try {
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-        parsedData[key] = valueToStore;
-        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-      } catch (error) {
-        console.error(`Error writing ${key} to localStorage`, error);
-      }
+      setData(prevData => {
+        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
+        try {
+          const storedClubData = localStorage.getItem(clubDataKey);
+          const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+          parsedData[key] = valueToStore;
+          localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+        } catch (error) {
+          console.error(`Error writing ${key} to localStorage`, error);
+        }
+        return valueToStore;
+      });
     }
-  }, [clubId, key, data]);
+  }, [clubId, key]);
 
-  return { data, loading, updateData, clubId };
+  const memoizedData = useMemo(() => data, [JSON.stringify(data)]);
+
+  return { data: memoizedData, loading, updateData, clubId };
 }
 
 export function useAnnouncements() {
@@ -89,7 +88,6 @@ export function useAnnouncements() {
 export function useEvents() {
     const { data, loading, updateData, clubId } = useClubData<ClubEvent[]>('events', []);
     
-    // The events are stored as strings, so we need to convert them to Date objects
     const eventsWithDates = useMemo(() => (data || []).map((event: any) => ({
         ...event,
         date: new Date(event.date),
@@ -211,11 +209,6 @@ export function useNotifications() {
     const { data: galleryImages, updateData: setGalleryImages, loading: galleryImagesLoading } = useGalleryImages();
     const { user, loading: userLoading } = useCurrentUser();
     const { role, loading: roleLoading } = useCurrentUserRole();
-    const [clubId, setClubId] = useState<string | null>(null);
-
-    useEffect(() => {
-        setClubId(localStorage.getItem('selectedClubId'));
-    }, []);
 
     const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading || roleLoading;
 
@@ -257,7 +250,7 @@ export function useNotifications() {
     }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role]);
 
     const markAllAsRead = useCallback((key: NotificationKey) => {
-        if (!clubId || !user) return;
+        if (!user) return;
 
         switch (key) {
             case 'announcements':
@@ -270,11 +263,10 @@ export function useNotifications() {
                 setAllMessages(prev => {
                     const readDms = JSON.parse(JSON.stringify(prev));
                     Object.keys(readDms).forEach(convoId => {
-                        readDms[convoId] = readDms[convoId].map((msg: Message) => {
+                        readDms[convoId].forEach((msg: Message) => {
                            if (!msg.readBy.includes(user.email)) {
                                 msg.readBy.push(user.email);
                            }
-                           return msg;
                         });
                     });
                     return readDms;
@@ -299,8 +291,7 @@ export function useNotifications() {
                 setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [clubId, user, setAnnouncements, setSocialPosts, setAllMessages, setGroupChats, setEvents, setGalleryImages]);
+    }, [user, setAnnouncements, setSocialPosts, setAllMessages, setGroupChats, setEvents, setGalleryImages]);
 
     return { unread, loading, markAllAsRead };
 }
-

@@ -70,7 +70,7 @@ const commentFormSchema = z.object({
     comment: z.string().min(1, "Comment cannot be empty."),
 });
 
-type GeneratedPost = GenerateSocialMediaPostOutput & { images: string[], dataAiHint?: string };
+type GeneratedPost = GenerateSocialMediaPostOutput & { images?: string[], dataAiHint?: string };
 
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
@@ -202,7 +202,7 @@ export default function SocialPage() {
 
       setPostToReview({
         ...result,
-        images: photoDataUris,
+        images: result.images || [],
         dataAiHint: "tech club",
       });
       postForm.reset({ title: result.title, content: result.postText });
@@ -223,7 +223,7 @@ export default function SocialPage() {
       id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
       title: values.title,
       content: values.content,
-      images: postToReview.images,
+      images: postToReview.images || [],
       dataAiHint: postToReview.dataAiHint,
       author: user.name,
       date: new Date().toLocaleDateString(),
@@ -360,8 +360,8 @@ export default function SocialPage() {
                                         </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
                                     </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>

@@ -27,6 +27,7 @@ const GenerateSocialMediaPostOutputSchema = z.object({
   title: z.string().describe('A short, catchy title for the social media post based on the prompt.'),
   postText: z.string().describe('The generated social media post text, no more than 280 characters.'),
   imageCaption: z.string().optional().describe('The generated caption for the image, if applicable.'),
+  images: z.array(z.string()).optional().describe("The images for the post, if any.")
 });
 export type GenerateSocialMediaPostOutput = z.infer<typeof GenerateSocialMediaPostOutputSchema>;
 
@@ -52,9 +53,10 @@ const prompt = ai.definePrompt({
   {{#each photoDataUris}}
     {{media url=this}}
   {{/each}}
+  The output 'images' field should contain the provided photoDataUris.
   Create an engaging image caption to go along with these photos.
   {{else}}
-  Do not generate an image caption if no photos are provided.
+  Do not generate an image caption if no photos are provided. The 'images' output field should be an empty array.
   {{/if}}
   `,
 });
@@ -67,6 +69,15 @@ const generateSocialMediaPostFlow = ai.defineFlow(
   },
   async input => {
     const {output} = await prompt(input);
-    return output!;
+    if (!output) {
+      throw new Error("Could not generate social media post.");
+    }
+    // Ensure images are passed through if provided
+    if (input.photoDataUris && input.photoDataUris.length > 0) {
+      output.images = input.photoDataUris;
+    } else {
+      output.images = [];
+    }
+    return output;
   }
 );

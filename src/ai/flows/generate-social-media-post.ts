@@ -56,7 +56,7 @@ const prompt = ai.definePrompt({
   The output 'images' field should contain the provided photoDataUris.
   Create an engaging image caption to go along with these photos.
   {{else}}
-  Do not generate an image caption if no photos are provided. The 'images' output field should be an empty array.
+  Do not generate an image caption if no photos are provided. The 'images' output field should be an empty array or omitted.
   {{/if}}
   `,
 });
@@ -72,12 +72,11 @@ const generateSocialMediaPostFlow = ai.defineFlow(
     if (!output) {
       throw new Error("Could not generate social media post.");
     }
-    // Ensure images are passed through if provided, otherwise ensure it's an empty array.
-    if (input.photoDataUris && input.photoDataUris.length > 0) {
-      output.images = input.photoDataUris;
-    } else {
-      output.images = [];
-    }
-    return output;
+    // The prompt now handles the logic for returning images. 
+    // We just need to ensure the `images` field is an array if it exists, otherwise provide an empty one.
+    return {
+        ...output,
+        images: output.images || []
+    };
   }
 );

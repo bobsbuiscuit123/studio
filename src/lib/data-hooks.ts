@@ -61,20 +61,18 @@ function useClubData<T>(key: string, initialData: T) {
     if (clubId) {
       const clubDataKey = `club_${clubId}`;
       
-      setData(prevData => {
-        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
-        try {
-          const storedClubData = localStorage.getItem(clubDataKey);
-          const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-          parsedData[key] = valueToStore;
-          localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-        } catch (error) {
-          console.error(`Error writing ${key} to localStorage`, error);
-        }
-        return valueToStore;
-      });
+      const valueToStore = newData instanceof Function ? newData(data) : newData;
+      try {
+        const storedClubData = localStorage.getItem(clubDataKey);
+        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+        parsedData[key] = valueToStore;
+        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+        setData(valueToStore);
+      } catch (error) {
+        console.error(`Error writing ${key} to localStorage`, error);
+      }
     }
-  }, [clubId, key]);
+  }, [clubId, key, data]);
 
   const memoizedData = useMemo(() => data, [JSON.stringify(data)]);
 
@@ -263,18 +261,21 @@ export function useNotifications() {
                 setAllMessages(prev => {
                     const readDms = JSON.parse(JSON.stringify(prev));
                     Object.keys(readDms).forEach(convoId => {
-                        readDms[convoId].forEach((msg: Message) => {
-                           if (!msg.readBy.includes(user.email)) {
-                                msg.readBy.push(user.email);
-                           }
-                        });
+                        const messages = readDms[convoId];
+                        if (Array.isArray(messages)) {
+                            messages.forEach((msg: Message) => {
+                               if (msg.readBy && !msg.readBy.includes(user.email)) {
+                                    msg.readBy.push(user.email);
+                               }
+                            });
+                        }
                     });
                     return readDms;
                 });
                 setGroupChats(prev => prev.map(chat => ({
                     ...chat,
                     messages: chat.messages.map(msg => {
-                        if (!msg.readBy.includes(user.email)) {
+                        if (msg.readBy && !msg.readBy.includes(user.email)) {
                              return {...msg, readBy: [...msg.readBy, user.email]};
                         }
                         return msg;

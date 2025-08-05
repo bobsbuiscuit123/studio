@@ -23,6 +23,14 @@ const GenerateSocialMediaPostInputSchema = z.object({
 });
 export type GenerateSocialMediaPostInput = z.infer<typeof GenerateSocialMediaPostInputSchema>;
 
+// This schema defines the text-based output from the AI model.
+const ModelOutputSchema = z.object({
+  title: z.string().describe('A short, catchy title for the social media post based on the prompt.'),
+  postText: z.string().describe('The generated social media post text, no more than 280 characters.'),
+  imageCaption: z.string().optional().describe('The generated caption for the image, if applicable.'),
+});
+
+// This is the final output schema for the flow, including the images.
 const GenerateSocialMediaPostOutputSchema = z.object({
   title: z.string().describe('A short, catchy title for the social media post based on the prompt.'),
   postText: z.string().describe('The generated social media post text, no more than 280 characters.'),
@@ -40,7 +48,7 @@ export async function generateSocialMediaPost(
 const prompt = ai.definePrompt({
   name: 'generateSocialMediaPostPrompt',
   input: {schema: GenerateSocialMediaPostInputSchema},
-  output: {schema: GenerateSocialMediaPostOutputSchema},
+  output: {schema: ModelOutputSchema}, // AI only generates text content
   prompt: `You are a social media marketing expert for school clubs.
   Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
   Based on the user's prompt, generate a short, catchy title for the post.
@@ -49,13 +57,9 @@ const prompt = ai.definePrompt({
   User Prompt: {{{prompt}}}
 
   {{#if photoDataUris}}
-  You have been provided with photos for the post. The output 'images' field MUST contain the provided photoDataUris.
-  Create an engaging image caption to go along with these photos.
-  {{#each photoDataUris}}
-    {{media url=this}}
-  {{/each}}
+  You have been provided with photos for the post. Create an engaging image caption to go along with these photos.
   {{else}}
-  No photos were provided. The 'images' output field MUST be an empty array or omitted entirely. Do not generate an image caption.
+  No photos were provided. Do not generate an image caption.
   {{/if}}
   `,
 });
@@ -67,15 +71,19 @@ const generateSocialMediaPostFlow = ai.defineFlow(
     outputSchema: GenerateSocialMediaPostOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    if (!output) {
-      throw new Error("Could not generate social media post.");
+    // 1. Generate the text content from the AI.
+    const {output: textOutput} = await prompt(input);
+    if (!textOutput) {
+      throw new Error("Could not generate social media post text.");
     }
-
-    // Ensure images is always an array, even if the model omits it or returns something else.
-    return {
-        ...output,
-        images: Array.isArray(output.images) ? output.images : [],
+    
+    // 2. Construct the final output, ensuring the images array is always valid.
+    // This logic now resides entirely in the TypeScript code, making it reliable.
+    const finalOutput: GenerateSocialMediaPostOutput = {
+        ...textOutput,
+        images: input.photoDataUris || [], // Use the exact input URIs, or an empty array.
     };
+
+    return finalOutput;
   }
 );

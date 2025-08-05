@@ -30,6 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { resizeImage } from "@/lib/image-resizer";
@@ -87,16 +88,16 @@ export default function GalleryPage() {
     setIsUploading(true);
     
     try {
-        const objectUrls = await Promise.all(
-            values.images.map(file => URL.createObjectURL(file))
+        const compressedImageSrcs = await Promise.all(
+            values.images.map(file => resizeImage(file))
         );
 
         const newStatus = canEditContent ? 'approved' : 'pending';
         const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
-        const newImages: GalleryImage[] = objectUrls.map((url, index) => ({
+        const newImages: GalleryImage[] = compressedImageSrcs.map((imgSrc, index) => ({
             id: lastId + index + 1,
-            src: url, // Use the temporary object URL
+            src: imgSrc,
             alt: values.alt || "User uploaded image",
             author: user.name,
             date: new Date().toLocaleDateString(),
@@ -111,7 +112,7 @@ export default function GalleryPage() {
 
         toast({ 
             title: newStatus === 'approved' ? "Images displayed successfully!" : "Images submitted for approval!",
-            description: newStatus === 'approved' ? "Images are shown with temporary URLs and will disappear on refresh." : "An admin will review your submission shortly.",
+            description: newStatus === 'pending' ? "An admin will review your submission shortly." : undefined,
             duration: 7000
         });
 
@@ -350,5 +351,3 @@ export default function GalleryPage() {
     </div>
   );
 }
-
-    

@@ -43,8 +43,17 @@ function useClubData<T>(key: string, initialData: T) {
                     date: new Date(event.date),
                 })) as T;
             } else if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(finalData)) {
-              // Filter out items with blob URLs as they are not persistent
-              finalData = finalData.filter((item: any) => !(item.src || (item.images && item.images[0]))?.startsWith('blob:')) as T;
+              // Replace placeholder image data with actual data if available in memory
+              // This is a temporary solution for the prototype to avoid storing large images
+              // in localStorage. In a real app, you'd fetch image URLs from a server.
+              const memoryData = data as any[];
+              finalData = finalData.map((item: any) => {
+                  const memoryItem = memoryData.find(m => m.id === item.id);
+                  if (memoryItem && (memoryItem.src || (memoryItem.images && memoryItem.images.length > 0))) {
+                      return memoryItem;
+                  }
+                  return item;
+              }) as T;
             }
 
 
@@ -64,7 +73,6 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
@@ -72,42 +80,59 @@ function useClubData<T>(key: string, initialData: T) {
 
     try {
         const clubDataKey = `club_${clubId}`;
+        const storedClubData = localStorage.getItem(clubDataKey);
+        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
         
         let valueToStore: T;
         if (typeof newData === 'function') {
             const updater = newData as (prevData: T) => T;
             setData(prevData => {
                 const updatedValue = updater(prevData);
-                const storedClubData = localStorage.getItem(clubDataKey);
-                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                
-                // Filter out blob URLs before saving to localStorage
-                let dataToSave = updatedValue;
-                if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(updatedValue)) {
-                  dataToSave = updatedValue.filter((item: any) => !(item.src || (item.images && item.images[0]))?.startsWith('blob:')) as T;
-                } else if (key === 'events' && Array.isArray(updatedValue)) {
-                   dataToSave = updatedValue.map((event: any) => ({
-                      ...event,
-                      date: event.date instanceof Date ? event.date.toISOString() : event.date
-                  })) as T;
-                }
-
-                parsedData[key] = dataToSave;
-                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-
+                valueToStore = updatedValue;
                 return updatedValue;
             });
         } else {
             valueToStore = newData;
             setData(valueToStore);
-            const storedClubData = localStorage.getItem(clubDataKey);
-            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-            parsedData[key] = valueToStore;
-            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
         }
+
+        // Create a version of the data safe for localStorage
+        let dataToSave = valueToStore;
+        if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(valueToStore)) {
+            dataToSave = valueToStore.map((item: any) => {
+                const safeItem = { ...item };
+                // Replace actual image data with a placeholder to avoid quota errors
+                if (safeItem.src && safeItem.src.startsWith('data:image')) {
+                    safeItem.src = 'placeholder'; 
+                }
+                if (safeItem.images && Array.isArray(safeItem.images)) {
+                    safeItem.images = safeItem.images.map((img: string) => 
+                        img.startsWith('data:image') ? 'placeholder' : img
+                    );
+                }
+                 if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
+                    safeItem.attachments = 'placeholder';
+                }
+
+                return safeItem;
+            }) as T;
+        } else if (key === 'events' && Array.isArray(valueToStore)) {
+           dataToSave = valueToStore.map((event: any) => ({
+              ...event,
+              date: event.date instanceof Date ? event.date.toISOString() : event.date
+          })) as T;
+        }
+
+
+        parsedData[key] = dataToSave;
+        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
 
     } catch (error) {
         console.error(`Error writing ${key} to localStorage`, error);
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+             // Optionally, trigger a toast notification here to inform the user.
+            console.error("Storage quota exceeded. Could not save new data.");
+        }
     }
   }, [clubId, key]);
 
@@ -322,5 +347,3 @@ export function useNotifications() {
 
     return { unread, loading, markAllAsRead };
 }
-
-    

@@ -192,20 +192,17 @@ export default function SocialPage() {
     let photoDataUris: string[] = [];
     try {
       if (values.photos && values.photos.length > 0) {
-        // Pass empty array to AI, we are not sending image data
-        photoDataUris = [];
+        photoDataUris = await Promise.all(values.photos.map(file => resizeImage(file)));
       }
       
       const result = await generateSocialMediaPost({
         prompt: values.prompt,
-        photoDataUris,
+        photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
       });
-      
-      const objectUrls = (values.photos || []).map(file => URL.createObjectURL(file));
 
       setPostToReview({
         ...result,
-        images: objectUrls, // Use temporary object URLs for review
+        images: photoDataUris,
         dataAiHint: "tech club",
       });
       postForm.reset({ title: result.title, content: result.postText });
@@ -226,7 +223,7 @@ export default function SocialPage() {
       id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
       title: values.title,
       content: values.content,
-      images: postToReview.images, // these are temporary object URLs
+      images: postToReview.images,
       dataAiHint: postToReview.dataAiHint,
       author: user.name,
       date: new Date().toLocaleDateString(),
@@ -240,9 +237,7 @@ export default function SocialPage() {
     setSocialPosts(updatedPosts);
 
     toast({ 
-        title: "Social media post published!",
-        description: "Images are shown with temporary URLs and will disappear on refresh.",
-        duration: 7000
+        title: "Social media post published!"
     });
     form.reset();
     previewImages.forEach(url => URL.revokeObjectURL(url));
@@ -252,9 +247,6 @@ export default function SocialPage() {
   }
 
   const handleDialogClose = () => {
-    if(postToReview) {
-        postToReview.images.forEach(url => URL.revokeObjectURL(url));
-    }
     setEditingPost(null);
     setPostToReview(null);
   }
@@ -505,5 +497,3 @@ export default function SocialPage() {
     </>
   );
 }
-
-    

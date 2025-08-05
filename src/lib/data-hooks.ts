@@ -25,21 +25,26 @@ function useClubData<T>(key: string, initialData: T) {
         if (isMounted) {
           if (storedClubData) {
             const parsedData = JSON.parse(storedClubData);
+            let finalData = parsedData[key] || initialData;
             
             // Data migration for presentations to add slide IDs
-            if (key === 'presentations' && parsedData[key]) {
-              const presentations = parsedData[key] as Presentation[];
-              const migratedPresentations = presentations.map(p => ({
+            if (key === 'presentations' && finalData) {
+              const presentations = finalData as Presentation[];
+              finalData = presentations.map(p => ({
                 ...p,
                 slides: p.slides.map((s, index) => ({
                   ...s,
                   id: s.id || `${p.id}-${index}`
                 }))
-              }));
-              setData(migratedPresentations as T);
-            } else {
-              setData(parsedData[key] || initialData);
+              })) as T;
+            } else if (key === 'events' && Array.isArray(finalData)) {
+                 finalData = finalData.map((event: any) => ({
+                    ...event,
+                    date: new Date(event.date),
+                })) as T;
             }
+
+            setData(finalData);
 
           } else {
              setData(initialData);
@@ -55,24 +60,36 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, initialData]);
+  }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    const valueToStore = newData instanceof Function ? newData(data) : newData;
-    setData(valueToStore);
+    setData(prevData => {
+        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
 
-    if (clubId) {
-        const clubDataKey = `club_${clubId}`;
-        try {
-            const storedClubData = localStorage.getItem(clubDataKey);
-            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-            parsedData[key] = valueToStore;
-            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-        } catch (error) {
-            console.error(`Error writing ${key} to localStorage`, error);
+        if (clubId) {
+            const clubDataKey = `club_${clubId}`;
+            try {
+                const storedClubData = localStorage.getItem(clubDataKey);
+                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                
+                // When saving events, convert Date objects back to ISO strings
+                if (key === 'events' && Array.isArray(valueToStore)) {
+                    parsedData[key] = valueToStore.map((event: any) => ({
+                        ...event,
+                        date: event.date instanceof Date ? event.date.toISOString() : event.date
+                    }));
+                } else {
+                    parsedData[key] = valueToStore;
+                }
+
+                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+            } catch (error) {
+                console.error(`Error writing ${key} to localStorage`, error);
+            }
         }
-    }
-  }, [clubId, key, data]);
+        return valueToStore;
+    });
+  }, [clubId, key]);
 
   const memoizedData = useMemo(() => data, [data]);
 
@@ -84,36 +101,7 @@ export function useAnnouncements() {
 }
 
 export function useEvents() {
-    const { data, loading, updateData, clubId } = useClubData<ClubEvent[]>('events', []);
-    
-    const eventsWithDates = useMemo(() => {
-        if (!data) return [];
-        return data.map((event: any) => ({
-            ...event,
-            date: new Date(event.date),
-        }));
-    }, [data]);
-
-    const updateEventsWithStrings = useCallback((newEvents: any[] | ((prevEvents: any[]) => any[])) => {
-        const processEvent = (event: any) => {
-            if (event.date instanceof Date) {
-                return { ...event, date: event.date.toISOString() };
-            }
-            return event;
-        };
-
-        if (typeof newEvents === 'function') {
-            updateData((prevEvents: any[]) => {
-                const prevEventsWithDates = (prevEvents || []).map(e => ({...e, date: new Date(e.date)}));
-                const updatedEvents = newEvents(prevEventsWithDates);
-                return updatedEvents.map(processEvent);
-            });
-        } else {
-            updateData(newEvents.map(processEvent));
-        }
-    }, [updateData]);
-    
-    return { data: eventsWithDates, loading, updateData: updateEventsWithStrings, clubId };
+    return useClubData<ClubEvent[]>('events', []);
 }
 
 
@@ -126,7 +114,7 @@ export function useSocialPosts() {
 }
 
 export function useTransactions() {
-  return useClubData('transactions', []);
+  return useClubData<Transaction[]>('transactions', []);
 }
 
 export function usePresentations() {

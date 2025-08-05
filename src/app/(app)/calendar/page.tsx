@@ -102,6 +102,7 @@ export default function CalendarPage() {
         location: result.location,
         read: false,
       };
+      // Pass a function to setEvents to ensure we're updating the latest state
       setEvents(prevEvents => [...prevEvents, newEvent]);
       toast({ title: "Event added successfully!" });
       form.reset();

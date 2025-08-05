@@ -73,7 +73,7 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key]);
+  }, [clubId, key, data]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
@@ -83,7 +83,6 @@ function useClubData<T>(key: string, initialData: T) {
         const updater = newData as (prevData: T) => T;
         setData(prevData => {
             const updatedValue = updater(prevData);
-            valueToStore = updatedValue;
             
             try {
                 const clubDataKey = `club_${clubId}`;
@@ -91,20 +90,24 @@ function useClubData<T>(key: string, initialData: T) {
                 const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
                 
                 // Create a version of the data safe for localStorage
-                let dataToSave = valueToStore;
-                if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(valueToStore)) {
-                    dataToSave = valueToStore.map((item: any) => {
+                let dataToSave = updatedValue;
+                if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(updatedValue)) {
+                    dataToSave = updatedValue.map((item: any) => {
                         const safeItem = { ...item };
                         // Replace actual image data with a placeholder to avoid quota errors
                         if (safeItem.src && safeItem.src.startsWith('data:image')) {
                             safeItem.src = 'placeholder'; 
                         }
                         if (safeItem.images && Array.isArray(safeItem.images)) {
-                            safeItem.images = 'placeholder';
+                           safeItem.images = []; // Store empty array instead of placeholder string
                         }
                          if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
-                            safeItem.attachments = 'placeholder';
+                            safeItem.attachments = []; // Store empty array
                         }
+                        // We DO want to save the slides data
+                        // if (safeItem.slides) {
+                        //   delete safeItem.slides;
+                        // }
         
                         return safeItem;
                     }) as T;

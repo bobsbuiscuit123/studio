@@ -42,7 +42,11 @@ function useClubData<T>(key: string, initialData: T) {
                     ...event,
                     date: new Date(event.date),
                 })) as T;
+            } else if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(finalData)) {
+              // Filter out items with blob URLs as they are not persistent
+              finalData = finalData.filter((item: any) => !(item.src || (item.images && item.images[0]))?.startsWith('blob:')) as T;
             }
+
 
             setData(finalData);
 
@@ -72,25 +76,26 @@ function useClubData<T>(key: string, initialData: T) {
         let valueToStore: T;
         if (typeof newData === 'function') {
             const updater = newData as (prevData: T) => T;
-            // Pass a function to setData to get the latest state
             setData(prevData => {
-                valueToStore = updater(prevData);
-                 try {
-                    const storedClubData = localStorage.getItem(clubDataKey);
-                    const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                    let dataToSave = valueToStore;
-                    if (key === 'events' && Array.isArray(valueToStore)) {
-                        dataToSave = valueToStore.map((event: any) => ({
-                            ...event,
-                            date: event.date instanceof Date ? event.date.toISOString() : event.date
-                        })) as T;
-                    }
-                    parsedData[key] = dataToSave;
-                    localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-                } catch (e) {
-                    console.error("Error during state update and save:", e);
+                const updatedValue = updater(prevData);
+                const storedClubData = localStorage.getItem(clubDataKey);
+                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                
+                // Filter out blob URLs before saving to localStorage
+                let dataToSave = updatedValue;
+                if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(updatedValue)) {
+                  dataToSave = updatedValue.filter((item: any) => !(item.src || (item.images && item.images[0]))?.startsWith('blob:')) as T;
+                } else if (key === 'events' && Array.isArray(updatedValue)) {
+                   dataToSave = updatedValue.map((event: any) => ({
+                      ...event,
+                      date: event.date instanceof Date ? event.date.toISOString() : event.date
+                  })) as T;
                 }
-                return valueToStore;
+
+                parsedData[key] = dataToSave;
+                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+
+                return updatedValue;
             });
         } else {
             valueToStore = newData;
@@ -317,3 +322,5 @@ export function useNotifications() {
 
     return { unread, loading, markAllAsRead };
 }
+
+    

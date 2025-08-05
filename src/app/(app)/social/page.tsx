@@ -75,7 +75,6 @@ type GeneratedPost = GenerateSocialMediaPostOutput & { images: string[], dataAiH
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
-  const [isCompressing, setIsCompressing] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [postToReview, setPostToReview] = useState<GeneratedPost | null>(null);
@@ -145,6 +144,14 @@ export default function SocialPage() {
   };
   
   const handleDeletePost = (postId: number) => {
+    const postToDelete = socialPosts.find(p => p.id === postId);
+    if(postToDelete) {
+        postToDelete.images.forEach(url => {
+            if (url.startsWith('blob:')) {
+                URL.revokeObjectURL(url);
+            }
+        });
+    }
     const updatedPosts = socialPosts.filter((post) => post.id !== postId);
     setSocialPosts(updatedPosts);
     toast({ title: "Post deleted successfully!" });
@@ -181,26 +188,24 @@ export default function SocialPage() {
 
   const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
-    setIsCompressing(false);
     
-    let compressedPhotoUris: string[] = [];
+    let photoDataUris: string[] = [];
     try {
       if (values.photos && values.photos.length > 0) {
-        setIsCompressing(true);
-        compressedPhotoUris = await Promise.all(
-          values.photos.map(file => resizeImage(file))
-        );
-        setIsCompressing(false);
+        // Pass empty array to AI, we are not sending image data
+        photoDataUris = [];
       }
       
       const result = await generateSocialMediaPost({
         prompt: values.prompt,
-        photoDataUris: compressedPhotoUris,
+        photoDataUris,
       });
+      
+      const objectUrls = (values.photos || []).map(file => URL.createObjectURL(file));
 
       setPostToReview({
         ...result,
-        images: compressedPhotoUris,
+        images: objectUrls, // Use temporary object URLs for review
         dataAiHint: "tech club",
       });
       postForm.reset({ title: result.title, content: result.postText });
@@ -212,7 +217,6 @@ export default function SocialPage() {
       });
     } finally {
       setIsLoading(false);
-      setIsCompressing(false);
     }
   };
 
@@ -222,7 +226,7 @@ export default function SocialPage() {
       id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
       title: values.title,
       content: values.content,
-      images: postToReview.images,
+      images: postToReview.images, // these are temporary object URLs
       dataAiHint: postToReview.dataAiHint,
       author: user.name,
       date: new Date().toLocaleDateString(),
@@ -235,7 +239,11 @@ export default function SocialPage() {
     const updatedPosts = [newPost, ...socialPosts].slice(0, MAX_SOCIAL_POSTS);
     setSocialPosts(updatedPosts);
 
-    toast({ title: "Social media post published successfully!" });
+    toast({ 
+        title: "Social media post published!",
+        description: "Images are shown with temporary URLs and will disappear on refresh.",
+        duration: 7000
+    });
     form.reset();
     previewImages.forEach(url => URL.revokeObjectURL(url));
     setPreviewImages([]);
@@ -244,6 +252,9 @@ export default function SocialPage() {
   }
 
   const handleDialogClose = () => {
+    if(postToReview) {
+        postToReview.images.forEach(url => URL.revokeObjectURL(url));
+    }
     setEditingPost(null);
     setPostToReview(null);
   }
@@ -315,7 +326,7 @@ export default function SocialPage() {
                     {isLoading ? (
                       <>
                         <Loader2 className="animate-spin mr-2" />
-                        {isCompressing ? 'Compressing Images...' : 'Generating Post...'}
+                        Generating Post...
                       </>
                      ) : "Generate Post"}
                     </Button>
@@ -494,3 +505,5 @@ export default function SocialPage() {
     </>
   );
 }
+
+    

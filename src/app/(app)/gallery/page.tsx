@@ -87,16 +87,16 @@ export default function GalleryPage() {
     setIsUploading(true);
     
     try {
-        const compressedImages = await Promise.all(
-            values.images.map(file => resizeImage(file))
+        const objectUrls = await Promise.all(
+            values.images.map(file => URL.createObjectURL(file))
         );
 
         const newStatus = canEditContent ? 'approved' : 'pending';
         const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
-        const newImages: GalleryImage[] = compressedImages.map((imgSrc, index) => ({
+        const newImages: GalleryImage[] = objectUrls.map((url, index) => ({
             id: lastId + index + 1,
-            src: imgSrc,
+            src: url, // Use the temporary object URL
             alt: values.alt || "User uploaded image",
             author: user.name,
             date: new Date().toLocaleDateString(),
@@ -110,8 +110,9 @@ export default function GalleryPage() {
         setImages(updatedImages);
 
         toast({ 
-            title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
-            description: newStatus === 'pending' ? "An admin will review your submission shortly." : "",
+            title: newStatus === 'approved' ? "Images displayed successfully!" : "Images submitted for approval!",
+            description: newStatus === 'approved' ? "Images are shown with temporary URLs and will disappear on refresh." : "An admin will review your submission shortly.",
+            duration: 7000
         });
 
         form.reset();
@@ -153,6 +154,10 @@ export default function GalleryPage() {
   };
 
   const handleDelete = (imageId: number) => {
+    const imageToDelete = images.find(img => img.id === imageId);
+    if (imageToDelete?.src.startsWith('blob:')) {
+        URL.revokeObjectURL(imageToDelete.src);
+    }
     setImages(images.filter(img => img.id !== imageId));
     toast({ title: "Image deleted successfully" });
     setDeletingImageId(null);
@@ -166,7 +171,7 @@ export default function GalleryPage() {
       setImages(updatedImages);
       toast({ title: "Image approved!" });
     } else { // 'rejected'
-      setImages(images.filter(img => img.id !== imageId));
+      handleDelete(imageId); // Use the same delete logic to ensure blob cleanup
       toast({ title: "Image rejected and removed." });
     }
   };
@@ -226,7 +231,7 @@ export default function GalleryPage() {
             <Button type="submit" className="w-full md:w-auto" disabled={isUploading}>
               {isUploading ? (
                 <>
-                  <Loader2 className="mr-2 animate-spin" /> Compressing & Uploading...
+                  <Loader2 className="mr-2 animate-spin" /> Uploading...
                 </>
               ) : (
                 `Upload ${previewImages.length > 0 ? previewImages.length : ''} Image${previewImages.length !== 1 ? 's' : ''}`
@@ -345,3 +350,5 @@ export default function GalleryPage() {
     </div>
   );
 }
+
+    

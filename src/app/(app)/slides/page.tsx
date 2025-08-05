@@ -226,8 +226,9 @@ export default function SlidesPage() {
       date: new Date().toLocaleDateString(),
       read: false,
       slides: activePresentation.slides, // Attach slide data here
+      attachments: [],
     };
-    setAnnouncements([newAnnouncement, ...announcements]);
+    setAnnouncements(prevAnnouncements => [newAnnouncement, ...prevAnnouncements]);
     toast({ title: "Shared to announcements!" });
     setIsShareDialogOpen(false);
     setGeneratedAnnouncement(null);

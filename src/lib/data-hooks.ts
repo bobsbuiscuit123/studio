@@ -42,21 +42,17 @@ function useClubData<T>(key: string, initialData: T) {
                     ...event,
                     date: new Date(event.date),
                 })) as T;
-            } else if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(finalData)) {
-              // Replace placeholder image data with actual data if available in memory
-              // This is a temporary solution for the prototype to avoid storing large images
-              // in localStorage. In a real app, you'd fetch image URLs from a server.
+            }
+
+            // Restore in-memory data for things not persisted fully
+            if (key === 'announcements' || key === 'socialPosts' || key === 'galleryImages') {
               const memoryData = data as any[];
-              finalData = finalData.map((item: any) => {
-                  const memoryItem = memoryData.find(m => m.id === item.id);
-                  if (memoryItem && (memoryItem.src || (memoryItem.images && memoryItem.images.length > 0) || (memoryItem.attachments && memoryItem.attachments.length > 0))) {
-                      return memoryItem;
-                  }
-                   if(item.attachments && typeof item.attachments !== 'boolean') {
-                     item.attachments = [];
-                   }
-                  return item;
-              }) as T;
+              if (Array.isArray(finalData) && memoryData.length > 0) {
+                 finalData = finalData.map((item: any) => {
+                    const memoryItem = memoryData.find(m => m.id === item.id);
+                    return memoryItem || item;
+                }) as T;
+              }
             }
 
 
@@ -92,25 +88,20 @@ function useClubData<T>(key: string, initialData: T) {
             const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
             
             let dataToSave = valueToStore;
-            if (Array.isArray(valueToStore)) {
+            if (key === 'announcements' && Array.isArray(valueToStore)) {
                 dataToSave = valueToStore.map((item: any) => {
                     const safeItem = { ...item };
-                    
-                    if (safeItem.src && (safeItem.src.startsWith('data:image') || safeItem.src.startsWith('blob:'))) {
-                        safeItem.src = 'placeholder'; 
-                    }
-                    if (safeItem.images && Array.isArray(safeItem.images)) {
-                       safeItem.images = []; 
-                    }
-                     if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
-                        safeItem.attachments = [];
-                    }
-                    if(safeItem.slides && Array.isArray(safeItem.slides)) {
-                       // Keep slides, do not remove
-                    }
-                    
+                    if (safeItem.slides) safeItem.slides = 'placeholder';
+                    if (safeItem.attachments) safeItem.attachments = 'placeholder';
                     return safeItem;
                 }) as T;
+            } else if ((key === 'socialPosts' || key === 'galleryImages') && Array.isArray(valueToStore)) {
+                 dataToSave = valueToStore.map((item: any) => {
+                    const safeItem = { ...item };
+                    if (safeItem.src) safeItem.src = 'placeholder';
+                    if (safeItem.images) safeItem.images = [];
+                    return safeItem;
+                 }) as T;
             }
     
             parsedData[key] = dataToSave;

@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -63,33 +63,36 @@ function useClubData<T>(key: string, initialData: T) {
   }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    setData(prevData => {
-        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
+    if (!clubId) return;
 
-        if (clubId) {
-            const clubDataKey = `club_${clubId}`;
-            try {
-                const storedClubData = localStorage.getItem(clubDataKey);
-                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                
-                // When saving events, convert Date objects back to ISO strings
-                if (key === 'events' && Array.isArray(valueToStore)) {
-                    parsedData[key] = valueToStore.map((event: any) => ({
-                        ...event,
-                        date: event.date instanceof Date ? event.date.toISOString() : event.date
-                    }));
-                } else {
-                    parsedData[key] = valueToStore;
-                }
+    try {
+        const clubDataKey = `club_${clubId}`;
+        const storedClubData = localStorage.getItem(clubDataKey);
+        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+        
+        // Determine the new value, whether it's a direct value or from an updater function
+        const currentValue = parsedData[key] || initialData;
+        const valueToStore = newData instanceof Function ? newData(currentValue) : newData;
 
-                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-            } catch (error) {
-                console.error(`Error writing ${key} to localStorage`, error);
-            }
+        // When saving events, convert Date objects back to ISO strings
+        if (key === 'events' && Array.isArray(valueToStore)) {
+            parsedData[key] = valueToStore.map((event: any) => ({
+                ...event,
+                date: event.date instanceof Date ? event.date.toISOString() : event.date
+            }));
+        } else {
+            parsedData[key] = valueToStore;
         }
-        return valueToStore;
-    });
-  }, [clubId, key]);
+
+        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+
+        // Also update the state in React
+        setData(valueToStore);
+
+    } catch (error) {
+        console.error(`Error writing ${key} to localStorage`, error);
+    }
+  }, [clubId, key, initialData]);
 
   const memoizedData = useMemo(() => data, [data]);
 

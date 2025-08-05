@@ -223,7 +223,7 @@ export default function MessagesPage() {
             messages = currentChat ? currentChat.messages : [];
         }
 
-        return messages.filter(m => !m.readBy.includes(user.email)).length;
+        return messages.filter(m => !m.readBy.includes(user.email) && m.sender !== user.email).length;
     };
 
     const conversations: Conversation[] = [

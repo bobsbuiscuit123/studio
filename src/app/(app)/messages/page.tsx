@@ -294,9 +294,9 @@ export default function MessagesPage() {
                         <Separator className="my-2" />
                         {conversations.map((convo) => {
                             const unreadCount = getUnreadCount(convo);
-                            const name = convo.type === 'dm' ? convo.partner.name : convo.name;
+                            const name = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
                             const avatar = convo.type === 'dm' ? convo.partner.avatar : undefined;
-                            const fallbackText = convo.type === 'dm' ? convo.partner.name.charAt(0) : convo.name.charAt(0);
+                            const fallbackText = convo.type === 'dm' ? convo.partner.name.charAt(0) : convo.chat.name.charAt(0);
                             const icon = convo.type === 'group' ? <Users className="h-10 w-10 text-muted-foreground p-2 bg-muted rounded-full"/> : null;
 
                             return (
@@ -402,3 +402,5 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+    

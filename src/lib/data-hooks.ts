@@ -58,21 +58,22 @@ function useClubData<T>(key: string, initialData: T) {
   }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (clubId) {
-      const clubDataKey = `club_${clubId}`;
-      
-      const valueToStore = newData instanceof Function ? newData(data) : newData;
-      try {
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-        parsedData[key] = valueToStore;
-        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-        setData(valueToStore);
-      } catch (error) {
-        console.error(`Error writing ${key} to localStorage`, error);
-      }
-    }
-  }, [clubId, key, data]);
+    setData(prevData => {
+        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
+        if (clubId) {
+            const clubDataKey = `club_${clubId}`;
+            try {
+                const storedClubData = localStorage.getItem(clubDataKey);
+                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                parsedData[key] = valueToStore;
+                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+            } catch (error) {
+                console.error(`Error writing ${key} to localStorage`, error);
+            }
+        }
+        return valueToStore;
+    });
+  }, [clubId, key]);
 
   const memoizedData = useMemo(() => data, [JSON.stringify(data)]);
 

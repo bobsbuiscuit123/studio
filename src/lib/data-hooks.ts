@@ -55,27 +55,26 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key]);
+  }, [clubId, key, initialData]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    setData(prevData => {
-        const valueToStore = newData instanceof Function ? newData(prevData) : newData;
-        if (clubId) {
-            const clubDataKey = `club_${clubId}`;
-            try {
-                const storedClubData = localStorage.getItem(clubDataKey);
-                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                parsedData[key] = valueToStore;
-                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-            } catch (error) {
-                console.error(`Error writing ${key} to localStorage`, error);
-            }
-        }
-        return valueToStore;
-    });
-  }, [clubId, key]);
+    const valueToStore = newData instanceof Function ? newData(data) : newData;
+    setData(valueToStore);
 
-  const memoizedData = useMemo(() => data, [JSON.stringify(data)]);
+    if (clubId) {
+        const clubDataKey = `club_${clubId}`;
+        try {
+            const storedClubData = localStorage.getItem(clubDataKey);
+            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+            parsedData[key] = valueToStore;
+            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+        } catch (error) {
+            console.error(`Error writing ${key} to localStorage`, error);
+        }
+    }
+  }, [clubId, key, data]);
+
+  const memoizedData = useMemo(() => data, [data]);
 
   return { data: memoizedData, loading, updateData, clubId };
 }
@@ -87,10 +86,13 @@ export function useAnnouncements() {
 export function useEvents() {
     const { data, loading, updateData, clubId } = useClubData<ClubEvent[]>('events', []);
     
-    const eventsWithDates = useMemo(() => (data || []).map((event: any) => ({
-        ...event,
-        date: new Date(event.date),
-    })), [data]);
+    const eventsWithDates = useMemo(() => {
+        if (!data) return [];
+        return data.map((event: any) => ({
+            ...event,
+            date: new Date(event.date),
+        }));
+    }, [data]);
 
     const updateEventsWithStrings = useCallback((newEvents: any[] | ((prevEvents: any[]) => any[])) => {
         const processEvent = (event: any) => {
@@ -100,14 +102,15 @@ export function useEvents() {
             return event;
         };
 
-        const valueToStore = newEvents instanceof Function 
-            ? (prevEventsWithDates: any[]) => {
+        if (typeof newEvents === 'function') {
+            updateData((prevEvents: any[]) => {
+                const prevEventsWithDates = (prevEvents || []).map(e => ({...e, date: new Date(e.date)}));
                 const updatedEvents = newEvents(prevEventsWithDates);
                 return updatedEvents.map(processEvent);
-            }
-            : newEvents.map(processEvent);
-        
-        updateData(valueToStore as any);
+            });
+        } else {
+            updateData(newEvents.map(processEvent));
+        }
     }, [updateData]);
     
     return { data: eventsWithDates, loading, updateData: updateEventsWithStrings, clubId };
@@ -268,7 +271,27 @@ export function useNotifications() {
                 setSocialPosts(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'messages':
-                // This is now handled in the messages page component to prevent loops
+                 setAllMessages(prev => {
+                    const newMessages = { ...prev };
+                    for (const convoId in newMessages) {
+                        newMessages[convoId] = newMessages[convoId].map(msg => {
+                            if (!msg.readBy.includes(userEmail)) {
+                                return { ...msg, readBy: [...msg.readBy, userEmail] };
+                            }
+                            return msg;
+                        });
+                    }
+                    return newMessages;
+                });
+                setGroupChats(prev => prev.map(g => ({
+                    ...g,
+                    messages: g.messages.map(msg => {
+                        if (!msg.readBy.includes(userEmail)) {
+                            return { ...msg, readBy: [...msg.readBy, userEmail] };
+                        }
+                        return msg;
+                    })
+                })));
                 break;
             case 'calendar':
                 setEvents(prev => prev.map(item => ({...item, read: true } as any)));
@@ -280,7 +303,7 @@ export function useNotifications() {
                 setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [user, setAnnouncements, setSocialPosts, setEvents, setGalleryImages]);
+    }, [user, setAnnouncements, setSocialPosts, setEvents, setGalleryImages, setAllMessages, setGroupChats]);
 
     return { unread, loading, markAllAsRead };
 }

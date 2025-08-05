@@ -53,6 +53,7 @@ import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 
+const MAX_SOCIAL_POSTS = 10;
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -221,7 +222,10 @@ export default function SocialPage() {
       comments: [],
       read: false,
     };
-    setSocialPosts([newPost, ...socialPosts]);
+
+    const updatedPosts = [newPost, ...socialPosts].slice(0, MAX_SOCIAL_POSTS);
+    setSocialPosts(updatedPosts);
+
     toast({ title: "Social media post published successfully!" });
     form.reset();
     setPreviewImages([]);
@@ -475,3 +479,5 @@ export default function SocialPage() {
     </>
   );
 }
+
+    

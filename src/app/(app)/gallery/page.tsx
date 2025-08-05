@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 
+const MAX_GALLERY_IMAGES = 20;
+
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
   images: z.array(z.string()).min(1, "At least one image is required."),
@@ -101,7 +103,9 @@ export default function GalleryPage() {
     }));
     
 
-    setImages([...newImages, ...images]);
+    const updatedImages = [...newImages, ...images].slice(0, MAX_GALLERY_IMAGES);
+    setImages(updatedImages);
+
     toast({ 
       title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
       description: newStatus === 'pending' ? "An admin will review your submission shortly." : "",
@@ -322,3 +326,5 @@ export default function GalleryPage() {
     </div>
   );
 }
+
+    

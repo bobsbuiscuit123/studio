@@ -90,18 +90,20 @@ export function useEvents() {
     const { data, loading, updateData, clubId } = useClubData<ClubEvent[]>('events', []);
     
     // The events are stored as strings, so we need to convert them to Date objects
-    const eventsWithDates = (data || []).map((event: any) => ({
+    const eventsWithDates = useMemo(() => (data || []).map((event: any) => ({
         ...event,
         date: new Date(event.date),
-    }));
+    })), [data]);
 
-    const updateEventsWithStrings = (newEvents: any[]) => {
-        const eventsWithStrings = newEvents.map(event => ({
+    const updateEventsWithStrings = useCallback((newEvents: any[] | ((prevEvents: any[]) => any[])) => {
+        const valueToStore = newEvents instanceof Function ? newEvents(eventsWithDates) : newEvents;
+        
+        const eventsWithStrings = valueToStore.map(event => ({
             ...event,
             date: event.date.toISOString(),
         }));
         updateData(eventsWithStrings as any);
-    }
+    }, [updateData, eventsWithDates]);
     
     return { data: eventsWithDates, loading, updateData: updateEventsWithStrings, clubId };
 }
@@ -266,15 +268,25 @@ export function useNotifications() {
                 break;
             case 'messages':
                 setAllMessages(prev => {
-                    const readDms = { ...prev };
+                    const readDms = JSON.parse(JSON.stringify(prev));
                     Object.keys(readDms).forEach(convoId => {
-                        readDms[convoId] = readDms[convoId].map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email] }));
+                        readDms[convoId] = readDms[convoId].map((msg: Message) => {
+                           if (!msg.readBy.includes(user.email)) {
+                                msg.readBy.push(user.email);
+                           }
+                           return msg;
+                        });
                     });
                     return readDms;
                 });
                 setGroupChats(prev => prev.map(chat => ({
                     ...chat,
-                    messages: chat.messages.map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email]}))
+                    messages: chat.messages.map(msg => {
+                        if (!msg.readBy.includes(user.email)) {
+                             return {...msg, readBy: [...msg.readBy, user.email]};
+                        }
+                        return msg;
+                    })
                 })));
                 break;
             case 'calendar':

@@ -60,7 +60,7 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key]);
+  }, [clubId, key, initialData]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
@@ -70,29 +70,32 @@ function useClubData<T>(key: string, initialData: T) {
         const storedClubData = localStorage.getItem(clubDataKey);
         const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
         
-        // Determine the new value, whether it's a direct value or from an updater function
-        const currentValue = parsedData[key] || initialData;
-        const valueToStore = newData instanceof Function ? newData(currentValue) : newData;
-
-        // When saving events, convert Date objects back to ISO strings
+        let valueToStore: T;
+        if (typeof newData === 'function') {
+            const updater = newData as (prevData: T) => T;
+            const currentData = data;
+            valueToStore = updater(currentData);
+        } else {
+            valueToStore = newData;
+        }
+        
+        setData(valueToStore);
+        
+        let dataToSave = valueToStore;
         if (key === 'events' && Array.isArray(valueToStore)) {
-            parsedData[key] = valueToStore.map((event: any) => ({
+             dataToSave = valueToStore.map((event: any) => ({
                 ...event,
                 date: event.date instanceof Date ? event.date.toISOString() : event.date
-            }));
-        } else {
-            parsedData[key] = valueToStore;
+            })) as T;
         }
 
+        parsedData[key] = dataToSave;
         localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-
-        // Also update the state in React
-        setData(valueToStore);
 
     } catch (error) {
         console.error(`Error writing ${key} to localStorage`, error);
     }
-  }, [clubId, key, initialData]);
+  }, [clubId, key, data, initialData]);
 
   const memoizedData = useMemo(() => data, [data]);
 

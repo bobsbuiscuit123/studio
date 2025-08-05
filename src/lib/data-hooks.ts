@@ -93,12 +93,19 @@ export function useEvents() {
     })), [data]);
 
     const updateEventsWithStrings = useCallback((newEvents: any[] | ((prevEvents: any[]) => any[])) => {
+        const processEvent = (event: any) => {
+            if (event.date instanceof Date) {
+                return { ...event, date: event.date.toISOString() };
+            }
+            return event;
+        };
+
         const valueToStore = newEvents instanceof Function 
             ? (prevEventsWithDates: any[]) => {
                 const updatedEvents = newEvents(prevEventsWithDates);
-                return updatedEvents.map(event => ({...event, date: event.date.toISOString()}));
+                return updatedEvents.map(processEvent);
             }
-            : newEvents.map(event => ({ ...event, date: event.date.toISOString() }));
+            : newEvents.map(processEvent);
         
         updateData(valueToStore as any);
     }, [updateData]);

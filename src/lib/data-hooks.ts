@@ -73,62 +73,52 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, data]);
+  }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
 
-    let valueToStore: T;
-    if (typeof newData === 'function') {
-        const updater = newData as (prevData: T) => T;
-        setData(prevData => {
-            const updatedValue = updater(prevData);
-            
-            try {
-                const clubDataKey = `club_${clubId}`;
-                const storedClubData = localStorage.getItem(clubDataKey);
-                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-                
-                // Create a version of the data safe for localStorage
-                let dataToSave = updatedValue;
-                if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(updatedValue)) {
-                    dataToSave = updatedValue.map((item: any) => {
-                        const safeItem = { ...item };
-                        // Replace actual image data with a placeholder to avoid quota errors
-                        if (safeItem.src && safeItem.src.startsWith('data:image')) {
-                            safeItem.src = 'placeholder'; 
-                        }
-                        if (safeItem.images && Array.isArray(safeItem.images)) {
-                           safeItem.images = []; // Store empty array instead of placeholder string
-                        }
-                         if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
-                            safeItem.attachments = []; // Store empty array
-                        }
-                        // We DO want to save the slides data
-                        // if (safeItem.slides) {
-                        //   delete safeItem.slides;
-                        // }
-        
-                        return safeItem;
-                    }) as T;
-                }
-        
-                parsedData[key] = dataToSave;
-                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-        
-            } catch (error) {
-                console.error(`Error writing ${key} to localStorage`, error);
-                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                    console.error("Storage quota exceeded. Could not save new data.");
-                }
-            }
+    setData(prevData => {
+        const valueToStore = typeof newData === 'function'
+            ? (newData as (prevData: T) => T)(prevData)
+            : newData;
 
-            return updatedValue;
-        });
-    } else {
-        valueToStore = newData;
-        setData(valueToStore);
-    }
+        try {
+            const clubDataKey = `club_${clubId}`;
+            const storedClubData = localStorage.getItem(clubDataKey);
+            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+            
+            let dataToSave = valueToStore;
+            if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(valueToStore)) {
+                dataToSave = valueToStore.map((item: any) => {
+                    const safeItem = { ...item };
+                    
+                    if (safeItem.src && (safeItem.src.startsWith('data:image') || safeItem.src.startsWith('blob:'))) {
+                        safeItem.src = 'placeholder'; 
+                    }
+                    if (safeItem.images && Array.isArray(safeItem.images)) {
+                       safeItem.images = []; 
+                    }
+                     if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
+                        safeItem.attachments = [];
+                    }
+                    
+                    return safeItem;
+                }) as T;
+            }
+    
+            parsedData[key] = dataToSave;
+            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+
+        } catch (error) {
+            console.error(`Error writing ${key} to localStorage`, error);
+            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                console.error("Storage quota exceeded. Could not save new data.");
+            }
+        }
+
+        return valueToStore;
+    });
   }, [clubId, key]);
 
   return { data, loading, updateData, clubId };

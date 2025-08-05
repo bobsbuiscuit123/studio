@@ -81,6 +81,44 @@ export default function MessagesPage() {
         }
     }, []);
 
+    useEffect(() => {
+        if (!activeConversation || !user) return;
+
+        if (activeConversation.type === 'dm') {
+            const conversationId = getConversationId(user.email, activeConversation.partner.email);
+            const currentMessages = allMessages[conversationId] || [];
+            let changed = false;
+            const updatedMessages = currentMessages.map(msg => {
+                if (!msg.readBy.includes(user.email)) {
+                    changed = true;
+                    return { ...msg, readBy: [...msg.readBy, user.email] };
+                }
+                return msg;
+            });
+
+            if (changed) {
+                setAllMessages(prev => ({ ...prev, [conversationId]: updatedMessages }));
+            }
+        } else { // group
+            const chat = activeConversation.chat;
+            let changed = false;
+            const updatedMessages = chat.messages.map(msg => {
+                if (!msg.readBy.includes(user.email)) {
+                    changed = true;
+                    return { ...msg, readBy: [...msg.readBy, user.email] };
+                }
+                return msg;
+            });
+            if (changed) {
+                 const updatedGroupChats = groupChats.map(g => 
+                    g.id === chat.id ? { ...g, messages: updatedMessages } : g
+                 );
+                 setGroupChats(updatedGroupChats);
+            }
+        }
+
+    }, [activeConversation, user, allMessages, groupChats, setAllMessages, setGroupChats]);
+
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),
         defaultValues: { text: "" },
@@ -174,15 +212,19 @@ export default function MessagesPage() {
     };
 
     const getUnreadCount = (conversation: Conversation): number => {
-        if (!user || !allMessages) return 0;
+        if (!user) return 0;
+        let messages: Message[] = [];
+
         if (conversation.type === 'dm') {
             const convoId = getConversationId(user.email, conversation.partner.email);
-            const messages = allMessages[convoId] || [];
-            return messages.filter(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email).length;
+            messages = allMessages[convoId] || [];
         } else { // group
-            return conversation.chat.messages.filter(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email).length;
+            const currentChat = groupChats.find(g => g.id === conversation.chat.id);
+            messages = currentChat ? currentChat.messages : [];
         }
-    }
+
+        return messages.filter(m => !m.readBy.includes(user.email)).length;
+    };
 
     const conversations: Conversation[] = [
       ...groupChats.map(chat => ({ type: 'group', chat } as Conversation)),

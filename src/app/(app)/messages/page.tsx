@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -61,49 +61,6 @@ export default function MessagesPage() {
     const scrollToBottom = () => {
         messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
-    
-    const stableSetAllMessages = useCallback(setAllMessages, [setAllMessages]);
-    const stableSetGroupChats = useCallback(setGroupChats, [setGroupChats]);
-
-    // Effect to handle marking all messages as read on component mount (for sidebar notification)
-    useEffect(() => {
-        if (!user?.email || messagesLoading || groupsLoading) return;
-        const userEmail = user.email;
-
-        // Mark DMs as read
-        stableSetAllMessages(prev => {
-            const newMessages = JSON.parse(JSON.stringify(prev));
-            let changed = false;
-            for (const convoId in newMessages) {
-                if (Array.isArray(newMessages[convoId])) {
-                    newMessages[convoId].forEach((msg: Message) => {
-                        if (!msg.readBy.includes(userEmail)) {
-                            msg.readBy.push(userEmail);
-                            changed = true;
-                        }
-                    });
-                }
-            }
-            return changed ? newMessages : prev;
-        });
-
-        // Mark Group Chats as read
-        stableSetGroupChats(prev => {
-            let changed = false;
-            const newGroups = prev.map(group => {
-                const newMessages = group.messages.map(msg => {
-                    if (!msg.readBy.includes(userEmail)) {
-                        changed = true;
-                        return { ...msg, readBy: [...msg.readBy, userEmail] };
-                    }
-                    return msg;
-                });
-                return { ...group, messages: newMessages };
-            });
-            return changed ? newGroups : prev;
-        });
-    }, [user?.email, messagesLoading, groupsLoading, stableSetAllMessages, stableSetGroupChats]);
-
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');
@@ -131,7 +88,7 @@ export default function MessagesPage() {
         const conversationId = getConversationId(userEmail, activeConversation.partner.email);
         const currentMessages = allMessages[conversationId] || [];
         if (currentMessages.some(m => !m.readBy.includes(userEmail))) {
-            stableSetAllMessages(prev => {
+            setAllMessages(prev => {
                 const updatedMessages = (prev[conversationId] || []).map(msg => {
                     if (!msg.readBy.includes(userEmail)) {
                         return { ...msg, readBy: [...msg.readBy, userEmail] };
@@ -144,7 +101,7 @@ export default function MessagesPage() {
       } else { // group
           const chat = activeConversation.chat;
           if (chat.messages.some(m => !m.readBy.includes(userEmail))) {
-            stableSetGroupChats(prev => prev.map(g => {
+            setGroupChats(prev => prev.map(g => {
                 if (g.id === chat.id) {
                     return {
                         ...g,
@@ -161,7 +118,7 @@ export default function MessagesPage() {
           }
       }
       scrollToBottom();
-    }, [activeConversation, user?.email, allMessages, stableSetAllMessages, groupChats, stableSetGroupChats]);
+    }, [activeConversation, user?.email, allMessages, setAllMessages, groupChats, setGroupChats]);
 
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({

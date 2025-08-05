@@ -52,6 +52,9 @@ function useClubData<T>(key: string, initialData: T) {
                   if (memoryItem && (memoryItem.src || (memoryItem.images && memoryItem.images.length > 0) || (memoryItem.attachments && memoryItem.attachments.length > 0))) {
                       return memoryItem;
                   }
+                   if(item.attachments && typeof item.attachments !== 'boolean') {
+                     item.attachments = [];
+                   }
                   return item;
               }) as T;
             }
@@ -73,7 +76,7 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, initialData, data]);
+  }, [clubId, key, initialData]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;

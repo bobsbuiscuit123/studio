@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, ThumbsUp, Download, X, Trash2, Check, ShieldQuestion } from "lucide-react";
+import { Upload, ThumbsUp, Download, X, Trash2, Check, ShieldQuestion, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,15 +30,15 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { resizeImage } from "@/lib/image-resizer";
 
 const MAX_GALLERY_IMAGES = 20;
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
-  images: z.array(z.string()).min(1, "At least one image is required."),
+  images: z.array(z.custom<File>()).min(1, "At least one image is required."),
 });
 
 export default function GalleryPage() {
@@ -49,6 +49,7 @@ export default function GalleryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const form = useForm<z.infer<typeof uploadFormSchema>>({
     resolver: zodResolver(uploadFormSchema),
@@ -58,62 +59,72 @@ export default function GalleryPage() {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const newImages: string[] = [];
-      const fileReaders: FileReader[] = [];
-
-      Array.from(files).forEach((file) => {
-        const reader = new FileReader();
-        fileReaders.push(reader);
-        reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            const allImages = [...previewImages, ...newImages];
-            setPreviewImages(allImages);
-            form.setValue("images", allImages);
-          }
-        };
-        reader.readAsDataURL(file);
+      const currentFiles = form.getValues("images") || [];
+      const newFiles = Array.from(files);
+      form.setValue("images", [...currentFiles, ...newFiles]);
+      
+      const newPreviews: string[] = [];
+      Array.from(files).forEach(file => {
+          newPreviews.push(URL.createObjectURL(file));
       });
+      setPreviewImages(prev => [...prev, ...newPreviews]);
     }
   };
   
   const removePreviewImage = (index: number) => {
-    const updatedImages = [...previewImages];
-    updatedImages.splice(index, 1);
-    setPreviewImages(updatedImages);
-    form.setValue("images", updatedImages);
+    const updatedFiles = [...(form.getValues("images") || [])];
+    updatedFiles.splice(index, 1);
+    form.setValue("images", updatedFiles);
+
+    const updatedPreviews = [...previewImages];
+    URL.revokeObjectURL(updatedPreviews[index]); // Clean up object URL
+    updatedPreviews.splice(index, 1);
+    setPreviewImages(updatedPreviews);
   };
 
-  const handleUpload = (values: z.infer<typeof uploadFormSchema>) => {
+  const handleUpload = async (values: z.infer<typeof uploadFormSchema>) => {
     if (!user) return;
+    setIsUploading(true);
     
-    const newStatus = canEditContent ? 'approved' : 'pending';
-    const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
+    try {
+        const compressedImages = await Promise.all(
+            values.images.map(file => resizeImage(file))
+        );
 
-    const newImages: GalleryImage[] = values.images.map((imgSrc, index) => ({
-      id: lastId + index + 1,
-      src: imgSrc,
-      alt: values.alt || "User uploaded image",
-      author: user.name,
-      date: new Date().toLocaleDateString(),
-      likes: 0,
-      liked: false,
-      status: newStatus,
-      read: !canEditContent, // Mark as read for the uploader
-    }));
-    
+        const newStatus = canEditContent ? 'approved' : 'pending';
+        const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
-    const updatedImages = [...newImages, ...images].slice(0, MAX_GALLERY_IMAGES);
-    setImages(updatedImages);
+        const newImages: GalleryImage[] = compressedImages.map((imgSrc, index) => ({
+            id: lastId + index + 1,
+            src: imgSrc,
+            alt: values.alt || "User uploaded image",
+            author: user.name,
+            date: new Date().toLocaleDateString(),
+            likes: 0,
+            liked: false,
+            status: newStatus,
+            read: !canEditContent,
+        }));
+        
+        const updatedImages = [...newImages, ...images].slice(0, MAX_GALLERY_IMAGES);
+        setImages(updatedImages);
 
-    toast({ 
-      title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
-      description: newStatus === 'pending' ? "An admin will review your submission shortly." : "",
-    });
-    form.reset();
-    setPreviewImages([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+        toast({ 
+            title: newStatus === 'approved' ? "Images uploaded successfully!" : "Images submitted for approval!",
+            description: newStatus === 'pending' ? "An admin will review your submission shortly." : "",
+        });
+
+        form.reset();
+        previewImages.forEach(url => URL.revokeObjectURL(url));
+        setPreviewImages([]);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    } catch (error) {
+        console.error("Image processing error:", error);
+        toast({ title: "Upload Failed", description: "There was an error processing your images.", variant: "destructive" });
+    } finally {
+        setIsUploading(false);
     }
   };
 
@@ -212,7 +223,15 @@ export default function GalleryPage() {
                       ))}
                   </div>
               )}
-            <Button type="submit" className="w-full md:w-auto">Upload {previewImages.length > 0 ? previewImages.length : ''} Image{previewImages.length > 1 ? 's' : ''}</Button>
+            <Button type="submit" className="w-full md:w-auto" disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="mr-2 animate-spin" /> Compressing & Uploading...
+                </>
+              ) : (
+                `Upload ${previewImages.length > 0 ? previewImages.length : ''} Image${previewImages.length !== 1 ? 's' : ''}`
+              )}
+            </Button>
           </form>
         </CardContent>
       </Card>
@@ -286,7 +305,7 @@ export default function GalleryPage() {
                       <ThumbsUp className="h-4 w-4" /> {image.likes}
                     </Button>
                      <div className="flex gap-1">
-                        <Button variant="outline" size="icon" onClick={() => handleDownload(image.src, `gallery-image-${image.id}.png`)}>
+                        <Button variant="outline" size="icon" onClick={() => handleDownload(image.src, `gallery-image-${image.id}.webp`)}>
                             <Download className="h-4 w-4" />
                         </Button>
                         {canEditContent && (
@@ -326,5 +345,3 @@ export default function GalleryPage() {
     </div>
   );
 }
-
-    

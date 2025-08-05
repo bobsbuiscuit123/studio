@@ -41,7 +41,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -52,12 +51,13 @@ import { useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-h
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { resizeImage } from "@/lib/image-resizer";
 
 const MAX_SOCIAL_POSTS = 10;
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
-  photos: z.array(z.string()).optional(),
+  photos: z.array(z.custom<File>()).optional(),
 });
 
 const postFormSchema = z.object({
@@ -74,6 +74,7 @@ type GeneratedPost = GenerateSocialMediaPostOutput & { images: string[], dataAiH
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
   const [isLoading, setIsLoading] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [postToReview, setPostToReview] = useState<GeneratedPost | null>(null);
@@ -106,30 +107,24 @@ export default function SocialPage() {
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
-      const newImages: string[] = [];
-      const fileReaders: FileReader[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const reader = new FileReader();
-        fileReaders.push(reader);
-        reader.onloadend = () => {
-          newImages.push(reader.result as string);
-          if (newImages.length === files.length) {
-            const allImages = [...previewImages, ...newImages];
-            setPreviewImages(allImages);
-            form.setValue("photos", allImages);
-          }
-        };
-        reader.readAsDataURL(file);
-      }
+      const currentFiles = form.getValues("photos") || [];
+      const newFiles = Array.from(files);
+      form.setValue("photos", [...currentFiles, ...newFiles]);
+
+      const newPreviews = Array.from(files).map(file => URL.createObjectURL(file));
+      setPreviewImages(prev => [...prev, ...newPreviews]);
     }
   };
 
   const removePreviewImage = (index: number) => {
-    const newImages = [...previewImages];
-    newImages.splice(index, 1);
-    setPreviewImages(newImages);
-    form.setValue("photos", newImages);
+    const updatedFiles = [...(form.getValues("photos") || [])];
+    updatedFiles.splice(index, 1);
+    form.setValue("photos", updatedFiles);
+
+    const updatedPreviews = [...previewImages];
+    URL.revokeObjectURL(updatedPreviews[index]);
+    updatedPreviews.splice(index, 1);
+    setPreviewImages(updatedPreviews);
   }
   
   const handleEditClick = (post: SocialPost) => {
@@ -185,14 +180,26 @@ export default function SocialPage() {
 
   const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
+    setIsCompressing(false);
+    
+    let compressedPhotoUris: string[] = [];
     try {
+      if (values.photos && values.photos.length > 0) {
+        setIsCompressing(true);
+        compressedPhotoUris = await Promise.all(
+          values.photos.map(file => resizeImage(file))
+        );
+        setIsCompressing(false);
+      }
+      
       const result = await generateSocialMediaPost({
         prompt: values.prompt,
-        photoDataUris: form.getValues("photos"),
+        photoDataUris: compressedPhotoUris,
       });
+
       setPostToReview({
         ...result,
-        images: previewImages,
+        images: compressedPhotoUris,
         dataAiHint: "tech club",
       });
       postForm.reset({ title: result.title, content: result.postText });
@@ -204,6 +211,7 @@ export default function SocialPage() {
       });
     } finally {
       setIsLoading(false);
+      setIsCompressing(false);
     }
   };
 
@@ -228,6 +236,7 @@ export default function SocialPage() {
 
     toast({ title: "Social media post published successfully!" });
     form.reset();
+    previewImages.forEach(url => URL.revokeObjectURL(url));
     setPreviewImages([]);
     if(fileInputRef.current) fileInputRef.current.value = "";
     setPostToReview(null);
@@ -302,7 +311,12 @@ export default function SocialPage() {
                     )}
                 
                     <Button type="submit" disabled={isLoading} className="w-full">
-                    {isLoading ? <Loader2 className="animate-spin" /> : "Generate Post"}
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="animate-spin mr-2" />
+                        {isCompressing ? 'Compressing Images...' : 'Generating Post...'}
+                      </>
+                     ) : "Generate Post"}
                     </Button>
                 </form>
                 </Form>
@@ -479,5 +493,3 @@ export default function SocialPage() {
     </>
   );
 }
-
-    

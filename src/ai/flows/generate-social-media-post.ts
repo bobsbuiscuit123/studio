@@ -49,14 +49,14 @@ const prompt = ai.definePrompt({
   User Prompt: {{{prompt}}}
 
   {{#if photoDataUris}}
-  Here are photos for the post:
+  You have been provided with photos for the post.
+  The output 'images' field MUST contain the provided photoDataUris.
+  Create an engaging image caption to go along with these photos.
   {{#each photoDataUris}}
     {{media url=this}}
   {{/each}}
-  The output 'images' field MUST contain the provided photoDataUris.
-  Create an engaging image caption to go along with these photos.
   {{else}}
-  Do not generate an image caption if no photos are provided. The 'images' output field must be an empty array or omitted.
+  No photos were provided. The 'images' output field must be an empty array or omitted. Do not generate an image caption.
   {{/if}}
   `,
 });
@@ -73,10 +73,10 @@ const generateSocialMediaPostFlow = ai.defineFlow(
       throw new Error("Could not generate social media post.");
     }
 
-    // Ensure images is always an array, even if the model omits it.
+    // Ensure images is always an array, even if the model omits it or returns something else.
     return {
         ...output,
-        images: output.images || [],
+        images: Array.isArray(output.images) ? output.images : [],
     };
   }
 );

@@ -370,7 +370,7 @@ export default function SocialPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow">
-                  {post.images && post.images.length > 0 && (
+                  {post.images && Array.isArray(post.images) && post.images.length > 0 && (
                     <Carousel className="w-full max-w-xs mx-auto">
                       <CarouselContent>
                         {post.images.map((image, index) => (

@@ -29,8 +29,7 @@ function useClubData<T>(key: string, initialData: T) {
             
             // Data migration for presentations to add slide IDs
             if (key === 'presentations' && Array.isArray(finalData)) {
-              const presentations = finalData as Presentation[];
-              finalData = presentations.map(p => ({
+              finalData = finalData.map(p => ({
                 ...p,
                 slides: p.slides.map((s, index) => ({
                   ...s,
@@ -43,19 +42,6 @@ function useClubData<T>(key: string, initialData: T) {
                     date: new Date(event.date),
                 })) as T;
             }
-
-            // Restore in-memory data for things not persisted fully
-            if (key === 'announcements' || key === 'socialPosts' || key === 'galleryImages') {
-              const memoryData = data as any[];
-              if (Array.isArray(finalData) && memoryData.length > 0) {
-                 finalData = finalData.map((item: any) => {
-                    const memoryItem = memoryData.find(m => m.id === item.id);
-                    return memoryItem || item;
-                }) as T;
-              }
-            }
-
-
             setData(finalData);
 
           } else {
@@ -72,7 +58,7 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, initialData]);
+  }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;

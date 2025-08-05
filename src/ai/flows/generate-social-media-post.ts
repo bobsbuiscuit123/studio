@@ -53,7 +53,7 @@ const prompt = ai.definePrompt({
   {{#each photoDataUris}}
     {{media url=this}}
   {{/each}}
-  The output 'images' field should contain the provided photoDataUris.
+  The output 'images' field MUST contain the provided photoDataUris.
   Create an engaging image caption to go along with these photos.
   {{else}}
   Do not generate an image caption if no photos are provided. The 'images' output field should be an empty array or omitted.

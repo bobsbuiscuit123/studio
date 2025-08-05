@@ -333,7 +333,12 @@ export default function SocialPage() {
         {loading ? <p>Loading...</p> : 
           socialPosts.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {socialPosts.map((post) => (
+            {socialPosts.map((post) => {
+              const validImages = Array.isArray(post.images) 
+                ? post.images.filter(img => typeof img === 'string' && img.startsWith('data:image/')) 
+                : [];
+              
+              return (
               <Card key={post.id} className="flex flex-col">
                 <CardHeader>
                     <div className="flex justify-between items-start">
@@ -370,16 +375,16 @@ export default function SocialPage() {
                     </div>
                 </CardHeader>
                 <CardContent className="space-y-4 flex-grow">
-                  {post.images && Array.isArray(post.images) && post.images.length > 0 && (
+                  {validImages.length > 0 && (
                     <Carousel className="w-full max-w-xs mx-auto">
                       <CarouselContent>
-                        {post.images.map((image, index) => (
+                        {validImages.map((image, index) => (
                           <CarouselItem key={index}>
                              <Image src={image} alt={`Social post image ${index+1}`} width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
                           </CarouselItem>
                         ))}
                       </CarouselContent>
-                      {post.images.length > 1 && (
+                      {validImages.length > 1 && (
                         <>
                           <CarouselPrevious />
                           <CarouselNext />
@@ -433,7 +438,7 @@ export default function SocialPage() {
                     )}
                 </CardFooter>
               </Card>
-            ))}
+            )})}
           </div>
         ) : (
              <Card className="flex items-center justify-center py-12 md:col-span-2">

@@ -126,6 +126,11 @@ export default function MessagesPage() {
                 : chat
              );
              setGroupChats(updatedGroupChats);
+             // Also update the active conversation to reflect the new message immediately
+             const updatedChat = updatedGroupChats.find(chat => chat.id === activeConversation.chat.id);
+             if (updatedChat) {
+                setActiveConversation({ type: 'group', chat: updatedChat });
+             }
         }
 
         messageForm.reset();
@@ -195,7 +200,9 @@ export default function MessagesPage() {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             return allMessages[conversationId] || [];
         }
-        return activeConversation.chat.messages;
+        // Ensure we get the latest state for the active group chat
+        const currentChat = groupChats.find(g => g.id === activeConversation.chat.id);
+        return currentChat ? currentChat.messages : [];
     })();
 
     if (userLoading || membersLoading || messagesLoading || groupsLoading) {
@@ -402,5 +409,3 @@ export default function MessagesPage() {
     </div>
   );
 }
-
-    

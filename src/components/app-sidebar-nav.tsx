@@ -14,6 +14,7 @@ import {
   GalleryHorizontal,
   CheckCircle,
   Mail,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,7 @@ type NotificationMap = {
 const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'announcements' },
+  { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/attendance', icon: CheckCircle, label: 'Attendance', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
@@ -41,7 +43,7 @@ export function AppSidebarNav({ role, notifications }: { role: string; notificat
 
   const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
     // Custom sort order if needed, for now just an example
-    const order = ['Dashboard', 'Announcements', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 

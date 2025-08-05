@@ -95,3 +95,17 @@ export type GalleryImage = {
   liked: boolean;
   status: 'pending' | 'approved';
 };
+
+export type Message = {
+    sender: string; // email of the sender
+    text: string;
+    timestamp: string;
+    readBy: string[]; // array of emails of users who have read the message
+}
+
+export type GroupChat = {
+    id: string;
+    name: string;
+    members: string[]; // array of member emails
+    messages: Message[];
+}

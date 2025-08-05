@@ -73,7 +73,7 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key]);
+  }, [clubId, key, initialData, data]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
@@ -89,7 +89,7 @@ function useClubData<T>(key: string, initialData: T) {
             const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
             
             let dataToSave = valueToStore;
-            if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(valueToStore)) {
+            if (Array.isArray(valueToStore)) {
                 dataToSave = valueToStore.map((item: any) => {
                     const safeItem = { ...item };
                     
@@ -101,6 +101,9 @@ function useClubData<T>(key: string, initialData: T) {
                     }
                      if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
                         safeItem.attachments = [];
+                    }
+                    if(safeItem.slides && Array.isArray(safeItem.slides)) {
+                       // Keep slides, do not remove
                     }
                     
                     return safeItem;

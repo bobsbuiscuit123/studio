@@ -322,7 +322,7 @@ export default function AnnouncementsPage() {
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                       {announcement.content}
                     </p>
-                    {announcement.attachments && announcement.attachments.length > 0 && (
+                    {Array.isArray(announcement.attachments) && announcement.attachments.length > 0 && (
                         <div>
                             <h4 className="font-semibold text-sm mb-2">Attachments</h4>
                             <div className="space-y-2">

@@ -82,17 +82,17 @@ export default function MessagesPage() {
     }, []);
 
     useEffect(() => {
-        if (!activeConversation || !user) return;
+        if (!activeConversation || !user?.email) return;
 
-        let changed = false;
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             const currentMessages = allMessages[conversationId] || [];
-            
+            let changed = false;
+
             const updatedMessages = currentMessages.map(msg => {
-                if (!msg.readBy.includes(user.email)) {
+                if (!msg.readBy.includes(user.email!)) {
                     changed = true;
-                    return { ...msg, readBy: [...msg.readBy, user.email] };
+                    return { ...msg, readBy: [...msg.readBy, user.email!] };
                 }
                 return msg;
             });
@@ -102,11 +102,12 @@ export default function MessagesPage() {
             }
         } else { // group
             const chat = activeConversation.chat;
+            let changed = false;
             
             const updatedMessages = chat.messages.map(msg => {
-                if (!msg.readBy.includes(user.email)) {
+                if (!msg.readBy.includes(user.email!)) {
                     changed = true;
-                    return { ...msg, readBy: [...msg.readBy, user.email] };
+                    return { ...msg, readBy: [...msg.readBy, user.email!] };
                 }
                 return msg;
             });
@@ -118,7 +119,7 @@ export default function MessagesPage() {
             }
         }
 
-    }, [activeConversation, user?.email]);
+    }, [activeConversation, user?.email, allMessages, groupChats, setAllMessages, setGroupChats]);
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),
@@ -137,7 +138,7 @@ export default function MessagesPage() {
             sender: user.email,
             text: values.text,
             timestamp: new Date().toISOString(),
-            readBy: [user.email],
+            readBy: [user.email], // Sender has always "read" their own message
         };
 
         if (activeConversation.type === 'dm') {
@@ -372,7 +373,7 @@ export default function MessagesPage() {
                                 <p className="font-semibold">{name}</p>
                                 </div>
                                 {isUnread && (
-                                    <span className="ml-auto h-2 w-2 rounded-full bg-primary"></span>
+                                    <span className="ml-auto h-2.5 w-2.5 rounded-full bg-primary"></span>
                                 )}
                             </div>
                         )})}

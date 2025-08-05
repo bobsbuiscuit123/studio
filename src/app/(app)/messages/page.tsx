@@ -64,6 +64,9 @@ export default function MessagesPage() {
     useEffect(() => {
         scrollToBottom();
     }, [activeConversation, allMessages, groupChats]);
+    
+    const stableSetAllMessages = useCallback(setAllMessages, []);
+    const stableSetGroupChats = useCallback(setGroupChats, []);
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');
@@ -82,54 +85,44 @@ export default function MessagesPage() {
         }
     }, [membersLoading, members]);
 
-    const stableSetAllMessages = useCallback(setAllMessages, []);
-    const stableSetGroupChats = useCallback(setGroupChats, []);
-
     useEffect(() => {
-        if (!activeConversation || !user?.email) return;
+      if (!activeConversation || !user?.email) return;
 
-        if (activeConversation.type === 'dm') {
+      if (activeConversation.type === 'dm') {
+        const conversationId = getConversationId(user.email, activeConversation.partner.email);
+        const currentMessages = allMessages[conversationId] || [];
+        if (currentMessages.some(m => !m.readBy.includes(user.email!))) {
             stableSetAllMessages(prev => {
-                const conversationId = getConversationId(user.email!, activeConversation.partner.email);
-                const currentMessages = prev[conversationId] || [];
-                let changed = false;
-
-                const updatedMessages = currentMessages.map(msg => {
+                const updatedMessages = (prev[conversationId] || []).map(msg => {
                     if (!msg.readBy.includes(user.email!)) {
-                        changed = true;
                         return { ...msg, readBy: [...msg.readBy, user.email!] };
                     }
                     return msg;
                 });
-
-                if (changed) {
-                    return { ...prev, [conversationId]: updatedMessages };
-                }
-                return prev;
+                return { ...prev, [conversationId]: updatedMessages };
             });
-        } else { // group
-            stableSetGroupChats(prev => {
-                const chat = activeConversation.chat;
-                let changed = false;
-
-                const updatedChats = prev.map(g => {
-                    if (g.id === chat.id) {
-                        const updatedMessages = g.messages.map(msg => {
+        }
+      } else { // group
+          const chat = activeConversation.chat;
+          if (chat.messages.some(m => !m.readBy.includes(user.email!))) {
+            stableSetGroupChats(prev => prev.map(g => {
+                if (g.id === chat.id) {
+                    return {
+                        ...g,
+                        messages: g.messages.map(msg => {
                             if (!msg.readBy.includes(user.email!)) {
-                                changed = true;
                                 return { ...msg, readBy: [...msg.readBy, user.email!] };
                             }
                             return msg;
-                        });
-                        return { ...g, messages: updatedMessages };
-                    }
-                    return g;
-                });
-                
-                return changed ? updatedChats : prev;
-            });
-        }
-    }, [activeConversation, user?.email, stableSetAllMessages, stableSetGroupChats]);
+                        })
+                    };
+                }
+                return g;
+            }));
+          }
+      }
+    }, [activeConversation, user?.email, allMessages, stableSetAllMessages, stableSetGroupChats]);
+
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),
@@ -148,13 +141,13 @@ export default function MessagesPage() {
             sender: user.email,
             text: values.text,
             timestamp: new Date().toISOString(),
-            readBy: [user.email], // Sender has always "read" their own message
+            readBy: [user.email],
         };
 
         if (activeConversation.type === 'dm') {
             const conversationId = getConversationId(user.email, activeConversation.partner.email);
             setAllMessages(prev => ({ ...prev, [conversationId]: [...(prev[conversationId] || []), newMessage] }));
-        } else { // group
+        } else { 
              const updatedGroupChats = groupChats.map(chat => 
                 chat.id === activeConversation.chat.id
                 ? { ...chat, messages: [...chat.messages, newMessage] }
@@ -400,7 +393,7 @@ export default function MessagesPage() {
                          <Avatar className="h-10 w-10">
                             <AvatarImage src={activeConversation.partner.avatar} />
                             <AvatarFallback style={{ backgroundColor: stringToColor(activeConversation.partner.name) }}>
-                                {activeConversation.partner.name.charAt(0)}
+                                {activeConversation.partner.name.charAt(0) }
                             </AvatarFallback>
                         </Avatar>
                     ) : (
@@ -464,3 +457,5 @@ export default function MessagesPage() {
     </div>
   );
 }
+
+    

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Mail, Share2, ChevronDown } from "lucide-react";
+import { Mail, Share2, ChevronDown, MessageSquare } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -33,6 +33,7 @@ import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Member } from "@/lib/mock-data";
 
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
@@ -79,6 +80,11 @@ export default function MembersPage() {
     toast({ title: "Member role updated successfully!" });
   };
   
+  const handleMessageClick = (member: Member) => {
+    localStorage.setItem('messageTarget', JSON.stringify(member));
+    router.push('/messages');
+  }
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -136,6 +142,11 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
+                   {member.email !== user?.email && (
+                     <Button variant="outline" className="w-full" onClick={() => handleMessageClick(member)}>
+                        <MessageSquare className="mr-2" /> Message
+                     </Button>
+                   )}
                    {canManageRoles && member.email !== user?.email && !(role === 'Admin' && member.role === 'President') && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>

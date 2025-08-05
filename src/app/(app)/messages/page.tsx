@@ -94,6 +94,21 @@ export default function MessagesPage() {
         }
     }, [activeConversation, user, allMessages, groupChats, setAllMessages, setGroupChats, messagesLoading]);
 
+    useEffect(() => {
+        const targetMemberString = localStorage.getItem('messageTarget');
+        if (targetMemberString) {
+            try {
+                const targetMember: Member = JSON.parse(targetMemberString);
+                if (targetMember && targetMember.email) {
+                    setActiveConversation({ type: 'dm', partner: targetMember });
+                }
+            } catch (e) {
+                console.error("Failed to parse messageTarget from localStorage", e);
+            } finally {
+                localStorage.removeItem('messageTarget');
+            }
+        }
+    }, []);
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
         resolver: zodResolver(messageFormSchema),

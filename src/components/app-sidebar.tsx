@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import { useEffect, useState } from "react";
 
 export function AppSidebar() {
@@ -12,8 +12,6 @@ export function AppSidebar() {
   const { user } = useCurrentUser();
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupsLoading } = useGroupChats();
   
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
   const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
@@ -30,14 +28,6 @@ export function AppSidebar() {
       setHasUnreadSocials(socialPosts.some(p => !p.read));
     }
   }, [socialPosts, socialPostsLoading]);
-
-  useEffect(() => {
-    if (!messagesLoading && !groupsLoading && user && allMessages) {
-        const unreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
-        setHasUnreadMessages(unreadDms || unreadGroups);
-    }
-  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
 
   return (
     <div className="hidden border-r bg-muted/40 md:block">

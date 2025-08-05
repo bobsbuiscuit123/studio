@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Mail, Share2, ChevronDown, MessageSquare } from "lucide-react";
+import { Mail, Share2, ChevronDown } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -136,14 +136,6 @@ export default function MembersPage() {
                   </a>
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
-                    {member.email !== user?.email && (
-                        <Link href={`/messages?recipient=${member.email}`} className="w-full">
-                            <Button variant="outline" className="w-full">
-                                <MessageSquare className="mr-2 h-4 w-4" />
-                                Message
-                            </Button>
-                        </Link>
-                    )}
                    {canManageRoles && member.email !== user?.email && !(role === 'Admin' && member.role === 'President') && (
                      <DropdownMenu>
                       <DropdownMenuTrigger asChild>

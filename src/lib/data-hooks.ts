@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -126,37 +126,6 @@ export function usePresentations() {
 export function useGalleryImages() {
     return useClubData<GalleryImage[]>('galleryImages', []);
 }
-
-export function useMessages() {
-    return useClubData<{[dmKey: string]: Message[]}>('messages', {});
-}
-
-export function useGroupChats() {
-    const { data, loading, updateData, clubId } = useClubData<GroupChat[]>('groupChats', []);
-
-    const groupsWithDateObjects = (data || []).map(group => ({
-        ...group,
-        messages: (group.messages || []).map(message => ({
-            ...message,
-            timestamp: new Date(message.timestamp),
-        })),
-    }));
-
-    const updateGroupChatsWithStrings = (newData: GroupChat[] | ((prevData: GroupChat[]) => GroupChat[])) => {
-        const valueToStore = newData instanceof Function ? newData(data as GroupChat[]) : newData;
-        const groupsWithStrings = valueToStore.map(group => ({
-            ...group,
-            messages: (group.messages || []).map((message: any) => ({
-                ...message,
-                timestamp: message.timestamp instanceof Date ? message.timestamp.toISOString() : message.timestamp,
-            })),
-        }));
-        updateData(groupsWithStrings);
-    };
-
-    return { data, loading, updateData: updateGroupChatsWithStrings, clubId };
-}
-
 
 export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);

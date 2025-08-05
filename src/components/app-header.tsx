@@ -33,7 +33,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts } from "@/lib/data-hooks";
 import type { User as UserType } from "@/lib/mock-data";
 
 
@@ -101,8 +101,6 @@ export function AppHeader() {
   const { user, saveUser, clearUser } = useCurrentUser();
   const { data: announcements, loading: announcementsLoading } = useAnnouncements();
   const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupsLoading } = useGroupChats();
   const router = useRouter();
   
   const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
@@ -133,14 +131,6 @@ export function AppHeader() {
       setHasUnreadSocials(socialPosts.some(p => !p.read));
     }
   }, [socialPosts, socialPostsLoading]);
-
-  useEffect(() => {
-    if (!messagesLoading && !groupsLoading && user && allMessages) {
-        const unreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
-        setHasUnreadMessages(unreadDms || unreadGroups);
-    }
-  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
   
   const handleLogout = () => {
     clearUser();

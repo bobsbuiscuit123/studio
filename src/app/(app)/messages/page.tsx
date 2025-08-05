@@ -75,7 +75,7 @@ function MessagesContent({
             currentMessages = chat ? chat.messages : [];
         }
 
-        if (currentMessages.some(m => !m.readBy.includes(user.email) && m.sender !== user.email)) {
+        if (currentMessages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email)) {
             convoHasUnread = true;
         }
         

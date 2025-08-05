@@ -42,14 +42,14 @@ function useClubData<T>(key: string, initialData: T) {
                     ...event,
                     date: new Date(event.date),
                 })) as T;
-            } else if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(finalData)) {
+            } else if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(finalData)) {
               // Replace placeholder image data with actual data if available in memory
               // This is a temporary solution for the prototype to avoid storing large images
               // in localStorage. In a real app, you'd fetch image URLs from a server.
               const memoryData = data as any[];
               finalData = finalData.map((item: any) => {
                   const memoryItem = memoryData.find(m => m.id === item.id);
-                  if (memoryItem && (memoryItem.src || (memoryItem.images && memoryItem.images.length > 0))) {
+                  if (memoryItem && (memoryItem.src || (memoryItem.images && memoryItem.images.length > 0) || (memoryItem.attachments && memoryItem.attachments.length > 0))) {
                       return memoryItem;
                   }
                   return item;
@@ -78,61 +78,53 @@ function useClubData<T>(key: string, initialData: T) {
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
 
-    try {
-        const clubDataKey = `club_${clubId}`;
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+    let valueToStore: T;
+    if (typeof newData === 'function') {
+        const updater = newData as (prevData: T) => T;
+        setData(prevData => {
+            const updatedValue = updater(prevData);
+            valueToStore = updatedValue;
+            
+            try {
+                const clubDataKey = `club_${clubId}`;
+                const storedClubData = localStorage.getItem(clubDataKey);
+                const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                
+                // Create a version of the data safe for localStorage
+                let dataToSave = valueToStore;
+                if ((key === 'galleryImages' || key === 'socialPosts' || key === 'announcements') && Array.isArray(valueToStore)) {
+                    dataToSave = valueToStore.map((item: any) => {
+                        const safeItem = { ...item };
+                        // Replace actual image data with a placeholder to avoid quota errors
+                        if (safeItem.src && safeItem.src.startsWith('data:image')) {
+                            safeItem.src = 'placeholder'; 
+                        }
+                        if (safeItem.images && Array.isArray(safeItem.images)) {
+                            safeItem.images = 'placeholder';
+                        }
+                         if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
+                            safeItem.attachments = 'placeholder';
+                        }
         
-        let valueToStore: T;
-        if (typeof newData === 'function') {
-            const updater = newData as (prevData: T) => T;
-            setData(prevData => {
-                const updatedValue = updater(prevData);
-                valueToStore = updatedValue;
-                return updatedValue;
-            });
-        } else {
-            valueToStore = newData;
-            setData(valueToStore);
-        }
-
-        // Create a version of the data safe for localStorage
-        let dataToSave = valueToStore;
-        if ((key === 'galleryImages' || key === 'socialPosts') && Array.isArray(valueToStore)) {
-            dataToSave = valueToStore.map((item: any) => {
-                const safeItem = { ...item };
-                // Replace actual image data with a placeholder to avoid quota errors
-                if (safeItem.src && safeItem.src.startsWith('data:image')) {
-                    safeItem.src = 'placeholder'; 
+                        return safeItem;
+                    }) as T;
                 }
-                if (safeItem.images && Array.isArray(safeItem.images)) {
-                    safeItem.images = safeItem.images.map((img: string) => 
-                        img.startsWith('data:image') ? 'placeholder' : img
-                    );
+        
+                parsedData[key] = dataToSave;
+                localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+        
+            } catch (error) {
+                console.error(`Error writing ${key} to localStorage`, error);
+                if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                    console.error("Storage quota exceeded. Could not save new data.");
                 }
-                 if (safeItem.attachments && Array.isArray(safeItem.attachments)) {
-                    safeItem.attachments = 'placeholder';
-                }
+            }
 
-                return safeItem;
-            }) as T;
-        } else if (key === 'events' && Array.isArray(valueToStore)) {
-           dataToSave = valueToStore.map((event: any) => ({
-              ...event,
-              date: event.date instanceof Date ? event.date.toISOString() : event.date
-          })) as T;
-        }
-
-
-        parsedData[key] = dataToSave;
-        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-
-    } catch (error) {
-        console.error(`Error writing ${key} to localStorage`, error);
-        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-             // Optionally, trigger a toast notification here to inform the user.
-            console.error("Storage quota exceeded. Could not save new data.");
-        }
+            return updatedValue;
+        });
+    } else {
+        valueToStore = newData;
+        setData(valueToStore);
     }
   }, [clubId, key]);
 

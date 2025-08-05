@@ -26,6 +26,7 @@ export type ClubEvent = {
   location: string;
   checkInCode?: string;
   attendees?: string[]; // Array of member emails
+  read?: boolean;
 };
 
 export type Slide = {
@@ -94,6 +95,7 @@ export type GalleryImage = {
   likes: number;
   liked: boolean;
   status: 'pending' | 'approved';
+  read?: boolean;
 };
 
 export type Message = {

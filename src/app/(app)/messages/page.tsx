@@ -66,33 +66,28 @@ export default function MessagesPage() {
     }, [activeConversation, allMessages, groupChats]);
     
     useEffect(() => {
-        if (!user || messagesLoading || !allMessages) return;
-    
-        const markAsRead = (messages: Message[]) => {
-            let changed = false;
-            messages.forEach(msg => {
-                if (msg.readBy && !msg.readBy.includes(user.email)) {
-                    msg.readBy.push(user.email);
-                    changed = true;
-                }
+        if (!user || messagesLoading || !allMessages || groupsLoading) return;
+
+        // On mount and when user changes, clear all message notifications
+        const anyUnreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email));
+        if (anyUnreadDms) {
+            const readDms = { ...allMessages };
+            Object.keys(readDms).forEach(convoId => {
+                readDms[convoId] = readDms[convoId].map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email] }));
             });
-            return changed;
+            setAllMessages(readDms);
+        }
+        
+        const anyUnreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email)));
+        if (anyUnreadGroups) {
+            const readGroups = groupChats.map(chat => ({
+                ...chat,
+                messages: chat.messages.map(msg => ({...msg, readBy: [...(msg.readBy || []), user.email]}))
+            }));
+            setGroupChats(readGroups);
         }
 
-        if (activeConversation?.type === 'dm') {
-            const conversationId = getConversationId(user!.email, activeConversation.partner.email);
-            const messages = allMessages[conversationId] || [];
-            if(markAsRead(messages)) {
-                 setAllMessages(prev => ({...prev, [conversationId]: messages}));
-            }
-        } else if (activeConversation?.type === 'group') {
-             const chatId = activeConversation.chat.id;
-             const chat = groupChats.find(g => g.id === chatId);
-             if (chat && markAsRead(chat.messages)) {
-                setGroupChats(prev => prev.map(g => g.id === chatId ? {...chat} : g));
-             }
-        }
-    }, [activeConversation, user, allMessages, groupChats, setAllMessages, setGroupChats, messagesLoading]);
+    }, [user, messagesLoading, groupsLoading]);
 
     useEffect(() => {
         const targetMemberString = localStorage.getItem('messageTarget');

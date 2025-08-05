@@ -29,6 +29,19 @@ export default function AttendancePage() {
   const { toast } = useToast();
   const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (canEditContent) {
+      const eventsWithNewAttendees = events.filter(e => e.attendees && e.attendees.length > (e.lastViewedAttendees || 0));
+      if (eventsWithNewAttendees.length > 0) {
+        const updatedEvents = events.map(e => ({
+          ...e,
+          lastViewedAttendees: e.attendees?.length || 0,
+        }));
+        setEvents(updatedEvents);
+      }
+    }
+  }, [events, canEditContent, setEvents]);
+
   const form = useForm<z.infer<typeof checkInFormSchema>>({
     resolver: zodResolver(checkInFormSchema),
     defaultValues: { code: "" },

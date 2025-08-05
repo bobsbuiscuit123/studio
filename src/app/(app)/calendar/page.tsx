@@ -59,6 +59,11 @@ export default function CalendarPage() {
   
   useEffect(() => {
     setDate(new Date());
+    // Mark all events as read
+    if (events && events.some(e => !e.read)) {
+        const updatedEvents = events.map(e => ({...e, read: true }));
+        setEvents(updatedEvents);
+    }
   }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -104,6 +109,7 @@ export default function CalendarPage() {
         description: result.description,
         date: new Date(result.date),
         location: result.location,
+        read: false,
       };
       setEvents([...events, newEvent]);
       toast({ title: "Event added successfully!" });

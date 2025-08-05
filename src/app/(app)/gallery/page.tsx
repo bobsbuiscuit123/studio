@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -47,6 +47,14 @@ export default function GalleryPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Mark all approved images as read
+    if (images && images.some(i => i.status === 'approved' && !i.read)) {
+        const updatedImages = images.map(i => i.status === 'approved' ? { ...i, read: true } : i);
+        setImages(updatedImages);
+    }
+  }, [images, setImages]);
 
   const form = useForm<z.infer<typeof uploadFormSchema>>({
     resolver: zodResolver(uploadFormSchema),
@@ -98,6 +106,7 @@ export default function GalleryPage() {
       likes: 0,
       liked: false,
       status: newStatus,
+      read: !canEditContent, // Mark as read for the uploader
     }));
     
 
@@ -146,7 +155,7 @@ export default function GalleryPage() {
   const handleApproval = (imageId: number, newStatus: 'approved' | 'rejected') => {
     if (newStatus === 'approved') {
       const updatedImages = images.map(img => 
-        img.id === imageId ? { ...img, status: 'approved' } : img
+        img.id === imageId ? { ...img, status: 'approved', read: false } : img // Mark as unread for others
       );
       setImages(updatedImages);
       toast({ title: "Image approved!" });

@@ -201,3 +201,49 @@ export function useCurrentUserRole() {
 
     return { role, canEditContent, canManageRoles, loading };
 }
+
+export function useNotifications() {
+    const { data: announcements, loading: announcementsLoading } = useAnnouncements();
+    const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+    const { data: allMessages, loading: messagesLoading } = useMessages();
+    const { data: groupChats, loading: groupsLoading } = useGroupChats();
+    const { data: events, loading: eventsLoading } = useEvents();
+    const { data: galleryImages, loading: galleryImagesLoading } = useGalleryImages();
+    const { user, loading: userLoading } = useCurrentUser();
+
+    const [unread, setUnread] = useState({
+        announcements: false,
+        social: false,
+        messages: false,
+        calendar: false,
+        gallery: false,
+        attendance: false,
+    });
+
+    useEffect(() => {
+        if (userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading) return;
+
+        const hasUnreadAnnouncements = announcements.some(a => !a.read);
+        const hasUnreadSocials = socialPosts.some(p => !p.read);
+        
+        const unreadDms = Object.values(allMessages || {}).flat().some(m => m.readBy && !m.readBy.includes(user!.email) && m.sender !== user!.email);
+        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user!.email) && m.sender !== user!.email));
+        const hasUnreadMessages = unreadDms || unreadGroups;
+        
+        const hasUnreadEvents = events.some(e => !e.read);
+        const hasUnreadGallery = galleryImages.some(i => i.status === 'approved' && !i.read);
+        const hasUnreadAttendance = events.some(e => e.attendees && e.attendees.length > (e.lastViewedAttendees || 0));
+
+        setUnread({
+            announcements: hasUnreadAnnouncements,
+            social: hasUnreadSocials,
+            messages: hasUnreadMessages,
+            calendar: hasUnreadEvents,
+            gallery: hasUnreadGallery,
+            attendance: hasUnreadAttendance,
+        });
+
+    }, [announcements, socialPosts, allMessages, groupChats, events, galleryImages, user, announcementsLoading, socialPostsLoading, messagesLoading, groupsLoading, eventsLoading, galleryImagesLoading, userLoading]);
+
+    return { unread };
+}

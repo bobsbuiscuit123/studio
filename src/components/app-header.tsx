@@ -33,7 +33,7 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useNotifications } from "@/lib/data-hooks";
 import type { User as UserType } from "@/lib/mock-data";
 
 
@@ -99,16 +99,9 @@ export function AppHeader() {
   const title = pageTitles[pathname] || "ClubHub";
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const { data: announcements, loading: announcementsLoading } = useAnnouncements();
-  const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupsLoading } = useGroupChats();
-
+  const { unread } = useNotifications();
   const router = useRouter();
   
-  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
-  const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
-  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
 
@@ -122,26 +115,6 @@ export function AppHeader() {
       }
     }
   }, []);
-  
-  useEffect(() => {
-    if (!announcementsLoading) {
-      setHasUnreadAnnouncements(announcements.some(a => !a.read));
-    }
-  }, [announcements, announcementsLoading]);
-
-  useEffect(() => {
-    if (!socialPostsLoading) {
-      setHasUnreadSocials(socialPosts.some(p => !p.read));
-    }
-  }, [socialPosts, socialPostsLoading]);
-
-  useEffect(() => {
-    if (!messagesLoading && !groupsLoading && user && allMessages) {
-        const unreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
-        setHasUnreadMessages(unreadDms || unreadGroups);
-    }
-  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
   
   const handleLogout = () => {
     clearUser();
@@ -191,11 +164,7 @@ export function AppHeader() {
             </Link>
             <AppSidebarNav 
               role={role || ''} 
-              notifications={{
-                announcements: hasUnreadAnnouncements,
-                social: hasUnreadSocials,
-                messages: hasUnreadMessages,
-              }}
+              notifications={unread}
             />
           </nav>
         </SheetContent>

@@ -4,41 +4,11 @@
 import Link from "next/link";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole, useCurrentUser, useAnnouncements, useSocialPosts, useMessages, useGroupChats } from "@/lib/data-hooks";
-import { useEffect, useState } from "react";
+import { useCurrentUserRole, useNotifications } from "@/lib/data-hooks";
 
 export function AppSidebar() {
   const { role } = useCurrentUserRole();
-  const { user } = useCurrentUser();
-  const { data: announcements, loading: announcementsLoading } = useAnnouncements();
-  const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupsLoading } = useGroupChats();
-  
-  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
-  const [hasUnreadSocials, setHasUnreadSocials] = useState(false);
-  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
-
-  useEffect(() => {
-    if (!announcementsLoading) {
-      setHasUnreadAnnouncements(announcements.some(a => !a.read));
-    }
-  }, [announcements, announcementsLoading]);
-
-  useEffect(() => {
-    if (!socialPostsLoading) {
-      setHasUnreadSocials(socialPosts.some(p => !p.read));
-    }
-  }, [socialPosts, socialPostsLoading]);
-
-  useEffect(() => {
-    if (!messagesLoading && !groupsLoading && user && allMessages) {
-        const unreadDms = Object.values(allMessages).flat().some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email);
-        const unreadGroups = groupChats.some(chat => chat.messages.some(m => m.readBy && !m.readBy.includes(user.email) && m.sender !== user.email));
-        setHasUnreadMessages(unreadDms || unreadGroups);
-    }
-  }, [allMessages, groupChats, user, messagesLoading, groupsLoading]);
-
+  const { unread } = useNotifications();
 
   return (
     <div className="hidden border-r bg-muted/40 md:block">
@@ -53,11 +23,7 @@ export function AppSidebar() {
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             <AppSidebarNav 
               role={role || ''} 
-              notifications={{
-                announcements: hasUnreadAnnouncements,
-                social: hasUnreadSocials,
-                messages: hasUnreadMessages,
-              }}
+              notifications={unread}
             />
           </nav>
         </div>

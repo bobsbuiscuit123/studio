@@ -49,14 +49,13 @@ const prompt = ai.definePrompt({
   User Prompt: {{{prompt}}}
 
   {{#if photoDataUris}}
-  You have been provided with photos for the post.
-  The output 'images' field MUST contain the provided photoDataUris.
+  You have been provided with photos for the post. The output 'images' field MUST contain the provided photoDataUris.
   Create an engaging image caption to go along with these photos.
   {{#each photoDataUris}}
     {{media url=this}}
   {{/each}}
   {{else}}
-  No photos were provided. The 'images' output field must be an empty array or omitted. Do not generate an image caption.
+  No photos were provided. The 'images' output field MUST be an empty array or omitted entirely. Do not generate an image caption.
   {{/if}}
   `,
 });

@@ -72,7 +72,7 @@ const generateSocialMediaPostFlow = ai.defineFlow(
     if (!output) {
       throw new Error("Could not generate social media post.");
     }
-    // Ensure images are passed through if provided
+    // Ensure images are passed through if provided, otherwise ensure it's an empty array.
     if (input.photoDataUris && input.photoDataUris.length > 0) {
       output.images = input.photoDataUris;
     } else {

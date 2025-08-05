@@ -11,57 +11,68 @@ function useClubData<T>(key: string, initialData: T) {
   const [loading, setLoading] = useState(true);
   const [clubId, setClubId] = useState<string | null>(null);
 
+  const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
+
   useEffect(() => {
     const id = localStorage.getItem('selectedClubId');
     setClubId(id);
   }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (clubId) {
-      const clubDataKey = `club_${clubId}`;
+  
+  const loadData = useCallback(() => {
+    if (clubDataKey) {
       try {
         const storedClubData = localStorage.getItem(clubDataKey);
-        if (isMounted) {
-          if (storedClubData) {
-            const parsedData = JSON.parse(storedClubData);
-            let finalData = parsedData[key] || initialData;
-            
-            // Data migration for presentations to add slide IDs
-            if (key === 'presentations' && Array.isArray(finalData)) {
-              finalData = finalData.map(p => ({
-                ...p,
-                slides: p.slides.map((s, index) => ({
-                  ...s,
-                  id: s.id || `${p.id}-${index}`
-                }))
+        if (storedClubData) {
+          const parsedData = JSON.parse(storedClubData);
+          let finalData = parsedData[key] || initialData;
+          
+          if (key === 'presentations' && Array.isArray(finalData)) {
+            finalData = finalData.map(p => ({
+              ...p,
+              slides: p.slides.map((s, index) => ({
+                ...s,
+                id: s.id || `${p.id}-${index}`
+              }))
+            })) as T;
+          } else if (key === 'events' && Array.isArray(finalData)) {
+               finalData = finalData.map((event: any) => ({
+                  ...event,
+                  date: new Date(event.date),
               })) as T;
-            } else if (key === 'events' && Array.isArray(finalData)) {
-                 finalData = finalData.map((event: any) => ({
-                    ...event,
-                    date: new Date(event.date),
-                })) as T;
-            }
-            setData(finalData);
-
-          } else {
-             setData(initialData);
           }
+          setData(finalData);
+
+        } else {
+           setData(initialData);
         }
       } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        if (isMounted) setData(initialData);
+        setData(initialData);
       }
-      if (isMounted) setLoading(false);
+      setLoading(false);
     } else if (clubId === null) {
-      // Handles the case where there is no selected club
-      if (isMounted) setLoading(false);
+      setLoading(false);
     }
-    return () => { isMounted = false; };
-  }, [clubId, key]);
+  }, [clubDataKey, key, initialData]);
+
+  useEffect(() => {
+    loadData();
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === clubDataKey && event.newValue) {
+        loadData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [clubId, clubDataKey, loadData]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (!clubId) return;
+    if (!clubDataKey) return;
 
     setData(prevData => {
         const valueToStore = typeof newData === 'function'
@@ -69,7 +80,6 @@ function useClubData<T>(key: string, initialData: T) {
             : newData;
 
         try {
-            const clubDataKey = `club_${clubId}`;
             const storedClubData = localStorage.getItem(clubDataKey);
             const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
     
@@ -85,7 +95,7 @@ function useClubData<T>(key: string, initialData: T) {
 
         return valueToStore;
     });
-  }, [clubId, key]);
+  }, [clubDataKey, key]);
 
   return { data, loading, updateData, clubId };
 }

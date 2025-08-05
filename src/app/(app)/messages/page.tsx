@@ -115,7 +115,7 @@ function MessagesContent({
       senderName: user.name,
       text: message,
       timestamp: new Date().toISOString(),
-      readBy: [],
+      readBy: [user.email],
     };
     
     onSendMessage(newMessage);

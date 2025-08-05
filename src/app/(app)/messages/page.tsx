@@ -184,6 +184,24 @@ export default function MessagesPage() {
         return `hsl(${hue}, 50%, 70%)`;
     };
     
+    const getLastMessageTimestamp = (conversation: Conversation): string => {
+        if (!user || !allMessages) return '1970-01-01T00:00:00.000Z'; // old date for conversations with no messages
+
+        let messages: Message[] = [];
+        if (conversation.type === 'dm') {
+            const conversationId = getConversationId(user.email, conversation.partner.email);
+            messages = allMessages[conversationId] || [];
+        } else { // group
+            messages = conversation.chat.messages || [];
+        }
+
+        if (messages.length === 0) {
+            return '1970-01-01T00:00:00.000Z';
+        }
+
+        return messages[messages.length - 1].timestamp;
+    };
+
     const getUnreadCount = (conversation: Conversation): number => {
         if (!user || !allMessages) return 0;
         if (conversation.type === 'dm') {
@@ -207,6 +225,10 @@ export default function MessagesPage() {
         return index === firstIndex;
       }
       return true;
+    }).sort((a, b) => {
+        const timestampA = new Date(getLastMessageTimestamp(a)).getTime();
+        const timestampB = new Date(getLastMessageTimestamp(b)).getTime();
+        return timestampB - timestampA;
     });
 
     const activeMessages = (() => {

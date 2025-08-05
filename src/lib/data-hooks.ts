@@ -86,25 +86,8 @@ function useClubData<T>(key: string, initialData: T) {
             const clubDataKey = `club_${clubId}`;
             const storedClubData = localStorage.getItem(clubDataKey);
             const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-            
-            let dataToSave = valueToStore;
-            if (key === 'announcements' && Array.isArray(valueToStore)) {
-                dataToSave = valueToStore.map((item: any) => {
-                    const safeItem = { ...item };
-                    if (safeItem.slides) safeItem.slides = 'placeholder';
-                    if (safeItem.attachments) safeItem.attachments = 'placeholder';
-                    return safeItem;
-                }) as T;
-            } else if ((key === 'socialPosts' || key === 'galleryImages') && Array.isArray(valueToStore)) {
-                 dataToSave = valueToStore.map((item: any) => {
-                    const safeItem = { ...item };
-                    if (safeItem.src) safeItem.src = 'placeholder';
-                    if (safeItem.images) safeItem.images = [];
-                    return safeItem;
-                 }) as T;
-            }
     
-            parsedData[key] = dataToSave;
+            parsedData[key] = valueToStore;
             localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
 
         } catch (error) {

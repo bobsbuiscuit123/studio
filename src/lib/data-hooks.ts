@@ -28,7 +28,7 @@ function useClubData<T>(key: string, initialData: T) {
             let finalData = parsedData[key] || initialData;
             
             // Data migration for presentations to add slide IDs
-            if (key === 'presentations' && finalData) {
+            if (key === 'presentations' && Array.isArray(finalData)) {
               const presentations = finalData as Presentation[];
               finalData = presentations.map(p => ({
                 ...p,
@@ -60,83 +60,99 @@ function useClubData<T>(key: string, initialData: T) {
       if (isMounted) setLoading(false);
     }
     return () => { isMounted = false; };
-  }, [clubId, key, initialData]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clubId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubId) return;
 
     try {
         const clubDataKey = `club_${clubId}`;
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
         
         let valueToStore: T;
         if (typeof newData === 'function') {
             const updater = newData as (prevData: T) => T;
-            const currentData = data;
-            valueToStore = updater(currentData);
+            // Pass a function to setData to get the latest state
+            setData(prevData => {
+                valueToStore = updater(prevData);
+                 try {
+                    const storedClubData = localStorage.getItem(clubDataKey);
+                    const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+                    let dataToSave = valueToStore;
+                    if (key === 'events' && Array.isArray(valueToStore)) {
+                        dataToSave = valueToStore.map((event: any) => ({
+                            ...event,
+                            date: event.date instanceof Date ? event.date.toISOString() : event.date
+                        })) as T;
+                    }
+                    parsedData[key] = dataToSave;
+                    localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+                } catch (e) {
+                    console.error("Error during state update and save:", e);
+                }
+                return valueToStore;
+            });
         } else {
             valueToStore = newData;
+            setData(valueToStore);
+            const storedClubData = localStorage.getItem(clubDataKey);
+            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+            parsedData[key] = valueToStore;
+            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
         }
-        
-        setData(valueToStore);
-        
-        let dataToSave = valueToStore;
-        if (key === 'events' && Array.isArray(valueToStore)) {
-             dataToSave = valueToStore.map((event: any) => ({
-                ...event,
-                date: event.date instanceof Date ? event.date.toISOString() : event.date
-            })) as T;
-        }
-
-        parsedData[key] = dataToSave;
-        localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
 
     } catch (error) {
         console.error(`Error writing ${key} to localStorage`, error);
     }
-  }, [clubId, key, data, initialData]);
+  }, [clubId, key]);
 
-  const memoizedData = useMemo(() => data, [data]);
-
-  return { data: memoizedData, loading, updateData, clubId };
+  return { data, loading, updateData, clubId };
 }
 
 export function useAnnouncements() {
-  return useClubData<Announcement[]>('announcements', []);
+  const initialData = useMemo(() => [], []);
+  return useClubData<Announcement[]>('announcements', initialData);
 }
 
 export function useEvents() {
-    return useClubData<ClubEvent[]>('events', []);
+    const initialData = useMemo(() => [], []);
+    return useClubData<ClubEvent[]>('events', initialData);
 }
 
 
 export function useMembers() {
-  return useClubData<Member[]>('members', []);
+  const initialData = useMemo(() => [], []);
+  return useClubData<Member[]>('members', initialData);
 }
 
 export function useSocialPosts() {
-  return useClubData<SocialPost[]>('socialPosts', []);
+  const initialData = useMemo(() => [], []);
+  return useClubData<SocialPost[]>('socialPosts', initialData);
 }
 
 export function useTransactions() {
-  return useClubData<Transaction[]>('transactions', []);
+  const initialData = useMemo(() => [], []);
+  return useClubData<Transaction[]>('transactions', initialData);
 }
 
 export function usePresentations() {
-    return useClubData<Presentation[]>('presentations', []);
+    const initialData = useMemo(() => [], []);
+    return useClubData<Presentation[]>('presentations', initialData);
 }
 
 export function useGalleryImages() {
-    return useClubData<GalleryImage[]>('galleryImages', []);
+    const initialData = useMemo(() => [], []);
+    return useClubData<GalleryImage[]>('galleryImages', initialData);
 }
 
 export function useMessages() {
-    return useClubData<{[key: string]: Message[]}>('messages', {});
+    const initialData = useMemo(() => ({}), []);
+    return useClubData<{[key: string]: Message[]}>('messages', initialData);
 }
 
 export function useGroupChats() {
-    return useClubData<GroupChat[]>('groupChats', []);
+    const initialData = useMemo(() => [], []);
+    return useClubData<GroupChat[]>('groupChats', initialData);
 }
 
 

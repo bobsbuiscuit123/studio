@@ -102,7 +102,7 @@ export default function CalendarPage() {
         location: result.location,
         read: false,
       };
-      setEvents([...events, newEvent]);
+      setEvents(prevEvents => [...prevEvents, newEvent]);
       toast({ title: "Event added successfully!" });
       form.reset();
     } catch (error) {

@@ -93,14 +93,15 @@ export function useEvents() {
     })), [data]);
 
     const updateEventsWithStrings = useCallback((newEvents: any[] | ((prevEvents: any[]) => any[])) => {
-        const valueToStore = newEvents instanceof Function ? newEvents(eventsWithDates) : newEvents;
+        const valueToStore = newEvents instanceof Function 
+            ? (prevEventsWithDates: any[]) => {
+                const updatedEvents = newEvents(prevEventsWithDates);
+                return updatedEvents.map(event => ({...event, date: event.date.toISOString()}));
+            }
+            : newEvents.map(event => ({ ...event, date: event.date.toISOString() }));
         
-        const eventsWithStrings = valueToStore.map(event => ({
-            ...event,
-            date: event.date.toISOString(),
-        }));
-        updateData(eventsWithStrings as any);
-    }, [updateData, eventsWithDates]);
+        updateData(valueToStore as any);
+    }, [updateData]);
     
     return { data: eventsWithDates, loading, updateData: updateEventsWithStrings, clubId };
 }

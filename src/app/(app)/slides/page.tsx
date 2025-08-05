@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from "react";
-import { useForm } from "react";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Presentation, Download, Loader2, Copy, Share2, Eye, Trash2, Pencil } from "lucide-react";
@@ -139,7 +139,7 @@ export default function SlidesPage() {
   };
 
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
     setIsLoading(true);
     setActivePresentation(null);
     setGeneratedAnnouncement(null);

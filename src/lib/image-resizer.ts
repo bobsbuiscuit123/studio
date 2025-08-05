@@ -2,9 +2,6 @@
 import imageCompression from 'browser-image-compression';
 
 export async function resizeImage(file: File): Promise<string> {
-  // This function is no longer used to generate data URLs for storage,
-  // but it can be kept for other potential uses, like creating thumbnails.
-  // For now, it's unused in the main image upload flow to prevent storage issues.
   console.log(`Original file size: ${file.size / 1024 / 1024} MB`);
   const options = {
     maxSizeMB: 0.1, // Max file size in MB
@@ -30,5 +27,3 @@ export async function resizeImage(file: File): Promise<string> {
     });
   }
 }
-
-    

@@ -92,10 +92,27 @@ export default function GalleryPage() {
             values.images.map(file => resizeImage(file))
         );
 
+        // Validate that all returned sources are valid data URIs
+        const validImageSrcs = compressedImageSrcs.filter(src => typeof src === 'string' && src.startsWith('data:image/'));
+
+        if (validImageSrcs.length !== compressedImageSrcs.length) {
+            toast({
+                title: "Some images failed to process",
+                description: "Not all images could be processed correctly. Please try them again.",
+                variant: "destructive"
+            });
+        }
+        
+        if (validImageSrcs.length === 0) {
+            toast({ title: "Upload Failed", description: "No valid images could be processed.", variant: "destructive" });
+            setIsUploading(false);
+            return;
+        }
+
         const newStatus = canEditContent ? 'approved' : 'pending';
         const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
-        const newImages: GalleryImage[] = compressedImageSrcs.map((imgSrc, index) => ({
+        const newImages: GalleryImage[] = validImageSrcs.map((imgSrc, index) => ({
             id: lastId + index + 1,
             src: imgSrc,
             alt: values.alt || "User uploaded image",
@@ -112,7 +129,7 @@ export default function GalleryPage() {
 
         toast({ 
             title: newStatus === 'approved' ? "Images displayed successfully!" : "Images submitted for approval!",
-            description: newStatus === 'pending' ? "An admin will review your submission shortly." : undefined,
+            description: newStatus === 'pending' ? "An admin will review your submission shortly." : `${validImageSrcs.length} images were uploaded.`,
             duration: 7000
         });
 

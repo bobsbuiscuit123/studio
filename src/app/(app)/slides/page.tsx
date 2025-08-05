@@ -139,7 +139,7 @@ export default function SlidesPage() {
   };
 
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>>) => {
+  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setActivePresentation(null);
     setGeneratedAnnouncement(null);
@@ -529,5 +529,3 @@ export default function SlidesPage() {
     </>
   );
 }
-
-    

@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { resizeImage } from "@/lib/image-resizer";
 
-const MAX_SOCIAL_POSTS = 10;
+const MAX_SOCIAL_POSTS = 5;
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),

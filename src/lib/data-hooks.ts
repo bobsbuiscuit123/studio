@@ -85,6 +85,12 @@ function useClubData<T>(key: string, initialData: T) {
     
             parsedData[key] = valueToStore;
             localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
+            
+            // Dispatch a storage event to notify other tabs
+            window.dispatchEvent(new StorageEvent('storage', {
+                key: clubDataKey,
+                newValue: JSON.stringify(parsedData),
+            }));
 
         } catch (error) {
             console.error(`Error writing ${key} to localStorage`, error);

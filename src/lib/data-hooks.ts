@@ -19,41 +19,42 @@ function useClubData<T>(key: string, initialData: T) {
   }, []);
   
   const loadData = useCallback(() => {
-    if (clubDataKey) {
-      try {
+    if (!clubDataKey) {
+        if (clubId === null) {
+            setLoading(false);
+        }
+        return;
+    }
+    try {
         const storedClubData = localStorage.getItem(clubDataKey);
         if (storedClubData) {
-          const parsedData = JSON.parse(storedClubData);
-          let finalData = parsedData[key] || initialData;
-          
-          if (key === 'presentations' && Array.isArray(finalData)) {
-            finalData = finalData.map(p => ({
-              ...p,
-              slides: p.slides.map((s, index) => ({
-                ...s,
-                id: s.id || `${p.id}-${index}`
-              }))
-            })) as T;
-          } else if (key === 'events' && Array.isArray(finalData)) {
-               finalData = finalData.map((event: any) => ({
-                  ...event,
-                  date: new Date(event.date),
-              })) as T;
-          }
-          setData(finalData);
-
+            const parsedData = JSON.parse(storedClubData);
+            let finalData = parsedData[key] || initialData;
+            
+            if (key === 'presentations' && Array.isArray(finalData)) {
+                finalData = finalData.map(p => ({
+                    ...p,
+                    slides: p.slides.map((s, index) => ({
+                        ...s,
+                        id: s.id || `${p.id}-${index}`
+                    }))
+                })) as T;
+            } else if (key === 'events' && Array.isArray(finalData)) {
+                 finalData = finalData.map((event: any) => ({
+                    ...event,
+                    date: new Date(event.date),
+                })) as T;
+            }
+            setData(finalData);
         } else {
            setData(initialData);
         }
-      } catch (error) {
+    } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
         setData(initialData);
-      }
-      setLoading(false);
-    } else if (clubId === null) {
-      setLoading(false);
     }
-  }, [clubDataKey, key, initialData]);
+    setLoading(false);
+  }, [clubDataKey, key, initialData, clubId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -173,9 +174,12 @@ export function useCurrentUser() {
   }, []);
 
   const saveUser = (newUser: Partial<User>) => {
-    const updatedUser = { ...user, ...newUser } as User;
-    setUser(updatedUser);
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+    let updatedUser: User;
+    setUser(currentUser => {
+        updatedUser = { ...(currentUser || {}), ...newUser } as User;
+        localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+        return updatedUser;
+    });
   };
   
   const clearUser = () => {

@@ -1,4 +1,5 @@
 
+
 "use client";
 import { useEffect, useState } from "react";
 import {
@@ -61,7 +62,9 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
   }, [user]);
 
   const handleSave = () => {
-    onSave(name, email);
+    if (user) {
+      onSave(name, email);
+    }
     onOpenChange(false);
   };
 
@@ -81,7 +84,7 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} readOnly disabled/>
           </div>
         </div>
         <DialogFooter>

@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -70,7 +71,7 @@ type Club = {
   id: string;
   name: string;
   joinCode: string;
-  logo?: string; // Make logo optional here as it will be loaded dynamically
+  logo?: string;
 };
 
 function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
@@ -314,13 +315,12 @@ export default function HomePage() {
         }
     }
 
-    const newClub: Club = {
+    const newClub: Omit<Club, 'logo'> = {
       id: Date.now().toString(),
       name: values.name,
       joinCode: newJoinCode,
     };
     
-    // Don't store logo in the main 'clubs' list
     const updatedClubs = [...allClubs, newClub];
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
@@ -334,7 +334,6 @@ export default function HomePage() {
         avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
     }
 
-    // Store logo inside the individual club's data
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify({
       logo: logoDataUrl,
       members: [firstMember],
@@ -400,9 +399,7 @@ export default function HomePage() {
   const handleSelectClub = (clubId: string) => {
     const clubDataString = localStorage.getItem(`club_${clubId}`);
     if (clubDataString) {
-        const clubData = JSON.parse(clubDataString);
         localStorage.setItem('selectedClubId', clubId);
-        localStorage.setItem('selectedClubLogo', clubData.logo || `https://placehold.co/100x100.png?text=C`);
     }
     router.push('/dashboard');
   };
@@ -462,15 +459,14 @@ export default function HomePage() {
 
   const displayedClubs = clubs.filter(club => userClubIds.has(club.id));
   
-  // Dynamically load logos for displayed clubs
   const clubsWithLogos = displayedClubs.map(club => {
-      if (!isClient) return club;
+      if (!isClient) return { ...club, logo: '' };
       const clubDataString = localStorage.getItem(`club_${club.id}`);
       if (clubDataString) {
           const clubData = JSON.parse(clubDataString);
           return { ...club, logo: clubData.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
       }
-      return club;
+      return { ...club, logo: `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
   });
 
   return (

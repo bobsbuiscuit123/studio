@@ -56,10 +56,12 @@ function useClubData<T>(key: string, initialData: T) {
   }, [clubDataKey, key, initialData]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
     loadData();
 
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === clubDataKey && event.newValue) {
+      if (event.key === clubDataKey) {
         loadData();
       }
     };

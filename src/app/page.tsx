@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { PlusCircle, ArrowRight, Trash2, LogIn, UserPlus } from 'lucide-react';
+import { PlusCircle, ArrowRight, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -69,8 +69,8 @@ const joinClubFormSchema = z.object({
 type Club = {
   id: string;
   name: string;
-  logo: string;
   joinCode: string;
+  logo?: string; // Make logo optional here as it will be loaded dynamically
 };
 
 function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
@@ -317,13 +317,15 @@ export default function HomePage() {
     const newClub: Club = {
       id: Date.now().toString(),
       name: values.name,
-      logo: values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
       joinCode: newJoinCode,
     };
-
+    
+    // Don't store logo in the main 'clubs' list
     const updatedClubs = [...allClubs, newClub];
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
+    
+    const logoDataUrl = values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`;
 
     const firstMember: Member = {
         name: user.name,
@@ -332,14 +334,18 @@ export default function HomePage() {
         avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
     }
 
+    // Store logo inside the individual club's data
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify({
+      logo: logoDataUrl,
       members: [firstMember],
       events: [],
       announcements: [],
       socialPosts: [],
       transactions: [],
-      messages: [],
+      messages: {},
+      groupChats: [],
     }));
+
     toast({ title: 'Club created successfully!', description: `Your join code is ${newClub.joinCode}` });
     clubForm.reset();
     setPreviewImage(null);
@@ -373,7 +379,6 @@ export default function HomePage() {
     if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
         toast({ title: "Already a Member", description: `You are already a member of ${clubToJoin.name}.`, variant: "default" });
         handleSelectClub(clubToJoin.id);
-        router.push('/dashboard');
         return;
     }
 
@@ -390,15 +395,22 @@ export default function HomePage() {
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
     handleSelectClub(clubToJoin.id);
-    router.push('/dashboard');
   };
 
   const handleSelectClub = (clubId: string) => {
-    localStorage.setItem('selectedClubId', clubId);
+    const clubDataString = localStorage.getItem(`club_${clubId}`);
+    if (clubDataString) {
+        const clubData = JSON.parse(clubDataString);
+        localStorage.setItem('selectedClubId', clubId);
+        localStorage.setItem('selectedClubLogo', clubData.logo || `https://placehold.co/100x100.png?text=C`);
+    }
+    router.push('/dashboard');
   };
 
   const handleLogout = () => {
     clearUser();
+    localStorage.removeItem('selectedClubId');
+    localStorage.removeItem('selectedClubLogo');
   }
   
   if (!isClient || userLoading) {
@@ -432,7 +444,7 @@ export default function HomePage() {
     );
   }
   
-  const userClubIds = new Set();
+  const userClubIds = new Set<string>();
   if (isClient) {
     Object.keys(localStorage).forEach(key => {
         if (key.startsWith('club_')) {
@@ -449,6 +461,17 @@ export default function HomePage() {
   }
 
   const displayedClubs = clubs.filter(club => userClubIds.has(club.id));
+  
+  // Dynamically load logos for displayed clubs
+  const clubsWithLogos = displayedClubs.map(club => {
+      if (!isClient) return club;
+      const clubDataString = localStorage.getItem(`club_${club.id}`);
+      if (clubDataString) {
+          const clubData = JSON.parse(clubDataString);
+          return { ...club, logo: clubData.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
+      }
+      return club;
+  });
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
@@ -528,23 +551,21 @@ export default function HomePage() {
           </div>
         </div>
 
-        {displayedClubs.length > 0 ? (
+        {clubsWithLogos.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {displayedClubs.map((club) => (
+            {clubsWithLogos.map((club) => (
               <Card key={club.id}>
                 <CardHeader className="flex-row items-center gap-4">
-                  <Image src={club.logo} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg aspect-square object-cover" />
+                  <Image src={club.logo || ''} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg aspect-square object-cover" />
                   <div>
                     <CardTitle>{club.name}</CardTitle>
                     <CardDescription>Manage this club</CardDescription>
                   </div>
                 </CardHeader>
                 <CardFooter>
-                  <Link href="/dashboard" className="w-full" onClick={() => handleSelectClub(club.id)}>
-                    <Button className="w-full">
+                  <Button className="w-full" onClick={() => handleSelectClub(club.id)}>
                       Open Dashboard <ArrowRight className="ml-2" />
-                    </Button>
-                  </Link>
+                  </Button>
                 </CardFooter>
               </Card>
             ))}
@@ -564,5 +585,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-    

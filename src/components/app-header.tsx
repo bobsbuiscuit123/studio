@@ -119,6 +119,7 @@ export function AppHeader() {
   const handleLogout = () => {
     clearUser();
     localStorage.removeItem('selectedClubId');
+    localStorage.removeItem('selectedClubLogo');
     router.push('/');
   }
 

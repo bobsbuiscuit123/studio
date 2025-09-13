@@ -10,7 +10,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import {
   generateClubAnnouncement,
   GenerateClubAnnouncementInput,
@@ -94,7 +94,7 @@ const assistantPrompt = ai.definePrompt({
   input: { schema: AssistantInputSchema },
   output: { schema: AssistantOutputSchema },
   tools: [announcementTool, slidesTool, socialPostTool, calendarTool],
-  prompt: `You are a helpful AI assistant for a school club. Your name is Clubhouse AI.
+  prompt: `You are a helpful AI assistant for a school club. Your name is Oasis AI.
   Use the available tools to help the user with their request.
   The user's request is: {{{query}}}
   If you use a tool, summarize the result to the user.

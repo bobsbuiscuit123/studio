@@ -107,7 +107,7 @@ function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User
         <div className="w-full max-w-md">
             <CardHeader>
                 <CardTitle className="text-3xl">Create your Account</CardTitle>
-                <CardDescription>Get started with ClubHub by creating an account.</CardDescription>
+                <CardDescription>Get started with Oasis AI by creating an account.</CardDescription>
             </CardHeader>
             <CardContent>
                 <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-4">
@@ -200,7 +200,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
         <>
          <div className="w-full max-w-md">
              <CardHeader>
-                <CardTitle className="text-3xl">Log In to ClubHub</CardTitle>
+                <CardTitle className="text-3xl">Log In to Oasis AI</CardTitle>
                 <CardDescription>Enter your credentials to access your account.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -416,7 +416,7 @@ export default function HomePage() {
                 <CardHeader className="items-center">
                     <div className="flex justify-center items-center gap-4 mb-2">
                         <Logo className="h-10 w-10 text-primary" />
-                        <CardTitle className="text-4xl">ClubHub</CardTitle>
+                        <CardTitle className="text-4xl">Oasis AI</CardTitle>
                     </div>
                 </CardHeader>
 
@@ -455,7 +455,7 @@ export default function HomePage() {
       <div className="text-center mb-8">
         <div className="flex justify-center items-center gap-4 mb-4">
             <Logo className="h-12 w-12 text-primary" />
-            <h1 className="text-5xl font-bold">ClubHub</h1>
+            <h1 className="text-5xl font-bold">Oasis AI</h1>
         </div>
         <p className="text-muted-foreground text-lg">Your all-in-one club management platform.</p>
          <p className="text-muted-foreground text-md mt-2">Welcome back, {user.name}!</p>

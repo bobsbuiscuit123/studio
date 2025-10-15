@@ -418,7 +418,7 @@ export default function AnnouncementsPage() {
     </Dialog>
 
     <div className="hidden">
-    {printableContent && (
+    {printableContent && Array.isArray(printableContent.slides) && (
             <div id={`print-announcement-${printableContent.id}`} className="print:block">
             {printableContent.slides.map((slide: any, index: number) => (
                 <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">

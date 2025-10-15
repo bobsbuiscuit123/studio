@@ -23,7 +23,7 @@ function useClubData<T>(key: string, initialData: T) {
         if (clubId === null) {
             setLoading(false);
         }
-        return;
+        return initialData; // Return data instead of setting state
     }
     try {
         const storedClubData = localStorage.getItem(clubDataKey);
@@ -31,7 +31,12 @@ function useClubData<T>(key: string, initialData: T) {
             const parsedData = JSON.parse(storedClubData);
             let finalData = parsedData[key] || initialData;
             
-            if (key === 'presentations' && Array.isArray(finalData)) {
+            if (key === 'events' && Array.isArray(finalData)) {
+                 finalData = finalData.map((event: any) => ({
+                    ...event,
+                    date: new Date(event.date),
+                })) as T;
+            } else if (key === 'presentations' && Array.isArray(finalData)) {
                 finalData = finalData.map(p => ({
                     ...p,
                     slides: p.slides.map((s, index) => ({
@@ -39,32 +44,29 @@ function useClubData<T>(key: string, initialData: T) {
                         id: s.id || `${p.id}-${index}`
                     }))
                 })) as T;
-            } else if (key === 'events' && Array.isArray(finalData)) {
-                 finalData = finalData.map((event: any) => ({
-                    ...event,
-                    date: new Date(event.date),
-                })) as T;
             }
-            setData(finalData);
+            return finalData;
         } else {
-           setData(initialData);
+           return initialData;
         }
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        setData(initialData);
+        return initialData;
+    } finally {
+        setLoading(false);
     }
-    setLoading(false);
   }, [clubDataKey, key, initialData, clubId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    loadData();
+    // Initial load
+    const loadedData = loadData();
+    setData(loadedData);
 
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === clubDataKey) {
-        loadData();
-      }
+    const handleStorageChange = () => {
+      const freshlyLoadedData = loadData();
+      setData(freshlyLoadedData);
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -89,7 +91,7 @@ function useClubData<T>(key: string, initialData: T) {
             parsedData[key] = valueToStore;
             localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
             
-            // Dispatch a storage event to notify other tabs
+            // Dispatch a storage event to notify other tabs/windows
             window.dispatchEvent(new StorageEvent('storage', {
                 key: clubDataKey,
                 newValue: JSON.stringify(parsedData),

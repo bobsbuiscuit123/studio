@@ -23,7 +23,7 @@ function useClubData<T>(key: string, initialData: T) {
         if (clubId === null) {
             setLoading(false);
         }
-        return initialData; // Return data instead of setting state
+        return;
     }
     try {
         const storedClubData = localStorage.getItem(clubDataKey);
@@ -45,13 +45,13 @@ function useClubData<T>(key: string, initialData: T) {
                     }))
                 })) as T;
             }
-            return finalData;
+            setData(finalData);
         } else {
-           return initialData;
+           setData(initialData);
         }
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        return initialData;
+        setData(initialData);
     } finally {
         setLoading(false);
     }
@@ -60,13 +60,13 @@ function useClubData<T>(key: string, initialData: T) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Initial load
-    const loadedData = loadData();
-    setData(loadedData);
+    loadData();
 
-    const handleStorageChange = () => {
-      const freshlyLoadedData = loadData();
-      setData(freshlyLoadedData);
+    const handleStorageChange = (event: StorageEvent) => {
+      // Only update if the key matches and the change happened in another tab
+      if (event.key === clubDataKey && event.newValue) {
+        loadData();
+      }
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -79,34 +79,34 @@ function useClubData<T>(key: string, initialData: T) {
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey) return;
 
-    setData(prevData => {
-        const valueToStore = typeof newData === 'function'
-            ? (newData as (prevData: T) => T)(prevData)
-            : newData;
+    const valueToStore = typeof newData === 'function'
+        ? (newData as (prevData: T) => T)(data) // Pass current state to the function
+        : newData;
 
-        try {
-            const storedClubData = localStorage.getItem(clubDataKey);
-            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-    
-            parsedData[key] = valueToStore;
-            localStorage.setItem(clubDataKey, JSON.stringify(parsedData));
-            
-            // Dispatch a storage event to notify other tabs/windows
-            window.dispatchEvent(new StorageEvent('storage', {
-                key: clubDataKey,
-                newValue: JSON.stringify(parsedData),
-            }));
+    setData(valueToStore);
 
-        } catch (error) {
-            console.error(`Error writing ${key} to localStorage`, error);
-            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                console.error("Storage quota exceeded. Could not save new data.");
-            }
+    try {
+        const storedClubData = localStorage.getItem(clubDataKey);
+        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+
+        parsedData[key] = valueToStore;
+        const newStorageValue = JSON.stringify(parsedData);
+        localStorage.setItem(clubDataKey, newStorageValue);
+        
+        // Manually dispatch a storage event for other tabs
+        window.dispatchEvent(new StorageEvent('storage', {
+            key: clubDataKey,
+            newValue: newStorageValue,
+            storageArea: localStorage,
+        }));
+
+    } catch (error) {
+        console.error(`Error writing ${key} to localStorage`, error);
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            console.error("Storage quota exceeded. Could not save new data.");
         }
-
-        return valueToStore;
-    });
-  }, [clubDataKey, key]);
+    }
+  }, [clubDataKey, key, data]);
 
   return { data, loading, updateData, clubId };
 }

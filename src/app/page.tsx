@@ -71,7 +71,6 @@ type Club = {
   id: string;
   name: string;
   joinCode: string;
-  logo?: string;
 };
 
 function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
@@ -244,7 +243,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                     <div>
                         <Label htmlFor="email-forgot">Email Address</Label>
                         <Input id="email-forgot" {...forgotPasswordForm.register('email')} placeholder="e.g., alex.j@example.com" />
-                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.formState.errors.email.message}</p>}
+                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.state.errors.email.message}</p>}
                     </div>
                      <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
@@ -315,7 +314,7 @@ export default function HomePage() {
         }
     }
 
-    const newClub: Omit<Club, 'logo'> = {
+    const newClub: Club = {
       id: Date.now().toString(),
       name: values.name,
       joinCode: newJoinCode,
@@ -325,8 +324,6 @@ export default function HomePage() {
     setClubs(updatedClubs);
     localStorage.setItem('clubs', JSON.stringify(updatedClubs));
     
-    const logoDataUrl = values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`;
-
     const firstMember: Member = {
         name: user.name,
         email: user.email,
@@ -334,16 +331,19 @@ export default function HomePage() {
         avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
     }
 
-    localStorage.setItem(`club_${newClub.id}`, JSON.stringify({
-      logo: logoDataUrl,
-      members: [firstMember],
-      events: [],
-      announcements: [],
-      socialPosts: [],
-      transactions: [],
-      messages: {},
-      groupChats: [],
-    }));
+    const newClubData = {
+        logo: values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
+        members: [firstMember],
+        events: [],
+        announcements: [],
+        socialPosts: [],
+        transactions: [],
+        messages: {},
+        groupChats: [],
+        galleryImages: [],
+    };
+
+    localStorage.setItem(`club_${newClub.id}`, JSON.stringify(newClubData));
 
     toast({ title: 'Club created successfully!', description: `Your join code is ${newClub.joinCode}` });
     clubForm.reset();
@@ -351,6 +351,8 @@ export default function HomePage() {
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
+    // Manually trigger a storage event to update club list for the current user
+    window.dispatchEvent(new StorageEvent('storage'));
   };
 
   const handleJoinClub = (values: z.infer<typeof joinClubFormSchema>) => {
@@ -399,7 +401,9 @@ export default function HomePage() {
   const handleSelectClub = (clubId: string) => {
     const clubDataString = localStorage.getItem(`club_${clubId}`);
     if (clubDataString) {
-        localStorage.setItem('selectedClubId', clubId);
+      localStorage.setItem('selectedClubId', clubId);
+      const clubData = JSON.parse(clubDataString);
+      localStorage.setItem('selectedClubLogo', clubData.logo || '');
     }
     router.push('/dashboard');
   };

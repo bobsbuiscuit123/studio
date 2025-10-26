@@ -99,7 +99,7 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
 export function AppHeader() {
   const pathname = usePathname();
   const [clubName, setClubName] = useState("");
-  const title = pageTitles[pathname] || "Oasis AI";
+  const title = pageTitles[pathname] || "ClubHub AI";
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const { unread, markAllAsRead } = useNotifications();
@@ -165,7 +165,7 @@ export function AppHeader() {
                 className="flex items-center gap-2 text-lg font-semibold mb-4"
               >
                 <Logo className="h-6 w-6" />
-                <span>Oasis AI</span>
+                <span>ClubHub AI</span>
               </Link>
               <AppSidebarNav 
                 role={role || ''} 

@@ -1,6 +1,5 @@
 
 
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry } from './mock-data';
 
@@ -59,7 +58,10 @@ function useClubData<T>(key: string, initialData: T) {
         } else {
            finalData = initialData;
         }
-        setData(finalData);
+        // Defer the state update to prevent updates during render
+        queueMicrotask(() => {
+          setData(finalData);
+        });
 
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);

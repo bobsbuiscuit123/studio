@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -288,7 +287,6 @@ export default function CalendarPage() {
         </Card>
       </div>
     </div>
-    {/* Event Details Dialog */}
     {selectedEvent && (
         <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
             <DialogContent>
@@ -324,7 +322,6 @@ export default function CalendarPage() {
             </DialogContent>
         </Dialog>
     )}
-    {/* Edit Event Dialog */}
     {editingEvent && (
         <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
           <DialogContent>
@@ -363,7 +360,7 @@ export default function CalendarPage() {
                       <FormLabel>Location</FormLabel>
                       <FormControl><Input {...field} /></FormControl>
                       <FormMessage />
-                    </Item>
+                    </FormItem>
                   )}
                 />
                  <FormField
@@ -402,3 +399,5 @@ export default function CalendarPage() {
     </>
   );
 }
+
+    

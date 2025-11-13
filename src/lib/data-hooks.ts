@@ -1,7 +1,7 @@
 
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -14,10 +14,10 @@ function useClubData<T>(key: string, initialData: T) {
 
   useEffect(() => {
     // Generate a unique ID for this tab on the client side only
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !tabId) {
        setTabId(Math.random().toString());
     }
-  }, []);
+  }, [tabId]);
 
 
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
@@ -30,7 +30,7 @@ function useClubData<T>(key: string, initialData: T) {
   const loadData = useCallback(() => {
     if (!clubDataKey) {
         if (clubId === null) {
-            queueMicrotask(() => setLoading(false));
+          queueMicrotask(() => setLoading(false));
         }
         return;
     }
@@ -180,6 +180,94 @@ export function useGroupChats() {
 export function usePointEntries() {
   const initialData = useMemo(() => [], []);
   return useClubData<PointEntry[]>('pointEntries', initialData);
+}
+
+function useUserData<T>(key: string, initialData: T) {
+  const [data, setData] = useState<T>(initialData);
+  const [loading, setLoading] = useState(true);
+  const { user, loading: userLoading } = useCurrentUser();
+  const [tabId, setTabId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !tabId) {
+      setTabId(Math.random().toString());
+    }
+  }, [tabId]);
+
+  const userDataKey = useMemo(() => user ? `${key}_${user.email}` : null, [user, key]);
+
+  const loadData = useCallback(() => {
+    if (userLoading || !userDataKey) {
+        if (!userLoading) {
+            queueMicrotask(() => setLoading(false));
+        }
+        return;
+    }
+    try {
+        const storedData = localStorage.getItem(userDataKey);
+        const finalData = storedData ? JSON.parse(storedData) : initialData;
+        queueMicrotask(() => setData(finalData));
+    } catch (error) {
+        console.error(`Error reading ${key} from localStorage for user`, error);
+        queueMicrotask(() => setData(initialData));
+    } finally {
+        queueMicrotask(() => setLoading(false));
+    }
+  }, [userDataKey, initialData, userLoading, key]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !tabId) return;
+    const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
+      if (event.key === userDataKey && event.sourceTabId !== tabId) {
+        loadData();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange as EventListener);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange as EventListener);
+    };
+  }, [userDataKey, loadData, tabId]);
+
+  const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
+    if (!userDataKey || !tabId) return;
+
+    setData(currentData => {
+        const valueToStore = typeof newData === 'function'
+            ? (newData as (prevData: T) => T)(currentData)
+            : newData;
+
+        try {
+            const newStorageValue = JSON.stringify(valueToStore);
+            localStorage.setItem(userDataKey, newStorageValue);
+
+            const event = new StorageEvent('storage', {
+                key: userDataKey,
+                newValue: newStorageValue,
+                storageArea: localStorage,
+            });
+            Object.assign(event, { sourceTabId: tabId });
+            window.dispatchEvent(event);
+        } catch (error) {
+            console.error(`Error writing ${key} to localStorage for user`, error);
+        }
+
+        return valueToStore;
+    });
+  }, [userDataKey, key, tabId]);
+
+  return { data, loading, updateData };
+}
+
+export function useMindMapData() {
+    const initialData = useMemo(() => ({
+        nodes: [{ id: '1', type: 'input', data: { label: 'My Mind Map' }, position: { x: 250, y: 5 } }],
+        edges: [],
+    }), []);
+    return useUserData<MindMapData>('mindmap', initialData);
 }
 
 

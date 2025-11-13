@@ -51,6 +51,7 @@ const pageTitles: { [key: string]: string } = {
   "/points": "Points",
   "/email": "Bulk Email",
   "/messages": "Messages",
+  "/mindmap": "Mind Map",
 };
 
 function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, email: string) => void; }) {

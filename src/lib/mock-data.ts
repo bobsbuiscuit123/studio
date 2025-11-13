@@ -121,3 +121,22 @@ export type GroupChat = {
     members: string[]; // array of member emails
     messages: Message[];
 }
+
+// Mind Map related types
+export type MindMapNode = {
+    id: string;
+    position: { x: number; y: number };
+    data: { label: string };
+    type?: 'input' | 'default' | 'output';
+};
+
+export type MindMapEdge = {
+    id: string;
+    source: string;
+    target: string;
+};
+
+export type MindMapData = {
+    nodes: MindMapNode[];
+    edges: MindMapEdge[];
+};

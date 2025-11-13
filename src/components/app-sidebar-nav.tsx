@@ -17,6 +17,7 @@ import {
   Mail,
   MessageSquare,
   BarChart,
+  Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
@@ -39,6 +40,7 @@ const allNavItems = [
   { href: '/points', icon: BarChart, label: 'Points', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'gallery' as NotificationKey },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/mindmap', icon: Share2, label: 'Mind Map', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/email', icon: Mail, label: 'Email', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['President', 'Admin'], notificationKey: null },
   { href: '/slides', icon: Presentation, label: 'Meeting Slides', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
@@ -50,7 +52,7 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
 
   const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
     // Custom sort order if needed, for now just an example
-    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Mind Map', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 

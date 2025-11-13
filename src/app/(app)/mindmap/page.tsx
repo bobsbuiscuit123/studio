@@ -133,7 +133,7 @@ export default function MindMapPage() {
           fitView
         >
           <Controls />
-          <MiniMap />
+          <MiniMap style={{ height: 80, width: 120 }} />
           <Background gap={12} size={1} />
         </ReactFlow>
       </div>

@@ -10,6 +10,12 @@ function useClubData<T>(key: string, initialData: T) {
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
   const [clubId, setClubId] = useState<string | null>(null);
+  const [tabId, setTabId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Generate a unique ID for this tab on the client side only
+    setTabId(Math.random().toString());
+  }, []);
 
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
 
@@ -37,9 +43,9 @@ function useClubData<T>(key: string, initialData: T) {
                     date: new Date(event.date),
                 })) as T;
             } else if (key === 'presentations' && Array.isArray(finalData)) {
-                finalData = finalData.map(p => ({
+                finalData = finalData.map((p: any) => ({
                     ...p,
-                    slides: p.slides.map((s, index) => ({
+                    slides: p.slides.map((s: any, index: number) => ({
                         ...s,
                         id: s.id || `${p.id}-${index}`
                     }))
@@ -62,22 +68,22 @@ function useClubData<T>(key: string, initialData: T) {
 
     loadData();
 
-    const handleStorageChange = (event: StorageEvent) => {
+    const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
       // Only update if the key matches and the change happened in another tab
-      if (event.key === clubDataKey && event.newValue) {
+      if (event.key === clubDataKey && event.sourceTabId !== tabId) {
         loadData();
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('storage', handleStorageChange as EventListener);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange as EventListener);
     };
-  }, [clubId, clubDataKey, loadData]);
+  }, [clubId, clubDataKey, loadData, tabId]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (!clubDataKey) return;
+    if (!clubDataKey || !tabId) return;
 
     const valueToStore = typeof newData === 'function'
         ? (newData as (prevData: T) => T)(data) // Pass current state to the function
@@ -93,12 +99,16 @@ function useClubData<T>(key: string, initialData: T) {
         const newStorageValue = JSON.stringify(parsedData);
         localStorage.setItem(clubDataKey, newStorageValue);
         
-        // Manually dispatch a storage event for other tabs
-        window.dispatchEvent(new StorageEvent('storage', {
+        const event = new StorageEvent('storage', {
             key: clubDataKey,
             newValue: newStorageValue,
             storageArea: localStorage,
-        }));
+        });
+        // Add custom property
+        Object.assign(event, { sourceTabId: tabId });
+
+        // Manually dispatch a storage event for other tabs
+        window.dispatchEvent(event);
 
     } catch (error) {
         console.error(`Error writing ${key} to localStorage`, error);
@@ -106,7 +116,7 @@ function useClubData<T>(key: string, initialData: T) {
             console.error("Storage quota exceeded. Could not save new data.");
         }
     }
-  }, [clubDataKey, key, data]);
+  }, [clubDataKey, key, data, tabId]);
 
   return { data, loading, updateData, clubId };
 }

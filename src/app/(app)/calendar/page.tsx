@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -13,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Loader2, Pencil, PlusSquare } from "lucide-react";
+import { CalendarDays, Loader2, Pencil, PlusSquare, Award } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -36,6 +37,7 @@ import {
 } from "@/components/ui/accordion"
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { Label } from "@/components/ui/label";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -46,6 +48,7 @@ const editFormSchema = z.object({
     description: z.string().min(10, "Description must be at least 10 characters."),
     location: z.string().min(2, "Location must be at least 2 characters."),
     date: z.string(),
+    points: z.coerce.number().min(0, "Points cannot be negative.").optional(),
 });
 
 export default function CalendarPage() {
@@ -55,7 +58,7 @@ export default function CalendarPage() {
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
-  const { canEditContent } = useCurrentUserRole();
+  const { canManageRoles } = useCurrentUserRole();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,13 +79,14 @@ export default function CalendarPage() {
       description: event.description,
       location: event.location,
       date: event.date.toISOString().slice(0, 16), // Format for datetime-local input
+      points: event.points || 0,
     });
   };
 
   const handleUpdateEvent = (values: z.infer<typeof editFormSchema>) => {
     if (!editingEvent) return;
     const updatedEvents = events.map((event) =>
-      event.id === editingEvent.id ? { ...event, title: values.title, description: values.description, location: values.location, date: new Date(values.date) } : event
+      event.id === editingEvent.id ? { ...event, title: values.title, description: values.description, location: values.location, date: new Date(values.date), points: values.points } : event
     );
     setEvents(updatedEvents);
     toast({ title: "Event updated!" });
@@ -100,12 +104,14 @@ export default function CalendarPage() {
         description: result.description,
         date: new Date(result.date),
         location: result.location,
+        points: 0, // Default points, can be edited
         read: false,
       };
       // Pass a function to setEvents to ensure we're updating the latest state
       setEvents(prevEvents => [...prevEvents, newEvent]);
       toast({ title: "Event added successfully!" });
       form.reset();
+      handleEditClick(newEvent); // Open edit dialog to set points
     } catch (error) {
       console.error(error);
       toast({
@@ -187,7 +193,7 @@ export default function CalendarPage() {
         </Card>
       </div>
       <div className="space-y-4">
-        {canEditContent && (
+        {canManageRoles && (
             <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
@@ -243,7 +249,7 @@ export default function CalendarPage() {
                                 </p>
                                 </div>
                             </AccordionTrigger>
-                            {canEditContent && (
+                            {canManageRoles && (
                                 <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="ml-4 shrink-0">
                                     <Pencil className="h-4 w-4" />
                                 </Button>
@@ -259,6 +265,11 @@ export default function CalendarPage() {
                              <p className="text-sm">
                                <strong>Location:</strong> {event.location}
                              </p>
+                              {event.points && event.points > 0 && (
+                                <p className="text-sm flex items-center gap-2">
+                                  <Award className="h-4 w-4 text-primary" /> <strong>Points:</strong> {event.points}
+                                </p>
+                              )}
                              <Link href={generateGoogleCalendarLink(event)} target="_blank" rel="noopener noreferrer">
                                <Button variant="outline" size="sm">
                                  <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
@@ -292,6 +303,11 @@ export default function CalendarPage() {
                 <div className="space-y-4 py-4">
                     <p>{selectedEvent.description}</p>
                     <p><strong>Location:</strong> {selectedEvent.location}</p>
+                    {selectedEvent.points && selectedEvent.points > 0 && (
+                      <p className="flex items-center gap-2">
+                        <Award className="h-4 w-4 text-primary" /> <strong>Points for attending:</strong> {selectedEvent.points}
+                      </p>
+                    )}
                 </div>
                 <DialogFooter className="sm:justify-between gap-2">
                     <Link href={generateGoogleCalendarLink(selectedEvent)} target="_blank" rel="noopener noreferrer">
@@ -299,7 +315,7 @@ export default function CalendarPage() {
                             <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
                         </Button>
                     </Link>
-                    {canEditContent && (
+                    {canManageRoles && (
                         <Button onClick={() => handleEditClick(selectedEvent)}>
                             <Pencil className="mr-2 h-4 w-4" /> Edit Event
                         </Button>
@@ -347,7 +363,7 @@ export default function CalendarPage() {
                       <FormLabel>Location</FormLabel>
                       <FormControl><Input {...field} /></FormControl>
                       <FormMessage />
-                    </FormItem>
+                    </Item>
                   )}
                 />
                  <FormField
@@ -361,6 +377,19 @@ export default function CalendarPage() {
                     </FormItem>
                   )}
                 />
+                {canManageRoles && (
+                  <FormField
+                    control={editForm.control}
+                    name="points"
+                    render={({ field }) => (
+                      <FormItem>
+                        <Label>Points for Attendance</Label>
+                        <FormControl><Input type="number" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <DialogFooter>
                     <Button type="button" variant="ghost" onClick={() => setEditingEvent(null)}>Cancel</Button>
                     <Button type="submit">Save Changes</Button>

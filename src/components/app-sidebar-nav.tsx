@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import Link from 'next/link';
@@ -15,6 +16,7 @@ import {
   CheckCircle,
   Mail,
   MessageSquare,
+  BarChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
@@ -34,6 +36,7 @@ const allNavItems = [
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' as NotificationKey },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'calendar' as NotificationKey },
   { href: '/attendance', icon: CheckCircle, label: 'Attendance', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'attendance' as NotificationKey },
+  { href: '/points', icon: BarChart, label: 'Points', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'gallery' as NotificationKey },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/email', icon: Mail, label: 'Email', roles: ['President', 'Admin', 'Officer'], notificationKey: null },
@@ -47,7 +50,7 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
 
   const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
     // Custom sort order if needed, for now just an example
-    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 

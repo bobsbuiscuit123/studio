@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -61,6 +62,9 @@ export default function AttendancePage() {
       toast({ title: "Already Checked In", description: "You have already been marked as attended for this event." });
       return;
     }
+    
+    // Note: Point allocation logic happens implicitly via useEffect on the Points page
+    // when the 'events' data changes.
 
     const updatedEvents = events.map(e =>
       e.id === eventId ? { ...e, attendees: [...attendees, user.email] } : e

@@ -243,7 +243,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                     <div>
                         <Label htmlFor="email-forgot">Email Address</Label>
                         <Input id="email-forgot" {...forgotPasswordForm.register('email')} placeholder="e.g., alex.j@example.com" />
-                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.state.errors.email.message}</p>}
+                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.formState.errors.email.message}</p>}
                     </div>
                      <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
@@ -341,6 +341,7 @@ export default function HomePage() {
         messages: {},
         groupChats: [],
         galleryImages: [],
+        pointEntries: [],
     };
 
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify(newClubData));

@@ -48,6 +48,7 @@ const pageTitles: { [key: string]: string } = {
   "/slides": "Meeting Slides",
   "/social": "Social Media",
   "/attendance": "Attendance",
+  "/points": "Points",
   "/email": "Bulk Email",
   "/messages": "Messages",
 };

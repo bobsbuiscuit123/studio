@@ -24,9 +24,19 @@ export type ClubEvent = {
   title: string;
   description: string;
   location: string;
+  points?: number; // Points for attending the event
   checkInCode?: string;
   attendees?: string[]; // Array of member emails
   read?: boolean;
+};
+
+export type PointEntry = {
+  id: string;
+  memberEmail: string;
+  points: number;
+  reason: string;
+  date: string;
+  awardedBy: string; // Email of the admin/officer
 };
 
 export type Slide = {

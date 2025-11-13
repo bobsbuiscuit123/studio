@@ -1,7 +1,8 @@
 
 
+
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction } from './mock-data';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry } from './mock-data';
 
 // A mock database object for demonstration. In a real app, you'd use a proper database.
 const mockDatabase: { [key: string]: any } = {};
@@ -14,8 +15,11 @@ function useClubData<T>(key: string, initialData: T) {
 
   useEffect(() => {
     // Generate a unique ID for this tab on the client side only
-    setTabId(Math.random().toString());
-  }, []);
+    if (typeof window !== 'undefined' && !tabId) {
+      setTabId(Math.random().toString());
+    }
+  }, [tabId]);
+
 
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
 
@@ -33,9 +37,10 @@ function useClubData<T>(key: string, initialData: T) {
     }
     try {
         const storedClubData = localStorage.getItem(clubDataKey);
+        let finalData: T;
         if (storedClubData) {
             const parsedData = JSON.parse(storedClubData);
-            let finalData = parsedData[key] || initialData;
+            finalData = parsedData[key] || initialData;
             
             if (key === 'events' && Array.isArray(finalData)) {
                  finalData = finalData.map((event: any) => ({
@@ -51,10 +56,11 @@ function useClubData<T>(key: string, initialData: T) {
                     }))
                 })) as T;
             }
-            setData(finalData);
         } else {
-           setData(initialData);
+           finalData = initialData;
         }
+        setData(finalData);
+
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
         setData(initialData);
@@ -64,9 +70,12 @@ function useClubData<T>(key: string, initialData: T) {
   }, [clubDataKey, key, initialData, clubId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     loadData();
+  }, [loadData]);
+  
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
     const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
       // Only update if the key matches and the change happened in another tab
@@ -80,43 +89,42 @@ function useClubData<T>(key: string, initialData: T) {
     return () => {
       window.removeEventListener('storage', handleStorageChange as EventListener);
     };
-  }, [clubId, clubDataKey, loadData, tabId]);
+  }, [clubDataKey, loadData, tabId]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey || !tabId) return;
 
-    const valueToStore = typeof newData === 'function'
-        ? (newData as (prevData: T) => T)(data) // Pass current state to the function
-        : newData;
+    setData(currentData => {
+        const valueToStore = typeof newData === 'function'
+            ? (newData as (prevData: T) => T)(currentData)
+            : newData;
 
-    setData(valueToStore);
+        try {
+            const storedClubData = localStorage.getItem(clubDataKey);
+            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+            parsedData[key] = valueToStore;
+            
+            const newStorageValue = JSON.stringify(parsedData);
+            localStorage.setItem(clubDataKey, newStorageValue);
+            
+            const event = new StorageEvent('storage', {
+                key: clubDataKey,
+                newValue: newStorageValue,
+                storageArea: localStorage,
+            });
+            Object.assign(event, { sourceTabId: tabId });
+            window.dispatchEvent(event);
 
-    try {
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-
-        parsedData[key] = valueToStore;
-        const newStorageValue = JSON.stringify(parsedData);
-        localStorage.setItem(clubDataKey, newStorageValue);
-        
-        const event = new StorageEvent('storage', {
-            key: clubDataKey,
-            newValue: newStorageValue,
-            storageArea: localStorage,
-        });
-        // Add custom property
-        Object.assign(event, { sourceTabId: tabId });
-
-        // Manually dispatch a storage event for other tabs
-        window.dispatchEvent(event);
-
-    } catch (error) {
-        console.error(`Error writing ${key} to localStorage`, error);
-        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-            console.error("Storage quota exceeded. Could not save new data.");
+        } catch (error) {
+            console.error(`Error writing ${key} to localStorage`, error);
+            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                console.error("Storage quota exceeded. Could not save new data.");
+            }
         }
-    }
-  }, [clubDataKey, key, data, tabId]);
+
+        return valueToStore;
+    });
+  }, [clubDataKey, key, tabId]);
 
   return { data, loading, updateData, clubId };
 }
@@ -165,6 +173,11 @@ export function useMessages() {
 export function useGroupChats() {
     const initialData = useMemo(() => [], []);
     return useClubData<GroupChat[]>('groupChats', initialData);
+}
+
+export function usePointEntries() {
+  const initialData = useMemo(() => [], []);
+  return useClubData<PointEntry[]>('pointEntries', initialData);
 }
 
 

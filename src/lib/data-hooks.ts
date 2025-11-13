@@ -14,10 +14,10 @@ function useClubData<T>(key: string, initialData: T) {
 
   useEffect(() => {
     // Generate a unique ID for this tab on the client side only
-    if (typeof window !== 'undefined' && !tabId) {
-      setTabId(Math.random().toString());
+    if (typeof window !== 'undefined') {
+       setTabId(Math.random().toString());
     }
-  }, [tabId]);
+  }, []);
 
 
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
@@ -30,7 +30,7 @@ function useClubData<T>(key: string, initialData: T) {
   const loadData = useCallback(() => {
     if (!clubDataKey) {
         if (clubId === null) {
-            setLoading(false);
+            queueMicrotask(() => setLoading(false));
         }
         return;
     }
@@ -65,9 +65,9 @@ function useClubData<T>(key: string, initialData: T) {
 
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        setData(initialData);
+        queueMicrotask(() => setData(initialData));
     } finally {
-        setLoading(false);
+        queueMicrotask(() => setLoading(false));
     }
   }, [clubDataKey, key, initialData, clubId]);
 
@@ -77,7 +77,7 @@ function useClubData<T>(key: string, initialData: T) {
   
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !tabId) return;
 
     const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
       // Only update if the key matches and the change happened in another tab
@@ -347,3 +347,6 @@ export function useNotifications() {
 
     return { unread, loading, markAllAsRead };
 }
+
+
+    

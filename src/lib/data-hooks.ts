@@ -3,24 +3,29 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData } from './mock-data';
 
-// A mock database object for demonstration. In a real app, you'd use a proper database.
-const mockDatabase: { [key: string]: any } = {};
+// In-memory cache
+const dataCache: { [key: string]: any } = {};
 
 function useClubData<T>(key: string, initialData: T) {
-  const [data, setData] = useState<T>(initialData);
-  const [loading, setLoading] = useState(true);
   const [clubId, setClubId] = useState<string | null>(null);
+  const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
+  
+  // Initialize state from cache if available, otherwise use initialData.
+  const [data, setData] = useState<T>(() => {
+    if (clubDataKey && dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
+      return dataCache[clubDataKey][key];
+    }
+    return initialData;
+  });
+
+  const [loading, setLoading] = useState(!data); // Only show loading if there's no cached data
   const [tabId, setTabId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Generate a unique ID for this tab on the client side only
     if (typeof window !== 'undefined' && !tabId) {
        setTabId(Math.random().toString());
     }
   }, [tabId]);
-
-
-  const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
 
   useEffect(() => {
     const id = localStorage.getItem('selectedClubId');
@@ -34,6 +39,14 @@ function useClubData<T>(key: string, initialData: T) {
         }
         return;
     }
+    
+    // If data is already in cache, don't re-load unless forced
+    if (dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
+        setData(dataCache[clubDataKey][key]);
+        queueMicrotask(() => setLoading(false));
+        return;
+    }
+
     try {
         const storedClubData = localStorage.getItem(clubDataKey);
         let finalData: T;
@@ -58,7 +71,12 @@ function useClubData<T>(key: string, initialData: T) {
         } else {
            finalData = initialData;
         }
-        // Defer the state update to prevent updates during render
+
+        if (!dataCache[clubDataKey]) {
+          dataCache[clubDataKey] = {};
+        }
+        dataCache[clubDataKey][key] = finalData;
+        
         queueMicrotask(() => {
           setData(finalData);
         });
@@ -80,8 +98,11 @@ function useClubData<T>(key: string, initialData: T) {
     if (typeof window === 'undefined' || !tabId) return;
 
     const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
-      // Only update if the key matches and the change happened in another tab
+      // Clear cache and reload if the key matches and the change happened in another tab
       if (event.key === clubDataKey && event.sourceTabId !== tabId) {
+        if (clubDataKey && dataCache[clubDataKey]) {
+          delete dataCache[clubDataKey][key];
+        }
         loadData();
       }
     };
@@ -91,42 +112,45 @@ function useClubData<T>(key: string, initialData: T) {
     return () => {
       window.removeEventListener('storage', handleStorageChange as EventListener);
     };
-  }, [clubDataKey, loadData, tabId]);
+  }, [clubDataKey, loadData, tabId, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey || !tabId) return;
 
-    setData(currentData => {
-        const valueToStore = typeof newData === 'function'
-            ? (newData as (prevData: T) => T)(currentData)
-            : newData;
+    const valueToStore = typeof newData === 'function'
+        ? (newData as (prevData: T) => T)(data)
+        : newData;
 
-        try {
-            const storedClubData = localStorage.getItem(clubDataKey);
-            const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-            parsedData[key] = valueToStore;
-            
-            const newStorageValue = JSON.stringify(parsedData);
-            localStorage.setItem(clubDataKey, newStorageValue);
-            
-            const event = new StorageEvent('storage', {
-                key: clubDataKey,
-                newValue: newStorageValue,
-                storageArea: localStorage,
-            });
-            Object.assign(event, { sourceTabId: tabId });
-            window.dispatchEvent(event);
+    setData(valueToStore);
+    
+    if (!dataCache[clubDataKey]) {
+        dataCache[clubDataKey] = {};
+    }
+    dataCache[clubDataKey][key] = valueToStore;
 
-        } catch (error) {
-            console.error(`Error writing ${key} to localStorage`, error);
-            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-                console.error("Storage quota exceeded. Could not save new data.");
-            }
+    try {
+        const storedClubData = localStorage.getItem(clubDataKey);
+        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+        parsedData[key] = valueToStore;
+        
+        const newStorageValue = JSON.stringify(parsedData);
+        localStorage.setItem(clubDataKey, newStorageValue);
+        
+        const event = new StorageEvent('storage', {
+            key: clubDataKey,
+            newValue: newStorageValue,
+            storageArea: localStorage,
+        });
+        Object.assign(event, { sourceTabId: tabId });
+        window.dispatchEvent(event);
+
+    } catch (error) {
+        console.error(`Error writing ${key} to localStorage`, error);
+        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            console.error("Storage quota exceeded. Could not save new data.");
         }
-
-        return valueToStore;
-    });
-  }, [clubDataKey, key, tabId]);
+    }
+  }, [clubDataKey, key, tabId, data]);
 
   return { data, loading, updateData, clubId };
 }

@@ -32,19 +32,17 @@ function useClubData<T>(key: string, initialData: T) {
     setClubId(id);
   }, []);
   
-  const loadData = useCallback(() => {
+  const loadData = useCallback((force = false) => {
     if (!clubDataKey) {
-        if (clubId === null) { // Only stop loading if we've confirmed there's no clubId
-          queueMicrotask(() => setLoading(false));
+        if (clubId === null) { 
+            setLoading(false);
         }
         return;
     }
     
-    if (dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
-        queueMicrotask(() => {
-          setData(dataCache[clubDataKey][key]);
-          setLoading(false);
-        });
+    if (!force && dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
+        setData(dataCache[clubDataKey][key]);
+        setLoading(false);
         return;
     }
 
@@ -78,15 +76,13 @@ function useClubData<T>(key: string, initialData: T) {
         }
         dataCache[clubDataKey][key] = finalData;
         
-        queueMicrotask(() => {
-          setData(finalData);
-        });
+        setData(finalData);
 
     } catch (error) {
         console.error(`Error reading ${key} from localStorage`, error);
-        queueMicrotask(() => setData(initialData));
+        setData(initialData);
     } finally {
-        queueMicrotask(() => setLoading(false));
+        setLoading(false);
     }
   }, [clubDataKey, key, initialData, clubId]);
 
@@ -111,7 +107,7 @@ function useClubData<T>(key: string, initialData: T) {
           if (dataCache[clubDataKey]) {
             delete dataCache[clubDataKey][key];
           }
-          loadData();
+          loadData(true); // Force reload
         }
     };
 
@@ -222,19 +218,19 @@ function useUserData<T>(key: string, initialData: T) {
   const loadData = useCallback(() => {
     if (userLoading || !userDataKey) {
         if (!userLoading) {
-            queueMicrotask(() => setLoading(false));
+            setLoading(false);
         }
         return;
     }
     try {
         const storedData = localStorage.getItem(userDataKey);
         const finalData = storedData ? JSON.parse(storedData) : initialData;
-        queueMicrotask(() => setData(finalData));
+        setData(finalData);
     } catch (error) {
         console.error(`Error reading ${key} from localStorage for user`, error);
-        queueMicrotask(() => setData(initialData));
+        setData(initialData);
     } finally {
-        queueMicrotask(() => setLoading(false));
+        setLoading(false);
     }
   }, [userDataKey, initialData, userLoading, key]);
 

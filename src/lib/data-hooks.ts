@@ -12,13 +12,19 @@ function useClubData<T>(key: string, initialData: T) {
   
   // Initialize state from cache if available, otherwise use initialData.
   const [data, setData] = useState<T>(() => {
-    if (clubDataKey && dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
-      return dataCache[clubDataKey][key];
+    if (typeof window !== 'undefined') {
+      const id = localStorage.getItem('selectedClubId');
+      if (id) {
+        const cdk = `club_${id}`;
+        if (dataCache[cdk] && dataCache[cdk][key] !== undefined) {
+          return dataCache[cdk][key];
+        }
+      }
     }
     return initialData;
   });
 
-  const [loading, setLoading] = useState(!data); // Only show loading if there's no cached data
+  const [loading, setLoading] = useState(true);
   const [tabId, setTabId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,10 +46,12 @@ function useClubData<T>(key: string, initialData: T) {
         return;
     }
     
-    // If data is already in cache, don't re-load unless forced
+    // If data is already in cache, use it and don't re-load.
     if (dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
-        setData(dataCache[clubDataKey][key]);
-        queueMicrotask(() => setLoading(false));
+        queueMicrotask(() => {
+          setData(dataCache[clubDataKey][key]);
+          setLoading(false);
+        });
         return;
     }
 
@@ -98,7 +106,15 @@ function useClubData<T>(key: string, initialData: T) {
     if (typeof window === 'undefined' || !tabId) return;
 
     const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
-      // Clear cache and reload if the key matches and the change happened in another tab
+      // If selectedClubId changes, clear cache and reload everything.
+      if (event.key === 'selectedClubId') {
+        Object.keys(dataCache).forEach(k => delete dataCache[k]);
+        const newClubId = localStorage.getItem('selectedClubId');
+        setClubId(newClubId);
+        return;
+      }
+      
+      // If the key matches the current club data and the change happened in another tab
       if (event.key === clubDataKey && event.sourceTabId !== tabId) {
         if (clubDataKey && dataCache[clubDataKey]) {
           delete dataCache[clubDataKey][key];
@@ -117,40 +133,44 @@ function useClubData<T>(key: string, initialData: T) {
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey || !tabId) return;
 
-    const valueToStore = typeof newData === 'function'
-        ? (newData as (prevData: T) => T)(data)
-        : newData;
+    // Use a function to get the latest state for the update
+    setData(currentData => {
+      const valueToStore = typeof newData === 'function'
+          ? (newData as (prevData: T) => T)(currentData)
+          : newData;
 
-    setData(valueToStore);
-    
-    if (!dataCache[clubDataKey]) {
-        dataCache[clubDataKey] = {};
-    }
-    dataCache[clubDataKey][key] = valueToStore;
+      if (!dataCache[clubDataKey]) {
+          dataCache[clubDataKey] = {};
+      }
+      dataCache[clubDataKey][key] = valueToStore;
 
-    try {
-        const storedClubData = localStorage.getItem(clubDataKey);
-        const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-        parsedData[key] = valueToStore;
-        
-        const newStorageValue = JSON.stringify(parsedData);
-        localStorage.setItem(clubDataKey, newStorageValue);
-        
-        const event = new StorageEvent('storage', {
-            key: clubDataKey,
-            newValue: newStorageValue,
-            storageArea: localStorage,
-        });
-        Object.assign(event, { sourceTabId: tabId });
-        window.dispatchEvent(event);
+      try {
+          const storedClubData = localStorage.getItem(clubDataKey);
+          const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
+          parsedData[key] = valueToStore;
+          
+          const newStorageValue = JSON.stringify(parsedData);
+          localStorage.setItem(clubDataKey, newStorageValue);
+          
+          const event = new StorageEvent('storage', {
+              key: clubDataKey,
+              newValue: newStorageValue,
+              storageArea: localStorage,
+          });
+          Object.assign(event, { sourceTabId: tabId });
+          window.dispatchEvent(event);
 
-    } catch (error) {
-        console.error(`Error writing ${key} to localStorage`, error);
-        if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-            console.error("Storage quota exceeded. Could not save new data.");
-        }
-    }
-  }, [clubDataKey, key, tabId, data]);
+      } catch (error) {
+          console.error(`Error writing ${key} to localStorage`, error);
+          if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+              console.error("Storage quota exceeded. Could not save new data.");
+          }
+      }
+
+      return valueToStore;
+    });
+
+  }, [clubDataKey, key, tabId]);
 
   return { data, loading, updateData, clubId };
 }
@@ -460,5 +480,7 @@ export function useNotifications() {
     return { unread, loading, markAllAsRead };
 }
 
+
+    
 
     

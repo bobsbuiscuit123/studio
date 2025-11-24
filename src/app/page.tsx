@@ -342,6 +342,10 @@ export default function HomePage() {
         groupChats: [],
         galleryImages: [],
         pointEntries: [],
+        mindmap: {
+          nodes: [{ id: '1', type: 'input', data: { label: `${values.name} Mind Map` }, position: { x: 250, y: 5 } }],
+          edges: [],
+        },
     };
 
     localStorage.setItem(`club_${newClub.id}`, JSON.stringify(newClubData));
@@ -352,8 +356,7 @@ export default function HomePage() {
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
-    // Manually trigger a storage event to update club list for the current user
-    window.dispatchEvent(new StorageEvent('storage'));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'clubs' }));
   };
 
   const handleJoinClub = (values: z.infer<typeof joinClubFormSchema>) => {
@@ -405,6 +408,8 @@ export default function HomePage() {
       localStorage.setItem('selectedClubId', clubId);
       const clubData = JSON.parse(clubDataString);
       localStorage.setItem('selectedClubLogo', clubData.logo || '');
+      // Manually dispatch a storage event to notify other components (like data hooks) immediately.
+      window.dispatchEvent(new StorageEvent('storage', { key: 'selectedClubId' }));
     }
     router.push('/dashboard');
   };
@@ -586,3 +591,7 @@ export default function HomePage() {
     </div>
   );
 }
+
+    
+
+    

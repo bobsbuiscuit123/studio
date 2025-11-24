@@ -39,7 +39,7 @@ function useClubData<T>(key: string, initialData: T) {
         let finalData: T;
         if (storedClubData) {
             const parsedData = JSON.parse(storedClubData);
-            finalData = parsedData[key] || initialData;
+            finalData = parsedData[key] !== undefined ? parsedData[key] : initialData;
             
             if (key === 'events' && Array.isArray(finalData)) {
                  finalData = finalData.map((event: any) => ({

@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -47,13 +48,11 @@ const sendResetPasswordEmailFlow = ai.defineFlow(
     const user = allUsers.find(u => u.email === email);
 
     if (user && user.password) {
-        console.log(`Password reset requested for: ${email}. Password is ${user.password}`);
         return {
             success: true,
             message: `Password for ${email} is: ${user.password}`,
         };
     } else {
-         console.log(`Password reset requested for non-existent user: ${email}.`);
         return {
             success: false,
             message: `No account with the email ${email} exists.`,

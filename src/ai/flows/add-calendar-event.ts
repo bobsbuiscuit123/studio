@@ -35,9 +35,6 @@ export async function addCalendarEvent(
   return addCalendarEventFlow(input);
 }
 
-// This is a placeholder. In a real app, you'd save this to a database.
-const createdEvents: any[] = [];
-
 const addEventPrompt = ai.definePrompt({
     name: "addEventPrompt",
     input: {schema: AddCalendarEventInputSchema},
@@ -69,10 +66,6 @@ const addCalendarEventFlow = ai.defineFlow(
             throw new Error("Could not generate event from prompt.");
         }
         
-        // In a real application, you would save the event to a database here.
-        console.log('Adding event:', output);
-        createdEvents.push(output);
-
         return output;
       } catch (error: any) {
         attempts++;
@@ -80,7 +73,6 @@ const addCalendarEventFlow = ai.defineFlow(
           // If it's the last attempt or not a 503 error, rethrow.
           throw error;
         }
-        console.log(`Attempt ${attempts} failed. Retrying in 2 seconds...`);
         // Wait for 2 seconds before the next attempt
         await new Promise(resolve => setTimeout(resolve, 2000));
       }

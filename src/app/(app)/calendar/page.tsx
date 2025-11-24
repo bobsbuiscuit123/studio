@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -37,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -191,7 +192,7 @@ export default function CalendarPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="space-y-4">
+      <div className="space-y-4 flex flex-col">
         {canManageRoles && (
             <Card>
             <CardHeader>
@@ -226,14 +227,15 @@ export default function CalendarPage() {
             </CardContent>
             </Card>
         )}
-        <Card>
+        <Card className="flex-1 flex flex-col">
           <CardHeader>
             <CardTitle>Upcoming Events</CardTitle>
             <CardDescription>
               Here's what's happening soon.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="flex-1 overflow-hidden">
+             <ScrollArea className="h-full">
              {loading ? <p>Loading...</p> : 
                 events.length > 0 ? (
                   <Accordion type="single" collapsible className="w-full">
@@ -283,6 +285,7 @@ export default function CalendarPage() {
                  <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
               )
             }
+            </ScrollArea>
           </CardContent>
         </Card>
       </div>
@@ -399,5 +402,3 @@ export default function CalendarPage() {
     </>
   );
 }
-
-    

@@ -2,7 +2,6 @@
 import imageCompression from 'browser-image-compression';
 
 export async function resizeImage(file: File): Promise<string> {
-  console.log(`Original file size: ${file.size / 1024 / 1024} MB`);
   const options = {
     maxSizeMB: 0.1, // Max file size in MB
     maxWidthOrHeight: 800, // Max width or height
@@ -11,7 +10,6 @@ export async function resizeImage(file: File): Promise<string> {
 
   try {
     const compressedFile = await imageCompression(file, options);
-    console.log(`Compressed file size: ${compressedFile.size / 1024 / 1024} MB`);
     const dataUrl = await imageCompression.getDataUrlFromFile(compressedFile);
     return dataUrl;
   } catch (error) {

@@ -1,16 +1,17 @@
 
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData } from './mock-data';
 
 // In-memory cache
 const dataCache: { [key: string]: any } = {};
 
+// Use a BroadcastChannel for reliable cross-tab communication.
+const channel = typeof window !== 'undefined' ? new BroadcastChannel('clubhub_ai_sync') : null;
+
 function useClubData<T>(key: string, initialData: T) {
   const [clubId, setClubId] = useState<string | null>(null);
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
-  
-  // Initialize state from cache if available, otherwise use initialData.
+
   const [data, setData] = useState<T>(() => {
     if (typeof window !== 'undefined') {
       const id = localStorage.getItem('selectedClubId');
@@ -25,13 +26,6 @@ function useClubData<T>(key: string, initialData: T) {
   });
 
   const [loading, setLoading] = useState(true);
-  const [tabId, setTabId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !tabId) {
-       setTabId(Math.random().toString());
-    }
-  }, [tabId]);
 
   useEffect(() => {
     const id = localStorage.getItem('selectedClubId');
@@ -40,13 +34,12 @@ function useClubData<T>(key: string, initialData: T) {
   
   const loadData = useCallback(() => {
     if (!clubDataKey) {
-        if (clubId === null) {
+        if (clubId === null) { // Only stop loading if we've confirmed there's no clubId
           queueMicrotask(() => setLoading(false));
         }
         return;
     }
     
-    // If data is already in cache, use it and don't re-load.
     if (dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
         queueMicrotask(() => {
           setData(dataCache[clubDataKey][key]);
@@ -103,37 +96,35 @@ function useClubData<T>(key: string, initialData: T) {
   
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !tabId) return;
+    if (!channel) return;
 
-    const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
-      // If selectedClubId changes, clear cache and reload everything.
-      if (event.key === 'selectedClubId') {
-        Object.keys(dataCache).forEach(k => delete dataCache[k]);
-        const newClubId = localStorage.getItem('selectedClubId');
-        setClubId(newClubId);
-        return;
-      }
-      
-      // If the key matches the current club data and the change happened in another tab
-      if (event.key === clubDataKey && event.sourceTabId !== tabId) {
-        if (clubDataKey && dataCache[clubDataKey]) {
-          delete dataCache[clubDataKey][key];
+    const handleMessage = (event: MessageEvent) => {
+        const { type, key: eventKey, payload } = event.data;
+
+        if (type === 'clubId_change') {
+            Object.keys(dataCache).forEach(k => delete dataCache[k]);
+            setClubId(payload);
+            return;
         }
-        loadData();
-      }
+        
+        if (type === 'update' && eventKey === clubDataKey) {
+          if (dataCache[clubDataKey]) {
+            delete dataCache[clubDataKey][key];
+          }
+          loadData();
+        }
     };
 
-    window.addEventListener('storage', handleStorageChange as EventListener);
+    channel.addEventListener('message', handleMessage);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange as EventListener);
+      channel.removeEventListener('message', handleMessage);
     };
-  }, [clubDataKey, loadData, tabId, key]);
+  }, [clubDataKey, loadData, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (!clubDataKey || !tabId) return;
+    if (!clubDataKey || !channel) return;
 
-    // Use a function to get the latest state for the update
     setData(currentData => {
       const valueToStore = typeof newData === 'function'
           ? (newData as (prevData: T) => T)(currentData)
@@ -151,15 +142,10 @@ function useClubData<T>(key: string, initialData: T) {
           
           const newStorageValue = JSON.stringify(parsedData);
           localStorage.setItem(clubDataKey, newStorageValue);
-          
-          const event = new StorageEvent('storage', {
-              key: clubDataKey,
-              newValue: newStorageValue,
-              storageArea: localStorage,
-          });
-          Object.assign(event, { sourceTabId: tabId });
-          window.dispatchEvent(event);
 
+          // Notify other tabs
+          channel.postMessage({ type: 'update', key: clubDataKey });
+          
       } catch (error) {
           console.error(`Error writing ${key} to localStorage`, error);
           if (error instanceof DOMException && error.name === 'QuotaExceededError') {
@@ -170,7 +156,7 @@ function useClubData<T>(key: string, initialData: T) {
       return valueToStore;
     });
 
-  }, [clubDataKey, key, tabId]);
+  }, [clubDataKey, key]);
 
   return { data, loading, updateData, clubId };
 }
@@ -230,14 +216,7 @@ function useUserData<T>(key: string, initialData: T) {
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
   const { user, loading: userLoading } = useCurrentUser();
-  const [tabId, setTabId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !tabId) {
-      setTabId(Math.random().toString());
-    }
-  }, [tabId]);
-
+  
   const userDataKey = useMemo(() => user ? `${key}_${user.email}` : null, [user, key]);
 
   const loadData = useCallback(() => {
@@ -264,20 +243,21 @@ function useUserData<T>(key: string, initialData: T) {
   }, [loadData]);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !tabId) return;
-    const handleStorageChange = (event: StorageEvent & { sourceTabId?: string }) => {
-      if (event.key === userDataKey && event.sourceTabId !== tabId) {
-        loadData();
-      }
+    if (typeof window === 'undefined' || !channel) return;
+    const handleMessage = (event: MessageEvent) => {
+        const { type, key: eventKey } = event.data;
+        if (type === 'update' && eventKey === userDataKey) {
+            loadData();
+        }
     };
-    window.addEventListener('storage', handleStorageChange as EventListener);
+    channel.addEventListener('message', handleMessage);
     return () => {
-      window.removeEventListener('storage', handleStorageChange as EventListener);
+      channel.removeEventListener('message', handleMessage);
     };
-  }, [userDataKey, loadData, tabId]);
+  }, [userDataKey, loadData]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (!userDataKey || !tabId) return;
+    if (!userDataKey || !channel) return;
 
     setData(currentData => {
         const valueToStore = typeof newData === 'function'
@@ -288,20 +268,16 @@ function useUserData<T>(key: string, initialData: T) {
             const newStorageValue = JSON.stringify(valueToStore);
             localStorage.setItem(userDataKey, newStorageValue);
 
-            const event = new StorageEvent('storage', {
-                key: userDataKey,
-                newValue: newStorageValue,
-                storageArea: localStorage,
-            });
-            Object.assign(event, { sourceTabId: tabId });
-            window.dispatchEvent(event);
+            // Notify other tabs
+            channel.postMessage({ type: 'update', key: userDataKey });
+            
         } catch (error) {
             console.error(`Error writing ${key} to localStorage for user`, error);
         }
 
         return valueToStore;
     });
-  }, [userDataKey, key, tabId]);
+  }, [userDataKey, key]);
 
   return { data, loading, updateData };
 }
@@ -332,10 +308,11 @@ export function useCurrentUser() {
     setLoading(false);
   }, []);
 
-  const saveUser = (newUser: Partial<User>) => {
-    let updatedUser: User;
+  const saveUser = (newUser: Partial<User> | ((currentUser: User | null) => User)) => {
     setUser(currentUser => {
-        updatedUser = { ...(currentUser || {}), ...newUser } as User;
+        const updatedUser = typeof newUser === 'function'
+            ? newUser(currentUser)
+            : { ...(currentUser || {}), ...newUser } as User;
         localStorage.setItem('currentUser', JSON.stringify(updatedUser));
         return updatedUser;
     });
@@ -479,8 +456,3 @@ export function useNotifications() {
 
     return { unread, loading, markAllAsRead };
 }
-
-
-    
-
-    

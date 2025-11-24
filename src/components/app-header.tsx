@@ -1,5 +1,4 @@
 
-
 "use client";
 import { useEffect, useState } from "react";
 import {
@@ -52,20 +51,40 @@ const pageTitles: { [key: string]: string } = {
   "/email": "Bulk Email",
   "/messages": "Messages",
   "/mindmap": "Mind Map",
+  "/assistant": "AI Assistant",
 };
 
-function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (name: string, email: string) => void; }) {
+function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (updatedUser: Partial<User>) => void; }) {
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
+  const [avatar, setAvatar] = useState(user?.avatar || '');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(user?.name || '');
     setEmail(user?.email || '');
+    setAvatar(user?.avatar || '');
+    setAvatarPreview(user?.avatar || null);
   }, [user]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSave = () => {
     if (user) {
-      onSave(name, email);
+      onSave({
+        name,
+        avatar: avatarPreview || avatar,
+      });
     }
     onOpenChange(false);
   };
@@ -76,17 +95,25 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
         <DialogHeader>
           <DialogTitle>Profile Settings</DialogTitle>
           <DialogDescription>
-            Update your name and email here.
+            Update your profile picture, name, and email here.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
+          <div className="space-y-2 flex flex-col items-center">
+             <Avatar className="h-24 w-24">
+                <AvatarImage src={avatarPreview || ''} />
+                <AvatarFallback className="text-3xl">{name.charAt(0)}</AvatarFallback>
+             </Avatar>
+             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>Change Picture</Button>
+             <Input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} readOnly disabled/>
+            <Input id="email" type="email" value={email} readOnly disabled/>
           </div>
         </div>
         <DialogFooter>
@@ -119,7 +146,7 @@ export function AppHeader() {
         setClubName(currentClub.name);
       }
     }
-  }, []);
+  }, [pathname]); // Rerun when path changes to update club name if needed
   
   const handleLogout = () => {
     clearUser();
@@ -128,8 +155,8 @@ export function AppHeader() {
     router.push('/');
   }
 
-  const handleSaveProfile = (name: string, email: string) => {
-    saveUser({ name, email });
+  const handleSaveProfile = (updatedUser: Partial<UserType>) => {
+     saveUser(currentUser => ({...currentUser, ...updatedUser} as UserType));
   }
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';

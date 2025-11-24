@@ -1,9 +1,7 @@
 
-
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import { PlusCircle, ArrowRight, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -265,6 +263,10 @@ export default function HomePage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
+  const [isJoinClubOpen, setIsJoinClubOpen] = useState(false);
+
+  const channel = isClient ? new BroadcastChannel('clubhub_ai_sync') : null;
 
   useEffect(() => {
     setIsClient(true);
@@ -356,7 +358,7 @@ export default function HomePage() {
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
-    window.dispatchEvent(new StorageEvent('storage', { key: 'clubs' }));
+    setIsCreateClubOpen(false);
   };
 
   const handleJoinClub = (values: z.infer<typeof joinClubFormSchema>) => {
@@ -399,17 +401,18 @@ export default function HomePage() {
     
     toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
     joinForm.reset();
+    setIsJoinClubOpen(false);
     handleSelectClub(clubToJoin.id);
   };
 
   const handleSelectClub = (clubId: string) => {
     const clubDataString = localStorage.getItem(`club_${clubId}`);
-    if (clubDataString) {
+    if (clubDataString && channel) {
       localStorage.setItem('selectedClubId', clubId);
       const clubData = JSON.parse(clubDataString);
       localStorage.setItem('selectedClubLogo', clubData.logo || '');
       // Manually dispatch a storage event to notify other components (like data hooks) immediately.
-      window.dispatchEvent(new StorageEvent('storage', { key: 'selectedClubId' }));
+      channel.postMessage({ type: 'clubId_change', payload: clubId });
     }
     router.push('/dashboard');
   };
@@ -494,7 +497,7 @@ export default function HomePage() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-semibold">Your Clubs</h2>
            <div className="flex gap-2">
-            <Dialog>
+            <Dialog open={isJoinClubOpen} onOpenChange={setIsJoinClubOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline"><UserPlus className="mr-2" /> Join Club</Button>
                 </DialogTrigger>
@@ -505,7 +508,7 @@ export default function HomePage() {
                     Enter the 4-letter join code provided by the club owner.
                     </DialogDescription>
                 </DialogHeader>
-                 <form onSubmit={joinForm.handleSubmit(handleJoinClub)} className="space-y-4">
+                 <form onSubmit={joinForm.handleSubmit(handleJoinClub)} className="space-y-4 pt-4">
                     <Input 
                         {...joinForm.register('code')} 
                         placeholder="ABCD" 
@@ -522,7 +525,7 @@ export default function HomePage() {
                  </form>
                 </DialogContent>
             </Dialog>
-            <Dialog>
+            <Dialog open={isCreateClubOpen} onOpenChange={setIsCreateClubOpen}>
                 <DialogTrigger asChild>
                 <Button>
                     <PlusCircle className="mr-2" /> Create Club
@@ -535,7 +538,7 @@ export default function HomePage() {
                     Enter the details for your new club. You will be the owner.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={clubForm.handleSubmit(handleCreateClub)} className="space-y-4">
+                <form onSubmit={clubForm.handleSubmit(handleCreateClub)} className="space-y-4 pt-4">
                     <Input {...clubForm.register('name')} placeholder="Club Name (e.g., Innovators Club)" />
                     {clubForm.formState.errors.name && (
                     <p className="text-red-500 text-sm">{clubForm.formState.errors.name.message}</p>
@@ -591,7 +594,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-    
-
-    

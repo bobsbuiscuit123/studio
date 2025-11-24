@@ -1,3 +1,4 @@
+
 import { config } from 'dotenv';
 config();
 
@@ -8,3 +9,4 @@ import '@/ai/flows/add-calendar-event.ts';
 import '@/ai/flows/send-reset-password-email.ts';
 import '@/ai/flows/generate-email.ts';
 import '@/ai/flows/add-transaction.ts';
+import '@/ai/flows/assistant.ts';

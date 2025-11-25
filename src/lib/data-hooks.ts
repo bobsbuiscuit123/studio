@@ -12,103 +12,104 @@ function useClubData<T>(key: string, initialData: T) {
   const [clubId, setClubId] = useState<string | null>(null);
   const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
 
-  const [data, setData] = useState<T>(() => {
-    if (typeof window !== 'undefined') {
-      const id = localStorage.getItem('selectedClubId');
-      if (id) {
-        const cdk = `club_${id}`;
-        if (dataCache[cdk] && dataCache[cdk][key] !== undefined) {
-          return dataCache[cdk][key];
-        }
-      }
-    }
-    return initialData;
-  });
-
+  const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
+  const [updateTrigger, setUpdateTrigger] = useState(0);
 
-  useEffect(() => {
-    const id = localStorage.getItem('selectedClubId');
-    setClubId(id);
-  }, []);
-  
   const loadData = useCallback((force = false) => {
     if (!clubDataKey) {
-        if (clubId === null) { 
-            setLoading(false);
-        }
-        return;
+      if (clubId === null) {
+        setLoading(false);
+      }
+      return;
     }
     
     if (!force && dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
-        setData(dataCache[clubDataKey][key]);
-        setLoading(false);
-        return;
+      setData(dataCache[clubDataKey][key]);
+      setLoading(false);
+      return;
     }
 
     try {
-        const storedClubData = localStorage.getItem(clubDataKey);
-        let finalData: T;
-        if (storedClubData) {
-            const parsedData = JSON.parse(storedClubData);
-            finalData = parsedData[key] !== undefined ? parsedData[key] : initialData;
-            
-            if (key === 'events' && Array.isArray(finalData)) {
-                 finalData = finalData.map((event: any) => ({
-                    ...event,
-                    date: new Date(event.date),
-                })) as T;
-            } else if (key === 'presentations' && Array.isArray(finalData)) {
-                finalData = finalData.map((p: any) => ({
-                    ...p,
-                    slides: p.slides.map((s: any, index: number) => ({
-                        ...s,
-                        id: s.id || `${p.id}-${index}`
-                    }))
-                })) as T;
-            }
-        } else {
-           finalData = initialData;
-        }
-
-        if (!dataCache[clubDataKey]) {
-          dataCache[clubDataKey] = {};
-        }
-        dataCache[clubDataKey][key] = finalData;
+      const storedClubData = localStorage.getItem(clubDataKey);
+      let finalData: T;
+      if (storedClubData) {
+        const parsedData = JSON.parse(storedClubData);
+        finalData = parsedData[key] !== undefined ? parsedData[key] : initialData;
         
-        setData(finalData);
+        if (key === 'events' && Array.isArray(finalData)) {
+             finalData = finalData.map((event: any) => ({
+                ...event,
+                date: new Date(event.date),
+            })) as T;
+        } else if (key === 'presentations' && Array.isArray(finalData)) {
+            finalData = finalData.map((p: any) => ({
+                ...p,
+                slides: p.slides.map((s: any, index: number) => ({
+                    ...s,
+                    id: s.id || `${p.id}-${index}`
+                }))
+            })) as T;
+        }
+      } else {
+        finalData = initialData;
+      }
 
+      if (!dataCache[clubDataKey]) {
+        dataCache[clubDataKey] = {};
+      }
+      dataCache[clubDataKey][key] = finalData;
+      
+      setData(finalData);
     } catch (error) {
-        console.error(`Error reading ${key} from localStorage`, error);
-        setData(initialData);
+      console.error(`Error reading ${key} from localStorage`, error);
+      setData(initialData);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   }, [clubDataKey, key, initialData, clubId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
   
+  // Effect for initial load and when clubId changes
+  useEffect(() => {
+    const id = localStorage.getItem('selectedClubId');
+    if (id !== clubId) {
+        setClubId(id);
+    } else {
+        loadData();
+    }
+  }, [clubId, loadData]);
 
+  // Effect to handle updates from broadcast channel
+  useEffect(() => {
+    if (updateTrigger > 0) {
+      const id = localStorage.getItem('selectedClubId');
+      if (id !== clubId) {
+        setClubId(id);
+      } else {
+        loadData(true);
+      }
+    }
+  }, [updateTrigger, clubId, loadData]);
+
+  // Setup broadcast channel listener
   useEffect(() => {
     if (!channel) return;
 
     const handleMessage = (event: MessageEvent) => {
-        const { type, key: eventKey, payload } = event.data;
+      const { type, key: eventKey, payload } = event.data;
 
-        if (type === 'clubId_change') {
-            Object.keys(dataCache).forEach(k => delete dataCache[k]);
-            setClubId(payload);
-            return;
+      if (type === 'clubId_change') {
+        Object.keys(dataCache).forEach(k => delete dataCache[k]);
+        setUpdateTrigger(Date.now()); // Trigger a reload
+        return;
+      }
+      
+      if (type === 'update' && eventKey === clubDataKey) {
+        if (dataCache[clubDataKey]) {
+          delete dataCache[clubDataKey][key];
         }
-        
-        if (type === 'update' && eventKey === clubDataKey) {
-          if (dataCache[clubDataKey]) {
-            delete dataCache[clubDataKey][key];
-          }
-          loadData(true); // Force reload
-        }
+        setUpdateTrigger(Date.now()); // Trigger a reload
+      }
     };
 
     channel.addEventListener('message', handleMessage);
@@ -116,7 +117,7 @@ function useClubData<T>(key: string, initialData: T) {
     return () => {
       channel.removeEventListener('message', handleMessage);
     };
-  }, [clubDataKey, loadData, key]);
+  }, [clubDataKey, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey || !channel) return;

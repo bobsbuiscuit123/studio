@@ -28,90 +28,97 @@ function notifySubscribers() {
 
 if (channel) {
     channel.onmessage = (event) => {
-        if (event.data?.type === 'update') {
-            // Invalidate local cache and notify to re-fetch
-            const clubId = event.data.clubId;
-            if (clubId && clubDataCache[clubId]) {
-                delete clubDataCache[clubId];
-            }
+        if (event.data?.type === 'update' || event.data?.type === 'clubId_change') {
             notifySubscribers();
         }
     };
 }
 
 function useClubDataStore() {
-    const [clubId, setClubId] = useState<string | null>(() => typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null);
+    const [clubId, setClubId] = useState<string | null>(null);
+    const [data, setData] = useState<ClubData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<Error | null>(null);
+    const [updateTrigger, setUpdateTrigger] = useState(0);
 
-    const loadData = useCallback((id: string | null) => {
-        if (!id) {
+    useEffect(() => {
+        const handleUpdate = () => {
+            setUpdateTrigger(t => t + 1);
+        };
+        subscribers.add(handleUpdate);
+        
+        // Initial load
+        handleUpdate();
+        
+        return () => {
+            subscribers.delete(handleUpdate);
+        };
+    }, []);
+
+    useEffect(() => {
+        const newClubId = localStorage.getItem('selectedClubId');
+        setClubId(newClubId);
+
+        if (!newClubId) {
+            setData(null);
             setLoading(false);
             return;
         }
 
-        if (clubDataCache[id]) {
+        if (clubDataCache[newClubId]) {
+            setData(clubDataCache[newClubId]);
             setLoading(false);
-            return; // Data already in cache
-        }
-        
-        setLoading(true);
-        try {
-            const storedClubData = localStorage.getItem(`club_${id}`);
-            if (storedClubData) {
-                const parsedData = JSON.parse(storedClubData);
-                // Data transformations for dates
-                if (Array.isArray(parsedData.events)) {
-                    parsedData.events = parsedData.events.map((event: any) => ({
-                        ...event,
-                        date: new Date(event.date),
-                    }));
+        } else {
+            setLoading(true);
+            try {
+                const storedClubData = localStorage.getItem(`club_${newClubId}`);
+                if (storedClubData) {
+                    const parsedData = JSON.parse(storedClubData);
+                    // Data transformations for dates
+                    if (Array.isArray(parsedData.events)) {
+                        parsedData.events = parsedData.events.map((event: any) => ({
+                            ...event,
+                            date: new Date(event.date),
+                        }));
+                    }
+                    clubDataCache[newClubId] = parsedData;
+                    setData(parsedData);
+                } else {
+                    setData(null);
                 }
-                clubDataCache[id] = parsedData;
+            } catch (e) {
+                console.error(`Error loading data for club ${newClubId}`, e);
+                setError(e as Error);
+                setData(null);
+            } finally {
+                setLoading(false);
             }
-        } catch (e) {
-            console.error(`Error loading data for club ${id}`, e);
-            setError(e as Error);
-        } finally {
-            setLoading(false);
         }
-    }, []);
-
-    useEffect(() => {
-        const handleStorageChange = () => {
-            const newClubId = localStorage.getItem('selectedClubId');
-            if (newClubId !== clubId) {
-                setClubId(newClubId);
-                loadData(newClubId);
-            }
-        };
-
-        // Initial load
-        loadData(clubId);
-
-        // Listen for changes
-        const unsubscribe = () => {
-            subscribers.delete(handleStorageChange);
-        };
-        subscribers.add(handleStorageChange);
-        window.addEventListener('storage', handleStorageChange);
-        
-        return () => {
-            unsubscribe();
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, [clubId, loadData]);
-
-    const data = clubId ? clubDataCache[clubId] : null;
+    }, [updateTrigger]);
 
     return { clubId, data, loading, error };
 }
+
 
 function useSpecificClubData<K extends keyof ClubData>(key: K) {
     const { clubId, data, loading } = useClubDataStore();
 
     const specificData = useMemo(() => {
-        return data?.[key] ?? [];
+        const defaultValues = {
+            members: [],
+            events: [],
+            announcements: [],
+            socialPosts: [],
+            transactions: [],
+            messages: {},
+            groupChats: [],
+            galleryImages: [],
+            pointEntries: [],
+            presentations: [],
+            logo: '',
+            mindmap: { nodes: [], edges: [] },
+        };
+        return data?.[key] ?? defaultValues[key];
     }, [data, key]);
 
     const updateData = useCallback((newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
@@ -185,20 +192,19 @@ export function useMindMapData() {
 
 
 export function useCurrentUser() {
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const storedUser = localStorage.getItem('currentUser');
-      return storedUser ? JSON.parse(storedUser) : null;
-    } catch (error) {
-      console.error('Error reading user from localStorage on init', error);
-      return null;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(false);
+    try {
+      const storedUser = localStorage.getItem('currentUser');
+      setUser(storedUser ? JSON.parse(storedUser) : null);
+    } catch (error) {
+      console.error('Error reading user from localStorage on init', error);
+      setUser(null);
+    } finally {
+        setLoading(false);
+    }
   }, []);
 
   const saveUser = (newUser: Partial<User> | ((currentUser: User | null) => User)) => {

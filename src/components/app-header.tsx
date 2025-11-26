@@ -133,8 +133,13 @@ export function AppHeader() {
   const { user, saveUser, clearUser } = useCurrentUser();
   const { unread, markAllAsRead } = useNotifications();
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
 
   useEffect(() => {
@@ -213,12 +218,18 @@ export function AppHeader() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
-            <Avatar>
-              <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
-              <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
-                {getAvatarFallback(user?.name)}
-                </AvatarFallback>
-            </Avatar>
+             {isMounted ? (
+                <Avatar>
+                  <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
+                  <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
+                    {getAvatarFallback(user?.name)}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <Avatar>
+                  <AvatarFallback>U</AvatarFallback>
+                </Avatar>
+              )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

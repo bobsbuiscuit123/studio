@@ -270,6 +270,14 @@ export default function HomePage() {
 
   useEffect(() => {
     setIsClient(true);
+    // Ensure localStorage has initial data structures if they don't exist
+    if (localStorage.getItem('users') === null) {
+        localStorage.setItem('users', '[]');
+    }
+    if (localStorage.getItem('clubs') === null) {
+        localStorage.setItem('clubs', '[]');
+    }
+
     const savedClubs = localStorage.getItem('clubs');
     if (savedClubs) {
       setClubs(JSON.parse(savedClubs));
@@ -595,5 +603,3 @@ export default function HomePage() {
     </div>
   );
 }
-
-    

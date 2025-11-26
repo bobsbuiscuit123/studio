@@ -5,8 +5,36 @@ import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage
 // In-memory cache
 const dataCache: { [key: string]: any } = {};
 
-// Use a BroadcastChannel for reliable cross-tab communication.
+// --- Centralized Subscription Manager for BroadcastChannel ---
 const channel = typeof window !== 'undefined' ? new BroadcastChannel('clubhub_ai_sync') : null;
+const subscribers = new Map<string, Set<() => void>>();
+
+let isListening = false;
+const setupListener = () => {
+    if (isListening || !channel) return;
+    channel.addEventListener('message', (event: MessageEvent) => {
+        const callbacks = subscribers.get('all');
+        callbacks?.forEach(cb => cb());
+    });
+    isListening = true;
+}
+
+const subscribe = (id: string, callback: () => void) => {
+    setupListener();
+    if (!subscribers.has(id)) {
+        subscribers.set(id, new Set());
+    }
+    subscribers.get(id)?.add(callback);
+
+    return () => {
+        subscribers.get(id)?.delete(callback);
+        if (subscribers.get(id)?.size === 0) {
+            subscribers.delete(id);
+        }
+    };
+};
+// --- End Subscription Manager ---
+
 
 function useClubData<T>(key: string, initialData: T) {
   const [clubId, setClubId] = useState<string | null>(null);
@@ -14,24 +42,24 @@ function useClubData<T>(key: string, initialData: T) {
 
   const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
-  const [updateTrigger, setUpdateTrigger] = useState(0);
 
-  const loadData = useCallback((force = false) => {
-    if (!clubDataKey) {
-      if (clubId === null) {
+  const loadData = useCallback((currentClubDataKey: string | null, force = false) => {
+    if (!currentClubDataKey) {
         setLoading(false);
-      }
-      return;
+        setData(initialData);
+        return;
     }
     
-    if (!force && dataCache[clubDataKey] && dataCache[clubDataKey][key] !== undefined) {
-      setData(dataCache[clubDataKey][key]);
+    setLoading(true);
+
+    if (!force && dataCache[currentClubDataKey] && dataCache[currentClubDataKey][key] !== undefined) {
+      setData(dataCache[currentClubDataKey][key]);
       setLoading(false);
       return;
     }
-
+    
     try {
-      const storedClubData = localStorage.getItem(clubDataKey);
+      const storedClubData = localStorage.getItem(currentClubDataKey);
       let finalData: T;
       if (storedClubData) {
         const parsedData = JSON.parse(storedClubData);
@@ -55,10 +83,10 @@ function useClubData<T>(key: string, initialData: T) {
         finalData = initialData;
       }
 
-      if (!dataCache[clubDataKey]) {
-        dataCache[clubDataKey] = {};
+      if (!dataCache[currentClubDataKey]) {
+        dataCache[currentClubDataKey] = {};
       }
-      dataCache[clubDataKey][key] = finalData;
+      dataCache[currentClubDataKey][key] = finalData;
       
       setData(finalData);
     } catch (error) {
@@ -67,57 +95,33 @@ function useClubData<T>(key: string, initialData: T) {
     } finally {
       setLoading(false);
     }
-  }, [clubDataKey, key, initialData, clubId]);
+  }, [key, initialData]);
   
   // Effect for initial load and when clubId changes
   useEffect(() => {
     const id = localStorage.getItem('selectedClubId');
     if (id !== clubId) {
         setClubId(id);
-    } else {
-        loadData();
     }
+    loadData(id ? `club_${id}` : null);
   }, [clubId, loadData]);
 
   // Effect to handle updates from broadcast channel
   useEffect(() => {
-    if (updateTrigger > 0) {
-      const id = localStorage.getItem('selectedClubId');
-      if (id !== clubId) {
-        setClubId(id);
-      } else {
-        loadData(true);
-      }
-    }
-  }, [updateTrigger, clubId, loadData]);
-
-  // Setup broadcast channel listener
-  useEffect(() => {
-    if (!channel) return;
-
-    const handleMessage = (event: MessageEvent) => {
-      const { type, key: eventKey, payload } = event.data;
-
-      if (type === 'clubId_change') {
-        Object.keys(dataCache).forEach(k => delete dataCache[k]);
-        setUpdateTrigger(Date.now()); // Trigger a reload
-        return;
-      }
-      
-      if (type === 'update' && eventKey === clubDataKey) {
-        if (dataCache[clubDataKey]) {
-          delete dataCache[clubDataKey][key];
+    const handleUpdate = () => {
+        const id = localStorage.getItem('selectedClubId');
+        if (id !== clubId) {
+            setClubId(id);
+        } else {
+             loadData(clubDataKey, true);
         }
-        setUpdateTrigger(Date.now()); // Trigger a reload
-      }
     };
+    
+    // Subscribe to all messages
+    const unsubscribe = subscribe('all', handleUpdate);
+    return () => unsubscribe();
+  }, [clubId, clubDataKey, loadData]);
 
-    channel.addEventListener('message', handleMessage);
-
-    return () => {
-      channel.removeEventListener('message', handleMessage);
-    };
-  }, [clubDataKey, key]);
 
   const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
     if (!clubDataKey || !channel) return;

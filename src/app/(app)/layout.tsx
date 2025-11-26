@@ -1,3 +1,4 @@
+
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
 import { Logo } from "@/components/icons";
@@ -12,11 +13,11 @@ export default function AppLayout({
       <div className="print:hidden">
         <AppSidebar />
       </div>
-      <div className="flex flex-col">
+      <div className="flex flex-col relative">
         <div className="print:hidden">
           <AppHeader />
         </div>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 print:p-0 overflow-y-auto">
+        <main className="flex-1 flex flex-col gap-4 p-4 lg:gap-6 lg:p-6 print:p-0">
           {children}
         </main>
       </div>

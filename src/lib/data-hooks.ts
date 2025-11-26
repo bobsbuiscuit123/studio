@@ -2,8 +2,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData } from './mock-data';
 
-// In-memory cache
-const dataCache: { [key: string]: any } = {};
+type ClubData = {
+    members: Member[];
+    events: ClubEvent[];
+    announcements: Announcement[];
+    socialPosts: SocialPost[];
+    transactions: Transaction[];
+    messages: {[key: string]: Message[]};
+    groupChats: GroupChat[];
+    galleryImages: GalleryImage[];
+    pointEntries: PointEntry[];
+    presentations: Presentation[];
+    logo: string;
+    mindmap?: MindMapData;
+};
+
+// In-memory cache for the entire club's data
+const clubDataCache: { [clubId: string]: ClubData } = {};
 
 // --- Centralized Subscription Manager for BroadcastChannel ---
 const channel = typeof window !== 'undefined' ? new BroadcastChannel('clubhub_ai_sync') : null;
@@ -12,12 +27,13 @@ const subscribers = new Map<string, Set<() => void>>();
 let isListening = false;
 const setupListener = () => {
     if (isListening || !channel) return;
-    channel.addEventListener('message', (event: MessageEvent) => {
-        const callbacks = subscribers.get('all');
-        callbacks?.forEach(cb => cb());
+    channel.addEventListener('message', () => {
+        // Invalidate cache and notify all subscribers to reload
+        Object.keys(clubDataCache).forEach(key => delete clubDataCache[key]);
+        subscribers.forEach(callbacks => callbacks.forEach(cb => cb()));
     });
     isListening = true;
-}
+};
 
 const subscribe = (id: string, callback: () => void) => {
     setupListener();
@@ -35,182 +51,180 @@ const subscribe = (id: string, callback: () => void) => {
 };
 // --- End Subscription Manager ---
 
-
-function useClubData<T>(key: string, initialData: T) {
+// A hook to manage the global club data loading and caching
+function useClubData() {
   const [clubId, setClubId] = useState<string | null>(null);
-  const clubDataKey = useMemo(() => clubId ? `club_${clubId}` : null, [clubId]);
-
-  const [data, setData] = useState<T>(initialData);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [trigger, setTrigger] = useState(0); // State to trigger re-renders
 
-  const loadData = useCallback((currentClubDataKey: string | null, force = false) => {
-    if (!currentClubDataKey) {
+  // Effect to handle initial load and subscriptions
+  useEffect(() => {
+    const id = localStorage.getItem('selectedClubId');
+    setClubId(id);
+
+    // Subscribe to updates from other tabs
+    const unsubscribe = subscribe('clubData', () => {
+        const currentId = localStorage.getItem('selectedClubId');
+        // Force a reload by updating the trigger
+        setTrigger(t => t + 1); 
+        setClubId(currentId);
+    });
+
+    return () => unsubscribe();
+  }, [trigger]);
+
+
+  // Effect to load data from localStorage when clubId changes
+  useEffect(() => {
+    if (clubId === null) {
         setLoading(false);
-        setData(initialData);
+        return;
+    }
+    
+    // Check cache first
+    if (clubDataCache[clubId]) {
+        setLoading(false);
         return;
     }
     
     setLoading(true);
-
-    if (!force && dataCache[currentClubDataKey] && dataCache[currentClubDataKey][key] !== undefined) {
-      setData(dataCache[currentClubDataKey][key]);
-      setLoading(false);
-      return;
-    }
-    
     try {
-      const storedClubData = localStorage.getItem(currentClubDataKey);
-      let finalData: T;
-      if (storedClubData) {
-        const parsedData = JSON.parse(storedClubData);
-        finalData = parsedData[key] !== undefined ? parsedData[key] : initialData;
-        
-        if (key === 'events' && Array.isArray(finalData)) {
-             finalData = finalData.map((event: any) => ({
-                ...event,
-                date: new Date(event.date),
-            })) as T;
-        } else if (key === 'presentations' && Array.isArray(finalData)) {
-            finalData = finalData.map((p: any) => ({
-                ...p,
-                slides: p.slides.map((s: any, index: number) => ({
-                    ...s,
-                    id: s.id || `${p.id}-${index}`
-                }))
-            })) as T;
-        }
-      } else {
-        finalData = initialData;
-      }
+        const storedClubData = localStorage.getItem(`club_${clubId}`);
+        if (storedClubData) {
+            const parsedData = JSON.parse(storedClubData);
+            
+            // Data transformations
+            if (Array.isArray(parsedData.events)) {
+                parsedData.events = parsedData.events.map((event: any) => ({
+                    ...event,
+                    date: new Date(event.date),
+                }));
+            }
+             if (Array.isArray(parsedData.presentations)) {
+                parsedData.presentations = parsedData.presentations.map((p: any) => ({
+                    ...p,
+                    slides: p.slides.map((s: any, index: number) => ({
+                        ...s,
+                        id: s.id || `${p.id}-${index}`
+                    }))
+                }));
+            }
 
-      if (!dataCache[currentClubDataKey]) {
-        dataCache[currentClubDataKey] = {};
-      }
-      dataCache[currentClubDataKey][key] = finalData;
-      
-      setData(finalData);
-    } catch (error) {
-      console.error(`Error reading ${key} from localStorage`, error);
-      setData(initialData);
+            clubDataCache[clubId] = parsedData;
+        }
+    } catch (e) {
+        console.error(`Error loading data for club ${clubId}`, e);
+        setError(e as Error);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
-  }, [key, initialData]);
-  
-  // Effect for initial load and when clubId changes
-  useEffect(() => {
-    const id = localStorage.getItem('selectedClubId');
-    if (id !== clubId) {
-        setClubId(id);
-    }
-    loadData(id ? `club_${id}` : null);
-  }, [clubId, loadData]);
 
-  // Effect to handle updates from broadcast channel
-  useEffect(() => {
-    const handleUpdate = () => {
-        const id = localStorage.getItem('selectedClubId');
-        if (id !== clubId) {
-            setClubId(id);
-        } else {
-             loadData(clubDataKey, true);
-        }
-    };
-    
-    // Subscribe to all messages
-    const unsubscribe = subscribe('all', handleUpdate);
-    return () => unsubscribe();
-  }, [clubId, clubDataKey, loadData]);
+  }, [clubId]);
 
-
-  const updateData = useCallback((newData: T | ((prevData: T) => T)) => {
-    if (!clubDataKey || !channel) return;
-
-    setData(currentData => {
-      const valueToStore = typeof newData === 'function'
-          ? (newData as (prevData: T) => T)(currentData)
-          : newData;
-
-      if (!dataCache[clubDataKey]) {
-          dataCache[clubDataKey] = {};
-      }
-      dataCache[clubDataKey][key] = valueToStore;
-
-      try {
-          const storedClubData = localStorage.getItem(clubDataKey);
-          const parsedData = storedClubData ? JSON.parse(storedClubData) : {};
-          parsedData[key] = valueToStore;
-          
-          const newStorageValue = JSON.stringify(parsedData);
-          localStorage.setItem(clubDataKey, newStorageValue);
-
-          // Notify other tabs
-          channel.postMessage({ type: 'update', key: clubDataKey });
-          
-      } catch (error) {
-          console.error(`Error writing ${key} to localStorage`, error);
-          if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-              console.error("Storage quota exceeded. Could not save new data.");
-          }
-      }
-
-      return valueToStore;
-    });
-
-  }, [clubDataKey, key]);
-
-  return { data, loading, updateData, clubId };
+  return { clubId, loading, error };
 }
+
+function useSpecificClubData<K extends keyof ClubData>(key: K, initialData: ClubData[K]) {
+    const { clubId, loading: clubLoading } = useClubData();
+    const [data, setData] = useState<ClubData[K]>(initialData);
+    const [loading, setLoading] = useState(true);
+    
+    useEffect(() => {
+        setLoading(clubLoading);
+        if (!clubId || clubLoading) {
+            setData(initialData);
+            return;
+        }
+
+        const clubCache = clubDataCache[clubId];
+        if (clubCache && clubCache[key] !== undefined) {
+            setData(clubCache[key]);
+        } else {
+            setData(initialData);
+        }
+    }, [clubId, clubLoading, key, initialData]);
+
+    const updateData = useCallback((newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
+        if (!clubId || !channel) return;
+
+        setData(currentData => {
+            const valueToStore = typeof newData === 'function'
+                ? (newData as (prevData: ClubData[K]) => ClubData[K])(currentData)
+                : newData;
+
+            try {
+                // Ensure the cache is up-to-date before writing to storage
+                const fullClubData = clubDataCache[clubId] || {};
+                const updatedFullData = { ...fullClubData, [key]: valueToStore };
+                clubDataCache[clubId] = updatedFullData;
+
+                localStorage.setItem(`club_${clubId}`, JSON.stringify(updatedFullData));
+                
+                // Notify other tabs
+                channel.postMessage({ type: 'update', clubId: clubId });
+            } catch (error) {
+                console.error(`Error writing ${key} to localStorage`, error);
+                 if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+                    console.error("Storage quota exceeded. Could not save new data.");
+                }
+            }
+            return valueToStore;
+        });
+    }, [clubId, key]);
+
+    return { data, loading, updateData, clubId };
+}
+
 
 export function useAnnouncements() {
   const initialData = useMemo(() => [], []);
-  return useClubData<Announcement[]>('announcements', initialData);
+  return useSpecificClubData<"announcements">('announcements', initialData);
 }
 
 export function useEvents() {
     const initialData = useMemo(() => [], []);
-    return useClubData<ClubEvent[]>('events', initialData);
+    return useSpecificClubData<'events'>('events', initialData);
 }
-
 
 export function useMembers() {
   const initialData = useMemo(() => [], []);
-  return useClubData<Member[]>('members', initialData);
+  return useSpecificClubData<'members'>('members', initialData);
 }
 
 export function useSocialPosts() {
   const initialData = useMemo(() => [], []);
-  return useClubData<SocialPost[]>('socialPosts', initialData);
+  return useSpecificClubData<'socialPosts'>('socialPosts', initialData);
 }
 
 export function useTransactions() {
   const initialData = useMemo(() => [], []);
-  return useClubData<Transaction[]>('transactions', initialData);
+  return useSpecificClubData<'transactions'>('transactions', initialData);
 }
 
 export function usePresentations() {
     const initialData = useMemo(() => [], []);
-    return useClubData<Presentation[]>('presentations', initialData);
+    return useSpecificClubData<'presentations'>('presentations', initialData);
 }
 
 export function useGalleryImages() {
     const initialData = useMemo(() => [], []);
-    return useClubData<GalleryImage[]>('galleryImages', initialData);
+    return useSpecificClubData<'galleryImages'>('galleryImages', initialData);
 }
 
 export function useMessages() {
     const initialData = useMemo(() => ({}), []);
-    return useClubData<{[key: string]: Message[]}>('messages', initialData);
+    return useSpecificClubData<'messages'>('messages', initialData);
 }
 
 export function useGroupChats() {
     const initialData = useMemo(() => [], []);
-    return useClubData<GroupChat[]>('groupChats', initialData);
+    return useSpecificClubData<'groupChats'>('groupChats', initialData);
 }
 
 export function usePointEntries() {
   const initialData = useMemo(() => [], []);
-  return useClubData<PointEntry[]>('pointEntries', initialData);
+  return useSpecificClubData<'pointEntries'>('pointEntries', initialData);
 }
 
 function useUserData<T>(key: string, initialData: T) {
@@ -241,19 +255,15 @@ function useUserData<T>(key: string, initialData: T) {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !channel) return;
     const handleMessage = (event: MessageEvent) => {
-        const { type, key: eventKey } = event.data;
-        if (type === 'update' && eventKey === userDataKey) {
+        if (event.data?.type === 'update' && event.data?.key === userDataKey) {
             loadData();
         }
     };
-    channel.addEventListener('message', handleMessage);
+    channel?.addEventListener('message', handleMessage);
     return () => {
-      channel.removeEventListener('message', handleMessage);
+      channel?.removeEventListener('message', handleMessage);
     };
   }, [userDataKey, loadData]);
 
@@ -361,12 +371,12 @@ export function useCurrentUserRole() {
 export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance';
 
 export function useNotifications() {
-    const { data: announcements, updateData: setAnnouncements, loading: announcementsLoading } = useAnnouncements();
-    const { data: socialPosts, updateData: setSocialPosts, loading: socialPostsLoading } = useSocialPosts();
-    const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
-    const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
-    const { data: events, updateData: setEvents, loading: eventsLoading } = useEvents();
-    const { data: galleryImages, updateData: setGalleryImages, loading: galleryImagesLoading } = useGalleryImages();
+    const { data: announcements, loading: announcementsLoading } = useAnnouncements();
+    const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
+    const { data: allMessages, loading: messagesLoading } = useMessages();
+    const { data: groupChats, loading: groupsLoading } = useGroupChats();
+    const { data: events, loading: eventsLoading } = useEvents();
+    const { data: galleryImages, loading: galleryImagesLoading } = useGalleryImages();
     const { user, loading: userLoading } = useCurrentUser();
     const { role, loading: roleLoading } = useCurrentUserRole();
 
@@ -415,13 +425,16 @@ export function useNotifications() {
 
         switch (key) {
             case 'announcements':
-                setAnnouncements(prev => prev.map(item => ({ ...item, read: true })));
+                const announcementsHook = useAnnouncements();
+                announcementsHook.updateData(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'social':
-                setSocialPosts(prev => prev.map(item => ({ ...item, read: true })));
+                const socialPostsHook = useSocialPosts();
+                socialPostsHook.updateData(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'messages':
-                 setAllMessages(prev => {
+                const messagesHook = useMessages();
+                messagesHook.updateData(prev => {
                     const newMessages = { ...prev };
                     for (const convoId in newMessages) {
                         newMessages[convoId] = newMessages[convoId].map(msg => {
@@ -433,7 +446,8 @@ export function useNotifications() {
                     }
                     return newMessages;
                 });
-                setGroupChats(prev => prev.map(g => ({
+                const groupChatsHook = useGroupChats();
+                groupChatsHook.updateData(prev => prev.map(g => ({
                     ...g,
                     messages: g.messages.map(msg => {
                         if (!msg.readBy.includes(userEmail)) {
@@ -444,16 +458,21 @@ export function useNotifications() {
                 })));
                 break;
             case 'calendar':
-                setEvents(prev => prev.map(item => ({...item, read: true } as any)));
+                const eventsHook = useEvents();
+                eventsHook.updateData(prev => prev.map(item => ({...item, read: true } as any)));
                 break;
             case 'gallery':
-                setGalleryImages(prev => prev.map(item => ({ ...item, read: true })));
+                const galleryImagesHook = useGalleryImages();
+                galleryImagesHook.updateData(prev => prev.map(item => ({ ...item, read: true })));
                 break;
             case 'attendance':
-                setEvents(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
+                const attendanceEventsHook = useEvents();
+                attendanceEventsHook.updateData(prev => prev.map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [user, setAnnouncements, setSocialPosts, setEvents, setGalleryImages, setAllMessages, setGroupChats]);
+    }, [user]);
 
     return { unread, loading, markAllAsRead };
 }
+
+    

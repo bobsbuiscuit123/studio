@@ -406,13 +406,10 @@ export default function HomePage() {
   };
 
   const handleSelectClub = (clubId: string) => {
-    const clubDataString = localStorage.getItem(`club_${clubId}`);
-    if (clubDataString && channel) {
+    if (channel) {
       localStorage.setItem('selectedClubId', clubId);
-      const clubData = JSON.parse(clubDataString);
-      localStorage.setItem('selectedClubLogo', clubData.logo || '');
-      // Manually dispatch a storage event to notify other components (like data hooks) immediately.
-      channel.postMessage({ type: 'clubId_change', payload: clubId });
+      // Manually dispatch a message to notify other tabs/hooks immediately.
+      channel.postMessage({ type: 'clubId_change' });
     }
     router.push('/dashboard');
   };
@@ -476,8 +473,12 @@ export default function HomePage() {
       if (!isClient) return { ...club, logo: '' };
       const clubDataString = localStorage.getItem(`club_${club.id}`);
       if (clubDataString) {
-          const clubData = JSON.parse(clubDataString);
-          return { ...club, logo: clubData.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
+          try {
+            const clubData = JSON.parse(clubDataString);
+            return { ...club, logo: clubData.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
+          } catch(e) {
+             return { ...club, logo: `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
+          }
       }
       return { ...club, logo: `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
   });
@@ -594,3 +595,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    

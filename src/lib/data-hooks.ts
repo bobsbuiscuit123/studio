@@ -194,8 +194,10 @@ export function useMindMapData() {
 export function useCurrentUser() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
     try {
       const storedUser = localStorage.getItem('currentUser');
       setUser(storedUser ? JSON.parse(storedUser) : null);
@@ -207,7 +209,7 @@ export function useCurrentUser() {
     }
   }, []);
 
-  const saveUser = (newUser: Partial<User> | ((currentUser: User | null) => User)) => {
+  const saveUser = useCallback((newUser: Partial<User> | ((currentUser: User | null) => User)) => {
     setUser(currentUser => {
         const updatedUser = typeof newUser === 'function'
             ? newUser(currentUser)
@@ -215,14 +217,14 @@ export function useCurrentUser() {
         localStorage.setItem('currentUser', JSON.stringify(updatedUser));
         return updatedUser;
     });
-  };
+  }, []);
   
-  const clearUser = () => {
+  const clearUser = useCallback(() => {
     setUser(null);
     localStorage.removeItem('currentUser');
-  }
+  }, []);
 
-  return { user, loading, saveUser, clearUser };
+  return { user: isMounted ? user : null, loading, saveUser, clearUser };
 }
 
 

@@ -266,8 +266,6 @@ export default function HomePage() {
   const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
   const [isJoinClubOpen, setIsJoinClubOpen] = useState(false);
 
-  const channel = isClient ? new BroadcastChannel('clubhub_ai_sync') : null;
-
   useEffect(() => {
     setIsClient(true);
     // Ensure localStorage has initial data structures if they don't exist
@@ -414,11 +412,9 @@ export default function HomePage() {
   };
 
   const handleSelectClub = (clubId: string) => {
-    if (channel) {
-      localStorage.setItem('selectedClubId', clubId);
-      // Manually dispatch a message to notify other tabs/hooks immediately.
-      channel.postMessage({ type: 'clubId_change' });
-    }
+    localStorage.setItem('selectedClubId', clubId);
+    // Use the sync key to notify other tabs/windows
+    localStorage.setItem('clubhub_ai_sync_key', Date.now().toString());
     router.push('/dashboard');
   };
 

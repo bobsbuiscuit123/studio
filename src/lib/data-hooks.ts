@@ -17,84 +17,70 @@ type ClubData = {
     mindmap?: MindMapData;
 };
 
-// --- Centralized Data Store ---
+// --- Centralized Data Store and Sync ---
+
 let clubDataCache: { [clubId: string]: ClubData } = {};
 const subscribers = new Set<() => void>();
-const channel = typeof window !== 'undefined' ? new BroadcastChannel('clubhub_ai_sync') : null;
+const SYNC_KEY = 'clubhub_ai_sync_key';
 
 function notifySubscribers() {
     subscribers.forEach(cb => cb());
 }
 
-if (channel) {
-    channel.onmessage = (event) => {
-        if (event.data?.type === 'update' || event.data?.type === 'clubId_change') {
+// Set up a single listener for storage events
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', (event) => {
+        if (event.key === SYNC_KEY) {
+            // Invalidate the cache and notify subscribers to refetch
+            clubDataCache = {};
             notifySubscribers();
         }
-    };
+    });
 }
 
 function useClubDataStore() {
-    const [clubId, setClubId] = useState<string | null>(null);
-    const [data, setData] = useState<ClubData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<Error | null>(null);
-    const [updateTrigger, setUpdateTrigger] = useState(0);
+    const [_, setUpdateTrigger] = useState(0);
 
     useEffect(() => {
-        const handleUpdate = () => {
+        const callback = () => {
             setUpdateTrigger(t => t + 1);
         };
-        subscribers.add(handleUpdate);
-        
-        // Initial load
-        handleUpdate();
-        
-        return () => {
-            subscribers.delete(handleUpdate);
-        };
+        subscribers.add(callback);
+        return () => subscribers.delete(callback);
     }, []);
 
-    useEffect(() => {
-        const newClubId = localStorage.getItem('selectedClubId');
-        setClubId(newClubId);
-
-        if (!newClubId) {
-            setData(null);
-            setLoading(false);
-            return;
+    const clubId = typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null;
+    
+    const { data, loading, error } = useMemo(() => {
+        if (!clubId) {
+            return { data: null, loading: false, error: null };
         }
 
-        if (clubDataCache[newClubId]) {
-            setData(clubDataCache[newClubId]);
-            setLoading(false);
-        } else {
-            setLoading(true);
-            try {
-                const storedClubData = localStorage.getItem(`club_${newClubId}`);
-                if (storedClubData) {
-                    const parsedData = JSON.parse(storedClubData);
-                    // Data transformations for dates
-                    if (Array.isArray(parsedData.events)) {
-                        parsedData.events = parsedData.events.map((event: any) => ({
-                            ...event,
-                            date: new Date(event.date),
-                        }));
-                    }
-                    clubDataCache[newClubId] = parsedData;
-                    setData(parsedData);
-                } else {
-                    setData(null);
+        if (clubDataCache[clubId]) {
+            return { data: clubDataCache[clubId], loading: false, error: null };
+        }
+        
+        try {
+            const storedClubData = localStorage.getItem(`club_${clubId}`);
+            if (storedClubData) {
+                const parsedData = JSON.parse(storedClubData);
+                // Data transformations for dates
+                if (Array.isArray(parsedData.events)) {
+                    parsedData.events = parsedData.events.map((event: any) => ({
+                        ...event,
+                        date: new Date(event.date),
+                    }));
                 }
-            } catch (e) {
-                console.error(`Error loading data for club ${newClubId}`, e);
-                setError(e as Error);
-                setData(null);
-            } finally {
-                setLoading(false);
+                clubDataCache[clubId] = parsedData;
+                return { data: parsedData, loading: false, error: null };
+            } else {
+                 return { data: null, loading: false, error: new Error(`No data found for club ${clubId}`) };
             }
+        } catch (e) {
+            console.error(`Error loading data for club ${clubId}`, e);
+            return { data: null, loading: false, error: e as Error };
         }
-    }, [updateTrigger]);
+    }, [clubId, _]);
 
     return { clubId, data, loading, error };
 }
@@ -133,10 +119,10 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
         
         try {
             localStorage.setItem(`club_${clubId}`, JSON.stringify(updatedFullData));
-            if (channel) {
-                channel.postMessage({ type: 'update', clubId: clubId });
-            }
-            notifySubscribers(); // Notify local hooks to update
+            // Trigger storage event for other tabs
+            localStorage.setItem(SYNC_KEY, Date.now().toString());
+            // Notify local hooks to update immediately
+            notifySubscribers();
         } catch (error) {
             console.error(`Error writing ${key} to localStorage`, error);
         }

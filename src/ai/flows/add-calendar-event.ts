@@ -56,35 +56,10 @@ const addCalendarEventFlow = ai.defineFlow(
     outputSchema: AddCalendarEventOutputSchema,
   },
   async input => {
-    let attempts = 0;
-    const maxAttempts = 3;
-
-    while (attempts < maxAttempts) {
-      try {
-        const { output } = await addEventPrompt(input);
-        if (!output) {
-            throw new Error("Could not generate event from prompt.");
-        }
-        
-        return output;
-      } catch (error: any) {
-        attempts++;
-        // Check for common rate limit or temporary server error status codes.
-        const isRetryable = error.status === 429 || error.status === 503 || (error.message && (error.message.includes('429') || error.message.includes('503')));
-        
-        if (attempts >= maxAttempts || !isRetryable) {
-          // If it's the last attempt or not a retryable error, rethrow.
-          console.error("Non-retryable error or max attempts reached:", error);
-          throw error;
-        }
-
-        // Wait for an exponentially increasing amount of time before the next attempt
-        const waitTime = (2 ** attempts) * 1000;
-        console.log(`Attempt ${attempts} failed. Retrying in ${waitTime / 1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
+    const { output } = await addEventPrompt(input);
+    if (!output) {
+        throw new Error("Could not generate event from prompt.");
     }
-
-    throw new Error("Failed to generate event after multiple attempts.");
+    return output;
   }
 );

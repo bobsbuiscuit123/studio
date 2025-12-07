@@ -69,8 +69,8 @@ const addCalendarEventFlow = ai.defineFlow(
         return output;
       } catch (error: any) {
         attempts++;
-        if (attempts >= maxAttempts || !error.message.includes('503')) {
-          // If it's the last attempt or not a 503 error, rethrow.
+        if (attempts >= maxAttempts || (!error.message.includes('503') && !error.message.includes('429'))) {
+          // If it's the last attempt or not a retryable error, rethrow.
           throw error;
         }
         // Wait for 2 seconds before the next attempt

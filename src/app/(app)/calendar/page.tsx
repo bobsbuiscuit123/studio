@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -52,8 +53,8 @@ const editFormSchema = z.object({
 });
 
 export default function CalendarPage() {
-  const [date, setDate] = useState<Date | undefined>(undefined);
-  const [isMounted, setIsMounted] = useState(false);
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [isClient, setIsClient] = useState(false);
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -62,8 +63,7 @@ export default function CalendarPage() {
   const { canManageRoles } = useCurrentUserRole();
 
   useEffect(() => {
-    setIsMounted(true);
-    setDate(new Date());
+    setIsClient(true);
   }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -155,9 +155,12 @@ export default function CalendarPage() {
       <div className="md:col-span-2">
         <Card>
           <CardContent className="p-0">
+            {!isClient ? (
+              <Skeleton className="w-full aspect-[1.2/1]" />
+            ) : (
             <Calendar
               mode="single"
-              selected={isMounted ? date : undefined}
+              selected={date}
               onSelect={setDate}
               className="p-0"
               classNames={{
@@ -195,6 +198,7 @@ export default function CalendarPage() {
                 },
               }}
             />
+            )}
           </CardContent>
         </Card>
       </div>

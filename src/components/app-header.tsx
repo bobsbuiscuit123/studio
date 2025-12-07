@@ -52,6 +52,7 @@ const pageTitles: { [key: string]: string } = {
   "/messages": "Messages",
   "/mindmap": "Mind Map",
   "/assistant": "AI Assistant",
+  "/browse-clubs": "Club Directory",
 };
 
 function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (updatedUser: Partial<User>) => void; }) {
@@ -62,11 +63,13 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setName(user?.name || '');
-    setEmail(user?.email || '');
-    setAvatar(user?.avatar || '');
-    setAvatarPreview(user?.avatar || null);
-  }, [user]);
+    if (isOpen) {
+      setName(user?.name || '');
+      setEmail(user?.email || '');
+      setAvatar(user?.avatar || '');
+      setAvatarPreview(user?.avatar || null);
+    }
+  }, [user, isOpen]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -150,13 +153,14 @@ export function AppHeader() {
       if(currentClub) {
         setClubName(currentClub.name);
       }
+    } else {
+        setClubName("");
     }
-  }, [pathname]); // Rerun when path changes to update club name if needed
+  }, [pathname]);
   
   const handleLogout = () => {
     clearUser();
     localStorage.removeItem('selectedClubId');
-    localStorage.removeItem('selectedClubLogo');
     router.push('/');
   }
 
@@ -164,7 +168,7 @@ export function AppHeader() {
      saveUser(currentUser => ({...currentUser, ...updatedUser} as UserType));
   }
 
-  const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : 'U';
+  const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : '';
   
   const stringToColor = (str: string) => {
     let hash = 0;
@@ -176,7 +180,6 @@ export function AppHeader() {
   };
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
-
 
   return (
     <>
@@ -218,7 +221,7 @@ export function AppHeader() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
-             {isMounted ? (
+             {isMounted && user ? (
                 <Avatar>
                   <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
                   <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
@@ -227,13 +230,13 @@ export function AppHeader() {
                 </Avatar>
               ) : (
                 <Avatar>
-                  <AvatarFallback>U</AvatarFallback>
+                  <AvatarFallback></AvatarFallback>
                 </Avatar>
               )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuLabel>{user?.name || "My Account"} ({role})</DropdownMenuLabel>
+          <DropdownMenuLabel>{user?.name || "My Account"} ({role || "No role"})</DropdownMenuLabel>
           <DropdownMenuSeparator />
            <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
               <User className="mr-2 h-4 w-4" />

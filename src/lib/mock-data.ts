@@ -1,12 +1,9 @@
 
 
-// This file is now primarily for defining data structures and default values,
-// as the actual data will be managed by our data hooks and local storage.
-
 export type User = {
   name: string;
   email: string;
-  password?: string; // Added for authentication
+  password?: string;
   avatar?: string;
 };
 
@@ -24,9 +21,9 @@ export type ClubEvent = {
   title: string;
   description: string;
   location: string;
-  points?: number; // Points for attending the event
+  points?: number;
   checkInCode?: string;
-  attendees?: string[]; // Array of member emails
+  attendees?: string[];
   read?: boolean;
 };
 
@@ -36,7 +33,7 @@ export type PointEntry = {
   points: number;
   reason: string;
   date: string;
-  awardedBy: string; // Email of the admin/officer
+  awardedBy: string;
 };
 
 export type Slide = {
@@ -109,20 +106,19 @@ export type GalleryImage = {
 };
 
 export type Message = {
-    sender: string; // email of the sender
+    sender: string;
     text: string;
     timestamp: string;
-    readBy: string[]; // array of emails of users who have read the message
+    readBy: string[];
 }
 
 export type GroupChat = {
     id: string;
     name: string;
-    members: string[]; // array of member emails
+    members: string[];
     messages: Message[];
 }
 
-// Mind Map related types
 export type MindMapNode = {
     id: string;
     position: { x: number; y: number };

@@ -22,7 +22,7 @@ export function AppSidebar() {
         <div className="flex-1 overflow-y-auto">
           <nav className="grid items-start px-2 text-sm font-medium lg:px-4">
             <AppSidebarNav 
-              role={role || ''} 
+              role={role || 'Member'}
               notifications={unread}
               onLinkClick={(key) => markAllAsRead(key)}
             />

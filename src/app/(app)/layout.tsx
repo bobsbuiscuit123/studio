@@ -1,7 +1,6 @@
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
-import { Logo } from "@/components/icons";
 
 export default function AppLayout({
   children,

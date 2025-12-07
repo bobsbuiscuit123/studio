@@ -18,6 +18,7 @@ import {
   BarChart,
   Share2,
   Bot,
+  Compass,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
@@ -33,6 +34,7 @@ type NotificationMap = {
 
 const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: '/browse-clubs', icon: Compass, label: 'Browse Clubs', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'announcements' as NotificationKey },
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'messages' as NotificationKey },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['President', 'Admin', 'Officer', 'Member'], notificationKey: 'calendar' as NotificationKey },
@@ -51,9 +53,20 @@ const allNavItems = [
 export function AppSidebarNav({ role, notifications, onLinkClick }: { role: string; notifications: NotificationMap, onLinkClick: (key: NotificationKey) => void }) {
   const pathname = usePathname();
 
-  const navItems = allNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
-    // Custom sort order if needed, for now just an example
-    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Mind Map', 'Assistant', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
+  const clubId = typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null;
+
+  const filteredNavItems = allNavItems.filter(item => {
+      // Show "Browse Clubs" if no club is selected, hide it if one is.
+      if (item.href === '/browse-clubs') {
+          return !clubId;
+      }
+      // For all other links, show them only if a club IS selected.
+      return clubId;
+  });
+
+
+  const navItems = filteredNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
+    const order = ['Dashboard', 'Browse Clubs', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Mind Map', 'Assistant', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 
@@ -61,13 +74,15 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
     <>
       {navItems.map((item) => {
         const hasNotification = item.notificationKey && notifications[item.notificationKey as keyof NotificationMap];
+        const isActive = pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
+        
         return (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary',
-              pathname.startsWith(item.href) && 'bg-muted text-primary'
+              isActive && 'bg-muted text-primary'
             )}
             onClick={() => {
               if (item.notificationKey) {

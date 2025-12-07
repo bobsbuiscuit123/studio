@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { PlusCircle, ArrowRight, LogIn, UserPlus } from 'lucide-react';
+import { PlusCircle, ArrowRight, LogIn, UserPlus, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,6 +23,13 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
@@ -36,9 +43,14 @@ import { useCurrentUser } from '@/lib/data-hooks';
 import { sendResetPasswordEmail } from '@/ai/flows/send-reset-password-email';
 import { faker } from '@faker-js/faker';
 
+const clubCategories = ["STEM", "Arts", "Sports", "Service", "Academic", "Cultural", "Other"];
+
 const clubFormSchema = z.object({
   name: z.string().min(4, 'Club name must be at least 4 characters.'),
   logo: z.any().optional(),
+  category: z.string().min(1, "Please select a category."),
+  description: z.string().min(10, "Description must be at least 10 characters long."),
+  meetingTime: z.string().min(3, "Please enter a meeting time."),
 });
 
 const userFormSchema = z.object({
@@ -69,6 +81,9 @@ type Club = {
   id: string;
   name: string;
   joinCode: string;
+  category: string;
+  description: string;
+  meetingTime: string;
 };
 
 function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
@@ -268,7 +283,6 @@ export default function HomePage() {
 
   useEffect(() => {
     setIsClient(true);
-    // Ensure localStorage has initial data structures if they don't exist
     if (localStorage.getItem('users') === null) {
         localStorage.setItem('users', '[]');
     }
@@ -284,7 +298,7 @@ export default function HomePage() {
 
   const clubForm = useForm<z.infer<typeof clubFormSchema>>({
     resolver: zodResolver(clubFormSchema),
-    defaultValues: { name: '' },
+    defaultValues: { name: '', category: '', description: '', meetingTime: '' },
   });
   
   const joinForm = useForm<z.infer<typeof joinClubFormSchema>>({
@@ -326,6 +340,9 @@ export default function HomePage() {
       id: Date.now().toString(),
       name: values.name,
       joinCode: newJoinCode,
+      category: values.category,
+      description: values.description,
+      meetingTime: values.meetingTime,
     };
     
     const updatedClubs = [...allClubs, newClub];
@@ -413,7 +430,6 @@ export default function HomePage() {
 
   const handleSelectClub = (clubId: string) => {
     localStorage.setItem('selectedClubId', clubId);
-    // Use the sync key to notify other tabs/windows
     localStorage.setItem('clubhub_ai_sync_key', Date.now().toString());
     router.push('/dashboard');
   };
@@ -421,7 +437,6 @@ export default function HomePage() {
   const handleLogout = () => {
     clearUser();
     localStorage.removeItem('selectedClubId');
-    localStorage.removeItem('selectedClubLogo');
   }
   
   if (!isClient || userLoading) {
@@ -502,15 +517,16 @@ export default function HomePage() {
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-2xl font-semibold">Your Clubs</h2>
            <div className="flex gap-2">
+            <Button variant="outline" onClick={() => router.push('/browse-clubs')}><Compass className="mr-2"/> Browse All Clubs</Button>
             <Dialog open={isJoinClubOpen} onOpenChange={setIsJoinClubOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline"><UserPlus className="mr-2" /> Join Club</Button>
+                  <Button variant="secondary"><UserPlus className="mr-2" /> Join Club</Button>
                 </DialogTrigger>
                 <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Join a Club</DialogTitle>
                     <DialogDescription>
-                    Enter the 4-letter join code provided by the club owner.
+                    Enter the 4-character join code provided by the club president.
                     </DialogDescription>
                 </DialogHeader>
                  <form onSubmit={joinForm.handleSubmit(handleJoinClub)} className="space-y-4 pt-4">
@@ -536,21 +552,44 @@ export default function HomePage() {
                     <PlusCircle className="mr-2" /> Create Club
                 </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Create a New Club</DialogTitle>
                     <DialogDescription>
-                    Enter the details for your new club. You will be the owner.
+                    Enter the details for your new club. You will automatically be assigned the 'President' role.
                     </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={clubForm.handleSubmit(handleCreateClub)} className="space-y-4 pt-4">
-                    <Input {...clubForm.register('name')} placeholder="Club Name (e.g., Innovators Club)" />
-                    {clubForm.formState.errors.name && (
-                    <p className="text-red-500 text-sm">{clubForm.formState.errors.name.message}</p>
-                    )}
+                    <div>
+                      <Label>Club Name</Label>
+                      <Input {...clubForm.register('name')} placeholder="e.g., Innovators Club" />
+                      {clubForm.formState.errors.name && <p className="text-destructive text-sm">{clubForm.formState.errors.name.message}</p>}
+                    </div>
+                    <div>
+                      <Label>Club Category</Label>
+                       <Select onValueChange={(value) => clubForm.setValue('category', value)}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {clubCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      {clubForm.formState.errors.category && <p className="text-destructive text-sm">{clubForm.formState.errors.category.message}</p>}
+                    </div>
+                     <div>
+                      <Label>Club Description</Label>
+                      <Input {...clubForm.register('description')} placeholder="What is your club about?" />
+                      {clubForm.formState.errors.description && <p className="text-destructive text-sm">{clubForm.formState.errors.description.message}</p>}
+                    </div>
+                     <div>
+                      <Label>Meeting Time / Location</Label>
+                      <Input {...clubForm.register('meetingTime')} placeholder="e.g., Tuesdays at 4 PM in Room 101" />
+                      {clubForm.formState.errors.meetingTime && <p className="text-destructive text-sm">{clubForm.formState.errors.meetingTime.message}</p>}
+                    </div>
                     <div className="flex flex-col gap-2">
-                    <Label>Club Logo (Optional)</Label>
-                    <Input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageChange} />
+                      <Label>Club Logo (Optional)</Label>
+                      <Input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageChange} />
                     </div>
                     {previewImage && <Image src={previewImage} alt="logo preview" width={100} height={100} className="rounded-md" />}
                     <DialogFooter>

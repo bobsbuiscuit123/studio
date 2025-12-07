@@ -170,8 +170,8 @@ export default function ClubProfilePage() {
                     <CardTitle className="flex items-center gap-2"><CalendarDays/> Upcoming Events</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {club.events && club.events.length > 0 ? club.events.slice(0, 3).map(event => (
-                        <div key={event.id}>
+                    {club.events && club.events.length > 0 ? club.events.slice(0, 3).map((event, index) => (
+                        <div key={`${event.id}-${index}`}>
                             <p className="font-semibold">{event.title}</p>
                             <p className="text-sm text-muted-foreground">{event.date.toLocaleDateString()} at {event.location}</p>
                         </div>

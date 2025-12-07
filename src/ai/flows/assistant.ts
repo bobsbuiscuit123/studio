@@ -13,25 +13,25 @@ import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import {
   generateClubAnnouncement,
-  GenerateClubAnnouncementInput,
+  GenerateClubAnnouncementInputSchema,
 } from './generate-announcement';
 import {
   generateMeetingSlides,
-  GenerateMeetingSlidesInput,
+  GenerateMeetingSlidesInputSchema,
 } from './generate-meeting-slides';
 import {
   generateSocialMediaPost,
-  GenerateSocialMediaPostInput,
+  GenerateSocialMediaPostInputSchema,
 } from './generate-social-media-post';
 import {
   addCalendarEvent,
-  AddCalendarEventInput,
+  AddCalendarEventInputSchema,
 } from './add-calendar-event';
 import {
   addTransaction,
-  AddTransactionInput,
+  AddTransactionInputSchema,
 } from './add-transaction';
-import { generateEmail, GenerateEmailInput } from './generate-email';
+import { generateEmail, GenerateEmailInputSchema } from './generate-email';
 
 const announcementTool = ai.defineTool(
   {
@@ -167,3 +167,4 @@ const assistantFlow = ai.defineFlow(
     return { response: output.response };
   }
 );
+

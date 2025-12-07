@@ -53,7 +53,7 @@ const editFormSchema = z.object({
 });
 
 export default function CalendarPage() {
-  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [date, setDate] = useState<Date | undefined>(undefined);
   const [isClient, setIsClient] = useState(false);
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
@@ -64,6 +64,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     setIsClient(true);
+    setDate(new Date());
   }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -121,8 +122,8 @@ export default function CalendarPage() {
     } catch (error) {
       console.error(error);
       toast({
-        title: "Error",
-        description: "Failed to add event from prompt.",
+        title: "Error adding event with AI",
+        description: "There was a problem generating the event from your prompt. Please try again.",
         variant: "destructive",
       });
     } finally {

@@ -69,12 +69,19 @@ const addCalendarEventFlow = ai.defineFlow(
         return output;
       } catch (error: any) {
         attempts++;
-        if (attempts >= maxAttempts || (!error.message.includes('503') && !error.message.includes('429'))) {
+        // Check for common rate limit or temporary server error status codes.
+        const isRetryable = error.status === 429 || error.status === 503 || (error.message && (error.message.includes('429') || error.message.includes('503')));
+        
+        if (attempts >= maxAttempts || !isRetryable) {
           // If it's the last attempt or not a retryable error, rethrow.
+          console.error("Non-retryable error or max attempts reached:", error);
           throw error;
         }
-        // Wait for 2 seconds before the next attempt
-        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Wait for an exponentially increasing amount of time before the next attempt
+        const waitTime = (2 ** attempts) * 1000;
+        console.log(`Attempt ${attempts} failed. Retrying in ${waitTime / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
 

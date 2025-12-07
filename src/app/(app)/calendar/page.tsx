@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -52,13 +52,17 @@ const editFormSchema = z.object({
 });
 
 export default function CalendarPage() {
-  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [date, setDate] = useState<Date | undefined>(undefined);
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const { canManageRoles } = useCurrentUserRole();
+
+  useEffect(() => {
+    setDate(new Date());
+  }, []);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),

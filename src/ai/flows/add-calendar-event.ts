@@ -45,7 +45,8 @@ const addEventPrompt = ai.definePrompt({
     Prompt: {{{prompt}}}
     
     The current date is ${new Date().toDateString()}. Use this for context when interpreting relative dates like "next Tuesday".
-    `
+    `,
+    model: "gemini-1.5-flash-latest"
 });
 
 

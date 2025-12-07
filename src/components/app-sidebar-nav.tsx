@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
+import { useEffect, useState } from 'react';
 
 type NotificationMap = {
   announcements: boolean;
@@ -52,11 +53,16 @@ const allNavItems = [
 
 export function AppSidebarNav({ role, notifications, onLinkClick }: { role: string; notifications: NotificationMap, onLinkClick: (key: NotificationKey) => void }) {
   const pathname = usePathname();
+  const [isClient, setIsClient] = useState(false);
 
-  const clubId = typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null;
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const clubId = isClient ? localStorage.getItem('selectedClubId') : null;
 
   const filteredNavItems = allNavItems.filter(item => {
-      // Show "Browse Clubs" if no club is selected, hide it if one is.
+      // The browse-clubs page should not have the sidebar, but we keep this logic just in case.
       if (item.href === '/browse-clubs') {
           return !clubId;
       }
@@ -64,9 +70,8 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
       return clubId;
   });
 
-
   const navItems = filteredNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
-    const order = ['Dashboard', 'Browse Clubs', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Mind Map', 'Assistant', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
+    const order = ['Dashboard', 'Announcements', 'Messages', 'Calendar', 'Attendance', 'Points', 'Gallery', 'Members', 'Mind Map', 'Assistant', 'Email', 'Finances', 'Social Media', 'Meeting Slides'];
     return order.indexOf(a.label) - order.indexOf(b.label);
   });
 

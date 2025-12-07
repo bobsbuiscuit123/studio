@@ -82,11 +82,6 @@ export default function BrowseClubsPage() {
 
     return (
         <div className="space-y-6">
-            <div>
-                <h1 className="text-3xl font-bold">Club Directory</h1>
-                <p className="text-muted-foreground">Discover and join clubs at your school.</p>
-            </div>
-
             <div className="flex flex-col md:flex-row gap-4">
                 <div className="relative flex-grow">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

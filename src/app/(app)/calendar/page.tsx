@@ -53,6 +53,7 @@ const editFormSchema = z.object({
 
 export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>(undefined);
+  const [isMounted, setIsMounted] = useState(false);
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -61,6 +62,7 @@ export default function CalendarPage() {
   const { canManageRoles } = useCurrentUserRole();
 
   useEffect(() => {
+    setIsMounted(true);
     setDate(new Date());
   }, []);
 
@@ -155,7 +157,7 @@ export default function CalendarPage() {
           <CardContent className="p-0">
             <Calendar
               mode="single"
-              selected={date}
+              selected={isMounted ? date : undefined}
               onSelect={setDate}
               className="p-0"
               classNames={{
@@ -406,3 +408,5 @@ export default function CalendarPage() {
     </>
   );
 }
+
+    

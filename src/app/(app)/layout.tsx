@@ -3,26 +3,12 @@
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
-import { usePathname } from 'next/navigation';
 
 export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const isBrowseClubsPage = pathname.startsWith('/browse-clubs');
-
-  if (isBrowseClubsPage) {
-    return (
-      <div className="flex flex-col min-h-screen">
-        <AppHeader />
-        <main className="flex-1 p-4 lg:p-6">
-            {children}
-        </main>
-    </div>
-    )
-  }
 
   return (
     <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">

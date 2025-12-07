@@ -60,11 +60,17 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
   }, []);
 
   const clubId = isClient ? localStorage.getItem('selectedClubId') : null;
+  const isBrowsingClubs = pathname.startsWith('/browse-clubs');
 
+  // If we're on the browse clubs pages, don't show the main nav.
+  if (isBrowsingClubs) {
+    return null;
+  }
+  
   const filteredNavItems = allNavItems.filter(item => {
-      // The browse-clubs page should not have the sidebar, but we keep this logic just in case.
+      // Don't show the "Browse Clubs" link in the main sidebar
       if (item.href === '/browse-clubs') {
-          return !clubId;
+          return false;
       }
       // For all other links, show them only if a club IS selected.
       return clubId;

@@ -8,7 +8,7 @@
  * - GenerateMeetingSlidesOutput - The return type for the generateMeetingSlides function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, logAiEnvDebug} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateMeetingSlidesInputSchema = z.object({
@@ -28,7 +28,16 @@ const GenerateMeetingSlidesOutputSchema = z.object({
 export type GenerateMeetingSlidesOutput = z.infer<typeof GenerateMeetingSlidesOutputSchema>;
 
 export async function generateMeetingSlides(input: GenerateMeetingSlidesInput): Promise<GenerateMeetingSlidesOutput> {
-  return generateMeetingSlidesFlow(input);
+  logAiEnvDebug('generateMeetingSlides');
+  try {
+    return await generateMeetingSlidesFlow(input);
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      'Failed to generate slides. Please try again in a moment.';
+    console.error('[AI_DEBUG] generateMeetingSlides error:', error);
+    throw new Error(message);
+  }
 }
 
 const prompt = ai.definePrompt({

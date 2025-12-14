@@ -9,7 +9,7 @@
  * - GenerateEmailOutput - The return type for the generateEmail function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, logAiEnvDebug} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateEmailInputSchema = z.object({
@@ -30,7 +30,16 @@ export type GenerateEmailOutput = z.infer<
 export async function generateEmail(
   input: GenerateEmailInput
 ): Promise<GenerateEmailOutput> {
-  return generateEmailFlow(input);
+  logAiEnvDebug('generateEmail');
+  try {
+    return await generateEmailFlow(input);
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      'Failed to generate email. Please try again in a moment.';
+    console.error('[AI_DEBUG] generateEmail error:', error);
+    throw new Error(message);
+  }
 }
 
 const generateEmailPrompt = ai.definePrompt({

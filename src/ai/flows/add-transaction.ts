@@ -1,6 +1,4 @@
 
-'use server';
-
 /**
  * @fileOverview Creates a financial transaction using AI from a natural language prompt.
  *
@@ -12,7 +10,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const AddTransactionInputSchema = z.object({
+export const AddTransactionInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt describing the transaction. For example: "Received $50 for member dues yesterday" or "Spent $25 on pizza for the meeting last Friday, it has been paid."'),
 });
 export type AddTransactionInput = z.infer<
@@ -32,7 +30,18 @@ export type AddTransactionOutput = z.infer<
 export async function addTransaction(
   input: AddTransactionInput
 ): Promise<AddTransactionOutput> {
-  return addTransactionFlow(input);
+  // Align logging/error handling with other flows.
+  const { logAiEnvDebug } = await import('@/ai/genkit');
+  logAiEnvDebug('addTransaction');
+  try {
+    return await addTransactionFlow(input);
+  } catch (error: any) {
+    console.error('[AI_DEBUG] addTransaction error:', error);
+    throw new Error(
+      error?.message ??
+        'Failed to create transaction. Please try again in a moment.'
+    );
+  }
 }
 
 

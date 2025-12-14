@@ -1,206 +1,206 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+'use client';
+
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Send, Loader2, Bot } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { Send, Loader2, Bot, CheckCircle2, AlertCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { useCurrentUser } from '@/lib/data-hooks';
-import { runAssistant, AssistantOutput } from '@/ai/flows/assistant';
-import { cn } from '@/lib/utils';
+import { planTasksAction, runTaskAction } from './actions';
 
-const formSchema = z.object({
-  query: z.string().min(1, 'Please enter a message.'),
-});
+type TaskType = 'announcement' | 'slides' | 'calendar' | 'email' | 'transaction' | 'social' | 'other';
 
-type Message = {
+type PlannedTask = {
   id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  toolOutput?: any;
-  toolName?: string;
+  type: TaskType;
+  prompt: string;
+  followUpQuestion?: string;
+  status: 'pending' | 'sent' | 'error';
+  result?: any;
+  error?: string;
 };
 
+const formSchema = z.object({
+  query: z.string().min(5, 'Please provide a bit more detail.'),
+});
+
 export default function AssistantPage() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const { user } = useCurrentUser();
+  const [tasks, setTasks] = useState<PlannedTask[]>([]);
+  const [summary, setSummary] = useState('');
+  const [isPlanning, setIsPlanning] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const { toast } = useToast();
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: { query: '' },
   });
 
-  const scrollToBottom = () => {
-    if (scrollAreaRef.current) {
-        const viewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-        if (viewport) {
-            viewport.scrollTop = viewport.scrollHeight;
-        }
-    }
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
-    setIsLoading(true);
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content: values.query,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    form.reset();
-
+    setIsPlanning(true);
+    setTasks([]);
+    setSummary('');
     try {
-      const result: AssistantOutput = await runAssistant({ query: values.query });
-      
-      const assistantMessage: Message = {
-        id: `assistant-${Date.now()}`,
-        role: 'assistant',
-        content: result.response,
-        toolOutput: result.toolOutput,
-        toolName: result.toolName,
-      };
-
-      setMessages((prev) => [...prev, assistantMessage]);
-
-      if (result.toolName) {
-        toast({
-          title: "Assistant Action",
-          description: `Successfully used the ${result.toolName} tool.`,
-        });
-      }
-
-    } catch (error) {
-      console.error('Assistant Error:', error);
-      const errorMessage: Message = {
-        id: `error-${Date.now()}`,
-        role: 'assistant',
-        content: "Sorry, I encountered an error while processing your request. Please try again.",
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      const plan = await planTasksAction(values.query);
+      const planned = plan.tasks.map(task => ({
+        ...task,
+        status: 'pending' as const,
+      }));
+      setTasks(planned);
+      setSummary(plan.summary);
+    } catch (error: any) {
+      console.error('Assistant planner error:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to get a response from the assistant.',
+        title: 'Assistant error',
+        description: error?.message ?? 'Failed to plan tasks.',
         variant: 'destructive',
       });
     } finally {
-      setIsLoading(false);
+      setIsPlanning(false);
+      form.reset();
+    }
+  };
+
+  const updateTaskPrompt = (id: string, prompt: string) => {
+    setTasks(prev =>
+      prev.map(t => (t.id === id ? { ...t, prompt } : t))
+    );
+  };
+
+  const markTask = (id: string, data: Partial<PlannedTask>) => {
+    setTasks(prev =>
+      prev.map(t => (t.id === id ? { ...t, ...data } : t))
+    );
+  };
+
+  const runTask = async (task: PlannedTask) => {
+    setSendingId(task.id);
+    try {
+      const result = await runTaskAction(task.type, task.prompt);
+      markTask(task.id, { status: 'sent', result, error: undefined });
+      toast({
+        title: 'Task sent',
+        description: `Completed ${task.type} task.`,
+      });
+    } catch (error: any) {
+      console.error(`Assistant task ${task.id} error:`, error);
+      markTask(task.id, { status: 'error', error: error?.message ?? 'Failed to run task.' });
+      toast({
+        title: 'Task failed',
+        description: error?.message ?? 'Could not run this task.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingId(null);
     }
   };
 
   return (
-    <div className="h-[calc(100vh-80px)] flex flex-col">
-      <Card className="flex flex-col flex-1">
+    <div className="h-[calc(100vh-80px)] flex flex-col gap-4">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bot /> ClubHub AI Assistant
           </CardTitle>
           <CardDescription>
-            Your AI-powered club management assistant. Ask it to perform tasks for you.
+            Ask for anything (announcements, slides, calendar, email, finances, social). The assistant will plan tasks, ask follow-ups, and let you review before sending.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex-1 flex flex-col p-0">
-          <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-            <div className="space-y-6">
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    'flex items-start gap-4',
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}
-                >
-                  {message.role === 'assistant' && (
-                    <Avatar className="h-9 w-9 border">
-                      <AvatarFallback>
-                        <Bot />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  <div
-                    className={cn(
-                      'max-w-xl rounded-lg p-3',
-                      message.role === 'user'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted'
-                    )}
-                  >
-                    <ReactMarkdown className="prose dark:prose-invert prose-sm">
-                        {message.content}
-                    </ReactMarkdown>
-                    {message.toolOutput && (
-                        <Card className="mt-4 bg-background/50">
-                            <CardHeader className="p-2">
-                                <CardTitle className="text-xs">Tool Output: {message.toolName}</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-2">
-                                <pre className="text-xs overflow-x-auto bg-gray-800 text-white p-2 rounded-md">
-                                    <code>{JSON.stringify(message.toolOutput, null, 2)}</code>
-                                </pre>
-                            </CardContent>
-                        </Card>
-                    )}
-                  </div>
-                  {message.role === 'user' && user && (
-                    <Avatar className="h-9 w-9 border">
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                      <AvatarFallback>{user.name?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ))}
-              {messages.length === 0 && (
-                <div className="text-center text-muted-foreground p-8">
-                    <p>Start a conversation with your AI Assistant!</p>
-                    <p className="text-sm">Try prompts like:</p>
-                    <ul className="text-sm list-disc list-inside mt-2">
-                        <li>"Draft an announcement for our bake sale next week."</li>
-                        <li>"Generate slides for the quarterly review meeting."</li>
-                        <li>"Received $50 in member dues today."</li>
-                    </ul>
-                </div>
-              )}
+        <CardContent className="space-y-3">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col gap-3">
+            <Input
+              {...form.register('query')}
+              placeholder="e.g., Make slides on safety training, post an announcement with the slides, and email members to review."
+              autoComplete="off"
+              disabled={isPlanning}
+            />
+            <Button type="submit" disabled={isPlanning}>
+              {isPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              {isPlanning ? 'Planning...' : 'Ask Assistant'}
+            </Button>
+          </form>
+          {summary && (
+            <div className="rounded-md bg-muted p-3 text-sm">
+              <strong>Plan:</strong> {summary}
             </div>
-          </ScrollArea>
-          <div className="border-t p-4">
-            <form
-              onSubmit={form.handleSubmit(handleSubmit)}
-              className="flex items-center gap-2"
-            >
-              <Input
-                {...form.register('query')}
-                placeholder="Ask the assistant to do something..."
-                autoComplete="off"
-                disabled={isLoading}
-              />
-              <Button type="submit" size="icon" disabled={isLoading}>
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
-              </Button>
-            </form>
-          </div>
+          )}
         </CardContent>
       </Card>
+
+      {tasks.length > 0 && (
+        <Card className="flex-1 overflow-auto">
+          <CardHeader>
+            <CardTitle>Planned Tasks</CardTitle>
+            <CardDescription>Review, edit, answer follow-ups, then send each task.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {tasks.map(task => (
+              <div key={task.id} className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold capitalize">{task.type} task</div>
+                  {task.status === 'sent' && (
+                    <span className="inline-flex items-center gap-1 text-green-600 text-sm">
+                      <CheckCircle2 className="h-4 w-4" /> Sent
+                    </span>
+                  )}
+                  {task.status === 'error' && (
+                    <span className="inline-flex items-center gap-1 text-red-600 text-sm">
+                      <AlertCircle className="h-4 w-4" /> Failed
+                    </span>
+                  )}
+                </div>
+                {task.followUpQuestion && (
+                  <div className="text-sm text-muted-foreground">
+                    Follow-up: {task.followUpQuestion}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-muted-foreground">Details / prompt</label>
+                  <Textarea
+                    value={task.prompt}
+                    onChange={(e) => updateTaskPrompt(task.id, e.target.value)}
+                    className="min-h-[120px]"
+                  />
+                </div>
+                {task.error && (
+                  <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
+                    {task.error}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => updateTaskPrompt(task.id, task.prompt)}
+                    disabled
+                    className="hidden"
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    onClick={() => runTask(task)}
+                    disabled={task.status === 'sent' || sendingId === task.id}
+                  >
+                    {sendingId === task.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Task'}
+                  </Button>
+                </div>
+                {task.result && (
+                  <div className="bg-muted/50 p-2 rounded text-xs">
+                    <strong>Result:</strong> {JSON.stringify(task.result, null, 2)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

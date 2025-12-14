@@ -9,7 +9,7 @@
  * - GenerateClubAnnouncementOutput - The return type for the generateClubAnnouncement function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, logAiEnvDebug} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateClubAnnouncementInputSchema = z.object({
@@ -30,7 +30,16 @@ export type GenerateClubAnnouncementOutput = z.infer<
 export async function generateClubAnnouncement(
   input: GenerateClubAnnouncementInput
 ): Promise<GenerateClubAnnouncementOutput> {
-  return generateClubAnnouncementFlow(input);
+  logAiEnvDebug('generateClubAnnouncement');
+  try {
+    return await generateClubAnnouncementFlow(input);
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      'Failed to generate announcement. Please try again in a moment.';
+    console.error('[AI_DEBUG] generateClubAnnouncement error:', error);
+    throw new Error(message);
+  }
 }
 
 const generateClubAnnouncementPrompt = ai.definePrompt({

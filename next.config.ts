@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Hide the floating Next.js Dev Tools indicator button in development.
+  devIndicators: false,
 };
 
 export default nextConfig;

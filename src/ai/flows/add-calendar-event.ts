@@ -1,6 +1,4 @@
 
-'use server';
-
 /**
  * @fileOverview Creates calendar events using AI from a natural language prompt.
  *
@@ -9,10 +7,10 @@
  * - AddCalendarEventOutput - The return type for the addCalendarEvent function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai, logAiEnvDebug} from '@/ai/genkit';
 import {z} from 'genkit';
 
-const AddCalendarEventInputSchema = z.object({
+export const AddCalendarEventInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt describing the event to be created. For example: "Schedule a meeting for next Tuesday at 2pm in Room 101 to discuss the Q3 budget."'),
 });
 export type AddCalendarEventInput = z.infer<
@@ -32,7 +30,16 @@ export type AddCalendarEventOutput = z.infer<
 export async function addCalendarEvent(
   input: AddCalendarEventInput
 ): Promise<AddCalendarEventOutput> {
-  return addCalendarEventFlow(input);
+  logAiEnvDebug('addCalendarEvent');
+  try {
+    return await addCalendarEventFlow(input);
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      'Failed to add calendar event. Please try again in a moment.';
+    console.error('[AI_DEBUG] addCalendarEvent error:', error);
+    throw new Error(message);
+  }
 }
 
 const addEventPrompt = ai.definePrompt({

@@ -9,7 +9,7 @@
  * - AssistantOutput - The return type for the runAssistant function.
  */
 
-import { ai } from '@/ai/genkit';
+import { ai, logAiEnvDebug } from '@/ai/genkit';
 import { z } from 'zod';
 import {
   generateClubAnnouncement,
@@ -110,7 +110,16 @@ export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 export async function runAssistant(
   input: AssistantInput
 ): Promise<AssistantOutput> {
-  return assistantFlow(input);
+  logAiEnvDebug('runAssistant');
+  try {
+    return await assistantFlow(input);
+  } catch (error: any) {
+    const message =
+      error?.message ??
+      'Failed to run assistant. Please try again in a moment.';
+    console.error('[AI_DEBUG] runAssistant error:', error);
+    throw new Error(message);
+  }
 }
 
 const assistantPrompt = ai.definePrompt({
@@ -167,4 +176,3 @@ const assistantFlow = ai.defineFlow(
     return { response: output.response };
   }
 );
-

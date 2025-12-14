@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ClubHub AI",
   description: "The ultimate club management tool, powered by AI.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

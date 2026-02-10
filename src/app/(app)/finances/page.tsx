@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Upload, Loader2, Landmark } from "lucide-react";
+import { PlusCircle, Upload, Loader2, Landmark, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -30,24 +30,40 @@ import { useToast } from "@/hooks/use-toast";
 import type { Transaction } from "@/lib/mock-data";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { addTransaction, AddTransactionOutput } from "@/ai/flows/add-transaction";
+import { safeFetchJson } from "@/lib/network";
 
 
 const promptFormSchema = z.object({
   prompt: z.string().min(3, "Please provide a more detailed prompt."),
 });
+const manualFormSchema = z.object({
+  description: z.string().min(3, "Description is required."),
+  amount: z.number({ invalid_type_error: "Enter a number" }),
+  date: z.string().optional(),
+  status: z.enum(['Paid', 'Pending']).default('Paid'),
+});
 
 export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showAi, setShowAi] = useState(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
   const importFileRef = useRef<HTMLInputElement>(null);
+  const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
 
   const form = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
     defaultValues: {
       prompt: "",
+    },
+  });
+  const manualForm = useForm<z.infer<typeof manualFormSchema>>({
+    resolver: zodResolver(manualFormSchema),
+    defaultValues: {
+      description: "",
+      amount: 0,
+      status: "Paid",
     },
   });
   
@@ -99,23 +115,49 @@ export default function FinancesPage() {
 
   const handleAddTransaction = async (values: z.infer<typeof promptFormSchema>) => {
     setIsProcessing(true);
-    try {
-      const result: AddTransactionOutput = await addTransaction(values);
-      const newTransaction: Transaction = {
-        id: Date.now().toString(),
-        description: result.description,
-        amount: result.amount,
-        date: new Date(result.date).toLocaleDateString(),
-        status: result.status,
-      };
-      setTransactions([newTransaction, ...transactions]);
-      toast({ title: "Transaction added successfully!" });
-      form.reset();
-    } catch (error) {
-       toast({ title: "Error", description: "Failed to add transaction from prompt.", variant: "destructive"});
-    } finally {
+    const result = await safeFetchJson<{ ok: boolean; data?: { description: string; amount: number; date: string; status: 'Paid' | 'Pending' }; error?: { message?: string } }>(
+      '/api/finances/ai',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+        timeoutMs: 12_000,
+        retry: { retries: 1 },
+      }
+    );
+    if (!result.ok || !result.data?.ok || !result.data.data) {
+      toast({
+        title: "Error",
+        description: result.ok ? result.data?.error?.message || "Failed to add transaction from prompt." : result.error.message,
+        variant: "destructive",
+      });
       setIsProcessing(false);
+      return;
     }
+    const newTransaction: Transaction = {
+      id: Date.now().toString(),
+      description: result.data.data.description,
+      amount: result.data.data.amount,
+      date: new Date(result.data.data.date).toLocaleDateString(),
+      status: result.data.data.status,
+    };
+    setTransactions([newTransaction, ...transactions]);
+    toast({ title: "Transaction added successfully!" });
+    form.reset();
+    setIsProcessing(false);
+  };
+  
+  const handleManualAdd = (values: z.infer<typeof manualFormSchema>) => {
+    const newTransaction: Transaction = {
+      id: Date.now().toString(),
+      description: values.description,
+      amount: values.amount,
+      date: values.date ? new Date(values.date).toLocaleDateString() : new Date().toLocaleDateString(),
+      status: values.status,
+    };
+    setTransactions([newTransaction, ...transactions]);
+    toast({ title: "Transaction added manually!" });
+    manualForm.reset({ description: "", amount: 0, status: "Paid" });
   };
 
   const totalIncome = transactions
@@ -250,36 +292,115 @@ export default function FinancesPage() {
              {(role === 'President' || role === 'Admin') && (
              <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Landmark /> Add Transaction</CardTitle>
-                <CardDescription>
-                  Describe a transaction and let AI handle the details.
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2"><Landmark /> Add Transaction</CardTitle>
+                    <CardDescription>Enter details manually, or ask AI to fill them.</CardDescription>
+                  </div>
+                  <Button type="button" variant="ghost" className={aiSparkle} onClick={() => setShowAi(v => !v)}>
+                    <Sparkles className="h-4 w-4 mr-1" /> {showAi ? 'Hide AI' : 'Make with AI'}
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
-                     <FormField
-                      control={form.control}
-                      name="prompt"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Prompt</FormLabel>
-                          <FormControl>
-                            <Textarea 
-                              placeholder="e.g., 'Received $50 for member dues yesterday' or 'Spent $25 on pizza for the meeting last Friday, it has been paid.'"
-                              className="min-h-[150px]"
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button type="submit" disabled={isProcessing} className="w-full">
-                      {isProcessing ? <Loader2 className="animate-spin" /> : <><PlusCircle className="mr-2"/>Add with AI</>}
-                    </Button>
-                  </form>
-                </Form>
+                <div className="space-y-6">
+                  <Form {...manualForm}>
+                    <form onSubmit={manualForm.handleSubmit(handleManualAdd)} className="space-y-4">
+                      <FormField
+                        control={manualForm.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Membership dues" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={manualForm.control}
+                        name="amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Amount</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={field.value ?? ''}
+                                onChange={e => field.onChange(parseFloat(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={manualForm.control}
+                        name="date"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Date</FormLabel>
+                            <FormControl>
+                              <Input type="date" {...field} />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={manualForm.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Status</FormLabel>
+                            <FormControl>
+                              <select
+                                className="w-full rounded-md border px-2 py-2"
+                                value={field.value}
+                                onChange={e => field.onChange(e.target.value as any)}
+                              >
+                                <option value="Paid">Paid</option>
+                                <option value="Pending">Pending</option>
+                              </select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <Button type="submit" className="w-full">
+                        <PlusCircle className="mr-2" /> Add manually
+                      </Button>
+                    </form>
+                  </Form>
+
+                  {showAi && (
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleAddTransaction)} className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="prompt"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>AI prompt</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="e.g., 'Received $50 for member dues yesterday' or 'Spent $25 on pizza for the meeting last Friday, it has been paid.'"
+                                  className="min-h-[150px]"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <Button type="submit" disabled={isProcessing} className={`w-full ${aiSparkle}`}>
+                          {isProcessing ? <Loader2 className="animate-spin" /> : <><Sparkles className="mr-2" /> Add with AI</>}
+                        </Button>
+                      </form>
+                    </Form>
+                  )}
+                </div>
               </CardContent>
             </Card>
             )}

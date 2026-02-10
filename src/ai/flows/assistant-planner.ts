@@ -3,19 +3,43 @@
  * Used by the Assistant UI to collect confirmations before calling individual flows.
  */
 
-import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { callAI } from '@/ai/genkit';
+import { type Result } from '@/lib/result';
+import { z } from 'zod';
 
 const PlannerInputSchema = z.object({
-  query: z.string().describe('The user request, e.g., "Make slides about safety training and post an announcement with them and email everyone."'),
+  query: z
+    .string()
+    .describe(
+      'The user request, e.g., "Post an announcement about safety training and email everyone."'
+    ),
+  context: z
+    .string()
+    .optional()
+    .describe('Recent chat context and prior outputs to resolve references.'),
 });
 export type PlannerInput = z.infer<typeof PlannerInputSchema>;
 
 const TaskSchema = z.object({
   id: z.string().describe('A short ID for the task.'),
-  type: z.enum(['announcement', 'slides', 'calendar', 'email', 'transaction', 'social', 'other']).describe('What type of task to run.'),
+  type: z
+    .enum([
+      'announcement',
+      'form',
+      'calendar',
+      'email',
+      'messages',
+      'gallery',
+      'transaction',
+      'social',
+      'other',
+    ])
+    .describe('What type of task to run.'),
   prompt: z.string().describe('The prompt/details to use when executing the task.'),
-  followUpQuestion: z.string().optional().describe('Any clarifying question the assistant should show to the user.'),
+  followUpQuestions: z
+    .array(z.string())
+    .optional()
+    .describe('Clarifying questions the assistant should show to the user.'),
 });
 
 const PlannerOutputSchema = z.object({
@@ -26,55 +50,44 @@ export type PlannerOutput = z.infer<typeof PlannerOutputSchema>;
 
 export async function planAssistantTasks(
   input: PlannerInput
-): Promise<PlannerOutput> {
-  const { logAiEnvDebug } = await import('@/ai/genkit');
-  logAiEnvDebug('planAssistantTasks');
-  try {
-    return await plannerFlow(input);
-  } catch (error: any) {
-    console.error('[AI_DEBUG] planAssistantTasks error:', error);
-    throw new Error(
-      error?.message ??
-        'Failed to plan tasks. Please try again in a moment.'
-    );
-  }
-}
-
-const plannerPrompt = ai.definePrompt({
-  name: 'assistantPlannerPrompt',
-  input: { schema: PlannerInputSchema },
-  output: { schema: PlannerOutputSchema },
-  prompt: `You are an orchestration planner for a club management assistant.
-User request: {{{query}}}
-
-You must break the request into clear tasks. Allowed task types:
-- announcement (uses generateClubAnnouncement)
-- slides (uses generateMeetingSlides)
-- calendar (uses addCalendarEvent)
-- email (uses generateEmail)
-- transaction (uses addTransaction)
-- social (uses generateSocialMediaPost)
-- other (for anything else)
-
-Rules:
-- Be concise and specific in the prompt field so it can be executed directly.
-- If anything is ambiguous, add a followUpQuestion to ask the user before sending.
-- Provide 1–5 tasks maximum.
-- Summarize the overall plan in 'summary'.
-`,
-});
-
-const plannerFlow = ai.defineFlow(
-  {
-    name: 'assistantPlannerFlow',
-    inputSchema: PlannerInputSchema,
+): Promise<Result<PlannerOutput>> {
+  const context = input.context?.trim();
+  const trimmedContext =
+    context && context.length > 4000 ? context.slice(-4000) : context;
+  const baseSystemMessage = `You are an orchestration planner for a club management assistant.
+Break the user's request into tasks. Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
+Be concise and specific in the prompt field so it can be executed directly. If the user supplied exact wording for an announcement/event/etc., preserve it verbatim in the prompt wrapped in double quotes (do not rewrite).
+Only add followUpQuestions when required details are missing per the task rules below. Do NOT ask for extra or random info. Each missing detail should be its own question in the followUpQuestions array.
+Task requirements:
+- announcement: need a general prompt about the announcement (the topic/what it's about) and recipients (everyone or specific). Exact text is optional (do not ask for it if a topic is provided). Attachments are optional (do not ask).
+- messages: need the person or group chat to send to, and either exact text or a prompt to generate the message.
+- calendar: need title (or enough context to generate it), date, and time. Location is optional. Relative dates like "tomorrow" count as date (do not ask for a specific date if provided). If points not mentioned, default to 0. If RSVP not mentioned, default to "no RSVP required".
+- form: need title (or enough context to generate it) and the questions (plus answer choices for multiple choice). Description can be generated from title. Default all questions to required, but allow edits later.
+- gallery: need at least one image. Description is optional (leave blank if not provided); if some context is given, you can generate a short description.
+- email: need either exact body text or enough context to generate it, plus a generated title/subject. Attachments are optional (do not ask).
+If the user asks to create a form but does not provide the actual questions (and answer choices for multiple-choice questions), include a followUpQuestions entry requesting those, phrased like: "Please list the questions you want in the form and any answer choices for multiple-choice questions."
+Treat reminder-style requests (e.g., "remind everyone to pay dues") as announcement tasks.
+If the request is extremely incomplete, still return the correct task type (e.g., announcement) and use followUpQuestions to ask for the missing detail; do not use type "other" for announcements/forms/emails just because details are missing.
+Provide 1-5 tasks maximum, each with at most five followUpQuestions.
+If the user asks for something you cannot do with the allowed task types, return exactly ONE task with type "other" and put a brief apology + explanation in the prompt (also mention what you *can* do in this app).
+Write 'summary' as a natural, varied assistant reply (1-2 short sentences). Avoid canned phrasing.
+Return ONLY JSON matching: { "tasks": Task[], "summary": string } with Task { id, type, prompt, followUpQuestions? }.`;
+  const systemContent = trimmedContext
+    ? `${baseSystemMessage}\n\nRecent context (use this to resolve references like "that form" or "the announcement"):\n${trimmedContext}`
+    : baseSystemMessage;
+  const output = await callAI<PlannerOutput>({
+    responseFormat: 'json_object',
     outputSchema: PlannerOutputSchema,
-  },
-  async input => {
-    const { output } = await plannerPrompt(input);
-    if (!output) {
-      throw new Error('Planner did not return any tasks.');
-    }
-    return output;
-  }
-);
+    messages: [
+      {
+        role: 'system',
+        content: systemContent,
+      },
+      {
+        role: 'user',
+        content: input.query,
+      },
+    ],
+  });
+  return output;
+}

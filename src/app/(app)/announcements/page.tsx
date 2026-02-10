@@ -1,13 +1,14 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon } from "lucide-react";
+import { Suspense, useState, useEffect, useRef, useMemo } from "react";
+import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import ReactMarkdown from 'react-markdown';
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -31,10 +33,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateClubAnnouncement, GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
+import { generateClubAnnouncement, type GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
-import type { Announcement, Attachment } from "@/lib/mock-data";
+import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
+import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 
 const promptFormSchema = z.object({
@@ -45,15 +48,21 @@ const promptFormSchema = z.object({
 const announcementFormSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters long."),
     content: z.string().min(10, "Content must be at least 10 characters long."),
+    recipients: z.string().optional(),
 });
 
-export default function AnnouncementsPage() {
-  const { data: announcements, updateData: setAnnouncements, loading } = useAnnouncements();
+function AnnouncementsPageInner() {
+  const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
+  const { data: announcements, updateData: setAnnouncements, loading, clubId } = useAnnouncements();
+  const { data: forms, loading: formsLoading, updateData: setForms, clubId: formsClubId } = useForms();
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
+  const { data: members } = useMembers();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -61,18 +70,34 @@ export default function AnnouncementsPage() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
-
+  const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
+  const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
+  const memberNameByEmail = useMemo(() => {
+    const list = Array.isArray(members) ? members : [];
+    return new Map(list.map(member => [member.email, member.name]));
+  }, [members]);
+  const resolveMemberName = (value: string) =>
+    memberNameByEmail.get(value) || value;
+  const [optimisticAnnouncements, setOptimisticAnnouncements] = useState<Announcement[]>([]);
+  const [recipientMode, setRecipientMode] = useState<'all' | 'specific'>('all');
+  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
+  const [showAi, setShowAi] = useState(false);
+  const [handledFormId, setHandledFormId] = useState<string | null>(null);
+  const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
-    const clubId = localStorage.getItem('selectedClubId');
-    if(clubId) {
-      const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
-      const currentClub = clubs.find((c: any) => c.id === clubId);
-      if(currentClub) {
-        setClubName(currentClub.name);
-      }
-    }
-  }, []);
+    if (!clubId) return;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('orgs')
+        .select('name')
+        .eq('id', clubId)
+        .maybeSingle();
+      if (!error && data?.name) setClubName(data.name);
+    };
+    load();
+  }, [clubId, supabase]);
 
   useEffect(() => {
     if (printableContent && isDownloading) {
@@ -96,6 +121,27 @@ export default function AnnouncementsPage() {
     }
   }, [printableContent, isDownloading]);
 
+  useEffect(() => {
+    if (!user?.email) return;
+    const userEmail = user.email;
+    setAnnouncements(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      let modified = false;
+      const next = list.map(ann => {
+        const viewedBy = Array.isArray(ann.viewedBy) ? ann.viewedBy : [];
+        const alreadyViewed = viewedBy.includes(userEmail);
+        if (alreadyViewed && ann.read) {
+          return ann;
+        }
+        modified = true;
+        const nextViewed = alreadyViewed ? viewedBy : [...viewedBy, userEmail];
+        return { ...ann, viewedBy: nextViewed, read: true };
+      });
+      return modified ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email]);
+
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -107,7 +153,78 @@ export default function AnnouncementsPage() {
 
   const announcementForm = useForm<z.infer<typeof announcementFormSchema>>({
     resolver: zodResolver(announcementFormSchema),
+    defaultValues: {
+      title: "",
+      content: "",
+      recipients: "",
+    },
   });
+
+  const persistAnnouncement = (announcement: Announcement) => {
+    setAnnouncements(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      const exists = list.some(a => a.id === announcement.id);
+      return exists ? list : [announcement, ...list];
+    });
+  };
+
+  useEffect(() => {
+    const ids = new Set(safeAnnouncements.map(a => a.id));
+    setOptimisticAnnouncements(prev => prev.filter(a => !ids.has(a.id)));
+  }, [safeAnnouncements]);
+
+  useEffect(() => {
+    if (!canEditContent) return;
+    const announceFormId = searchParams.get('announceFormId');
+    if (!announceFormId || announceFormId === handledFormId || formsLoading) return;
+    const targetForm = safeForms.find((form: ClubForm) => form.id === announceFormId);
+    if (!targetForm) return;
+
+    const prefillFromForm = async () => {
+      setHandledFormId(announceFormId);
+      setLinkedFormIdDraft(targetForm.id);
+      setAttachments([{
+        name: "Fill out the form",
+        dataUri: `/forms?formId=${encodeURIComponent(targetForm.id)}`,
+        type: "button",
+      }]);
+      setRecipientMode('all');
+      setSelectedRecipients([]);
+      setIsLoading(true);
+      try {
+        const promptText = targetForm.title
+          ? `tell everyone to fill out this form titled "${targetForm.title}"`
+          : "tell everyone to fill out this form";
+        const result = await generateClubAnnouncement({
+          prompt: promptText,
+        });
+        if (!result.ok) {
+          toast({
+            title: "Error",
+            description: result.error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+        setGeneratedAnnouncement(result.data);
+        announcementForm.reset({
+          title: result.data.title,
+          content: result.data.announcement
+        });
+        setIsPostDialogOpen(true);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to generate announcement for this form.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    prefillFromForm();
+  }, [announcementForm, canEditContent, handledFormId, formsLoading, safeForms, searchParams, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -141,6 +258,9 @@ export default function AnnouncementsPage() {
   
   const handleEditClick = (announcement: Announcement) => {
     setEditingAnnouncement(announcement);
+    const recips = Array.isArray(announcement.recipients) ? announcement.recipients : [];
+    setRecipientMode(recips.length > 0 ? 'specific' : 'all');
+    setSelectedRecipients(recips);
     announcementForm.reset({
         title: announcement.title,
         content: announcement.content,
@@ -151,12 +271,17 @@ export default function AnnouncementsPage() {
     setEditingAnnouncement(null); 
     setIsPostDialogOpen(false); 
     setGeneratedAnnouncement(null);
+    if (linkedFormIdDraft) {
+      setLinkedFormIdDraft(null);
+      setAttachments([]);
+    }
   }
 
   const handleUpdateAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
     if (!editingAnnouncement) return;
-    const updatedAnnouncements = announcements.map((ann) =>
-        ann.id === editingAnnouncement.id ? { ...ann, ...values } : ann
+    const recipients = recipientMode === 'specific' ? selectedRecipients : [];
+    const updatedAnnouncements = safeAnnouncements.map((ann) =>
+        ann.id === editingAnnouncement.id ? { ...ann, ...values, recipients } : ann
     );
     setAnnouncements(updatedAnnouncements);
     toast({ title: "Announcement updated!" });
@@ -169,6 +294,10 @@ export default function AnnouncementsPage() {
   };
   
   const handleDownloadAttachment = (attachment: Attachment) => {
+    if (attachment.type === "button" && attachment.dataUri) {
+      router.push(attachment.dataUri);
+      return;
+    }
     const link = document.createElement("a");
     link.href = attachment.dataUri;
     link.download = attachment.name;
@@ -179,45 +308,120 @@ export default function AnnouncementsPage() {
 
   const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
     setIsLoading(true);
-    try {
-      const result: GenerateClubAnnouncementOutput = await generateClubAnnouncement({
-        prompt: values.prompt,
-      });
-      setGeneratedAnnouncement(result);
-      announcementForm.reset({
-          title: result.title,
-          content: result.announcement
-      });
-      setIsPostDialogOpen(true);
-    } catch (error) {
+    const result = await generateClubAnnouncement({
+      prompt: values.prompt,
+    });
+    if (!result.ok) {
       toast({
         title: "Error",
-        description: "Failed to generate announcement.",
+        description: result.error.message || "Failed to generate announcement.",
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
+      return;
     }
+    setGeneratedAnnouncement(result.data);
+    announcementForm.reset({
+        title: result.data.title,
+        content: result.data.announcement
+    });
+    setIsPostDialogOpen(true);
+    setIsLoading(false);
   };
 
   const handlePostAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
     if (!user) return;
+    const recipients = recipientMode === 'specific' ? selectedRecipients : [];
+    const newId = Date.now();
+    const attachmentsToSave = (() => {
+      if (linkedFormIdDraft) {
+        const alreadyHasButton = attachments.some(att => att.type === 'button');
+        if (!alreadyHasButton) {
+          return [
+            ...attachments,
+            {
+              name: "Fill out the form",
+              dataUri: `/forms?formId=${encodeURIComponent(linkedFormIdDraft)}`,
+              type: "button",
+            },
+          ];
+        }
+      }
+      return attachments;
+    })();
     const newAnnouncement: Announcement = {
-        id: announcements.length > 0 ? Math.max(...announcements.map(a => a.id)) + 1 : 1,
+        id: newId,
         title: values.title,
         content: values.content,
         author: user?.name || "Club Admin",
-        date: new Date().toLocaleDateString(),
-        attachments: attachments,
+        date: new Date().toISOString(),
+        recipients,
+        viewedBy: user.email ? [user.email] : [],
+        attachments: attachmentsToSave,
         read: false,
+        linkedFormId: linkedFormIdDraft || undefined,
     };
-    setAnnouncements([newAnnouncement, ...announcements]);
+    setAnnouncements(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      const exists = list.some(a => a.id === newAnnouncement.id);
+      const next = exists ? list : [newAnnouncement, ...list];
+      return next as any;
+    });
+    setOptimisticAnnouncements(prev => {
+      const exists = prev.some(a => a.id === newAnnouncement.id);
+      return exists ? prev : [newAnnouncement, ...prev];
+    });
+    persistAnnouncement(newAnnouncement);
+    if (linkedFormIdDraft) {
+      setForms(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        return list.map(form => form.id === linkedFormIdDraft ? { ...form, linkedAnnouncementId: newAnnouncement.id } : form);
+      });
+      if (formsClubId) {
+        setForms(prev => {
+          const list = Array.isArray(prev) ? prev : [];
+          return list.map(form =>
+            form.id === linkedFormIdDraft
+              ? { ...form, linkedAnnouncementId: newAnnouncement.id }
+              : form
+          );
+        });
+      }
+      setLinkedFormIdDraft(null);
+    }
     toast({ title: "Announcement posted successfully!" });
     promptForm.reset();
     setAttachments([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
     handleDialogClose();
   };
+
+  const formatFriendlyDate = (value: any) => {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+    return String(value ?? "");
+  };
+
+  const sortedAnnouncements = useMemo(() => {
+    const merged = (() => {
+      const optimisticIds = new Set(optimisticAnnouncements.map(a => a.id));
+      const dedupedSafe = safeAnnouncements.filter(a => !optimisticIds.has(a.id));
+      return [...optimisticAnnouncements, ...dedupedSafe];
+    })();
+    return [...merged].sort((a: any, b: any) => {
+      const aDate = new Date(a?.date ?? 0).getTime();
+      const bDate = new Date(b?.date ?? 0).getTime();
+      return bDate - aDate;
+    });
+  }, [optimisticAnnouncements, safeAnnouncements]);
   
   return (
     <>
@@ -225,136 +429,330 @@ export default function AnnouncementsPage() {
       {canEditContent && (
         <div className="md:col-span-1">
             <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
-                <CardDescription>Describe the announcement you want to create.</CardDescription>
+            <CardHeader className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
+                  <CardDescription>Start manually, or fill with AI.</CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="default"
+                  className={showAi ? '' : aiSparkle}
+                  onClick={() => setShowAi(v => !v)}
+                >
+                  {showAi ? 'Make manually' : <><Sparkles className="h-4 w-4 mr-1" /> Make with AI</>}
+                </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-6">
+              {!showAi && (
+                <Form {...announcementForm}>
+                  <form 
+                      id="announcement-manual"
+                      onSubmit={announcementForm.handleSubmit(editingAnnouncement ? handleUpdateAnnouncement : handlePostAnnouncement)}
+                      className="space-y-4"
+                  >
+                      <FormField
+                          control={announcementForm.control}
+                          name="title"
+                          render={({ field }) => (
+                              <FormItem>
+                                  <FormLabel>Title</FormLabel>
+                                  <FormControl>
+                                      <Input {...field} />
+                                  </FormControl>
+                                  <FormMessage />
+                              </FormItem>
+                          )}
+                      />
+                      <FormField
+                          control={announcementForm.control}
+                          name="content"
+                      render={({ field }) => (
+                          <FormItem>
+                              <FormLabel>Content</FormLabel>
+                              <FormControl>
+                                  <Textarea className="min-h-[200px]" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                          </FormItem>
+                      )}
+                  />
+                  <div className="space-y-2">
+                    <FormLabel>Recipients</FormLabel>
+                    <div className="flex items-center gap-3 text-sm">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === 'all'}
+                          onChange={() => setRecipientMode('all')}
+                        />
+                        Send to everyone
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === 'specific'}
+                          onChange={() => setRecipientMode('specific')}
+                        />
+                        Choose recipients
+                      </label>
+                    </div>
+                    {recipientMode === 'specific' && (
+                      <div className="max-h-48 overflow-auto rounded border p-2 space-y-1">
+                        {(Array.isArray(members) ? members : []).map((m: Member) => {
+                          const checked = selectedRecipients.includes(m.email);
+                          return (
+                            <label key={m.email} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e => {
+                                  setSelectedRecipients(prev => {
+                                    if (e.target.checked) {
+                                      return prev.includes(m.email) ? prev : [...prev, m.email];
+                                    }
+                                    return prev.filter(v => v !== m.email);
+                                  });
+                                }}
+                              />
+                              <span>{m.name}</span>
+                              <span className="text-muted-foreground text-xs">({m.email})</span>
+                            </label>
+                          );
+                        })}
+                        {(Array.isArray(members) ? members : []).length === 0 && (
+                          <p className="text-xs text-muted-foreground">No members found.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <FormItem>
+                    <FormLabel>Attachments (Optional)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                          <Paperclip className="mr-2" />
+                          Add Files
+                      </Button>
+                      <FormControl>
+                          <Input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          className="hidden" 
+                          onChange={handleFileChange}
+                          multiple
+                          />
+                      </FormControl>
+                    </div>
+                  </FormItem>
+
+                  {attachments.length > 0 && (
+                    <div className="space-y-2">
+                        {attachments.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
+                            <div className="flex items-center gap-2 truncate">
+                              <FileIcon className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{file.name}</span>
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttachment(index)}>
+                                <X className="h-4 w-4"/>
+                            </Button>
+                        </div>
+                        ))}
+                    </div>
+                  )}
+
+                <div className="flex justify-end">
+                  <Button type="submit">
+                    {editingAnnouncement ? "Save Changes" : "Post"}
+                  </Button>
+                </div>
+                  </form>
+                  </Form>
+              )}
+
+              {showAi && (
                 <Form {...promptForm}>
-                <form onSubmit={promptForm.handleSubmit(handleSubmit)} className="space-y-4">
-                    <FormField
-                    control={promptForm.control}
-                    name="prompt"
-                    render={({ field }) => (
-                        <FormItem>
-                        <FormLabel>Prompt</FormLabel>
-                        <FormControl>
-                            <Textarea 
-                            placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
-                            className="min-h-[150px]"
-                            {...field} />
-                        </FormControl>
-                        <FormMessage />
-                        </FormItem>
-                    )}
-                    />
-                    <FormItem>
-                      <FormLabel>Attachments (Optional)</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                            <Paperclip className="mr-2" />
-                            Add Files
-                        </Button>
-                        <FormControl>
-                            <Input 
-                            type="file" 
-                            ref={fileInputRef} 
-                            className="hidden" 
-                            onChange={handleFileChange}
-                            multiple
-                            />
-                        </FormControl>
-                      </div>
-                    </FormItem>
+                  <form onSubmit={promptForm.handleSubmit(handleSubmit)} className="space-y-4">
+                      <FormField
+                      control={promptForm.control}
+                      name="prompt"
+                      render={({ field }) => (
+                          <FormItem>
+                          <FormLabel>AI prompt</FormLabel>
+                          <FormControl>
+                              <Textarea 
+                              placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
+                              className="min-h-[150px]"
+                              {...field} />
+                          </FormControl>
+                          <FormMessage />
+                          </FormItem>
+                      )}
+                      />
+                      <FormItem>
+                        <FormLabel>Attachments (Optional)</FormLabel>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                              <Paperclip className="mr-2" />
+                              Add Files
+                          </Button>
+                          <FormControl>
+                              <Input 
+                              type="file" 
+                              ref={fileInputRef} 
+                              className="hidden" 
+                              onChange={handleFileChange}
+                              multiple
+                              />
+                          </FormControl>
+                        </div>
+                      </FormItem>
 
-                    {attachments.length > 0 && (
-                      <div className="space-y-2">
-                          {attachments.map((file, index) => (
-                          <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
-                              <div className="flex items-center gap-2 truncate">
-                                <FileIcon className="h-4 w-4 shrink-0" />
-                                <span className="truncate">{file.name}</span>
-                              </div>
-                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttachment(index)}>
-                                  <X className="h-4 w-4"/>
-                              </Button>
-                          </div>
-                          ))}
-                      </div>
-                    )}
+                      {attachments.length > 0 && (
+                        <div className="space-y-2">
+                            {attachments.map((file, index) => (
+                            <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
+                                <div className="flex items-center gap-2 truncate">
+                                  <FileIcon className="h-4 w-4 shrink-0" />
+                                  <span className="truncate">{file.name}</span>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeAttachment(index)}>
+                                    <X className="h-4 w-4"/>
+                                </Button>
+                            </div>
+                            ))}
+                        </div>
+                      )}
 
-                    <Button type="submit" disabled={isLoading} className="w-full">
-                    {isLoading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                        "Generate"
-                    )}
-                    </Button>
-                </form>
+                      <Button type="submit" disabled={isLoading} className={`w-full ${aiSparkle}`}>
+                      {isLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" /> Generate with AI
+                          </>
+                      )}
+                      </Button>
+                  </form>
                 </Form>
+              )}
             </CardContent>
             </Card>
         </div>
       )}
       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
-        <h2 className="text-2xl font-bold mb-4">Recent Announcements</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Recent Announcements</h2>
+        </div>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
-            announcements.length > 0 ? (
-              announcements.map((announcement) => (
-                <Card key={announcement.id}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <CardTitle>{announcement.title}</CardTitle>
-                            <CardDescription>
-                            {announcement.author} - {clubName} - {announcement.date}
-                            </CardDescription>
-                        </div>
-                        {canEditContent && (
-                            <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
-                                <Pencil className="h-4 w-4" />
+            safeAnnouncements.length > 0 ? (
+              sortedAnnouncements.map((announcement) => {
+                const hasButtonAttachment = Array.isArray(announcement.attachments) && announcement.attachments.some(att => att.type === 'button');
+                const recipientsList = Array.isArray(announcement.recipients)
+                  ? announcement.recipients.filter((r): r is string => typeof r === "string")
+                  : [];
+                const viewedByList = Array.isArray(announcement.viewedBy)
+                  ? announcement.viewedBy.filter((v): v is string => typeof v === "string")
+                  : [];
+                const recipientNames = recipientsList.map(resolveMemberName);
+                const viewedByNames = viewedByList.map(resolveMemberName);
+                return (
+                  <Card key={announcement.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                          <div>
+                              <CardTitle>{announcement.title}</CardTitle>
+                              <CardDescription>
+                              {announcement.author} - {clubName} - {formatFriendlyDate(announcement.date)}
+                              </CardDescription>
+                          </div>
+                          {canEditContent && (
+                              <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
+                                  <Pencil className="h-4 w-4" />
+                              </Button>
+                          )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {announcement.content}
+                      </p>
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-semibold">Recipients:</span>{" "}
+                        {recipientNames.length > 0
+                          ? recipientNames.join(", ")
+                          : "Everyone"}
+                      </div>
+                      {announcement.linkedFormId && !hasButtonAttachment && (
+                        <div className="flex items-center gap-2">
+                          <Link href={`/forms?formId=${announcement.linkedFormId}`}>
+                            <Button size="sm" variant="outline" className={aiSparkle}>
+                              Go to form
                             </Button>
-                        )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {announcement.content}
-                    </p>
-                    {Array.isArray(announcement.attachments) && announcement.attachments.length > 0 && (
-                        <div>
-                            <h4 className="font-semibold text-sm mb-2">Attachments</h4>
-                            <div className="space-y-2">
-                                {announcement.attachments.map((file, index) => (
-                                    <div key={index} className="flex items-center justify-between text-sm p-2 border rounded-md">
-                                        <div className="flex items-center gap-2 truncate">
-                                            <FileIcon className="h-4 w-4 shrink-0" />
-                                            <span className="truncate">{file.name}</span>
-                                        </div>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDownloadAttachment(file)}>
-                                            <Download className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
+                          </Link>
+                          <span className="text-xs text-muted-foreground">This announcement links to a form.</span>
                         </div>
-                    )}
-                  </CardContent>
-                    <CardFooter className="flex-col items-start gap-2">
-                        {announcement.slides && announcement.slides.length > 0 && (
-                            <Button
-                                variant="outline"
-                                onClick={() => handleDownloadSlides(announcement)}
-                                disabled={isDownloading && printableContent?.id === announcement.id}
-                            >
-                                {isDownloading && printableContent?.id === announcement.id ? <Loader2 className="animate-spin" /> : <Download className="mr-2" />}
-                                Download Associated Slides (PDF)
-                            </Button>
-                        )}
-                    </CardFooter>
-                </Card>
-              ))
+                      )}
+                      {canEditContent && (
+                        <details className="text-xs text-muted-foreground space-y-1">
+                          <summary className="cursor-pointer text-sm font-semibold">
+                            See views ({viewedByList.length})
+                          </summary>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {viewedByNames.map(name => (
+                              <Badge key={name} variant="secondary">
+                                {name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                      {Array.isArray(announcement.attachments) && announcement.attachments.length > 0 && (
+                          <div>
+                              <h4 className="font-semibold text-sm mb-2">Attachments</h4>
+                              <div className="space-y-2">
+                                  {announcement.attachments.map((file, index) => {
+                                    const isButton = file.type === "button";
+                                    return (
+                                      <div key={index} className="flex items-center justify-between text-sm p-2 border rounded-md">
+                                          <div className="flex items-center gap-2 truncate">
+                                              {isButton ? <Megaphone className="h-4 w-4 shrink-0" /> : <FileIcon className="h-4 w-4 shrink-0" />}
+                                              <span className="truncate">{file.name}</span>
+                                          </div>
+                                          {isButton ? (
+                                            <Button size="sm" className={aiSparkle} onClick={() => handleDownloadAttachment(file)}>
+                                              Open form
+                                            </Button>
+                                          ) : (
+                                            <Button variant="ghost" size="icon" onClick={() => handleDownloadAttachment(file)}>
+                                                <Download className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                          </div>
+                      )}
+                    </CardContent>
+                      <CardFooter className="flex-col items-start gap-2">
+                          {announcement.slides && announcement.slides.length > 0 && (
+                              <Button
+                                  variant="outline"
+                                  onClick={() => handleDownloadSlides(announcement)}
+                                  disabled={isDownloading && printableContent?.id === announcement.id}
+                              >
+                                  {isDownloading && printableContent?.id === announcement.id ? <Loader2 className="animate-spin" /> : <Download className="mr-2" />}
+                                  Download Associated Slides (PDF)
+                              </Button>
+                          )}
+                      </CardFooter>
+                  </Card>
+                );
+              })
           ) : (
             <Card className="flex items-center justify-center py-12">
               <CardContent>
@@ -396,18 +794,71 @@ export default function AnnouncementsPage() {
                     <FormField
                         control={announcementForm.control}
                         name="content"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Content</FormLabel>
-                                <FormControl>
-                                    <Textarea className="min-h-[200px]" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Content</FormLabel>
+                            <FormControl>
+                                <Textarea className="min-h-[200px]" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                {!editingAnnouncement && (
+                  <div className="space-y-2">
+                    <FormLabel>Recipients</FormLabel>
+                    <div className="flex items-center gap-3 text-sm">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === 'all'}
+                          onChange={() => setRecipientMode('all')}
+                        />
+                        Send to everyone
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="recipient-mode"
+                          checked={recipientMode === 'specific'}
+                          onChange={() => setRecipientMode('specific')}
+                        />
+                        Choose recipients
+                      </label>
+                    </div>
+                    {recipientMode === 'specific' && (
+                      <div className="max-h-48 overflow-auto rounded border p-2 space-y-1">
+                        {(Array.isArray(members) ? members : []).map((m: Member) => {
+                          const checked = selectedRecipients.includes(m.email);
+                          return (
+                            <label key={m.email} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={e => {
+                                  setSelectedRecipients(prev => {
+                                    if (e.target.checked) {
+                                      return prev.includes(m.email) ? prev : [...prev, m.email];
+                                    }
+                                    return prev.filter(v => v !== m.email);
+                                  });
+                                }}
+                              />
+                              <span>{m.name}</span>
+                              <span className="text-muted-foreground text-xs">({m.email})</span>
+                            </label>
+                          );
+                        })}
+                        {(Array.isArray(members) ? members : []).length === 0 && (
+                          <p className="text-xs text-muted-foreground">No members found.</p>
                         )}
-                    />
-                </form>
-            </Form>
+                      </div>
+                    )}
+                  </div>
+                )}
+            </form>
+        </Form>
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={handleDialogClose}>Cancel</Button>
                 <Button type="submit" form="announcement-form">
@@ -432,5 +883,13 @@ export default function AnnouncementsPage() {
     )}
     </div>
     </>
+  );
+}
+
+export default function AnnouncementsPage() {
+  return (
+    <Suspense fallback={<div>Loading announcements...</div>}>
+      <AnnouncementsPageInner />
+    </Suspense>
   );
 }

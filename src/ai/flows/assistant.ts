@@ -1,178 +1,67 @@
-
 'use server';
 
 /**
- * @fileOverview A general-purpose AI assistant that can use tools to perform tasks.
+ * @fileOverview A general-purpose AI assistant response.
  *
- * - runAssistant - A function that handles the assistant's query processing.
- * - AssistantInput - The input type for the runAssistant function.
- * - AssistantOutput - The return type for the runAssistant function.
+ * NOTE: The interactive assistant UI uses the planner + task flows directly.
+ * This flow remains as a lightweight, model-agnostic chat response that does not
+ * execute tools.
  */
 
-import { ai, logAiEnvDebug } from '@/ai/genkit';
+import { callAI } from '@/ai/genkit';
+import { sanitizeAiText } from '@/lib/ai-safety';
+import { type Result } from '@/lib/result';
 import { z } from 'zod';
-import {
-  generateClubAnnouncement,
-  GenerateClubAnnouncementInputSchema,
-} from './generate-announcement';
-import {
-  generateMeetingSlides,
-  GenerateMeetingSlidesInputSchema,
-} from './generate-meeting-slides';
-import {
-  generateSocialMediaPost,
-  GenerateSocialMediaPostInputSchema,
-} from './generate-social-media-post';
-import {
-  addCalendarEvent,
-  AddCalendarEventInputSchema,
-} from './add-calendar-event';
-import {
-  addTransaction,
-  AddTransactionInputSchema,
-} from './add-transaction';
-import { generateEmail, GenerateEmailInputSchema } from './generate-email';
-
-const announcementTool = ai.defineTool(
-  {
-    name: 'generateClubAnnouncement',
-    description: 'Generates a club announcement based on a text prompt. Returns the title and content.',
-    inputSchema: GenerateClubAnnouncementInputSchema,
-    outputSchema: z.any(),
-  },
-  async (input) => generateClubAnnouncement(input)
-);
-
-const slidesTool = ai.defineTool(
-  {
-    name: 'generateMeetingSlides',
-    description: 'Generates meeting slides from a prompt. Returns an array of slide objects, each with a title and content.',
-    inputSchema: GenerateMeetingSlidesInputSchema,
-    outputSchema: z.any(),
-  },
-  async (input) => generateMeetingSlides(input)
-);
-
-const socialPostTool = ai.defineTool(
-  {
-    name: 'generateSocialMediaPost',
-    description: 'Generates a social media post, optionally with images. Returns the post title, text, and image URLs.',
-    inputSchema: GenerateSocialMediaPostInputSchema,
-    outputSchema: z.any(),
-  },
-  async (input) => generateSocialMediaPost(input)
-);
-
-const calendarTool = ai.defineTool(
-  {
-    name: 'addCalendarEvent',
-    description: 'Adds an event to the club calendar from a natural language prompt. Returns the created event details.',
-    inputSchema: AddCalendarEventInputSchema,
-    outputSchema: z.any(),
-  },
-  async (input) => addCalendarEvent(input)
-);
-
-const transactionTool = ai.defineTool(
-    {
-        name: 'addTransaction',
-        description: 'Creates a financial transaction from a natural language prompt. Determines if it is income or expense. Returns transaction details.',
-        inputSchema: AddTransactionInputSchema,
-        outputSchema: z.any(),
-    },
-    async (input) => addTransaction(input)
-);
-
-const emailTool = ai.defineTool(
-    {
-        name: 'generateEmail',
-        description: 'Generates an email draft to all club members from a prompt. Returns the email subject and body.',
-        inputSchema: GenerateEmailInputSchema,
-        outputSchema: z.any(),
-    },
-    async (input) => generateEmail(input)
-);
-
 
 const AssistantInputSchema = z.object({
-  query: z.string().describe('The user\'s request.'),
+  query: z.string().describe("The user's request."),
 });
 export type AssistantInput = z.infer<typeof AssistantInputSchema>;
 
-// The output can be a string for a simple text response, or it could be structured data from a tool.
 const AssistantOutputSchema = z.object({
-  response: z.string().describe("A summary of the action taken or a direct answer to the user's query."),
-  toolOutput: z.any().optional().describe("The direct JSON output from any tool that was called."),
-  toolName: z.string().optional().describe("The name of the tool that was called."),
+  response: z
+    .string()
+    .describe("A summary of the action taken or a direct answer to the user's query."),
+  toolOutput: z.any().optional().describe('The direct JSON output from any tool that was called.'),
+  toolName: z.string().optional().describe('The name of the tool that was called.'),
 });
 export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 
 export async function runAssistant(
   input: AssistantInput
-): Promise<AssistantOutput> {
-  logAiEnvDebug('runAssistant');
-  try {
-    return await assistantFlow(input);
-  } catch (error: any) {
-    const message =
-      error?.message ??
-      'Failed to run assistant. Please try again in a moment.';
-    console.error('[AI_DEBUG] runAssistant error:', error);
-    throw new Error(message);
+): Promise<Result<AssistantOutput>> {
+  const content = await callAI({
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are ClubHub AI, a concise club management copilot. Use provided app context to answer questions about club data. The context includes the full app data snapshot (some large fields may be truncated). If the answer is not in the context, say so plainly and suggest where to find it. Provide helpful, actionable replies but do not invent data or claim you executed actions. If a request is outside what this app can do, say so clearly and respond in a helpful, human way, offering what you can do instead. Only suggest a next step if it clearly follows from the user\'s request and would be helpful; otherwise, do not include suggestions. When you do suggest, use a short question starting with "Would you like me to ...?" and ensure it maps to a supported task type. If the context includes currentUser (name/email), treat first-person references like "I", "me", or "my" as that currentUser and do not ask the user to identify themselves. Format answers for readability: use short paragraphs and numbered lists with plain text (e.g., "1. ..."), do not use bullet symbols, markdown, emphasis markers, backticks, or quotation formatting, avoid raw JSON, and keep only the fields needed to answer the question. Format dates as M/D/YYYY (e.g., 12/25/2025) with no time zone suffixes. Prefer person names over emails when both are available (e.g., viewedByNames, respondentName). When listing responses, use this format: "1. Name or Email: <value> | Responses: Q1 - A1; Q2 - A2". If names are not available, use email. If the user asks for form responses, summarize the answers (map question prompts to response values) and avoid showing internal IDs unless explicitly requested. If a response includes answersDetailed, use the values there. If an answersDetailed entry has attachmentDataUri, include "Attachment provided" and the data URI so the file can be opened.',
+      },
+      {
+        role: 'user',
+        content: input.query,
+      },
+    ],
+    temperature: 0.5,
+  });
+  if (!content.ok) return content;
+  const parsed = AssistantOutputSchema.safeParse({
+    response: sanitizeAiText(String(content.data)),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: 'AI_SCHEMA_INVALID',
+        message: 'AI response validation failed.',
+        detail: parsed.error.message,
+        retryable: true,
+        source: 'ai',
+      },
+    };
   }
+  return { ok: true, data: parsed.data };
 }
 
-const assistantPrompt = ai.definePrompt({
-  name: 'assistantPrompt',
-  input: { schema: AssistantInputSchema },
-  // Let the model decide the output structure based on the tools.
-  tools: [announcementTool, slidesTool, socialPostTool, calendarTool, transactionTool, emailTool],
-  prompt: `You are a helpful AI assistant for a school club. Your name is ClubHub AI.
-  Your purpose is to help the user manage their club by using the available tools.
-  The user's request is: {{{query}}}
 
-  - Based on the user's request, decide which tool is most appropriate to use.
-  - If you use a tool, summarize the result of the action in the 'response' field. For example, if you add a calendar event, respond with "I've added the event to the calendar."
-  - Include the direct JSON output from the tool in the 'toolOutput' field and the tool's name in 'toolName'.
-  - If no specific tool seems appropriate for the request, provide a helpful text-based response in the 'response' field.
-  - If you cannot fulfill the request, clearly state that.
-  `,
-  output: { schema: AssistantOutputSchema },
-  config: {
-    safetySettings: [
-        {
-            category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-            threshold: 'BLOCK_ONLY_HIGH',
-        }
-    ]
-  }
-});
 
-const assistantFlow = ai.defineFlow(
-  {
-    name: 'assistantFlow',
-    inputSchema: AssistantInputSchema,
-    outputSchema: AssistantOutputSchema,
-  },
-  async (input) => {
-    const { output, history } = await assistantPrompt(input);
-    if (!output) {
-      throw new Error("Assistant failed to generate a response.");
-    }
-    
-    const toolCalls = history[history.length - 1]?.message.toolRequest?.calls;
-
-    if (toolCalls && toolCalls.length > 0) {
-        const toolCall = toolCalls[0];
-        if (toolCall.output) {
-            return {
-                response: output.response,
-                toolOutput: toolCall.output,
-                toolName: toolCall.name,
-            };
-        }
-    }
-    
-    return { response: output.response };
-  }
-);

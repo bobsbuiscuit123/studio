@@ -183,8 +183,10 @@ export default function GalleryPage() {
   
   const handleApproval = (imageId: number, newStatus: 'approved' | 'rejected') => {
     if (newStatus === 'approved') {
-      const updatedImages = images.map(img => 
-        img.id === imageId ? { ...img, status: 'approved', read: false } : img // Mark as unread for others
+      const updatedImages: GalleryImage[] = images.map(img =>
+        img.id === imageId
+          ? { ...img, status: 'approved' as const, read: false }
+          : img // Mark as unread for others
       );
       setImages(updatedImages);
       toast({ title: "Image approved!" });

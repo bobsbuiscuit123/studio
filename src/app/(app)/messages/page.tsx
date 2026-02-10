@@ -36,7 +36,7 @@ type Conversation =
 
 
 const messageFormSchema = z.object({
-  text: z.string().min(1, "Message cannot be empty"),
+  text: z.string().min(1, "Message cannot be empty").max(500, "Message too long"),
 });
 
 const newGroupFormSchema = z.object({
@@ -54,6 +54,7 @@ export default function MessagesPage() {
 
     const [searchTerm, setSearchTerm] = useState("");
     const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
+    const [lastMessageAt, setLastMessageAt] = useState<number>(0);
     const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
     
     const messageEndRef = useRef<HTMLDivElement>(null);
@@ -133,6 +134,11 @@ export default function MessagesPage() {
 
     const handleSendMessage = (values: z.infer<typeof messageFormSchema>) => {
         if (!user || !activeConversation) return;
+        const now = Date.now();
+        if (now - lastMessageAt < 1500) {
+            toast({ title: "Slow down", description: "Please wait a moment before sending another message." });
+            return;
+        }
 
         const newMessage: Message = {
             sender: user.email,
@@ -157,6 +163,7 @@ export default function MessagesPage() {
              }
         }
 
+        setLastMessageAt(now);
         messageForm.reset();
     };
 
@@ -352,6 +359,14 @@ export default function MessagesPage() {
                             const fallbackText = convo.type === 'dm' ? convo.partner.name.charAt(0) : convo.chat.name.charAt(0);
                             const icon = convo.type === 'group' ? <Users className="h-10 w-10 text-muted-foreground p-2 bg-muted rounded-full"/> : null;
                             const isUnread = hasUnreadMessages(convo);
+                            const isActive =
+                              activeConversation?.type === 'dm'
+                                ? convo.type === 'dm' &&
+                                  activeConversation.partner.email === convo.partner.email
+                                : activeConversation?.type === 'group'
+                                  ? convo.type === 'group' &&
+                                    activeConversation.chat.id === convo.chat.id
+                                  : false;
 
                             return (
                             <div
@@ -359,7 +374,7 @@ export default function MessagesPage() {
                                 onClick={() => setActiveConversation(convo)}
                                 className={cn(
                                 "flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted",
-                                activeConversation?.type === convo.type && (activeConversation.type === 'dm' ? activeConversation.partner.email === convo.partner.email : activeConversation.chat.id === convo.chat.id) && "bg-muted"
+                                isActive && "bg-muted"
                                 )}
                             >
                                 {convo.type === 'dm' ? (

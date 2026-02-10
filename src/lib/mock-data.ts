@@ -8,11 +8,50 @@ export type User = {
 };
 
 export type Member = {
+  id?: string;
   name: string;
   role: 'President' | 'Admin' | 'Officer' | 'Member';
   avatar: string;
   email: string;
   dataAiHint?: string;
+};
+
+export type ViewReceipt = {
+  email: string;
+  viewedAt: string;
+};
+
+export type RSVPRecord = {
+  yes: string[];
+  no: string[];
+  maybe?: string[];
+};
+
+export type FormQuestion = {
+  id: string;
+  prompt: string;
+  required?: boolean;
+  kind?: 'shortText' | 'single' | 'multi' | 'file';
+  options?: string[];
+};
+
+export type FormResponse = {
+  id: string;
+  respondentEmail: string;
+  submittedAt: string;
+  answers: Record<string, string>;
+};
+
+export type ClubForm = {
+  id: string;
+  title: string;
+  description?: string;
+  questions: FormQuestion[];
+  createdBy: string;
+  createdAt: string;
+  viewedBy: string[];
+  responses: FormResponse[];
+  linkedAnnouncementId?: number;
 };
 
 export type ClubEvent = {
@@ -21,9 +60,17 @@ export type ClubEvent = {
   title: string;
   description: string;
   location: string;
+  hasTime?: boolean;
   points?: number;
   checkInCode?: string;
   attendees?: string[];
+  lastViewedAttendees?: number;
+  rsvps?: RSVPRecord;
+  rsvpRequired?: boolean;
+  viewedBy?: string[];
+  recipients?: string[];
+  tags?: string[];
+  aiTagged?: boolean;
   read?: boolean;
 };
 
@@ -62,8 +109,13 @@ export type Announcement = {
   author: string;
   date: string;
   read: boolean;
+  recipients?: string[];
+  viewedBy?: string[];
+  tags?: string[];
+  aiTagged?: boolean;
   slides?: Slide[];
   attachments?: Attachment[];
+  linkedFormId?: string;
 };
 
 export type Comment = {
@@ -123,7 +175,7 @@ export type MindMapNode = {
     id: string;
     position: { x: number; y: number };
     data: { label: string };
-    type?: 'input' | 'default' | 'output';
+    type?: string;
 };
 
 export type MindMapEdge = {

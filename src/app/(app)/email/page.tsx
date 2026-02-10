@@ -1,11 +1,12 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { Suspense, useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Mail, Loader2, Wand2, Users, ExternalLink } from "lucide-react";
+import { Mail, Loader2, Wand2, Users, ExternalLink, Sparkles } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -33,13 +34,17 @@ const emailFormSchema = z.object({
   body: z.string().min(20, "Email body must be at least 20 characters long."),
 });
 
-export default function EmailPage() {
+function EmailPageInner() {
+  const searchParams = useSearchParams();
   const { data: members, loading: membersLoading } = useMembers();
   const { role } = useCurrentUserRole();
   const { toast } = useToast();
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
+  const [hydratedFromQuery, setHydratedFromQuery] = useState(false);
+  const [showAi, setShowAi] = useState(false);
+  const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -60,24 +65,36 @@ export default function EmailPage() {
     emailForm.trigger();
   }, [emailContent, emailForm]);
 
+  useEffect(() => {
+    if (hydratedFromQuery) return;
+    const subject = searchParams.get("subject");
+    const body = searchParams.get("body");
+    if (!subject && !body) return;
+    setEmailContent({
+      subject: subject ? decodeURIComponent(subject) : "",
+      body: body ? decodeURIComponent(body) : "",
+    });
+    setHydratedFromQuery(true);
+  }, [hydratedFromQuery, searchParams]);
+
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
     setIsGenerating(true);
-    try {
-      const result = await generateEmail(values);
-      setEmailContent({
-        subject: result.subject,
-        body: result.body,
-      });
-      toast({ title: "Email draft generated!" });
-    } catch (error) {
+    const result = await generateEmail(values);
+    if (!result.ok) {
       toast({
         title: "Error",
-        description: "Failed to generate email draft.",
+        description: result.error.message || "Failed to generate email draft.",
         variant: "destructive",
       });
-    } finally {
       setIsGenerating(false);
+      return;
     }
+    setEmailContent({
+      subject: result.data.subject,
+      body: result.data.body,
+    });
+    toast({ title: "Email draft generated!" });
+    setIsGenerating(false);
   };
   
   const gmailLink = useMemo(() => {
@@ -86,12 +103,12 @@ export default function EmailPage() {
       return "";
     }
     
-    const bcc = recipientEmails.join(',');
+    const to = recipientEmails.join(',');
     const subject = encodeURIComponent(emailContent.subject);
     const body = encodeURIComponent(emailContent.body);
     
     const baseUrl = 'https://mail.google.com/mail/?view=cm&fs=1';
-    const link = `${baseUrl}&bcc=${bcc}&su=${subject}&body=${body}`;
+    const link = `${baseUrl}&to=${to}&su=${subject}&body=${body}`;
 
     if (link.length > 2000) {
         toast({
@@ -119,119 +136,130 @@ export default function EmailPage() {
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-8 items-start">
-        {/* Step 1: Prompt */}
-        <Card className="md:col-span-1 sticky top-6">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Wand2 /> 1. Draft with AI</CardTitle>
-                <CardDescription>Describe the email you want to send to all club members.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form {...promptForm}>
-                    <form onSubmit={promptForm.handleSubmit(handleGenerateDraft)} className="space-y-4">
-                        <FormField
-                            control={promptForm.control}
-                            name="prompt"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Prompt</FormLabel>
-                                    <FormControl>
-                                        <Textarea 
-                                            placeholder="e.g., Write an email to remind everyone about the upcoming bake sale this Friday. Mention we still need volunteers."
-                                            className="min-h-[150px]"
-                                            {...field} 
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
+    <div className="grid gap-6">
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2"><Mail /> Compose email</CardTitle>
+            <CardDescription>Start manually, then optionally fill with AI.</CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            className={aiSparkle}
+            onClick={() => setShowAi(v => !v)}
+          >
+            <Sparkles className="h-4 w-4 mr-1" /> {showAi ? 'Hide AI' : 'Make with AI'}
+          </Button>
+        </CardHeader>
+        {showAi && (
+          <CardContent className="border-b pb-4">
+            <Form {...promptForm}>
+              <form onSubmit={promptForm.handleSubmit(handleGenerateDraft)} className="space-y-4">
+                <FormField
+                  control={promptForm.control}
+                  name="prompt"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>AI prompt</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="e.g., Write an email to remind everyone about the bake sale Friday. We still need 5 volunteers."
+                          className="min-h-[150px]"
+                          {...field}
                         />
-                        <Button type="submit" disabled={isGenerating} className="w-full">
-                            {isGenerating ? <Loader2 className="animate-spin" /> : "Generate Draft"}
-                        </Button>
-                    </form>
-                </Form>
-            </CardContent>
-        </Card>
-
-        {/* Step 2: Review and Send */}
-        <Card className="md:col-span-2">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2"><Mail /> 2. Review and Send</CardTitle>
-                <CardDescription>Review the AI-generated draft below. You can make edits before opening it in Gmail.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Form {...emailForm}>
-                    <form className="space-y-4">
-                        <FormField
-                            control={emailForm.control}
-                            name="subject"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Subject</FormLabel>
-                                    <FormControl>
-                                        <Input 
-                                            {...field}
-                                            onChange={(e) => {
-                                                field.onChange(e);
-                                                setEmailContent(prev => ({...prev, subject: e.target.value}));
-                                            }}
-                                            placeholder="Email Subject" 
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={emailForm.control}
-                            name="body"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Body</FormLabel>
-                                    <FormControl>
-                                        <Textarea 
-                                            className="min-h-[300px]" 
-                                            {...field} 
-                                            onChange={(e) => {
-                                                field.onChange(e);
-                                                setEmailContent(prev => ({...prev, body: e.target.value}));
-                                            }}
-                                            placeholder="Email Body" 
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                         <a 
-                            href={isEmailReady ? gmailLink : undefined} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className={!isEmailReady ? 'pointer-events-none' : ''}
-                          >
-                            <Button 
-                                type="button"
-                                disabled={!isEmailReady || membersLoading} 
-                                className="w-full"
-                            >
-                                <ExternalLink />
-                                Open in Gmail for All ({membersLoading ? '...' : members.length}) Members
-                            </Button>
-                        </a>
-                    </form>
-                </Form>
-            </CardContent>
-            <CardFooter>
-                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                    {members.length > 0 
-                        ? `This email will be addressed to all ${members.length} members of the club.`
-                        : "There are currently no members in this club."
-                    }
-                 </div>
-            </CardFooter>
-        </Card>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={isGenerating} className={aiSparkle}>
+                  {isGenerating ? <Loader2 className="animate-spin" /> : 'Generate draft with AI'}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        )}
+        <CardContent>
+          <Form {...emailForm}>
+            <form className="space-y-4">
+              <FormField
+                control={emailForm.control}
+                name="subject"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Subject</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setEmailContent(prev => ({ ...prev, subject: e.target.value }));
+                        }}
+                        placeholder="Email Subject"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={emailForm.control}
+                name="body"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Body</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        className="min-h-[300px]"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setEmailContent(prev => ({ ...prev, body: e.target.value }));
+                        }}
+                        placeholder="Email Body"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <a
+                href={isEmailReady ? gmailLink : undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={!isEmailReady ? 'pointer-events-none' : ''}
+              >
+                <Button
+                  type="button"
+                  disabled={!isEmailReady || membersLoading}
+                  className="w-full"
+                >
+                  <ExternalLink className="mr-2" />
+                  Open in Gmail for All ({membersLoading ? '...' : members.length}) Members
+                </Button>
+              </a>
+            </form>
+          </Form>
+        </CardContent>
+        <CardFooter>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Users className="h-4 w-4" />
+            {members.length > 0
+              ? `This email will be addressed to all ${members.length} members of the club.`
+              : "There are currently no members in this club."
+            }
+          </div>
+        </CardFooter>
+      </Card>
     </div>
+  );
+}
+
+export default function EmailPage() {
+  return (
+    <Suspense fallback={<div>Loading email...</div>}>
+      <EmailPageInner />
+    </Suspense>
   );
 }

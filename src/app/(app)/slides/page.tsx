@@ -127,26 +127,26 @@ export default function SlidesPage() {
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setActivePresentation(null);
-    try {
-      const result = await generateMeetingSlides(values);
-      const newPresentation: PresentationType = {
-          id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
-          prompt: values.prompt,
-          slides: result.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
-          createdAt: new Date().toLocaleDateString(),
-      }
-      setPresentations([newPresentation, ...presentations]);
-      setActivePresentation(newPresentation);
-      toast({ title: "Slides generated successfully!" });
-    } catch (error) {
+    const result = await generateMeetingSlides(values);
+    if (!result.ok) {
       toast({
         title: "Error",
-        description: "Failed to generate slides.",
+        description: result.error.message || "Failed to generate slides.",
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
+      return;
     }
+    const newPresentation: PresentationType = {
+        id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
+        prompt: values.prompt,
+        slides: result.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
+        createdAt: new Date().toLocaleDateString(),
+    }
+    setPresentations([newPresentation, ...presentations]);
+    setActivePresentation(newPresentation);
+    toast({ title: "Slides generated successfully!" });
+    setIsLoading(false);
   };
   
   const handleDownload = async (presentation: PresentationType) => {

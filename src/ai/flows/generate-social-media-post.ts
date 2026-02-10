@@ -9,8 +9,10 @@
  * - GenerateSocialMediaPostOutput - The return type for the generateSocialMediaPost function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import { callAI } from '@/ai/genkit';
+import { sanitizeAiText } from '@/lib/ai-safety';
+import { err, ok, type Result } from '@/lib/result';
+import { z } from 'zod';
 
 const GenerateSocialMediaPostInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt describing the social media post. For example: "Create a post for the Innovators Club about our next meeting on web development. The target audience is students interested in tech. Include a call to action to join our Discord."'),
@@ -41,49 +43,49 @@ export type GenerateSocialMediaPostOutput = z.infer<typeof GenerateSocialMediaPo
 
 export async function generateSocialMediaPost(
   input: GenerateSocialMediaPostInput
-): Promise<GenerateSocialMediaPostOutput> {
-  return generateSocialMediaPostFlow(input);
-}
+): Promise<Result<GenerateSocialMediaPostOutput>> {
+  const hasPhotos = Boolean(input.photoDataUris?.length);
+  const text = await callAI<z.infer<typeof ModelOutputSchema>>({
+    responseFormat: 'json_object',
+    outputSchema: ModelOutputSchema,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a social media marketing expert for school clubs.
+Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
+Based on the user's prompt, generate a short, catchy title for the post.
+The social media post text should be no more than 280 characters.
+If photos are provided, create an engaging image caption. If no photos are provided, do not include an imageCaption.
+Return ONLY valid JSON matching: { "title": string, "postText": string, "imageCaption"?: string }.`,
+      },
+      {
+        role: 'user',
+        content: `${input.prompt}\n\nPhotos provided: ${hasPhotos ? 'yes' : 'no'}`,
+      },
+    ],
+  });
 
-const prompt = ai.definePrompt({
-  name: 'generateSocialMediaPostPrompt',
-  input: {schema: GenerateSocialMediaPostInputSchema},
-  output: {schema: ModelOutputSchema}, // AI only generates text content
-  prompt: `You are a social media marketing expert for school clubs.
-  Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
-  Based on the user's prompt, generate a short, catchy title for the post.
-  The social media post text should be no more than 280 characters.
-
-  User Prompt: {{{prompt}}}
-
-  {{#if photoDataUris}}
-  You have been provided with photos for the post. Create an engaging image caption to go along with these photos.
-  {{else}}
-  No photos were provided. Do not generate an image caption.
-  {{/if}}
-  `,
-});
-
-const generateSocialMediaPostFlow = ai.defineFlow(
-  {
-    name: 'generateSocialMediaPostFlow',
-    inputSchema: GenerateSocialMediaPostInputSchema,
-    outputSchema: GenerateSocialMediaPostOutputSchema,
-  },
-  async input => {
-    // 1. Generate the text content from the AI.
-    const {output: textOutput} = await prompt(input);
-    if (!textOutput) {
-      throw new Error("Could not generate social media post text.");
-    }
-    
-    // 2. Construct the final output, ensuring the images array is always valid.
-    // This logic now resides entirely in the TypeScript code, making it reliable.
-    const finalOutput: GenerateSocialMediaPostOutput = {
-        ...textOutput,
-        images: input.photoDataUris || [], // Use the exact input URIs, or an empty array.
-    };
-
-    return finalOutput;
+  if (!text.ok) return text;
+  const parsed = GenerateSocialMediaPostOutputSchema.safeParse({
+    ...text.data,
+    images: input.photoDataUris || [],
+  });
+  if (!parsed.success) {
+    return err({
+      code: 'AI_SCHEMA_INVALID',
+      message: 'AI response validation failed.',
+      detail: parsed.error.message,
+      retryable: true,
+      source: 'ai',
+    });
   }
-);
+  const cleaned = {
+    ...parsed.data,
+    title: sanitizeAiText(parsed.data.title),
+    postText: sanitizeAiText(parsed.data.postText),
+    imageCaption: parsed.data.imageCaption
+      ? sanitizeAiText(parsed.data.imageCaption)
+      : undefined,
+  };
+  return ok(cleaned);
+}

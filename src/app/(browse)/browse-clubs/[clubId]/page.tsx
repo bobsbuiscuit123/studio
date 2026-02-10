@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import type { Member, ClubEvent, GalleryImage } from '@/lib/mock-data';
 import { useToast } from '@/hooks/use-toast';
 import { CalendarDays, Users, Image as ImageIcon, Info, Clock } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { safeFetchJson } from '@/lib/network';
 
 type ClubDetails = {
   id: string;
@@ -21,6 +23,7 @@ type ClubDetails = {
   description: string;
   meetingTime: string;
   logo: string;
+  joinCode?: string;
   members: Member[];
   events: ClubEvent[];
   galleryImages: GalleryImage[];
@@ -32,6 +35,7 @@ export default function ClubProfilePage() {
   const { clubId } = params;
   const { user } = useCurrentUser();
   const { toast } = useToast();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [club, setClub] = useState<ClubDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,65 +43,89 @@ export default function ClubProfilePage() {
 
   useEffect(() => {
     if (typeof clubId === 'string') {
-      const clubsString = localStorage.getItem('clubs');
-      const clubDataString = localStorage.getItem(`club_${clubId}`);
-      
-      if (clubsString && clubDataString) {
-        const clubs = JSON.parse(clubsString);
-        const mainClubInfo = clubs.find((c: any) => c.id === clubId);
-        const detailedClubInfo = JSON.parse(clubDataString);
-
-        const transformedEvents = (detailedClubInfo.events || []).map((event: any) => ({
-            ...event,
-            date: new Date(event.date),
-        }));
-
-        const fullClubDetails = {
-            ...mainClubInfo,
-            ...detailedClubInfo,
-            events: transformedEvents,
-        };
-        
-        setClub(fullClubDetails);
-
-        if (user && detailedClubInfo.members) {
-          setIsMember(detailedClubInfo.members.some((m: Member) => m.email === user.email));
+      const load = async () => {
+        const { data: org, error: orgError } = await supabase
+          .from('orgs')
+          .select('id,name,category,description,meeting_time,logo_url,join_code')
+          .eq('id', clubId)
+          .maybeSingle();
+        const { data: state } = await supabase
+          .from('org_state')
+          .select('data')
+          .eq('org_id', clubId)
+          .maybeSingle();
+        if (orgError || !org) {
+          setClub(null);
+          setLoading(false);
+          return;
         }
-
-      }
-      setLoading(false);
+        const data = (state?.data || {}) as Partial<ClubDetails>;
+        const transformedEvents = (data.events || []).map((event: any) => ({
+          ...event,
+          date: new Date(event.date),
+        }));
+        const fullClubDetails: ClubDetails = {
+          id: org.id,
+          name: org.name,
+          category: org.category || 'Other',
+          description: org.description || 'No description provided.',
+          meetingTime: org.meeting_time || '',
+          logo: org.logo_url || `https://placehold.co/100x100.png?text=${org.name.charAt(0)}`,
+          joinCode: org.join_code,
+          members: (data.members as Member[]) || [],
+          events: transformedEvents,
+          galleryImages: (data.galleryImages as GalleryImage[]) || [],
+        };
+        setClub(fullClubDetails);
+        if (user && fullClubDetails.members) {
+          setIsMember(fullClubDetails.members.some((m: Member) => m.email === user.email));
+        }
+        setLoading(false);
+      };
+      load();
     }
-  }, [clubId, user]);
+  }, [clubId, supabase, user]);
 
   const handleJoinClub = () => {
     if (!user || !club) {
         toast({ title: "Error", description: "You must be logged in to join a club.", variant: "destructive" });
         return;
     }
-
-    const clubDataKey = `club_${club.id}`;
-    const newMember: Member = {
-        name: user.name,
-        email: user.email,
-        role: 'Member',
-        avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
+    const join = async () => {
+      if (!club.joinCode) {
+        toast({ title: "Error", description: "Missing join code.", variant: "destructive" });
+        return;
+      }
+      const { error } = await supabase.rpc('join_org', { join_code: club.joinCode });
+      if (error) {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+        return;
+      }
+      const { data: authUser } = await supabase.auth.getUser();
+      const newMember: Member = {
+          id: authUser.user?.id,
+          name: user.name,
+          email: user.email,
+          role: 'Member',
+          avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
+      };
+      const updatedMembers = [...(club.members || []), newMember];
+      await supabase
+        ;
+      await safeFetchJson('/api/org-state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: club.id, data: { ...club, members: updatedMembers } }),
+      });
+      setClub({ ...club, members: updatedMembers });
+      setIsMember(true);
+      toast({ title: "Success!", description: `You have joined ${club.name}. Redirecting to dashboard...` });
+      setTimeout(() => {
+          localStorage.setItem('selectedClubId', club.id);
+          router.push('/dashboard');
+      }, 2000);
     };
-
-    const updatedMembers = [...(club.members || []), newMember];
-    const updatedClubData = { ...club, members: updatedMembers };
-    
-    localStorage.setItem(clubDataKey, JSON.stringify(updatedClubData));
-    
-    setClub(updatedClubData);
-    setIsMember(true);
-
-    toast({ title: "Success!", description: `You have joined ${club.name}. Redirecting to dashboard...` });
-
-    setTimeout(() => {
-        localStorage.setItem('selectedClubId', club.id);
-        localStorage.setItem('clubhub_ai_sync_key', Date.now().toString());
-        router.push('/dashboard');
-    }, 2000);
+    join();
   };
 
   if (loading) {

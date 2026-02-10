@@ -1,6 +1,9 @@
 
 import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/toaster";
+import { ErrorReporter } from "@/components/error-reporter";
+import { validateServerEnv } from "@/lib/env";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,6 +19,7 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  validateServerEnv();
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -24,6 +28,8 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
+        <ErrorReporter />
+        <PwaRegister />
         {children}
         <Toaster />
       </body>

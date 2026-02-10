@@ -9,8 +9,10 @@
  * - GenerateClubAnnouncementOutput - The return type for the generateClubAnnouncement function.
  */
 
-import {ai, logAiEnvDebug} from '@/ai/genkit';
-import {z} from 'genkit';
+import { callAI } from '@/ai/genkit';
+import { sanitizeAiText } from '@/lib/ai-safety';
+import { ok, type Result } from '@/lib/result';
+import { z } from 'zod';
 
 const GenerateClubAnnouncementInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt for the announcement to generate. For example: "Draft an announcement for our annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."'),
@@ -21,7 +23,9 @@ export type GenerateClubAnnouncementInput = z.infer<
 
 const GenerateClubAnnouncementOutputSchema = z.object({
   title: z.string().describe('A suitable title for the event announcement.'),
-  announcement: z.string().describe('The generated announcement text.'),
+  announcement: z
+    .string()
+    .describe('The generated announcement text (do NOT repeat the title inside).'),
 });
 export type GenerateClubAnnouncementOutput = z.infer<
   typeof GenerateClubAnnouncementOutputSchema
@@ -29,38 +33,29 @@ export type GenerateClubAnnouncementOutput = z.infer<
 
 export async function generateClubAnnouncement(
   input: GenerateClubAnnouncementInput
-): Promise<GenerateClubAnnouncementOutput> {
-  logAiEnvDebug('generateClubAnnouncement');
-  try {
-    return await generateClubAnnouncementFlow(input);
-  } catch (error: any) {
-    const message =
-      error?.message ??
-      'Failed to generate announcement. Please try again in a moment.';
-    console.error('[AI_DEBUG] generateClubAnnouncement error:', error);
-    throw new Error(message);
-  }
-}
-
-const generateClubAnnouncementPrompt = ai.definePrompt({
-  name: 'generateClubAnnouncementPrompt',
-  input: {schema: GenerateClubAnnouncementInputSchema},
-  output: {schema: GenerateClubAnnouncementOutputSchema},
-  prompt: `You are a club communication manager. Generate a concise and engaging announcement for the club members based on the user's prompt.
-From the user's prompt, determine a good title for the announcement.
-
-User prompt: {{{prompt}}}
-`,
-});
-
-const generateClubAnnouncementFlow = ai.defineFlow(
-  {
-    name: 'generateClubAnnouncementFlow',
-    inputSchema: GenerateClubAnnouncementInputSchema,
+): Promise<Result<GenerateClubAnnouncementOutput>> {
+  const result = await callAI<GenerateClubAnnouncementOutput>({
+    responseFormat: 'json_object',
     outputSchema: GenerateClubAnnouncementOutputSchema,
-  },
-  async input => {
-    const {output} = await generateClubAnnouncementPrompt(input);
-    return output!;
-  }
-);
+    messages: [
+      {
+        role: 'system',
+        content: `You are a club communication manager. Generate a concise and engaging announcement for the club members based on the user's prompt.
+From the user's prompt, determine a good title for the announcement.
+- Return the title in the "title" field.
+- Return the body in "announcement" and DO NOT repeat the title there; keep it as pure body copy.
+Return ONLY valid JSON matching: { "title": string, "announcement": string }.`,
+      },
+      {
+        role: 'user',
+        content: input.prompt,
+      },
+    ],
+  });
+  if (!result.ok) return result;
+  return ok({
+    ...result.data,
+    title: sanitizeAiText(result.data.title),
+    announcement: sanitizeAiText(result.data.announcement),
+  });
+}

@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useMindMapData } from '@/lib/data-hooks';
+import type { MindMapData } from '@/lib/mock-data';
 import { PlusCircle } from 'lucide-react';
 
 let id = 2;
@@ -49,7 +50,7 @@ export default function MindMapPage() {
     (params) => {
       setEdges((eds) => {
         const newEdges = addEdge(params, eds);
-        setMindMapData({ nodes, edges: newEdges });
+        setMindMapData({ nodes: nodes as MindMapData['nodes'], edges: newEdges });
         return newEdges;
       });
     },
@@ -60,7 +61,10 @@ export default function MindMapPage() {
     (deletedNodes) => {
       const remainingNodeIds = new Set(nodes.filter(n => !deletedNodes.some(dn => dn.id === n.id)).map(n => n.id));
       const remainingEdges = edges.filter(e => remainingNodeIds.has(e.source) && remainingNodeIds.has(e.target));
-      setMindMapData({ nodes: nodes.filter(n => !deletedNodes.some(dn => dn.id === n.id)), edges: remainingEdges });
+      setMindMapData({
+        nodes: nodes.filter(n => !deletedNodes.some(dn => dn.id === n.id)) as MindMapData['nodes'],
+        edges: remainingEdges,
+      });
     },
     [nodes, edges, setMindMapData]
   );
@@ -68,7 +72,7 @@ export default function MindMapPage() {
   const onEdgesDelete: OnEdgesDelete = useCallback(
     (deleted) => {
         const remainingEdges = edges.filter(e => !deleted.some(de => de.id === e.id));
-        setMindMapData({ nodes, edges: remainingEdges });
+        setMindMapData({ nodes: nodes as MindMapData['nodes'], edges: remainingEdges });
     },
     [nodes, edges, setMindMapData]
   );
@@ -78,12 +82,9 @@ export default function MindMapPage() {
       const updatedNodes = applyNodeChanges(changes, nodes);
       setNodes(updatedNodes);
 
-      // Check for label change and save
-      const labelChange = changes.find(c => c.type === 'change' && c.data);
-      if (labelChange) {
-         setMindMapData({ nodes: updatedNodes, edges: edges });
-      } else if (changes.some(c => c.type === 'position' && c.dragging === false)) {
-         setMindMapData({ nodes: updatedNodes, edges: edges });
+      const shouldPersist = changes.some(change => change.type !== 'select');
+      if (shouldPersist) {
+        setMindMapData({ nodes: updatedNodes as MindMapData['nodes'], edges });
       }
     },
     [nodes, edges, setNodes, setMindMapData]
@@ -99,7 +100,7 @@ export default function MindMapPage() {
     };
     const newNodes = [...nodes, newNode];
     setNodes(newNodes);
-    setMindMapData({ nodes: newNodes, edges: edges });
+    setMindMapData({ nodes: newNodes as MindMapData['nodes'], edges });
     setNodeName('');
   };
   

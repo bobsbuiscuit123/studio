@@ -1,206 +1,3494 @@
 
-'use client';
 
 'use client';
 
-import { useState } from 'react';
+
+
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+
 import { useForm } from 'react-hook-form';
+
 import { zodResolver } from '@hookform/resolvers/zod';
+
 import * as z from 'zod';
-import { Send, Loader2, Bot, CheckCircle2, AlertCircle } from 'lucide-react';
+
+import {
+
+  Send,
+  Loader2,
+  Bot,
+  CheckCircle2,
+  AlertCircle,
+  MessageSquare,
+  RefreshCw,
+  Paperclip,
+
+  FileIcon,
+
+  X,
+
+} from 'lucide-react';
+
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+
+
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { useToast } from '@/hooks/use-toast';
-import { planTasksAction, runTaskAction } from './actions';
 
-type TaskType = 'announcement' | 'slides' | 'calendar' | 'email' | 'transaction' | 'social' | 'other';
+import { Input } from '@/components/ui/input';
+
+import { Textarea } from '@/components/ui/textarea';
+
+import { ScrollArea } from '@/components/ui/scroll-area';
+
+import { ToastAction } from '@/components/ui/toast';
+
+import { useToast } from '@/hooks/use-toast';
+
+import {
+  useAnnouncements,
+  useCurrentUser,
+  useCurrentUserRole,
+  useEvents,
+  useForms,
+  useGalleryImages,
+  useGroupChats,
+  useMembers,
+  useMessages,
+  usePresentations,
+  useSocialPosts,
+  useTransactions,
+} from '@/lib/data-hooks';
+import type { Attachment, ClubForm, FormQuestion, GalleryImage } from '@/lib/mock-data';
+import type { Result } from '@/lib/result';
+import {
+  planTasksAction,
+  resolveFollowUpAnswersAction,
+  runAssistantAction,
+  runTaskAction,
+  resolveAnnouncementRecipientsAction,
+} from './actions';
+import {
+  clearAssistantPrefill,
+  getAssistantPrefill,
+} from '@/lib/assistant/prefill';
+
+
+type TaskType =
+  | 'announcement'
+  | 'form'
+  | 'slides'
+  | 'calendar'
+  | 'email'
+  | 'messages'
+  | 'gallery'
+  | 'transaction'
+  | 'social'
+  | 'other';
+
+
+type PendingAttachment = Attachment & {
+
+  size: number;
+
+  text?: string;
+
+};
+
+const getResultData = <T,>(
+  result: Result<T>,
+  onError?: (message: string) => void
+): T | null => {
+  if (result.ok) return result.data;
+  if (onError) onError(result.error.message);
+  return null;
+};
+
+const aiFallbackMessage =
+  'AI is unavailable right now. You can continue in manual mode.';
+
+
 
 type PlannedTask = {
   id: string;
   type: TaskType;
   prompt: string;
-  followUpQuestion?: string;
+  followUpQuestions?: string[];
+  recipients?: string[];
+  clarification?: string;
+  draft?: string;
+  draftSource?: string;
+  draftTyping?: { startedAt: number; fullText: string };
+  draftingStartedAt?: number;
+  draftError?: string;
+  isDrafting?: boolean;
+  lastSentDraft?: string;
+  attachments?: PendingAttachment[];
+  linkedFormId?: string;
+  linkedFormTaskId?: string;
   status: 'pending' | 'sent' | 'error';
   result?: any;
+  draftResult?: any;
   error?: string;
 };
 
+type PlannedTaskInput = Omit<PlannedTask, 'status'> & {
+  status?: PlannedTask['status'];
+};
+
+
+type AssistantPlanMessage = {
+  id: string;
+  sender: 'assistant';
+  plan: { summary: string; tasks: PlannedTask[]; startedAt?: number };
+};
+
+type AssistantTextMessage = {
+  id: string;
+  sender: 'assistant';
+  text: string;
+  startedAt?: number;
+};
+
+type AssistantFollowUpMessage = {
+  id: string;
+  sender: 'assistant';
+  followUp: { questions: string[]; startedAt?: number };
+};
+
+type ChatMessage =
+  | { id: string; sender: 'user'; text: string }
+  | AssistantPlanMessage
+  | AssistantTextMessage
+  | AssistantFollowUpMessage;
+
+type PendingPlan = {
+  planId: string;
+  summary: string;
+  tasks: PlannedTask[];
+  questions: string[];
+  questionTaskMap: Record<string, string[]>;
+  taskQuestionMap: Record<string, string[]>;
+};
+
+type RecentForm = {
+  id: string;
+  title: string;
+  description?: string;
+  createdAt: string;
+};
+
+const isPlanMessage = (message: ChatMessage): message is AssistantPlanMessage =>
+  message.sender === 'assistant' && 'plan' in message;
+
+const isFollowUpMessage = (
+  message: ChatMessage
+): message is AssistantFollowUpMessage =>
+  message.sender === 'assistant' && 'followUp' in message;
+
+const isAssistantTextMessage = (
+  message: ChatMessage
+): message is AssistantTextMessage =>
+  message.sender === 'assistant' && 'text' in message;
+
 const formSchema = z.object({
-  query: z.string().min(5, 'Please provide a bit more detail.'),
+  query: z
+    .string()
+    .min(1, 'Please enter a message.')
+    .refine(value => value.trim().length > 0, 'Message cannot be empty.'),
 });
 
-export default function AssistantPage() {
-  const [tasks, setTasks] = useState<PlannedTask[]>([]);
-  const [summary, setSummary] = useState('');
+
+const WORD_RE = /\s+/g;
+const countWords = (text: string) => text.trim().split(WORD_RE).filter(Boolean).length;
+const AI_SPARKLE =
+  'bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]';
+
+const FOLLOWUP_HEADER_TEXT = 'I need a few details before I can draft this:';
+
+
+const typewriterChars = ({
+
+  text,
+
+  startAt,
+
+  now,
+
+  charDelayMs,
+
+}: {
+
+  text: string;
+
+  startAt?: number;
+
+  now: number;
+
+  charDelayMs: number;
+
+}) => {
+
+  const startedAt = startAt ?? 0;
+
+  if (!startedAt) return text;
+
+  if (now < startedAt) return '';
+
+  const elapsed = Math.max(0, now - startedAt);
+
+  const visibleCount = Math.min(text.length, Math.floor(elapsed / charDelayMs) + 1);
+
+  return text.slice(0, visibleCount);
+
+};
+
+
+
+const getMessageAnimationTimings = ({
+  startedAt,
+  summary,
+}: {
+  startedAt?: number;
+  summary: string;
+}) => {
+  const base = startedAt ?? 0;
+  if (!base) {
+    return {
+      summaryStartAt: undefined,
+      tasksStartAt: undefined,
+    };
+  }
+  const summaryStartAt = base;
+  const summaryDurationMs = countWords(summary) * 35 + 350;
+  const tasksStartAt = summaryStartAt + summaryDurationMs;
+  return {
+    summaryStartAt,
+    tasksStartAt,
+  };
+};
+
+
+const getTaskAnimationTimings = ({
+  tasksStartAt,
+  index,
+  taskTitleText,
+  question,
+
+  hasFollowUp,
+
+}: {
+
+  tasksStartAt?: number;
+
+  index: number;
+
+  taskTitleText: string;
+
+  question: string;
+
+  hasFollowUp: boolean;
+
+}) => {
+
+  const taskBaseStartAt = tasksStartAt ? tasksStartAt + index * 200 : undefined;
+
+  const taskTitleDurationMs = countWords(taskTitleText) * 40 + 150;
+
+  const followUpStartAt = taskBaseStartAt ? taskBaseStartAt + taskTitleDurationMs : undefined;
+
+  const followUpDurationMs = countWords(question) * 35 + 150;
+
+  const draftSectionStartAt = followUpStartAt
+
+    ? followUpStartAt + (hasFollowUp ? followUpDurationMs + 150 : 150)
+
+    : undefined;
+
+  return {
+    taskBaseStartAt,
+    followUpStartAt,
+    followUpDurationMs,
+    draftSectionStartAt,
+  };
+};
+
+const getTaskTitleText = (taskType: TaskType) => {
+  if (taskType === 'form') return 'Edit Form Details';
+  if (taskType === 'messages') return 'Message task';
+  if (taskType === 'gallery') return 'Gallery task';
+  return `${taskType} task`;
+};
+
+
+function TypewriterText({
+
+  text,
+
+  startAt,
+
+  now,
+
+  className,
+
+  wordDelayMs = 60,
+
+}: {
+
+  text: string;
+
+  startAt?: number;
+
+  now: number;
+
+  className?: string;
+
+  wordDelayMs?: number;
+
+}) {
+
+  const startedAt = startAt ?? 0;
+
+  if (!startedAt) return <span className={className}>{text}</span>;
+
+  if (now < startedAt) return <span className={className} />;
+
+
+
+  const words = text.trim().split(WORD_RE).filter(Boolean);
+
+  if (words.length === 0) return <span className={className} />;
+
+
+
+  const elapsed = Math.max(0, now - startedAt);
+
+  const visibleCount = Math.min(words.length, Math.floor(elapsed / wordDelayMs) + 1);
+
+  const rendered = words.slice(0, visibleCount).join(' ');
+
+  return <span className={className}>{rendered}</span>;
+
+}
+
+
+
+function AssistantPageInner() {
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isPlanning, setIsPlanning] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [showAddPeople, setShowAddPeople] = useState<Record<string, boolean>>({});
+  const [recentForms, setRecentForms] = useState<RecentForm[]>([]);
+  const [formTaskIdMap, setFormTaskIdMap] = useState<Record<string, string>>({});
   const { toast } = useToast();
+
+  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+
+  const stickToBottomRef = useRef(true);
+
+  const didInitialScrollRef = useRef(false);
+
+  const activeAutoscrollMessageIdRef = useRef<string | null>(null);
+
+  const autoscrollDisabledForMessageRef = useRef<Set<string>>(new Set());
+
+  const lastAutoScrollAtRef = useRef(0);
+
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const { user } = useCurrentUser();
+  const { canManageRoles } = useCurrentUserRole();
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDemoAssistantRoute =
+    pathname === '/demo/app/assistant' || pathname.startsWith('/demo/app/assistant/');
+  const appBrandName = isDemoAssistantRoute ? 'CASPO' : 'ClubHub';
+  const didApplyPrefillRef = useRef(false);
+  const announcements = useAnnouncements();
+  const forms = useForms();
+  const events = useEvents();
+  const galleryImages = useGalleryImages();
+  const messagesData = useMessages();
+  const groupChats = useGroupChats();
+  const members = useMembers();
+  const socialPosts = useSocialPosts();
+  const transactions = useTransactions();
+  const presentations = usePresentations();
+
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: { query: '' },
   });
 
-  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
-    setIsPlanning(true);
-    setTasks([]);
-    setSummary('');
+  useEffect(() => {
+    if (didApplyPrefillRef.current) return;
+    const existing = form.getValues('query')?.trim();
+    if (existing) {
+      didApplyPrefillRef.current = true;
+      return;
+    }
+    const prefill = getAssistantPrefill(searchParams);
+    if (!prefill) return;
+    form.setValue('query', prefill, { shouldDirty: true });
+    didApplyPrefillRef.current = true;
+    clearAssistantPrefill();
+  }, [form, searchParams]);
+
+  const STORAGE_KEY = 'assistantChatHistory';
+  const RECENT_FORMS_KEY = 'assistantRecentForms';
+  const storageSuffix = user?.email ? user.email.toLowerCase() : 'guest';
+  const historyStorageKey = `${STORAGE_KEY}:${storageSuffix}`;
+  const RECENT_MESSAGES_LIMIT = 3;
+  const RECENT_FORMS_LIMIT = 3;
+
+
+  const MAX_ATTACHMENTS = 5;
+
+  const MAX_ATTACHMENT_SIZE_BYTES = 1_000_000; // localStorage-friendly (~1MB)
+
+
+
+  const getScrollViewport = () => {
+
+    const root = scrollAreaRef.current;
+
+    if (!root) return null;
+
+    return root.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+
+  };
+
+
+
+  const formatBytes = (bytes: number) => {
+
+    if (!Number.isFinite(bytes)) return '';
+
+    if (bytes < 1024) return `${bytes} B`;
+
+    const kb = bytes / 1024;
+
+    if (kb < 1024) return `${kb.toFixed(1)} KB`;
+
+    const mb = kb / 1024;
+
+    return `${mb.toFixed(1)} MB`;
+
+  };
+
+
+
+  const isTextLikeFile = (file: File) => {
+
+    if (file.type.startsWith('text/')) return true;
+
+    const name = file.name.toLowerCase();
+
+    return (
+
+      name.endsWith('.txt') ||
+
+      name.endsWith('.md') ||
+
+      name.endsWith('.csv') ||
+
+      name.endsWith('.json') ||
+
+      name.endsWith('.log')
+
+    );
+
+  };
+
+
+
+  const readFileAsDataURL = (file: File) =>
+
+    new Promise<string>((resolve, reject) => {
+
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(new Error('Failed to read file.'));
+
+      reader.onload = () => resolve(String(reader.result ?? ''));
+
+      reader.readAsDataURL(file);
+
+    });
+
+
+
+  const readFileAsText = (file: File) =>
+
+    new Promise<string>((resolve, reject) => {
+
+      const reader = new FileReader();
+
+      reader.onerror = () => reject(new Error('Failed to read file text.'));
+
+      reader.onload = () => resolve(String(reader.result ?? ''));
+
+      reader.readAsText(file);
+
+    });
+
+
+
+  const buildAttachmentContextForAI = (attachments: PendingAttachment[] | undefined) => {
+    const list = Array.isArray(attachments) ? attachments : [];
+    if (list.length === 0) return null;
+
+
+    const lines: string[] = ['Attached files (use these if relevant):'];
+
+    let remainingChars = 6000;
+
+
+
+    list.forEach((att, idx) => {
+
+      const label = `${idx + 1}) ${att.name}${att.type ? ` (${att.type})` : ''}${
+
+        att.size ? ` - ${formatBytes(att.size)}` : ''
+
+      }`;
+
+      lines.push(label);
+
+
+
+      const text = (att.text ?? '').trim();
+
+      if (!text) return;
+
+
+
+      if (remainingChars <= 0) return;
+
+      const excerpt = text.slice(0, Math.min(text.length, 2000, remainingChars));
+
+      remainingChars -= excerpt.length;
+
+      lines.push('Text excerpt:');
+
+      lines.push(excerpt);
+
+    });
+
+
+
+    return lines.join('\n');
+  };
+
+  const buildRecentContextForPlanner = () => {
+    const roleLine = canManageRoles
+      ? 'User role: officer/admin. All task types allowed.'
+      : 'User role: member. Allowed tasks: messages and gallery only. Use chat responses for other requests.';
+    const recentMessages = messages.slice(-RECENT_MESSAGES_LIMIT);
+    const messageLines = recentMessages
+      .map(msg => {
+        if (msg.sender === 'user') return `User: ${msg.text}`;
+        if (isAssistantTextMessage(msg)) return `Assistant: ${msg.text}`;
+        if (isPlanMessage(msg)) {
+          const taskTypes = msg.plan.tasks.map(task => task.type).join(', ');
+          return `Assistant plan: ${msg.plan.summary}${taskTypes ? ` (tasks: ${taskTypes})` : ''}`;
+        }
+        if (isFollowUpMessage(msg)) {
+          return `Assistant follow-up: ${msg.followUp.questions.join('; ')}`;
+        }
+        return '';
+      })
+      .filter(Boolean);
+
+    const recentFormLines =
+      recentForms.length > 0
+        ? [
+            'Recent forms created in this chat:',
+            ...recentForms.map(form => {
+              const description = form.description ? ` - ${form.description}` : '';
+              return `- ${form.title}${description}`;
+            }),
+          ]
+        : [];
+
+    const blocks = [
+      roleLine,
+      messageLines.join('\n'),
+      recentFormLines.join('\n'),
+    ].filter(Boolean);
+    return blocks.length > 0 ? blocks.join('\n\n') : undefined;
+  };
+
+const buildFastPlan = (
+  query: string,
+  attachments: PendingAttachment[]
+): { tasks: PlannedTask[]; summary: string } | null => {
+    const text = query.trim();
+    if (!text) return null;
+    const lower = text.toLowerCase();
+    const hasAttachment = attachments.length > 0;
+
+    const matchAny = (patterns: RegExp[]) => patterns.some(pattern => pattern.test(lower));
+
+    const type: TaskType | null = matchAny([
+      /\bannouncement\b/,
+      /\bannounce\b/,
+      /\bremind\b/,
+    ])
+      ? 'announcement'
+      : matchAny([/\bmessage\b/, /\btext\b/, /\bdm\b/, /\bchat\b/])
+        ? 'messages'
+        : matchAny([/\bemail\b/])
+          ? 'email'
+          : matchAny([/\bcalendar\b/, /\bevent\b/, /\bmeeting\b/, /\bschedule\b/])
+            ? 'calendar'
+            : matchAny([/\bform\b/, /\bsurvey\b/])
+              ? 'form'
+              : matchAny([/\bgallery\b/, /\bphoto\b/, /\bimage\b/, /\bupload\b/])
+                ? 'gallery'
+                : matchAny([/\btransaction\b/, /\bexpense\b/, /\bpayment\b/, /\bcharge\b/])
+                  ? 'transaction'
+                  : matchAny([/\bsocial\b/, /\bpost\b/])
+                    ? 'social'
+                    : null;
+
+    if (!type) return null;
+
+    const followUpQuestions: string[] = [];
+    const nameMatches = (members.data ?? [])
+      .map(member => member.name)
+      .filter(Boolean)
+      .some(name => lower.includes(name.toLowerCase()));
+    const groupMatches = (groupChats.data ?? [])
+      .map(chat => chat.name)
+      .filter(Boolean)
+      .some(name => lower.includes(name.toLowerCase()));
+
+    if (type === 'messages') {
+      if (!nameMatches && !groupMatches) {
+        followUpQuestions.push('Who should receive the message?');
+      }
+    }
+
+    if (type === 'calendar') {
+      const hasDate = matchAny([
+        /\btomorrow\b/,
+        /\btomorow\b/,
+        /\btomorows\b/,
+        /\btomorrow's\b/,
+        /\btmr\b/,
+        /\btmrw\b/,
+        /\btonight\b/,
+        /\btonite\b/,
+        /\bnext\b/,
+        /\bthis\s+(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
+        /\b(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
+        /\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/,
+        /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\b/,
+      ]);
+      const hasTime = matchAny([/\b\d{1,2}(:\d{2})?\s?(am|pm)\b/]);
+      if (!hasDate) followUpQuestions.push('What is the event date?');
+      if (!hasTime) followUpQuestions.push('What time is the event?');
+    }
+
+    if (type === 'form') {
+      const hasQuestions = matchAny([/\bquestion\b/, /\bquestions\b/, /\bask\b/, /\?/]);
+      if (!hasQuestions) {
+        followUpQuestions.push(
+          'Please list the questions you want in the form and any answer choices for multiple-choice questions.'
+        );
+      }
+    }
+
+    if (type === 'gallery' && !hasAttachment) {
+      followUpQuestions.push('Please attach at least one image.');
+    }
+
+    if (type === 'transaction' && !matchAny([/\$?\d+(?:\.\d{2})?\b/])) {
+      followUpQuestions.push('What is the amount?');
+    }
+
+  return {
+      tasks: [
+        {
+          id: `fast-${Date.now()}`,
+          type,
+          prompt: text,
+          followUpQuestions: followUpQuestions.length > 0 ? followUpQuestions : undefined,
+          status: 'pending',
+        },
+      ],
+      summary: "Got it - here's a draft.",
+  };
+};
+
+  const isInsightQuery = (query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return false;
+    const startsAsQuestion =
+      normalized.endsWith('?') ||
+      normalized.startsWith('how ') ||
+      normalized.startsWith('what ') ||
+      normalized.startsWith('which ') ||
+      normalized.startsWith('who ') ||
+      normalized.startsWith('when ') ||
+      normalized.startsWith('where ') ||
+      normalized.startsWith('show ') ||
+      normalized.startsWith('list ') ||
+      normalized.startsWith('tell me ') ||
+      normalized.startsWith('summarize ') ||
+      normalized.startsWith('summarise ');
+    const hasRetrievalTerms = /\b(latest|recent|summary|status|list|show|count|total|how many)\b/.test(
+      normalized
+    );
+    const hasExecutionIntent = /\b(create|post|send|draft|add|schedule|make|generate|upload|publish|announce|compose|write|record|log)\b/.test(
+      normalized
+    );
+
+    const hasFormMention = /\bform(s)?\b/.test(normalized);
+    const hasResponseMention = /\brespond(ed|s|ing)?\b|\bresponse(s)?\b|\bsubmission(s)?\b/.test(
+      normalized
+    );
+    const focusedFormInsight =
+      hasFormMention &&
+      hasResponseMention &&
+      /\bhow many\b|\bnumber of\b|\bcount\b|\btotal\b|\blast\b|\blatest\b|\bmost recent\b/.test(
+        normalized
+      );
+
+    if (focusedFormInsight) return true;
+    if (!startsAsQuestion && !hasRetrievalTerms) return false;
+    if (hasExecutionIntent && !focusedFormInsight) return false;
+    return true;
+  };
+
+  const buildAppContextForAssistant = () => {
+    const maxStringLength = 1200;
+    const maxDepth = 7;
+
+    const sanitize = (value: any, depth: number): any => {
+      if (depth > maxDepth) return '[truncated]';
+      if (value === null || value === undefined) return value;
+      if (typeof value === 'string') {
+        if (value.startsWith('data:')) return value;
+        if (value.length <= maxStringLength) return value;
+        return `${value.slice(0, maxStringLength)}...[truncated ${value.length} chars]`;
+      }
+      if (typeof value === 'number' || typeof value === 'boolean') return value;
+      if (value instanceof Date) return value.toISOString();
+      if (Array.isArray(value)) {
+        return value.map(item => sanitize(item, depth + 1));
+      }
+      if (typeof value === 'object') {
+        const entries = Object.entries(value).map(([key, val]) => [
+          key,
+          sanitize(val, depth + 1),
+        ]);
+        return Object.fromEntries(entries);
+      }
+      return String(value);
+    };
+
+    const memberList = Array.isArray(members.data) ? members.data : [];
+    const memberNameByEmail = new Map(
+      memberList.map(member => [member.email, member.name])
+    );
+
+    const currentEmail = user?.email ?? '';
+    const announcementsSnapshot = Array.isArray(announcements.data)
+      ? announcements.data.map(item => ({
+          id: item.id,
+          title: item.title,
+          content: item.content,
+          author: item.author,
+          date: item.date,
+          attachments: item.attachments,
+          linkedFormId: item.linkedFormId,
+          ...(canManageRoles
+            ? {
+                viewedByNames: Array.isArray(item.viewedBy)
+                  ? item.viewedBy.map(resolveMemberName)
+                  : [],
+                recipientNames: Array.isArray(item.recipients)
+                  ? item.recipients.map(resolveMemberName)
+                  : [],
+              }
+            : {}),
+        }))
+      : [];
+
+    const formsSnapshot = Array.isArray(forms.data)
+      ? forms.data.map(form => {
+          const responses = Array.isArray(form.responses) ? form.responses : [];
+          const memberResponses = currentEmail
+            ? responses.filter(resp => resp.respondentEmail === currentEmail)
+            : [];
+          return {
+            id: form.id,
+            title: form.title,
+            description: form.description,
+            questions: form.questions,
+            createdAt: form.createdAt,
+            ...(canManageRoles
+              ? {
+                  viewedByNames: Array.isArray(form.viewedBy)
+                    ? form.viewedBy.map(resolveMemberName)
+                    : [],
+                  responses: responses.map(response => ({
+                    ...response,
+                    respondentName: response.respondentEmail
+                      ? resolveMemberName(response.respondentEmail)
+                      : '',
+                    answersDetailed: buildAnswerDetails(response.answers, form.questions),
+                  })),
+                }
+              : {
+                  responses: memberResponses.map(response => ({
+                    ...response,
+                    respondentName: response.respondentEmail
+                      ? resolveMemberName(response.respondentEmail)
+                      : '',
+                    answersDetailed: buildAnswerDetails(response.answers, form.questions),
+                  })),
+                }),
+          };
+        })
+      : [];
+
+    const eventsSnapshot = Array.isArray(events.data)
+      ? events.data.map(event => ({
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          location: event.location,
+          date: event.date,
+          hasTime: event.hasTime,
+          points: event.points,
+          rsvpRequired: event.rsvpRequired,
+          ...(canManageRoles ? { viewedBy: event.viewedBy, rsvps: event.rsvps } : {}),
+        }))
+      : [];
+
+    const snapshot = {
+      capabilities: canManageRoles
+        ? {
+            role: 'officer/admin',
+            allowedTasks: [
+              'announcement',
+              'form',
+              'calendar',
+              'email',
+              'messages',
+              'gallery',
+              'transaction',
+              'social',
+            ],
+          }
+        : {
+            role: 'member',
+            allowedTasks: ['messages', 'gallery'],
+          },
+      currentUser: user ? { name: user.name, email: user.email } : undefined,
+      members: memberList,
+      announcements: announcementsSnapshot,
+      forms: formsSnapshot,
+      events: eventsSnapshot,
+      socialPosts: socialPosts.data ?? [],
+      transactions: canManageRoles ? transactions.data ?? [] : [],
+      galleryImages: galleryImages.data ?? [],
+      groupChats: groupChats.data ?? [],
+      messages: messagesData.data ?? {},
+    };
+
+    return JSON.stringify(sanitize(snapshot, 0), null, 2);
+  };
+
+  const resolveMemberName = (value: string) => {
+    const memberList = Array.isArray(members.data) ? members.data : [];
+    const memberNameByEmail = new Map(
+      memberList.map(member => [member.email, member.name])
+    );
+    return memberNameByEmail.get(value) || value;
+  };
+
+  const isAssistantMessageAnimating = (message: AssistantPlanMessage) => {
+    const startedAt = message.plan.startedAt ?? 0;
+    if (!startedAt) return false;
+
+    const { tasksStartAt } = getMessageAnimationTimings({
+      startedAt,
+      summary: message.plan.summary,
+    });
+
+
+    const baseEndAt = tasksStartAt
+
+      ? tasksStartAt + message.plan.tasks.length * 200 + 600
+
+      : startedAt + 1500;
+
+
+
+    let endAt = baseEndAt;
+
+
+
+    message.plan.tasks.forEach((task, index) => {
+
+      if (task.isDrafting) {
+
+        endAt = Math.max(endAt, now + 500);
+
+        return;
+
+      }
+
+
+
+      if (!task.draftTyping) return;
+
+      const taskTitleText = getTaskTitleText(task.type);
+      const question = task.followUpQuestions?.length
+        ? cleanFollowUp(task.followUpQuestions.join(' '))
+        : '';
+      const hasFollowUp = Boolean(task.followUpQuestions?.length);
+      const { draftSectionStartAt } = getTaskAnimationTimings({
+
+        tasksStartAt,
+
+        index,
+
+        taskTitleText,
+
+        question,
+
+        hasFollowUp,
+
+      });
+
+
+
+      const perCharMs = 14;
+
+      const effectiveStartAt = draftSectionStartAt
+
+        ? Math.max(task.draftTyping.startedAt, draftSectionStartAt)
+
+        : task.draftTyping.startedAt;
+
+      const totalMs = (task.draftTyping.fullText?.length ?? 0) * perCharMs + 300;
+
+      endAt = Math.max(endAt, effectiveStartAt + totalMs);
+
+    });
+
+
+
+    return now < endAt;
+
+  };
+
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
-      const plan = await planTasksAction(values.query);
-      const planned = plan.tasks.map(task => ({
-        ...task,
-        status: 'pending' as const,
-      }));
-      setTasks(planned);
-      setSummary(plan.summary);
+      const saved = localStorage.getItem(historyStorageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setMessages(parsed);
+        }
+      }
+      setHasLoadedHistory(true);
+    } catch (error) {
+      console.error('Failed to load assistant chat history', error);
+      setHasLoadedHistory(true);
+    }
+  }, [historyStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const saved = localStorage.getItem(RECENT_FORMS_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setRecentForms(
+            parsed
+              .filter(item => item && typeof item.id === 'string')
+              .slice(0, RECENT_FORMS_LIMIT)
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load assistant recent forms', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(
+        RECENT_FORMS_KEY,
+        JSON.stringify(recentForms.slice(0, RECENT_FORMS_LIMIT))
+      );
+    } catch (error) {
+      console.error('Failed to persist assistant recent forms', error);
+    }
+  }, [recentForms]);
+
+
+  useEffect(() => {
+
+    if (typeof window === 'undefined' || !hasLoadedHistory) return;
+
+    try {
+
+      const safeMessages = messages.map(msg => {
+        if (!isPlanMessage(msg)) return msg;
+        return {
+          ...msg,
+          plan: {
+            ...msg.plan,
+            tasks: msg.plan.tasks.map(task => {
+              const { attachments, ...rest } = task as PlannedTask;
+              return rest;
+            }),
+          },
+        };
+      });
+      localStorage.setItem(historyStorageKey, JSON.stringify(safeMessages));
+    } catch (error) {
+      console.error('Failed to persist assistant chat history', error);
+    }
+  }, [messages, hasLoadedHistory, historyStorageKey]);
+
+
+  useEffect(() => {
+
+    const viewport = getScrollViewport();
+
+    if (!viewport) return;
+
+
+
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+
+    const isNearBottom = distanceFromBottom < 80;
+
+    if (!stickToBottomRef.current || !isNearBottom) return;
+
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+
+  }, [messages]);
+
+
+
+  useEffect(() => {
+
+    const root = scrollAreaRef.current;
+
+    if (!root) return;
+
+    const viewport = root.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement | null;
+
+    if (!viewport) return;
+
+
+
+    const updateStickiness = () => {
+
+      const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+
+      stickToBottomRef.current = distanceFromBottom < 80;
+
+
+
+      const activeId = activeAutoscrollMessageIdRef.current;
+
+      if (!activeId) return;
+
+
+
+      const isLikelyProgrammatic = Date.now() - lastAutoScrollAtRef.current < 120;
+
+      if (isLikelyProgrammatic) return;
+
+
+
+      if (distanceFromBottom > 120) {
+
+        autoscrollDisabledForMessageRef.current.add(activeId);
+
+      }
+
+    };
+
+
+
+    updateStickiness();
+
+    viewport.addEventListener('scroll', updateStickiness, { passive: true });
+
+    const onWheel = () => {
+
+      const activeId = activeAutoscrollMessageIdRef.current;
+
+      if (activeId) {
+
+        autoscrollDisabledForMessageRef.current.add(activeId);
+
+      }
+
+    };
+
+    const onPointerDown = () => {
+
+      const activeId = activeAutoscrollMessageIdRef.current;
+
+      if (activeId) {
+
+        autoscrollDisabledForMessageRef.current.add(activeId);
+
+      }
+
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: true });
+
+    viewport.addEventListener('pointerdown', onPointerDown, { passive: true });
+
+    return () => {
+
+      viewport.removeEventListener('scroll', updateStickiness);
+
+      viewport.removeEventListener('wheel', onWheel);
+
+      viewport.removeEventListener('pointerdown', onPointerDown);
+
+    };
+
+  }, [hasLoadedHistory]);
+
+
+
+  useEffect(() => {
+
+    if (!hasLoadedHistory) return;
+
+    if (didInitialScrollRef.current) return;
+
+    if (typeof window === 'undefined') return;
+
+
+
+    didInitialScrollRef.current = true;
+
+    stickToBottomRef.current = true;
+
+
+
+    const doScroll = () => bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+
+    window.requestAnimationFrame(() => {
+
+      doScroll();
+
+      window.requestAnimationFrame(doScroll);
+
+    });
+
+  }, [hasLoadedHistory]);
+
+
+
+  const hasActiveAnimations = useMemo(() => {
+    const assistantTextDuration = (text: string) => text.length * 14 + 300;
+    for (const msg of messages) {
+      if (!isPlanMessage(msg)) continue;
+      const startedAt = msg.plan.startedAt ?? 0;
+      if (startedAt && now - startedAt < 60_000) return true;
+      for (const task of msg.plan.tasks) {
+        if (task.isDrafting) return true;
+        if (task.draftTyping) {
+          const perCharMs = 14;
+          const duration = (task.draftTyping.fullText?.length ?? 0) * perCharMs + 500;
+          if (now - task.draftTyping.startedAt < duration) return true;
+        }
+      }
+    }
+    for (const msg of messages) {
+      if (!isAssistantTextMessage(msg)) continue;
+      if (!msg.startedAt) continue;
+      if (now - msg.startedAt < assistantTextDuration(msg.text)) return true;
+    }
+    return false;
+  }, [messages, now]);
+
+
+  useEffect(() => {
+
+    if (!hasActiveAnimations) return;
+
+    const interval = window.setInterval(() => setNow(Date.now()), 50);
+
+    return () => window.clearInterval(interval);
+
+  }, [hasActiveAnimations]);
+
+
+
+  useEffect(() => {
+    if (!hasActiveAnimations) return;
+    const viewport = getScrollViewport();
+    if (!viewport) return;
+
+    const currentId = activeAutoscrollMessageIdRef.current;
+    const currentMessage = currentId
+      ? messages.find(m => m.id === currentId)
+      : undefined;
+    const stillAnimating = currentMessage
+      ? isPlanMessage(currentMessage)
+        ? isAssistantMessageAnimating(currentMessage)
+        : isAssistantTextMessage(currentMessage) && currentMessage.startedAt
+          ? now - currentMessage.startedAt < currentMessage.text.length * 14 + 300
+          : false
+      : false;
+    if (currentId && !stillAnimating) {
+      activeAutoscrollMessageIdRef.current = null;
+    }
+
+    if (!activeAutoscrollMessageIdRef.current) {
+      const latestAnimating = [...messages]
+        .reverse()
+        .find(m => {
+          if (isPlanMessage(m)) return isAssistantMessageAnimating(m);
+          if (isAssistantTextMessage(m)) {
+            return m.startedAt
+              ? now - m.startedAt < m.text.length * 14 + 300
+              : false;
+          }
+          return false;
+        });
+      if (latestAnimating) {
+        activeAutoscrollMessageIdRef.current = latestAnimating.id;
+      }
+    }
+
+
+    const activeId = activeAutoscrollMessageIdRef.current;
+
+    if (!activeId) return;
+
+    if (autoscrollDisabledForMessageRef.current.has(activeId)) return;
+
+    if (!stickToBottomRef.current) return;
+
+
+
+    lastAutoScrollAtRef.current = Date.now();
+
+    bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+
+  }, [hasActiveAnimations, now]);
+
+
+
+  useEffect(() => {
+
+    if (!hasActiveAnimations) return;
+
+    setMessages(prev =>
+      {
+        let didChange = false;
+        const next = prev.map(msg => {
+          if (!isPlanMessage(msg)) return msg;
+          const { tasksStartAt } = getMessageAnimationTimings({
+            startedAt: msg.plan.startedAt,
+            summary: msg.plan.summary,
+          });
+
+
+          let taskChanged = false;
+
+          const updatedTasks = msg.plan.tasks.map((task, index) => {
+
+            if (!task.draftTyping) return task;
+
+            const taskTitleText = getTaskTitleText(task.type);
+            const question = task.followUpQuestions?.length
+              ? cleanFollowUp(task.followUpQuestions.join(' '))
+              : '';
+            const hasFollowUp = Boolean(task.followUpQuestions?.length);
+            const { draftSectionStartAt } = getTaskAnimationTimings({
+
+              tasksStartAt,
+
+              index,
+
+              taskTitleText,
+
+              question,
+
+              hasFollowUp,
+
+            });
+
+            const perCharMs = 14;
+
+            const totalMs = (task.draftTyping.fullText?.length ?? 0) * perCharMs;
+
+            const effectiveStartAt = draftSectionStartAt
+
+              ? Math.max(task.draftTyping.startedAt, draftSectionStartAt)
+
+              : task.draftTyping.startedAt;
+
+            if (now < effectiveStartAt + totalMs) return task;
+
+            taskChanged = true;
+
+            return { ...task, draft: task.draftTyping.fullText, draftTyping: undefined };
+
+          });
+
+
+
+          if (!taskChanged) return msg;
+
+          didChange = true;
+
+          return { ...msg, plan: { ...msg.plan, tasks: updatedTasks } };
+
+        });
+
+
+
+        return didChange ? next : prev;
+
+      }
+
+    );
+
+  }, [hasActiveAnimations, now]);
+
+
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+
+    const selected = Array.from(event.target.files ?? []);
+
+    if (selected.length === 0) return;
+
+
+
+    if (pendingAttachments.length + selected.length > MAX_ATTACHMENTS) {
+
+      toast({
+
+        title: 'Too many files',
+
+        description: `Attach up to ${MAX_ATTACHMENTS} files at a time.`,
+
+        variant: 'destructive',
+
+      });
+
+      event.target.value = '';
+
+      return;
+
+    }
+
+
+
+    const oversized = selected.find(f => f.size > MAX_ATTACHMENT_SIZE_BYTES);
+
+    if (oversized) {
+
+      toast({
+
+        title: 'File too large',
+
+        description: `"${oversized.name}" is ${formatBytes(oversized.size)}. Please attach files under ${formatBytes(
+
+          MAX_ATTACHMENT_SIZE_BYTES
+
+        )}.`,
+
+        variant: 'destructive',
+
+      });
+
+      event.target.value = '';
+
+      return;
+
+    }
+
+
+
+    try {
+
+      const newlyRead = await Promise.all(
+
+        selected.map(async file => {
+
+          const dataUri = await readFileAsDataURL(file);
+
+          const text = isTextLikeFile(file) ? await readFileAsText(file).catch(() => '') : '';
+
+          const attachment: PendingAttachment = {
+
+            name: file.name,
+
+            dataUri,
+
+            type: file.type,
+
+            size: file.size,
+
+            text: text ? text.slice(0, 10_000) : undefined,
+
+          };
+
+          return attachment;
+
+        })
+
+      );
+
+      setPendingAttachments(prev => [...prev, ...newlyRead]);
+
+    } catch (error: any) {
+
+      console.error('Failed to read attachment', error);
+
+      toast({
+
+        title: 'Attachment failed',
+
+        description: error?.message ?? 'Could not attach that file.',
+
+        variant: 'destructive',
+
+      });
+
+    } finally {
+
+      event.target.value = '';
+
+    }
+
+  };
+
+
+
+  const removePendingAttachment = (index: number) => {
+    setPendingAttachments(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      sender: 'user',
+      text: values.query,
+    };
+
+    setIsPlanning(true);
+    setSendingId(null);
+    stickToBottomRef.current = true;
+    try {
+      const treatAsInsight = isInsightQuery(values.query);
+      if (pendingPlan && !treatAsInsight) {
+        const questionsToResolve = normalizeQuestionList(pendingPlan.questions);
+        const responseResult = await resolveFollowUpAnswersAction(
+          questionsToResolve,
+          values.query
+        );
+        const response =
+          getResultData(responseResult, message =>
+            toast({
+              title: 'AI unavailable',
+              description: message,
+              variant: 'destructive',
+            })
+          ) ?? { answers: [], missing: questionsToResolve };
+        const answerMap = new Map(
+          (response.answers || []).map(item => [
+            normalizeFollowUpQuestion(item.question),
+            item.answer,
+          ])
+        );
+        // Rely entirely on Gemini to interpret follow-up answers.
+        const tasksWithAttachments = pendingPlan.tasks.map(task => ({
+          ...task,
+          attachments:
+            pendingAttachments.length > 0
+              ? [...(task.attachments || []), ...pendingAttachments]
+              : task.attachments,
+        }));
+        const updatedTasks = tasksWithAttachments.map(task => {
+          const questionList =
+            pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
+          if (questionList.length === 0) return task;
+          const answersForTask = questionList
+            .map(question => answerMap.get(normalizeFollowUpQuestion(question)))
+            .filter((answer): answer is string => Boolean(answer));
+          if (answersForTask.length === 0) return task;
+          return {
+            ...task,
+            clarification: mergeClarifications(task.clarification, answersForTask),
+          };
+        });
+        const hydratedTasks = await resolveAnnouncementRecipientsForTasks(updatedTasks);
+        const missingList = Array.isArray(response.missing)
+          ? response.missing.map(item => normalizeFollowUpQuestion(item)).filter(Boolean)
+          : [];
+        const normalizedMissing = missingList.filter(
+          item =>
+            questionsToResolve.includes(item) &&
+            !answerMap.has(normalizeFollowUpQuestion(item))
+        );
+        const unanswered = questionsToResolve.filter(
+          q => !answerMap.has(normalizeFollowUpQuestion(q))
+        );
+        const combinedMissing = Array.from(
+          new Set([...normalizedMissing, ...unanswered])
+        );
+        const normalizedCombinedMissing = normalizeQuestionList(combinedMissing);
+        if (combinedMissing.length > 0) {
+          const followUpMessage: ChatMessage = {
+            id: `followup-${Date.now()}`,
+            sender: 'assistant',
+            followUp: {
+              questions: normalizedCombinedMissing,
+              startedAt: Date.now(),
+            },
+          };
+          if (normalizedCombinedMissing.length > 0) {
+            const nextQuestionTaskMap = pendingPlan.questionTaskMap;
+            const nextTaskQuestionMap = pendingPlan.taskQuestionMap;
+            setMessages(prev => [...prev, userMessage, followUpMessage]);
+            setPendingPlan({
+              ...pendingPlan,
+              tasks: hydratedTasks,
+              questions: normalizedCombinedMissing,
+              questionTaskMap: nextQuestionTaskMap,
+              taskQuestionMap: nextTaskQuestionMap,
+            });
+            activeAutoscrollMessageIdRef.current = followUpMessage.id;
+            autoscrollDisabledForMessageRef.current.delete(followUpMessage.id);
+          } else {
+            const planId = pendingPlan.planId;
+            const resolvedTasks = hydratedTasks.map(task => ({
+              ...task,
+              followUpQuestions: undefined,
+            }));
+            let resolvedSummary = "All set - here's the draft.";
+            try {
+              const taskTypes =
+                resolvedTasks.map(task => task.type).join(', ') || 'task';
+              const assistantReplyResult = await runAssistantAction(
+                `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
+                undefined
+              );
+              const assistantReply = getResultData(assistantReplyResult);
+              if (assistantReply?.response) resolvedSummary = assistantReply.response;
+            } catch (error) {
+              console.error('Failed to generate post-followup summary', error);
+            }
+            setMessages(prev => [
+              ...prev,
+              userMessage,
+              {
+                id: planId,
+                sender: 'assistant',
+                plan: {
+                  summary: resolvedSummary,
+                  tasks: resolvedTasks,
+                  startedAt: Date.now(),
+                },
+              },
+            ]);
+            activeAutoscrollMessageIdRef.current = planId;
+            autoscrollDisabledForMessageRef.current.delete(planId);
+            resolvedTasks
+              .filter(task => task.type !== 'other')
+              .forEach(task => generateDraft(planId, task));
+            setPendingPlan(null);
+          }
+        } else {
+          const planId = pendingPlan.planId;
+          const resolvedTasks = hydratedTasks.map(task => ({
+            ...task,
+            followUpQuestions: undefined,
+          }));
+            let resolvedSummary = "All set - here's the draft.";
+          try {
+            const taskTypes = resolvedTasks.map(task => task.type).join(', ') || 'task';
+            const assistantReplyResult = await runAssistantAction(
+              `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
+              undefined
+            );
+            const assistantReply = getResultData(assistantReplyResult);
+            if (assistantReply?.response) {
+              resolvedSummary = assistantReply.response;
+            }
+          } catch (error) {
+            console.error('Failed to generate post-followup summary', error);
+          }
+          setMessages(prev => [
+            ...prev,
+            userMessage,
+            {
+              id: planId,
+              sender: 'assistant',
+              plan: {
+                summary: resolvedSummary,
+                tasks: resolvedTasks,
+                startedAt: Date.now(),
+              },
+            },
+          ]);
+          activeAutoscrollMessageIdRef.current = planId;
+          autoscrollDisabledForMessageRef.current.delete(planId);
+          resolvedTasks
+            .filter(task => task.type !== 'other')
+            .forEach(task => generateDraft(planId, task));
+          setPendingPlan(null);
+        }
+      } else {
+        const attachmentContext = buildAttachmentContextForAI(pendingAttachments);
+        const queryWithAttachments = attachmentContext
+          ? `${values.query}\n\n${attachmentContext}`
+          : values.query;
+        if (treatAsInsight) {
+          if (pendingPlan) {
+            console.info('[AI_DEBUG] Treating insight query as new request; clearing pending plan.');
+            setPendingPlan(null);
+          }
+          const appContext = buildAppContextForAssistant();
+          const assistantReplyResult = await runAssistantAction(values.query, appContext);
+          const assistantReply =
+            getResultData(assistantReplyResult, message =>
+              toast({
+                title: 'AI unavailable',
+                description: message,
+                variant: 'destructive',
+              })
+            ) ?? { response: aiFallbackMessage };
+          const assistantMessage: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            sender: 'assistant',
+            text: assistantReply.response,
+            startedAt: Date.now(),
+          };
+          setMessages(prev => [...prev, userMessage, assistantMessage]);
+          activeAutoscrollMessageIdRef.current = assistantMessage.id;
+          autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
+          setPendingPlan(null);
+          if (pendingAttachments.length > 0) {
+            setPendingAttachments([]);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+          return;
+        }
+        const fastPlan = buildFastPlan(values.query, pendingAttachments);
+        const contextForPlanner = buildRecentContextForPlanner();
+        const planResult: Result<{
+          tasks: PlannedTaskInput[];
+          summary: string;
+        }> = fastPlan
+          ? { ok: true, data: fastPlan }
+          : await planTasksAction(queryWithAttachments, contextForPlanner);
+        const plan =
+          getResultData(planResult, message =>
+            toast({
+              title: 'AI unavailable',
+              description: message,
+              variant: 'destructive',
+            })
+          ) ?? { tasks: [], summary: aiFallbackMessage };
+        const normalizedPlan = {
+          ...plan,
+          tasks: (plan.tasks ?? []).map(task => ({
+            ...task,
+            status: (task as PlannedTask).status ?? 'pending',
+          })),
+        };
+        const planId = `plan-${Date.now()}`;
+        const allowedTaskTypes = canManageRoles
+          ? null
+          : new Set<TaskType>(['messages', 'gallery']);
+        const rawTasks = allowedTaskTypes
+          ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
+          : normalizedPlan.tasks;
+        if (!canManageRoles && rawTasks.length === 0) {
+          const appContext = buildAppContextForAssistant();
+          const assistantReplyResult = await runAssistantAction(values.query, appContext);
+          const assistantReply =
+            getResultData(assistantReplyResult, message =>
+              toast({
+                title: 'AI unavailable',
+                description: message,
+                variant: 'destructive',
+              })
+            ) ?? { response: aiFallbackMessage };
+          const assistantMessage: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            sender: 'assistant',
+            text: assistantReply.response,
+            startedAt: Date.now(),
+          };
+          setMessages(prev => [...prev, userMessage, assistantMessage]);
+          activeAutoscrollMessageIdRef.current = assistantMessage.id;
+          autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
+          setPendingPlan(null);
+          if (pendingAttachments.length > 0) {
+            setPendingAttachments([]);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+          return;
+        }
+        const plannedTasks = await resolveAnnouncementRecipientsForTasks(
+          rawTasks.map(task => ({
+          ...task,
+          status: 'pending' as const,
+          clarification: '',
+          draft: '',
+          draftError: undefined,
+          isDrafting: false,
+          attachments: pendingAttachments,
+        }))
+        );
+        const hasRunnableTask = plannedTasks.some(t => t.type !== 'other');
+        const fallbackPrompt = plannedTasks.find(t => t.type === 'other')?.prompt?.trim();
+        const safeSummary = hasRunnableTask
+          ? normalizedPlan.summary
+          : fallbackPrompt ||
+            `Sorry - I can't do that in ${appBrandName} yet. Try asking for an announcement, a form, a calendar event, an email, a message, a gallery upload, a transaction, or a social post.`;
+        const {
+          questions: rawFollowUps,
+          questionTaskMap,
+          taskQuestionMap,
+        } = buildFollowUpQuestionData(plannedTasks);
+        const finalFollowUps = normalizeQuestionList(rawFollowUps);
+        const isNonTaskRequest = !hasRunnableTask && finalFollowUps.length === 0;
+
+        if (isNonTaskRequest) {
+          const appContext = buildAppContextForAssistant();
+          const assistantReplyResult = await runAssistantAction(values.query, appContext);
+          const assistantReply =
+            getResultData(assistantReplyResult, message =>
+              toast({
+                title: 'AI unavailable',
+                description: message,
+                variant: 'destructive',
+              })
+            ) ?? { response: aiFallbackMessage };
+          const assistantMessage: ChatMessage = {
+            id: `assistant-${Date.now()}`,
+            sender: 'assistant',
+            text: assistantReply.response,
+            startedAt: Date.now(),
+          };
+          setMessages(prev => [...prev, userMessage, assistantMessage]);
+          activeAutoscrollMessageIdRef.current = assistantMessage.id;
+          autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
+          setPendingPlan(null);
+        } else if (finalFollowUps.length > 0) {
+          const followUpMessage: ChatMessage = {
+            id: `followup-${Date.now()}`,
+            sender: 'assistant',
+            followUp: {
+              questions: finalFollowUps,
+              startedAt: Date.now(),
+            },
+          };
+          setMessages(prev => [...prev, userMessage, followUpMessage]);
+          setPendingPlan({
+            planId,
+            summary: safeSummary,
+            tasks: plannedTasks,
+            questions: finalFollowUps,
+            questionTaskMap,
+            taskQuestionMap,
+          });
+          activeAutoscrollMessageIdRef.current = followUpMessage.id;
+          autoscrollDisabledForMessageRef.current.delete(followUpMessage.id);
+        } else {
+          const tasksToRender = hasRunnableTask ? plannedTasks : [];
+          setMessages(prev => [
+            ...prev,
+            userMessage,
+            {
+              id: planId,
+              sender: 'assistant',
+              plan: {
+                summary: safeSummary,
+                tasks: tasksToRender,
+                startedAt: Date.now(),
+              },
+            },
+          ]);
+          activeAutoscrollMessageIdRef.current = planId;
+          autoscrollDisabledForMessageRef.current.delete(planId);
+          // Auto-generate drafts when no follow-up info is needed.
+          tasksToRender
+            .filter(task => !(task.followUpQuestions?.length) && task.type !== 'other')
+            .forEach(task => generateDraft(planId, task));
+        }
+
+      }
+      if (pendingAttachments.length > 0) {
+        setPendingAttachments([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
     } catch (error: any) {
       console.error('Assistant planner error:', error);
       toast({
         title: 'Assistant error',
         description: error?.message ?? 'Failed to plan tasks.',
         variant: 'destructive',
+
       });
+
     } finally {
+
       setIsPlanning(false);
+
       form.reset();
+
+    }
+
+  };
+
+
+
+  const updatePlanTask = (
+    planId: string,
+    taskId: string,
+    updater: (task: PlannedTask) => PlannedTask
+  ) => {
+    setMessages(prev =>
+      prev.map(msg => {
+        if (!isPlanMessage(msg) || msg.id !== planId) return msg;
+        return {
+          ...msg,
+          plan: {
+            ...msg.plan,
+            tasks: msg.plan.tasks.map(t => (t.id === taskId ? updater(t) : t)),
+          },
+        };
+      })
+    );
+  };
+
+  const cleanFollowUp = (text?: string) => {
+    if (!text) return '';
+    return text.replace(/\?+$/, '');
+  };
+
+  const normalizeFollowUpQuestion = (text?: string) => {
+    if (!text) return '';
+    return text.replace(/\?+$/, '').trim();
+  };
+
+  const formatSingleFollowUpText = (question: string) => {
+    const cleaned = normalizeFollowUpQuestion(question);
+    if (!cleaned) return 'Tell me that detail before I draft it.';
+    const lower = cleaned.replace(/^[A-Z]/, match => match.toLowerCase());
+    return `Tell me ${lower} before I draft it.`;
+  };
+
+  const normalizeRecipient = (value: string) => value.trim().toLowerCase();
+
+  const getConversationId = (email1: string, email2: string) =>
+    [email1, email2].sort().join('_');
+
+  const normalizeQuestionList = (questions: string[]) =>
+    Array.from(
+      new Set(questions.map(normalizeFollowUpQuestion).filter(Boolean))
+    );
+
+  const buildFollowUpQuestionData = (tasks: PlannedTask[]) => {
+    const questions: string[] = [];
+    const questionTaskMap: Record<string, string[]> = {};
+    const taskQuestionMap: Record<string, string[]> = {};
+
+    tasks.forEach(task => {
+      const taskQuestions = normalizeQuestionList(task.followUpQuestions ?? []);
+      if (taskQuestions.length === 0) return;
+      taskQuestionMap[task.id] = taskQuestions;
+      taskQuestions.forEach(question => {
+        if (!questionTaskMap[question]) {
+          questionTaskMap[question] = [task.id];
+          questions.push(question);
+          return;
+        }
+        if (!questionTaskMap[question].includes(task.id)) {
+          questionTaskMap[question].push(task.id);
+        }
+      });
+    });
+
+    return { questions, questionTaskMap, taskQuestionMap };
+  };
+
+  const mergeClarifications = (existing: string | undefined, additions: string[]) => {
+    const base = (existing ?? '').trim();
+    const cleanAdditions = additions.map(item => item.trim()).filter(Boolean);
+    if (cleanAdditions.length === 0) return base;
+    if (!base) return cleanAdditions.join('\n');
+    const seen = new Set(
+      base
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+    );
+    const uniqueAdditions = cleanAdditions.filter(item => !seen.has(item));
+    if (uniqueAdditions.length === 0) return base;
+    return `${base}\n${uniqueAdditions.join('\n')}`;
+  };
+
+  const resolveAnnouncementRecipientsForTasks = async (tasks: PlannedTask[]) => {
+    const appContext = buildAppContextForAssistant();
+    const updates = await Promise.all(
+      tasks.map(async task => {
+        if (task.type !== 'announcement') return task;
+        if (Array.isArray(task.recipients)) return task;
+        const prompt = [
+          task.prompt,
+          task.clarification ? `Clarification: ${task.clarification}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
+        const result = await resolveAnnouncementRecipientsAction(prompt, appContext);
+        const data =
+          getResultData(result, message =>
+            console.warn('Failed to resolve announcement recipients', message)
+          ) ?? { mode: 'all', recipients: [] as string[] };
+        const recipients = Array.isArray(data.recipients)
+          ? data.recipients.map(item => item.trim()).filter(Boolean)
+          : [];
+        if (data.mode === 'specific' && recipients.length > 0) {
+          return { ...task, recipients };
+        }
+        return { ...task, recipients: undefined };
+      })
+    );
+    return updates;
+  };
+
+  const formatDateForDisplay = (dateValue: string | number | Date | undefined) => {
+    if (!dateValue) return '';
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return String(dateValue);
+    return parsed.toLocaleDateString(undefined, {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+  const formatTimeForDisplay = (dateValue: string | number | Date | undefined) => {
+    if (!dateValue) return '';
+    const parsed = new Date(dateValue);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).toLowerCase();
+  };
+
+  const formatAssistantTextForDisplay = (text: string) => {
+    const withoutBold = text.replace(/\*\*(.*?)\*\*/g, '$1');
+    const withFormattedDateTimes = withoutBold.replace(
+      /\b(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|\s*UTC)?\b/g,
+      (_match, year, month, day, hour, minute) => {
+        const hours = Number(hour);
+        const minutes = Number(minute);
+        const period = hours >= 12 ? 'pm' : 'am';
+        const displayHour = ((hours + 11) % 12) + 1;
+        const displayMinute = minutes.toString().padStart(2, '0');
+        return `${Number(month)}/${Number(day)}/${year}\nTime: ${displayHour}:${displayMinute} ${period}`;
+      }
+    );
+    const withFormattedDates = withFormattedDateTimes.replace(
+      /\b(\d{4})-(\d{2})-(\d{2})\b/g,
+      (_match, year, month, day) => `${Number(month)}/${Number(day)}/${year}`
+    );
+    return withFormattedDates.replace(/\s*UTC\b/g, '');
+  };
+  const formatLocationForDisplay = (value: string | null | undefined) => {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed || trimmed === '0') return 'NA';
+    return trimmed;
+  };
+
+  const normalizeFormQuestions = (questions: any[]): FormQuestion[] => {
+    const safeQuestions = Array.isArray(questions) ? questions : [];
+    const normalized = safeQuestions
+      .filter(q => q && typeof q.prompt === 'string' && q.prompt.trim())
+      .slice(0, 8)
+      .map(q => {
+        const rawKind = typeof q.kind === 'string' ? q.kind : 'shortText';
+        const kind =
+          rawKind === 'single' || rawKind === 'multi' || rawKind === 'file'
+            ? rawKind
+            : 'shortText';
+        const options = Array.isArray(q.options)
+          ? q.options.map((opt: any) => String(opt).trim()).filter(Boolean)
+          : [];
+        const needsOptions = kind === 'single' || kind === 'multi';
+        return {
+          id: crypto.randomUUID(),
+          prompt: q.prompt.trim(),
+          required: Boolean(q.required),
+          kind,
+          options: needsOptions ? options.slice(0, 6) : undefined,
+        };
+      });
+
+    if (normalized.length === 0) {
+      return [
+        {
+          id: crypto.randomUUID(),
+          prompt: 'Your response',
+          required: true,
+          kind: 'shortText',
+        },
+      ];
+    }
+
+    return normalized.map(q => {
+      if ((q.kind === 'single' || q.kind === 'multi') && (!q.options || q.options.length === 0)) {
+        return { ...q, options: ['Option 1', 'Option 2'] };
+      }
+      if (q.kind === 'shortText' || q.kind === 'file') {
+        return { ...q, options: undefined };
+      }
+      return q;
+    });
+  };
+
+  const formatDraft = (type: TaskType, result: any) => {
+    const r = result ?? {};
+    switch (type) {
+      case 'announcement':
+        return r.announcement ?? '';
+      case 'form': {
+        const questions = Array.isArray(r.questions) ? r.questions : [];
+        const questionLines =
+          questions.length > 0
+            ? questions
+                .map((q: any, idx: number) => {
+                  const prompt = typeof q?.prompt === 'string' ? q.prompt : '';
+                  const kind = typeof q?.kind === 'string' ? q.kind : 'shortText';
+                  const required = q?.required ? ' (required)' : '';
+                  const options = Array.isArray(q?.options) ? q.options.filter(Boolean) : [];
+                  const optionsText = options.length > 0 ? ` [${options.join(', ')}]` : '';
+                  return `${idx + 1}. ${prompt} (${kind})${required}${optionsText}`;
+                })
+                .join('\n')
+            : 'No questions generated.';
+        return `Title: ${r.title ?? ''}\nDescription: ${r.description ?? ''}\n\nQuestions:\n${questionLines}`;
+      }
+      case 'slides':
+        return (r.slides || [])
+          .map(
+            (s: any, idx: number) =>
+              `Slide ${idx + 1}: ${s.title}\n${s.content}`
+
+          )
+
+          .join('\n\n---\n\n');
+
+      case 'calendar': {
+        const friendlyDate = formatDateForDisplay(r.date);
+        const hasTime = typeof r.hasTime === 'boolean' ? r.hasTime : true;
+        const friendlyTime = hasTime ? formatTimeForDisplay(r.date) : 'NA';
+        const location = formatLocationForDisplay(r.location);
+        return `Title: ${r.title ?? ''}\nDate: ${friendlyDate}\nTime: ${friendlyTime}\nLocation: ${location}\n\nDetails:\n${r.description ?? ''}`;
+      }
+      case 'email':
+        return `Subject: ${r.subject ?? ''}\n\n${r.body ?? ''}`;
+      case 'messages':
+        return r.text ?? '';
+      case 'transaction':
+        const friendlyDate = formatDateForDisplay(r.date);
+        return `Description: ${r.description ?? ''}\nAmount: ${r.amount ?? ''}\nDate: ${friendlyDate}\nStatus: ${r.status ?? ''}`;
+      case 'social':
+        return `Title: ${r.title ?? ''}\nPost: ${r.postText ?? ''}${r.imageCaption ? `\nImage caption: ${r.imageCaption}` : ''}`;
+      case 'gallery':
+        return r.description ?? '';
+      case 'other':
+        return r.message ?? r.prompt ?? r.text ?? '';
+      default:
+        return typeof r === 'string' ? r : JSON.stringify(r, null, 2);
     }
   };
 
-  const updateTaskPrompt = (id: string, prompt: string) => {
-    setTasks(prev =>
-      prev.map(t => (t.id === id ? { ...t, prompt } : t))
-    );
+  const resolveMessageTarget = (
+    recipient: string,
+    recipientType?: string
+  ): { kind: 'dm'; email: string } | { kind: 'group'; id: string } | null => {
+    const normalized = normalizeRecipient(recipient);
+    const memberList = Array.isArray(members.data) ? members.data : [];
+    const groupList = Array.isArray(groupChats.data) ? groupChats.data : [];
+
+    const findMember = () =>
+      memberList.find(
+        member =>
+          normalizeRecipient(member.email) === normalized ||
+          normalizeRecipient(member.name) === normalized
+      );
+    const findGroup = () =>
+      groupList.find(chat => normalizeRecipient(chat.name) === normalized);
+
+    if (recipientType === 'group') {
+      const group = findGroup();
+      return group ? { kind: 'group', id: group.id } : null;
+    }
+    if (recipientType === 'person') {
+      const member = findMember();
+      return member ? { kind: 'dm', email: member.email } : null;
+    }
+
+    const member = findMember();
+    if (member) return { kind: 'dm', email: member.email };
+    const group = findGroup();
+    return group ? { kind: 'group', id: group.id } : null;
   };
 
-  const markTask = (id: string, data: Partial<PlannedTask>) => {
-    setTasks(prev =>
-      prev.map(t => (t.id === id ? { ...t, ...data } : t))
-    );
+
+  const toAppRoute = (path: string) => {
+    if (!isDemoAssistantRoute) return path;
+    if (path === '/dashboard') return '/demo/app';
+    if (path.startsWith('/demo/app')) return path;
+    return `/demo/app${path}`;
   };
 
-  const runTask = async (task: PlannedTask) => {
+  const getRouteForTaskType = (type: TaskType) => {
+    switch (type) {
+      case 'announcement':
+        return toAppRoute('/announcements');
+      case 'form':
+        return toAppRoute('/forms');
+      case 'slides':
+        return toAppRoute('/slides');
+      case 'calendar':
+
+        return toAppRoute('/calendar');
+
+      case 'email':
+        return toAppRoute('/email');
+      case 'messages':
+        return toAppRoute('/messages');
+      case 'transaction':
+        return toAppRoute('/finances');
+      case 'social':
+        return toAppRoute('/social');
+      case 'gallery':
+        return toAppRoute('/gallery');
+      default:
+        return toAppRoute('/dashboard');
+    }
+  };
+
+
+  const generateDraft = async (planId: string, task: PlannedTask) => {
+    if (task.type === 'other') {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        draft: task.prompt,
+        draftError: undefined,
+        isDrafting: false,
+      }));
+      return;
+    }
+    if (task.type === 'slides') {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        draftError: 'Slides are currently disabled in the assistant.',
+        isDrafting: false,
+        draftingStartedAt: undefined,
+      }));
+      return;
+    }
+
+      const clar = task.clarification?.trim();
+      const linkedFormId =
+        task.type === 'announcement'
+          ? task.linkedFormId || (task.linkedFormTaskId ? formTaskIdMap[task.linkedFormTaskId] : undefined)
+          : undefined;
+      const linkedFormTitle = linkedFormId
+        ? recentForms.find(form => form.id === linkedFormId)?.title ||
+          (Array.isArray(forms.data)
+            ? forms.data.find((form: ClubForm) => form.id === linkedFormId)?.title
+            : undefined)
+        : undefined;
+      const attachmentContext = buildAttachmentContextForAI(task.attachments);
+      const promptForDraftBase = clar
+        ? `${task.prompt}\nClarification: ${clar}`
+        : task.prompt;
+      const promptForDraft = [
+        promptForDraftBase,
+        linkedFormTitle ? `Linked form title: "${linkedFormTitle}"` : null,
+        attachmentContext ? attachmentContext : null,
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
+
+    updatePlanTask(planId, task.id, t => ({
+
+      ...t,
+
+      isDrafting: true,
+
+      draftingStartedAt: Date.now(),
+
+      draftError: undefined,
+
+    }));
+
+
+
+    const previewResult = await runTaskAction(task.type, promptForDraft);
+    const preview =
+      getResultData(previewResult, message =>
+        toast({
+          title: 'AI unavailable',
+          description: message,
+          variant: 'destructive',
+        })
+      ) ?? null;
+    if (!preview) {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        isDrafting: false,
+        draftingStartedAt: undefined,
+        draftError: aiFallbackMessage,
+      }));
+      return;
+    }
+    const draftText = formatDraft(task.type, preview);
+
+    updatePlanTask(planId, task.id, t => ({
+      ...t,
+      draft: '',
+      draftSource: draftText,
+      draftTyping: { startedAt: Date.now(), fullText: draftText },
+      isDrafting: false,
+      draftingStartedAt: undefined,
+      draftError: undefined,
+      draftResult: preview,
+    }));
+
+  };
+
+
+
+  const runTask = async (planId: string, task: PlannedTask) => {
     setSendingId(task.id);
-    try {
-      const result = await runTaskAction(task.type, task.prompt);
-      markTask(task.id, { status: 'sent', result, error: undefined });
+
+    if (task.type === 'other') {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        status: 'sent',
+        result: { message: task.prompt },
+        error: undefined,
+      }));
+      setSendingId(null);
+      return;
+    }
+    if (task.type === 'slides') {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        status: 'error',
+        error: 'Slides are currently disabled in the assistant.',
+      }));
       toast({
-        title: 'Task sent',
-        description: `Completed ${task.type} task.`,
-      });
-    } catch (error: any) {
-      console.error(`Assistant task ${task.id} error:`, error);
-      markTask(task.id, { status: 'error', error: error?.message ?? 'Failed to run task.' });
-      toast({
-        title: 'Task failed',
-        description: error?.message ?? 'Could not run this task.',
+        title: 'Slides disabled',
+        description: 'Slides are currently disabled in the assistant.',
         variant: 'destructive',
       });
-    } finally {
       setSendingId(null);
+      return;
     }
+    if (task.type === 'announcement') {
+      if (Array.isArray(task.recipients) && task.recipients.length === 0) {
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          status: 'error',
+          error: 'Please add at least one recipient or keep everyone.',
+        }));
+        setSendingId(null);
+        return;
+      }
+    }
+
+      const clar = task.clarification?.trim();
+
+      const finalDraft = task.draft?.trim();
+      const linkedFormId =
+        task.type === 'announcement'
+          ? task.linkedFormId || (task.linkedFormTaskId ? formTaskIdMap[task.linkedFormTaskId] : undefined)
+          : undefined;
+      const linkedFormTitle = linkedFormId
+        ? recentForms.find(form => form.id === linkedFormId)?.title ||
+          (Array.isArray(forms.data)
+            ? forms.data.find((form: ClubForm) => form.id === linkedFormId)?.title
+            : undefined)
+        : undefined;
+      const attachmentContext = buildAttachmentContextForAI(task.attachments);
+      const finalPrompt = [
+        `Original instructions: ${task.prompt}`,
+        clar ? `Clarification: ${clar}` : null,
+        linkedFormTitle ? `Linked form title: "${linkedFormTitle}"` : null,
+        attachmentContext ? attachmentContext : null,
+        finalDraft
+          ? `Final content to use as-is (do not rewrite):\n${finalDraft}`
+          : null,
+      ]
+      .filter(Boolean)
+
+      .join('\n\n');
+
+
+
+    const persistResult = (type: TaskType, result: any) => {
+
+      const authorName = user?.name || 'AI Assistant';
+      const authorEmail = user?.email || 'ai@clubhub.local';
+      switch (type) {
+          case 'announcement': {
+            announcements.updateData(prev => {
+              const list = Array.isArray(prev) ? prev : [];
+              const attachmentsFromTask = Array.isArray(task.attachments)
+                ? task.attachments.map(({ name, dataUri, type }) => ({ name, dataUri, type }))
+                : [];
+              const buttonAttachment = linkedFormId
+                ? {
+                    name: 'Fill out the form',
+                    dataUri: `${getRouteForTaskType('form')}?formId=${encodeURIComponent(linkedFormId)}`,
+                    type: 'button',
+                  }
+                : null;
+              const hasButtonAttachment = attachmentsFromTask.some(att => att.type === 'button');
+              const attachmentsToPersist =
+                buttonAttachment && !hasButtonAttachment
+                  ? [...attachmentsFromTask, buttonAttachment]
+                  : attachmentsFromTask;
+              const announcementId = Date.now();
+              const recipients = Array.isArray(task.recipients) ? task.recipients : [];
+              const newItem = {
+                id: announcementId,
+                title: result.title ?? 'Announcement',
+                content: finalDraft || result.announcement || '',
+                author: authorName,
+                date: new Date().toISOString(),
+                read: false,
+                attachments: attachmentsToPersist.length > 0 ? attachmentsToPersist : undefined,
+                recipients,
+                linkedFormId: linkedFormId || undefined,
+              };
+              if (linkedFormId) {
+                forms.updateData(prevForms => {
+                  const list = Array.isArray(prevForms) ? prevForms : [];
+                  return list.map(form =>
+                    form.id === linkedFormId
+                      ? { ...form, linkedAnnouncementId: announcementId }
+                      : form
+                  );
+                });
+              }
+              return [newItem, ...list];
+            });
+            break;
+          }
+        case 'calendar': {
+          events.updateData(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            const parsedDate = result.date ? new Date(result.date) : new Date();
+            const hasTime =
+              typeof result?.hasTime === 'boolean' ? result.hasTime : true;
+            const newItem = {
+              id: `${Date.now()}`,
+              title: result.title ?? 'Event',
+              description: result.description ?? '',
+              date: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
+              location: result.location ?? '',
+              hasTime,
+              points: 0,
+              rsvpRequired: false,
+              read: false,
+            };
+            return [...list, newItem];
+          });
+          break;
+        }
+        case 'social': {
+          socialPosts.updateData(prev => {
+
+            const list = Array.isArray(prev) ? prev : [];
+
+            const newItem = {
+
+              id: Date.now(),
+
+              title: result.title ?? 'Post',
+
+              content:
+
+                finalDraft ||
+
+                `${result.postText ?? ''}${result.imageCaption ? `\n${result.imageCaption}` : ''}`,
+
+              images: result.images ?? [],
+
+              author: authorName,
+
+              date: new Date().toISOString(),
+
+              likes: 0,
+
+              liked: false,
+
+              comments: [],
+
+              read: false,
+
+            };
+
+            return [...list, newItem];
+
+          });
+          break;
+        }
+        case 'messages': {
+          if (!user?.email) break;
+          const recipient = typeof result?.recipient === 'string' ? result.recipient : '';
+          if (!recipient) throw new Error('Missing message recipient.');
+          const target = resolveMessageTarget(recipient, result?.recipientType);
+          if (!target) {
+            throw new Error(`Could not find a chat for "${recipient}".`);
+          }
+          if (target.kind === 'dm' && target.email === user.email) {
+            const assistantMessage: ChatMessage = {
+              id: `assistant-${Date.now()}`,
+              sender: 'assistant',
+              text: "I can't send a message to yourself. Who should I message instead?",
+
+              startedAt: Date.now(),
+
+            };
+            setMessages(prev => [...prev, assistantMessage]);
+            activeAutoscrollMessageIdRef.current = assistantMessage.id;
+            autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
+            throw new Error('You cannot send a message to yourself.');
+          }
+          const messageText =
+            finalDraft ||
+            (typeof result?.text === 'string' ? result.text.trim() : '');
+          if (!messageText) {
+            throw new Error('Missing message text.');
+          }
+          const newMessage = {
+            sender: user.email,
+            text: messageText,
+            timestamp: new Date().toISOString(),
+            readBy: [user.email],
+          };
+          if (target.kind === 'dm') {
+            const convoId = getConversationId(user.email, target.email);
+            messagesData.updateData(prev => ({
+              ...(prev || {}),
+              [convoId]: [...((prev || {})[convoId] || []), newMessage],
+            }));
+          } else {
+            groupChats.updateData(prev => {
+              const list = Array.isArray(prev) ? prev : [];
+              return list.map(chat =>
+                chat.id === target.id
+                  ? { ...chat, messages: [...chat.messages, newMessage] }
+                  : chat
+              );
+            });
+          }
+          break;
+        }
+        case 'gallery': {
+          if (!user) break;
+          const attachments = Array.isArray(task.attachments) ? task.attachments : [];
+          const imageAttachments = attachments.filter(att =>
+            (att.type || '').toLowerCase().startsWith('image/')
+          );
+          if (imageAttachments.length === 0) {
+            throw new Error('Please attach at least one image for the gallery.');
+          }
+          const description =
+            finalDraft ||
+            (typeof result?.description === 'string' ? result.description.trim() : '');
+          const altText = description || 'Gallery image';
+          const lastId =
+            Array.isArray(galleryImages.data) && galleryImages.data.length > 0
+              ? Math.max(...galleryImages.data.map(item => item.id))
+              : 0;
+          const newImages: GalleryImage[] = imageAttachments.map((image, index) => ({
+            id: lastId + index + 1,
+            src: image.dataUri,
+            alt: altText,
+            author: user.name || 'AI Assistant',
+            date: new Date().toLocaleDateString(),
+            likes: 0,
+            liked: false,
+            status: 'approved',
+            read: false,
+          }));
+          galleryImages.updateData(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            return [...newImages, ...list];
+          });
+          break;
+        }
+        case 'form': {
+            const title =
+              typeof result?.title === 'string' && result.title.trim()
+                ? result.title.trim()
+                : 'New Form';
+          const description =
+            typeof result?.description === 'string' && result.description.trim()
+              ? result.description.trim()
+              : undefined;
+          const questions = normalizeFormQuestions(result?.questions);
+            const newForm: ClubForm = {
+              id: crypto.randomUUID(),
+              title,
+              description,
+              questions,
+              createdAt: new Date().toISOString(),
+              createdBy: authorEmail || 'AI Assistant',
+              viewedBy: authorEmail ? [authorEmail] : [],
+              responses: [],
+            };
+            setRecentForms(prev => {
+              const next = [
+                { id: newForm.id, title: newForm.title, description: newForm.description, createdAt: newForm.createdAt },
+                ...prev.filter(form => form.id !== newForm.id),
+              ];
+              return next.slice(0, RECENT_FORMS_LIMIT);
+            });
+            setFormTaskIdMap(prev => ({ ...prev, [task.id]: newForm.id }));
+            forms.updateData(prev => {
+              const list = Array.isArray(prev) ? prev : [];
+              return [newForm, ...list];
+            });
+            break;
+          }
+        case 'transaction': {
+          transactions.updateData(prev => {
+            const list = Array.isArray(prev) ? prev : [];
+            const newItem = {
+
+              id: `${Date.now()}`,
+
+              description: result.description ?? 'Transaction',
+
+              amount: Number(result.amount ?? 0),
+
+              date: result.date ?? new Date().toISOString(),
+
+              status: result.status ?? 'Paid',
+
+            };
+
+            return [...list, newItem];
+
+          });
+
+          break;
+
+        }
+
+        case 'slides': {
+
+          presentations.updateData(prev => {
+
+            const list = Array.isArray(prev) ? prev : [];
+
+            const slidesArray =
+
+              Array.isArray(result.slides) && result.slides.length > 0
+
+                ? result.slides.map((s: any, idx: number) => ({
+
+                    id: `${Date.now()}-${idx}`,
+
+                    title: s.title ?? `Slide ${idx + 1}`,
+
+                    content: s.content ?? '',
+
+                  }))
+
+                : [];
+
+            const newPresentation = {
+
+              id: Date.now(),
+
+              prompt: finalPrompt,
+
+              slides: slidesArray,
+
+              createdAt: new Date().toISOString(),
+
+            };
+
+            return [...list, newPresentation];
+
+          });
+
+          break;
+
+        }
+
+        default:
+
+          break;
+
+      }
+
+    };
+
+
+
+    const extractEmailFields = (
+
+      result: any,
+
+      draftText: string | undefined
+
+    ): { subject: string; body: string } | null => {
+
+      const subjectFromResult =
+
+        typeof result?.subject === 'string' ? result.subject.trim() : '';
+
+      const bodyFromResult = typeof result?.body === 'string' ? result.body.trim() : '';
+
+      if (subjectFromResult && bodyFromResult) {
+
+        return { subject: subjectFromResult, body: bodyFromResult };
+
+      }
+
+
+
+      const draft = (draftText ?? '').trim();
+
+      if (!draft) return null;
+
+
+
+      const subjectMatch = draft.match(/^Subject:\s*(.+)$/im);
+
+      if (subjectMatch) {
+
+        const subject = subjectMatch[1].trim();
+
+        const afterSubject = draft.slice(subjectMatch.index! + subjectMatch[0].length);
+
+        const body = afterSubject.replace(/^\s*\n+/, '').trim();
+
+        if (subject && body) return { subject, body };
+
+      }
+
+
+
+      const lines = draft.split(/\r?\n/);
+
+      const firstLine = (lines[0] ?? '').trim();
+
+      const body = lines.slice(1).join('\n').trim();
+
+      if (firstLine && body) return { subject: firstLine, body };
+
+
+
+      return null;
+
+    };
+
+
+
+      try {
+        const shouldUseDraftResult =
+          task.type === 'form' &&
+          task.draftResult &&
+          !task.clarification &&
+          (!task.draft || task.draft === task.draftSource);
+        let resultData = shouldUseDraftResult ? task.draftResult : null;
+        if (!shouldUseDraftResult) {
+          const result = await runTaskAction(task.type, finalPrompt);
+          resultData =
+            getResultData(result, message =>
+              toast({
+                title: 'AI unavailable',
+                description: message,
+                variant: 'destructive',
+              })
+            ) ?? null;
+        }
+        if (!resultData) {
+          updatePlanTask(planId, task.id, t => ({
+            ...t,
+            status: 'error',
+            error: aiFallbackMessage,
+          }));
+          toast({
+            title: 'Task failed',
+            description: aiFallbackMessage,
+            variant: 'destructive',
+          });
+          return;
+        }
+        const sentDraft = finalDraft || task.draftSource || '';
+        const formattedResult = formatDraft(task.type, resultData);
+        const nextDraft = finalDraft || formattedResult;
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          status: 'sent',
+          result: resultData,
+          error: undefined,
+          lastSentDraft: sentDraft || formattedResult,
+          draft: nextDraft,
+          draftSource: t.draftSource || formattedResult,
+        }));
+        persistResult(task.type, resultData);
+
+        const viewPath = getRouteForTaskType(task.type);
+
+
+
+      if (task.type === 'email') {
+
+        toast({
+
+          title: 'Email ready',
+
+          description: 'Redirecting you to the Email tab...',
+
+        });
+
+        const emailFields = extractEmailFields(resultData, finalDraft);
+
+        if (emailFields) {
+
+          const params = new URLSearchParams({
+
+            subject: emailFields.subject,
+
+            body: emailFields.body,
+
+          });
+
+          router.push(`/email?${params.toString()}`);
+
+        } else {
+
+          router.push(getRouteForTaskType('email'));
+
+        }
+
+      } else {
+
+        toast({
+
+          title: 'Task sent',
+
+          description: `Completed ${task.type} task.`,
+
+          action: (
+
+            <ToastAction altText="View" onClick={() => router.push(viewPath)}>
+
+              View
+
+            </ToastAction>
+
+          ),
+
+        });
+
+      }
+
+    } catch (error: any) {
+
+      console.error(`Assistant task ${task.id} error:`, error);
+
+      updatePlanTask(planId, task.id, t => ({
+
+        ...t,
+
+        status: 'error',
+
+        error: error?.message ?? 'Failed to run task.',
+
+      }));
+
+      toast({
+
+        title: 'Task failed',
+
+        description: error?.message ?? 'Could not run this task.',
+
+        variant: 'destructive',
+
+      });
+
+    } finally {
+
+      setSendingId(null);
+
+    }
+
   };
 
+
+
   return (
+
     <div className="h-[calc(100vh-80px)] flex flex-col gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot /> ClubHub AI Assistant
-          </CardTitle>
-          <CardDescription>
-            Ask for anything (announcements, slides, calendar, email, finances, social). The assistant will plan tasks, ask follow-ups, and let you review before sending.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col gap-3">
+
+      <header className="flex items-center gap-3">
+
+        <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+
+          <Bot className="h-5 w-5" />
+
+        </div>
+
+        <div>
+
+          <h1 className="text-lg font-semibold leading-none">{appBrandName} AI Assistant</h1>
+
+          <p className="text-sm text-muted-foreground">
+
+            Chat with the assistant to plan tasks. You can review, clarify, edit, and send each item.
+
+          </p>
+
+        </div>
+
+        </header>
+
+
+
+      <div className="flex-1 overflow-hidden border rounded-lg bg-card shadow-sm">
+
+<ScrollArea ref={scrollAreaRef} className="h-full">
+
+          <div className="p-4 space-y-4">
+
+            {messages.map(message => {
+
+              const isUser = message.sender === 'user';
+
+              return (
+
+                <div
+
+                  key={message.id}
+
+                  className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
+
+                >
+
+                  <div
+
+                    className={`max-w-[840px] rounded-2xl px-4 py-3 ${
+
+                      isUser
+
+                        ? 'bg-primary text-primary-foreground ml-12'
+
+                        : 'bg-muted mr-12 text-foreground'
+
+                    }`}
+
+                  >
+
+                    {message.sender === 'user' && (
+                      <p className="text-sm whitespace-pre-wrap">{message.text}</p>
+                    )}
+
+                    {isAssistantTextMessage(message) && (
+                      <p className="text-sm whitespace-pre-wrap">
+                        {message.startedAt
+                          ? typewriterChars({
+                              text: formatAssistantTextForDisplay(message.text),
+                              startAt: message.startedAt,
+                              now,
+                              charDelayMs: 14,
+                            })
+                          : formatAssistantTextForDisplay(message.text)}
+                      </p>
+                    )}
+
+                    {isPlanMessage(message) && (
+                      <div className="space-y-3">
+                        {(() => {
+                          const { tasksStartAt } = getMessageAnimationTimings({
+                            startedAt: message.plan.startedAt,
+                            summary: message.plan.summary,
+                          });
+
+                          return (
+                            <>
+                              <div className="space-y-3">
+                          {(() => {
+                            return message.plan.tasks.map((task, index) => {
+                              if (tasksStartAt && now < tasksStartAt + index * 200) {
+                                return null;
+                              }
+                              const shouldRefreshDraft = !!task.draft?.trim();
+                              const draftButtonLabel = shouldRefreshDraft ? 'Refresh draft' : 'Generate draft';
+                              const isGenerateDraft = !shouldRefreshDraft;
+                              const DraftButtonIcon = isGenerateDraft ? null : RefreshCw;
+                              const draftButtonVariant = isGenerateDraft ? 'default' : 'ghost';
+                              const draftButtonClassName = isGenerateDraft ? AI_SPARKLE : '';
+
+                              const taskTitleText = getTaskTitleText(task.type);
+                              const { taskBaseStartAt, draftSectionStartAt } = getTaskAnimationTimings({
+                                tasksStartAt,
+                                index,
+                                taskTitleText,
+                                question: '',
+                                hasFollowUp: false,
+                              });
+                              const draftSectionVisible = !draftSectionStartAt || now >= draftSectionStartAt;
+                              const currentDraftValue = (task.draft ?? '').trim();
+                              const lastSentDraft = (task.lastSentDraft ?? '').trim();
+                              const canResend =
+                                task.status === 'sent' &&
+                                currentDraftValue.length > 0 &&
+                                currentDraftValue !== lastSentDraft;
+
+                              const typedDraftValue = (() => {
+                                if (!task.draftTyping) return null;
+                                const perCharMs = 14;
+                                const effectiveStartAt = draftSectionStartAt
+                                  ? Math.max(task.draftTyping.startedAt, draftSectionStartAt)
+                                  : task.draftTyping.startedAt;
+                                return typewriterChars({
+                                  text: task.draftTyping.fullText,
+                                  startAt: effectiveStartAt,
+                                  now,
+                                  charDelayMs: perCharMs,
+                                });
+                              })();
+
+                              const draftDisplayValue =
+                                typedDraftValue ??
+                                (task.isDrafting
+                                  ? typewriterChars({
+                                      text: 'Generating draft...',
+                                      startAt: task.draftingStartedAt,
+                                      now,
+                                      charDelayMs: 24,
+                                    })
+                                  : task.draft ?? '');
+
+                              return (
+                            <div
+                              key={task.id}
+                              className="rounded-lg border border-dashed bg-background/80 p-3"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold capitalize">
+                                  <TypewriterText
+                                    text={taskTitleText}
+                                    startAt={taskBaseStartAt}
+                                    now={now}
+                                    wordDelayMs={40}
+                                  />
+                                </div>
+                                {task.status === 'sent' && (
+                                  <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">
+                                    <CheckCircle2 className="h-4 w-4" /> Sent
+                                  </span>
+                                )}
+                                {task.status === 'error' && (
+                                  <span className="inline-flex items-center gap-1 text-red-600 text-xs font-medium">
+                                    <AlertCircle className="h-4 w-4" /> Needs retry
+                                  </span>
+                                )}
+                              </div>
+
+                              {draftSectionVisible && task.type !== 'other' ? (
+                                <div className="mt-3 space-y-1">
+                                  <label className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    <TypewriterText
+                                      text={
+                                        task.type === 'form'
+                                          ? 'Form Details'
+                                          : task.type === 'calendar'
+                                            ? 'Event Details (Editable)'
+                                            : 'Draft (Editable)'
+                                      }
+                                      startAt={draftSectionStartAt}
+                                      now={now}
+                                      wordDelayMs={40}
+                                    />
+                                  </label>
+                                  <Textarea
+                                    value={draftDisplayValue}
+                                    onChange={e =>
+                                      updatePlanTask(message.id, task.id, t => ({
+                                        ...t,
+                                        draft: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={task.isDrafting ? 'Generating draft...' : 'Draft will appear here'}
+                                    className="min-h-[120px] text-sm"
+                                    disabled={task.isDrafting || Boolean(task.draftTyping)}
+                                  />
+                                </div>
+                              ) : null}
+                              {draftSectionVisible && task.type === 'announcement' ? (
+                                <div className="mt-3 rounded border bg-muted/40 p-3 space-y-2">
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                    Recipients
+                                  </div>
+                                  {(() => {
+                                    const memberList = Array.isArray(members.data)
+                                      ? members.data
+                                      : [];
+                                    const allEmails = memberList.map(member => member.email);
+                                    const currentRecipients = Array.isArray(task.recipients)
+                                      ? task.recipients
+                                      : allEmails;
+                                    const remainingMembers = memberList.filter(
+                                      member => !currentRecipients.includes(member.email)
+                                    );
+                                    const addPeopleOpen = Boolean(showAddPeople[task.id]);
+                                    return (
+                                      <>
+                                        {currentRecipients.length > 0 ? (
+                                          <div className="space-y-1">
+                                            {currentRecipients.map(email => (
+                                              <div
+                                                key={email}
+                                                className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs"
+                                              >
+                                                <span>{resolveMemberName(email)}</span>
+                                                {allEmails.length > 0 && (
+                                                  <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6"
+                                                    onClick={() =>
+                                                      updatePlanTask(message.id, task.id, t => ({
+                                                        ...t,
+                                                        recipients: currentRecipients.filter(
+                                                          item => item !== email
+                                                        ),
+                                                      }))
+                                                    }
+                                                  >
+                                                    <X className="h-3 w-3" />
+                                                  </Button>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <div className="text-xs text-muted-foreground">
+                                            No recipients selected.
+                                          </div>
+                                        )}
+                                        <details className="pt-2">
+                                          <summary className="cursor-pointer text-xs font-medium">
+                                            Add People
+                                          </summary>
+                                          <div className="pt-2 space-y-1">
+                                            {remainingMembers.length > 0 ? (
+                                              remainingMembers.map(member => (
+                                                <div
+                                                  key={member.email}
+                                                  className="flex items-center justify-between rounded border bg-background px-2 py-1 text-xs"
+                                                >
+                                                  <span>{member.name}</span>
+                                                  <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    onClick={() =>
+                                                      updatePlanTask(message.id, task.id, t => {
+                                                        const existing = Array.isArray(t.recipients)
+                                                          ? t.recipients
+                                                          : currentRecipients;
+                                                        if (existing.includes(member.email)) {
+                                                          return t;
+                                                        }
+                                                        return {
+                                                          ...t,
+                                                          recipients: [...existing, member.email],
+                                                        };
+                                                      })
+                                                    }
+                                                  >
+                                                    Add
+                                                  </Button>
+                                                </div>
+                                              ))
+                                            ) : (
+                                              <div className="text-xs text-muted-foreground">
+                                                No more recipients left.
+                                              </div>
+                                            )}
+                                          </div>
+                                        </details>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              ) : null}
+
+                              {draftSectionVisible && task.type === 'other' ? (
+                                <p className="mt-3 text-sm text-muted-foreground whitespace-pre-wrap">
+                                  {task.prompt}
+                                </p>
+                              ) : null}
+
+                              {task.isDrafting && (
+                                <div className="mt-2 text-xs text-muted-foreground inline-flex items-center gap-2">
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <TypewriterText
+                                    text="Generating draft..."
+                                    startAt={task.draftingStartedAt}
+                                    now={now}
+                                    wordDelayMs={40}
+                                  />
+                                </div>
+                              )}
+
+                              {task.draftError && (
+                                <div className="mt-2 text-xs text-destructive bg-destructive/10 p-2 rounded flex items-center justify-between gap-2">
+                                  <span>{task.draftError}</span>
+                                  <Button
+                                    size="sm"
+                                    variant={draftButtonVariant}
+                                    className={`h-7 px-2 ${draftButtonClassName}`}
+                                    onClick={() => generateDraft(message.id, task)}
+                                  >
+                                    {DraftButtonIcon ? <DraftButtonIcon className="h-3 w-3 mr-1" /> : null}
+                                    {draftButtonLabel}
+                                  </Button>
+                                </div>
+                              )}
+
+                              {task.error && (
+                                <div className="mt-2 text-xs text-destructive bg-destructive/10 p-2 rounded">
+                                  {task.error}
+                                </div>
+                              )}
+
+                              {draftSectionVisible ? (
+                                <div className="mt-3 flex items-center justify-between">
+                                  {task.type !== 'other' ? (
+                                    <Button
+                                      variant={draftButtonVariant}
+                                      size="sm"
+                                      className={`h-8 px-2 text-xs ${draftButtonClassName}`}
+                                      onClick={() => generateDraft(message.id, task)}
+                                      disabled={task.isDrafting}
+                                    >
+                                      {DraftButtonIcon ? <DraftButtonIcon className="h-3 w-3 mr-2" /> : null}
+                                      {draftButtonLabel}
+                                    </Button>
+                                  ) : (
+                                    <span />
+                                  )}
+                                  {task.type !== 'other' ? (
+                                    <Button
+                                      size="sm"
+                                      onClick={() => runTask(message.id, task)}
+                                      disabled={
+                                        sendingId === task.id ||
+                                        (task.status === 'sent' && !canResend)
+                                      }
+                                    >
+                                      {sendingId === task.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        canResend
+                                          ? 'Resend'
+                                          : task.type === 'form'
+                                            ? 'Generate and Send'
+                                            : task.type === 'calendar'
+                                              ? 'Generate and Send'
+                                              : 'Send'
+                                      )}
+                                    </Button>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">
+                                      Not supported
+                                    </span>
+                                  )}
+                                </div>
+                              ) : null}
+
+                              {task.result && (
+                                <div className="mt-2 bg-muted/50 p-2 rounded text-xs">
+                                  <div className="font-semibold">Result</div>
+                                  <pre className="mt-1 whitespace-pre-wrap break-words font-mono">
+                                    {formatDraft(task.type, task.result)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                              );
+                            });
+                          })()}
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    {isFollowUpMessage(message) && (
+                      <div className="space-y-2">
+                        {message.followUp.questions.length > 1 ? (
+                          <>
+                            <div className="flex items-center gap-2 text-sm font-semibold">
+                              <MessageSquare className="h-4 w-4" />
+                              <span>{FOLLOWUP_HEADER_TEXT}</span>
+                            </div>
+                            <ol className="ml-5 list-decimal text-sm text-muted-foreground space-y-1">
+                              {message.followUp.questions.map((question, idx) => (
+                                <li key={`${message.id}-${idx}`}>
+                                  {question}
+                                </li>
+                              ))}
+                            </ol>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MessageSquare className="h-4 w-4 text-foreground" />
+                            <span>
+                              {formatSingleFollowUpText(message.followUp.questions[0] || '')}
+                            </span>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Reply in the chat box with your answers in any format.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+
+              );
+
+            })}
+
+            <div ref={bottomRef} />
+
+          </div>
+
+        </ScrollArea>
+
+      </div>
+
+
+
+      <div className="border rounded-lg bg-card shadow-sm">
+
+        <form
+
+          onSubmit={form.handleSubmit(handleSubmit)}
+
+          className="p-3 space-y-2"
+
+        >
+
+          {pendingAttachments.length > 0 ? (
+
+            <div className="flex flex-wrap gap-2">
+
+              {pendingAttachments.map((file, index) => (
+
+                <div
+
+                  key={`${file.name}-${index}`}
+
+                  className="flex items-center gap-2 rounded-md bg-muted px-2 py-1 text-xs"
+
+                >
+
+                  <FileIcon className="h-3.5 w-3.5" />
+
+                  <span className="max-w-[220px] truncate">{file.name}</span>
+
+                  <span className="text-muted-foreground">{formatBytes(file.size)}</span>
+
+                  <Button
+
+                    type="button"
+
+                    variant="ghost"
+
+                    size="icon"
+
+                    className="h-5 w-5"
+
+                    onClick={() => removePendingAttachment(index)}
+
+                    disabled={isPlanning}
+
+                  >
+
+                    <X className="h-3.5 w-3.5" />
+
+                  </Button>
+
+                </div>
+
+              ))}
+
+            </div>
+
+          ) : null}
+
+
+
+          <div className="flex items-center gap-3">
+
+            <Button
+
+              type="button"
+
+              variant="outline"
+
+              onClick={() => fileInputRef.current?.click()}
+
+              disabled={isPlanning}
+
+              className="shrink-0"
+
+            >
+
+              <Paperclip className="h-4 w-4 mr-2" /> Attach
+
+            </Button>
+
+            <Input
+
+              type="file"
+
+              ref={fileInputRef}
+
+              className="hidden"
+
+              onChange={handleFileChange}
+
+              multiple
+
+            />
+
             <Input
               {...form.register('query')}
-              placeholder="e.g., Make slides on safety training, post an announcement with the slides, and email members to review."
+              placeholder="Tell the assistant what to do (announcements, forms, calendar, email, social...)"
               autoComplete="off"
               disabled={isPlanning}
             />
-            <Button type="submit" disabled={isPlanning}>
-              {isPlanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-              {isPlanning ? 'Planning...' : 'Ask Assistant'}
+            <Button type="submit" disabled={isPlanning} className={AI_SPARKLE}>
+              {isPlanning ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" /> Planning...
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4 mr-2" /> Send
+                </>
+              )}
             </Button>
-          </form>
-          {summary && (
-            <div className="rounded-md bg-muted p-3 text-sm">
-              <strong>Plan:</strong> {summary}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
 
-      {tasks.length > 0 && (
-        <Card className="flex-1 overflow-auto">
-          <CardHeader>
-            <CardTitle>Planned Tasks</CardTitle>
-            <CardDescription>Review, edit, answer follow-ups, then send each task.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {tasks.map(task => (
-              <div key={task.id} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold capitalize">{task.type} task</div>
-                  {task.status === 'sent' && (
-                    <span className="inline-flex items-center gap-1 text-green-600 text-sm">
-                      <CheckCircle2 className="h-4 w-4" /> Sent
-                    </span>
-                  )}
-                  {task.status === 'error' && (
-                    <span className="inline-flex items-center gap-1 text-red-600 text-sm">
-                      <AlertCircle className="h-4 w-4" /> Failed
-                    </span>
-                  )}
-                </div>
-                {task.followUpQuestion && (
-                  <div className="text-sm text-muted-foreground">
-                    Follow-up: {task.followUpQuestion}
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-muted-foreground">Details / prompt</label>
-                  <Textarea
-                    value={task.prompt}
-                    onChange={(e) => updateTaskPrompt(task.id, e.target.value)}
-                    className="min-h-[120px]"
-                  />
-                </div>
-                {task.error && (
-                  <div className="text-xs text-destructive bg-destructive/10 p-2 rounded">
-                    {task.error}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => updateTaskPrompt(task.id, task.prompt)}
-                    disabled
-                    className="hidden"
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    onClick={() => runTask(task)}
-                    disabled={task.status === 'sent' || sendingId === task.id}
-                  >
-                    {sendingId === task.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Task'}
-                  </Button>
-                </div>
-                {task.result && (
-                  <div className="bg-muted/50 p-2 rounded text-xs">
-                    <strong>Result:</strong> {JSON.stringify(task.result, null, 2)}
-                  </div>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+        </form>
+
+      </div>
+
     </div>
+
+  );
+
+}
+
+export default function AssistantPage() {
+  return (
+    <Suspense fallback={<div>Loading assistant...</div>}>
+      <AssistantPageInner />
+    </Suspense>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const buildAnswerDetails = (
+      answers: Record<string, string> | undefined,
+      questions: FormQuestion[]
+    ) => {
+      const output: Record<
+        string,
+        { value: string; attachmentDataUri?: string; attachmentType?: string }
+      > = {};
+      const answerEntries = answers ?? {};
+      questions.forEach(question => {
+        const raw = answerEntries[question.id];
+        if (!raw) return;
+        if (typeof raw === 'string' && raw.startsWith('data:')) {
+          const type = raw.slice(5, raw.indexOf(';')) || 'file';
+          output[question.id] = {
+            value: 'Attachment provided',
+            attachmentDataUri: raw,
+            attachmentType: type,
+          };
+          return;
+        }
+        output[question.id] = { value: raw };
+      });
+      return output;
+    };

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 type Club = {
   id: string;
@@ -49,23 +50,28 @@ export default function BrowseClubsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('All');
     const [isClient, setIsClient] = useState(false);
+    const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
     useEffect(() => {
         setIsClient(true);
-        const clubsString = localStorage.getItem('clubs');
-        if (clubsString) {
-            const clubsFromStorage = JSON.parse(clubsString);
-            const clubsWithDetails = clubsFromStorage.map((c: any) => {
-                 const clubDataString = localStorage.getItem(`club_${c.id}`);
-                 const clubData = clubDataString ? JSON.parse(clubDataString) : {};
-                 return {
-                     ...c,
-                     logo: clubData.logo || `https://placehold.co/100x100.png?text=${c.name.charAt(0)}`,
-                     description: c.description || 'No description provided.'
-                 }
-            });
-            setAllClubs(clubsWithDetails);
-        }
+        const load = async () => {
+          const { data, error } = await supabase
+            .from('orgs')
+            .select('id,name,category,description,logo_url');
+          if (error) {
+            console.error('Failed to load clubs', error);
+            return;
+          }
+          const clubs = (data || []).map(org => ({
+            id: org.id,
+            name: org.name,
+            category: org.category || 'Other',
+            description: org.description || 'No description provided.',
+            logo: org.logo_url || `https://placehold.co/100x100.png?text=${org.name.charAt(0)}`,
+          }));
+          setAllClubs(clubs);
+        };
+        load();
     }, []);
 
     const filteredClubs = useMemo(() => {

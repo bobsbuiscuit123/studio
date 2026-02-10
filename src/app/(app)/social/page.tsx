@@ -199,13 +199,21 @@ export default function SocialPage() {
         prompt: values.prompt,
         photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
       });
+      if (!result.ok) {
+        toast({
+          title: "Error",
+          description: result.error.message || "Failed to generate social media post.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       setPostToReview({
-        ...result,
-        images: result.images || [],
+        ...result.data,
+        images: result.data.images || [],
         dataAiHint: "tech club",
       });
-      postForm.reset({ title: result.title, content: result.postText });
+      postForm.reset({ title: result.data.title, content: result.data.postText });
     } catch (error) {
       toast({
         title: "Error",

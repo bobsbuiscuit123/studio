@@ -1,0 +1,75 @@
+import { safeFetchJson } from '@/lib/network';
+
+describe('safeFetchJson', () => {
+  const originalFetch = globalThis.fetch;
+  const originalNavigator = globalThis.navigator;
+  const originalWindow = (globalThis as typeof globalThis & { window?: unknown }).window;
+
+  afterEach(() => {
+    if (originalFetch) {
+      globalThis.fetch = originalFetch;
+    } else {
+      // @ts-expect-error - clean up stub
+      delete globalThis.fetch;
+    }
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: originalNavigator,
+        configurable: true,
+      });
+    } else {
+      // @ts-expect-error - clean up stub
+      delete globalThis.navigator;
+    }
+    if (originalWindow) {
+      Object.defineProperty(globalThis, 'window', {
+        value: originalWindow,
+        configurable: true,
+      });
+    } else {
+      // @ts-expect-error - clean up stub
+      delete globalThis.window;
+    }
+  });
+
+  it('returns offline error when navigator reports offline', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: false },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    const result = await safeFetchJson('https://example.com');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('NETWORK_OFFLINE');
+    }
+  });
+
+  it('returns parsed json on success', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ value: 42 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await safeFetchJson<{ value: number }>('https://example.com');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.value).toBe(42);
+    }
+  });
+});

@@ -1,6 +1,6 @@
 
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,24 +33,37 @@ import { AppSidebarNav } from "./app-sidebar-nav";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useNotifications } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useNotifications, useMembers } from "@/lib/data-hooks";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
+import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
+import { clearStoredDemoSession } from "@/lib/demo/mockData";
 
 
 const pageTitles: { [key: string]: string } = {
   "/dashboard": "Dashboard",
+  "/demo/app": "Demo Dashboard",
+  "/demo/app/dashboard": "Demo Dashboard",
+  "/demo/app/announcements": "Announcements",
+  "/demo/app/calendar": "Calendar",
+  "/demo/app/gallery": "Gallery",
+  "/demo/app/finances": "Finances",
+  "/demo/app/members": "Members",
+  "/demo/app/attendance": "Attendance",
+  "/demo/app/points": "Points",
+  "/demo/app/email": "Bulk Email",
+  "/demo/app/messages": "Messages",
+  "/demo/app/assistant": "Assistant",
+  "/demo/app/forms": "Forms",
   "/announcements": "Announcements",
   "/calendar": "Calendar",
   "/gallery": "Gallery",
   "/finances": "Finances",
   "/members": "Members",
-  "/slides": "Meeting Slides",
-  "/social": "Social Media",
   "/attendance": "Attendance",
   "/points": "Points",
   "/email": "Bulk Email",
   "/messages": "Messages",
-  "/mindmap": "Mind Map",
   "/assistant": "AI Assistant",
   "/browse-clubs": "Club Directory",
 };
@@ -131,12 +144,19 @@ function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean
 export function AppHeader() {
   const pathname = usePathname();
   const [clubName, setClubName] = useState("");
-  const title = pageTitles[pathname] || "ClubHub AI";
+  const demoCtx = useOptionalDemoCtx();
+  const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
+  const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
+  const appName = useDemo ? 'CASPO' : 'ClubHub AI';
+  const title = pageTitles[pathname] || appName;
+  const homeHref = useDemo ? '/demo/app' : '/';
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
+  const membersHook = useMembers();
   const { unread, markAllAsRead } = useNotifications();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -146,19 +166,40 @@ export function AppHeader() {
 
 
   useEffect(() => {
-    const clubId = localStorage.getItem('selectedClubId');
-    if(clubId) {
-      const clubs = JSON.parse(localStorage.getItem('clubs') || '[]');
-      const currentClub = clubs.find((c: any) => c.id === clubId);
-      if(currentClub) {
-        setClubName(currentClub.name);
+    const load = async () => {
+      if (useDemo && demoCtx) {
+        setClubName(demoCtx.clubName);
+        return;
       }
-    } else {
+      const clubId = localStorage.getItem('selectedClubId');
+      if (!clubId || !supabase) {
         setClubName("");
-    }
-  }, [pathname]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('orgs')
+        .select('name')
+        .eq('id', clubId)
+        .maybeSingle();
+      if (error) {
+        setClubName("");
+        return;
+      }
+      setClubName(data?.name || "");
+    };
+    load();
+  }, [demoCtx, pathname, supabase, useDemo]);
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (useDemo) {
+      clearStoredDemoSession();
+      localStorage.removeItem('selectedClubId');
+      clearUser();
+      router.push('/demo');
+      return;
+    }
+    if (!supabase) return;
+    await supabase.auth.signOut();
     clearUser();
     localStorage.removeItem('selectedClubId');
     router.push('/');
@@ -166,6 +207,20 @@ export function AppHeader() {
 
   const handleSaveProfile = (updatedUser: Partial<UserType>) => {
      saveUser(currentUser => ({...currentUser, ...updatedUser} as UserType));
+     if (updatedUser.name || updatedUser.avatar) {
+       membersHook.updateData(prev => {
+         const list = Array.isArray(prev) ? prev : [];
+         return list.map(member =>
+           member.email === user?.email
+             ? {
+                 ...member,
+                 name: updatedUser.name ?? member.name,
+                 avatar: updatedUser.avatar ?? member.avatar,
+               }
+             : member
+         );
+       });
+     }
   }
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : '';
@@ -198,11 +253,11 @@ export function AppHeader() {
           <div className="flex-1 overflow-y-auto">
             <nav className="grid gap-2 text-lg font-medium px-6">
               <Link
-                href="/"
+                href={homeHref}
                 className="flex items-center gap-2 text-lg font-semibold mb-4"
               >
                 <Logo className="h-6 w-6" />
-                <span>ClubHub AI</span>
+                <span>{appName}</span>
               </Link>
               <AppSidebarNav 
                 role={role || ''} 
@@ -242,7 +297,7 @@ export function AppHeader() {
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-           <Link href="/">
+           <Link href={useDemo ? '/demo' : '/'}>
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
             </Link>
           <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>

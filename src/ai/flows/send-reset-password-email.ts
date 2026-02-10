@@ -9,8 +9,7 @@
  * - SendResetPasswordEmailOutput - The return type for the sendResetPasswordEmail function.
  */
 
-import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 import type { User } from '@/lib/mock-data';
 
 const SendResetPasswordEmailInputSchema = z.object({
@@ -32,31 +31,18 @@ export type SendResetPasswordEmailOutput = z.infer<
 export async function sendResetPasswordEmail(
   input: SendResetPasswordEmailInput
 ): Promise<SendResetPasswordEmailOutput> {
-  return sendResetPasswordEmailFlow(input);
-}
+  const { email, allUsers } = input;
+  const user = allUsers.find(u => u.email === email);
 
-
-const sendResetPasswordEmailFlow = ai.defineFlow(
-  {
-    name: 'sendResetPasswordEmailFlow',
-    inputSchema: SendResetPasswordEmailInputSchema,
-    outputSchema: SendResetPasswordEmailOutputSchema,
-  },
-  async ({ email, allUsers }) => {
-    // In a real application, you would look up the user in a database.
-    // For this prototype, we search the provided list.
-    const user = allUsers.find(u => u.email === email);
-
-    if (user && user.password) {
-        return {
-            success: true,
-            message: `Password for ${email} is: ${user.password}`,
-        };
-    } else {
-        return {
-            success: false,
-            message: `No account with the email ${email} exists.`,
-        };
-    }
+  if (user && user.password) {
+      return {
+          success: true,
+          message: `Password for ${email} is: ${user.password}`,
+      };
+  } else {
+      return {
+          success: false,
+          message: `No account with the email ${email} exists.`,
+      };
   }
-);
+}

@@ -1,9 +1,9 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import Image from 'next/image';
-import { PlusCircle, ArrowRight, LogIn, UserPlus, Compass } from 'lucide-react';
+import { PlusCircle, ArrowRight, LogIn, UserPlus, Compass, Chrome, Apple } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -37,11 +37,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Member, User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
-import { sendResetPasswordEmail } from '@/ai/flows/send-reset-password-email';
 import { faker } from '@faker-js/faker';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { getDefaultOrgState } from '@/lib/org-state';
+import { safeFetchJson } from '@/lib/network';
 
 const clubCategories = ["STEM", "Arts", "Sports", "Service", "Academic", "Cultural", "Other"];
 
@@ -84,34 +86,103 @@ type Club = {
   category: string;
   description: string;
   meetingTime: string;
+  logo?: string;
 };
 
-function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User) => void; onSwitchToLogin: () => void; }) {
+function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
+    const [providerLoading, setProviderLoading] = useState<'google' | 'apple' | null>(null);
+    const { toast } = useToast();
+
+    const handleOAuth = async (provider: 'google' | 'apple') => {
+        setProviderLoading(provider);
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider,
+            options: {
+                redirectTo: `${window.location.origin}/auth/callback`,
+            },
+        });
+        if (error) {
+            toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
+            setProviderLoading(null);
+        }
+    };
+
+    return (
+        <div className="space-y-3">
+            <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuth('google')}
+                disabled={providerLoading !== null}
+            >
+                <Chrome className="mr-2 h-4 w-4" /> Continue with Google
+            </Button>
+            <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuth('apple')}
+                disabled={providerLoading !== null}
+            >
+                <Apple className="mr-2 h-4 w-4" /> Continue with Apple
+            </Button>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="h-px flex-1 bg-border" />
+                <span>or continue with email</span>
+                <div className="h-px flex-1 bg-border" />
+            </div>
+        </div>
+    );
+}
+
+function SignUpForm({
+  onUserSaved,
+  onSwitchToLogin,
+  supabase,
+}: {
+  onUserSaved: (user: User) => void;
+  onSwitchToLogin: () => void;
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+}) {
     const form = useForm<z.infer<typeof userFormSchema>>({
         resolver: zodResolver(userFormSchema),
         defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
     });
     const { toast } = useToast();
 
-    const handleSaveUser = (values: z.infer<typeof userFormSchema>) => {
-        const allUsersString = localStorage.getItem('users') || '[]';
-        const allUsers: User[] = JSON.parse(allUsersString);
-
-        if (allUsers.some(u => u.email === values.email)) {
-            toast({ title: "User exists", description: "An account with this email already exists. Please log in.", variant: "destructive" });
+    const handleSaveUser = async (values: z.infer<typeof userFormSchema>) => {
+        const { data, error } = await supabase.auth.signUp({
+            email: values.email,
+            password: values.password,
+            options: {
+              data: { display_name: values.name },
+              emailRedirectTo: `${window.location.origin}/auth/callback`,
+            },
+        });
+        if (error) {
+            toast({ title: "Signup failed", description: error.message, variant: "destructive" });
             return;
         }
-
+        if (!data.session) {
+            toast({
+              title: "Check your email",
+              description: "Use the confirmation link to verify your account and sign in.",
+            });
+            onSwitchToLogin();
+            return;
+        }
+        if (data.user) {
+          await supabase
+            .from('profiles')
+            .upsert({ id: data.user.id, email: values.email, display_name: values.name });
+        }
         const newUser: User = {
             name: values.name,
             email: values.email,
-            password: values.password,
+            password: '',
             avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`
         };
-
-        const updatedUsers = [...allUsers, newUser];
-        localStorage.setItem('users', JSON.stringify(updatedUsers));
-
         onUserSaved(newUser);
         toast({ title: `Welcome, ${values.name}!` });
     };
@@ -123,6 +194,8 @@ function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User
                 <CardDescription>Get started with ClubHub AI by creating an account.</CardDescription>
             </CardHeader>
             <CardContent>
+                <div className="space-y-4">
+                <OAuthButtons supabase={supabase} />
                 <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-4">
                     <div>
                         <Label htmlFor="name-signup">Full Name</Label>
@@ -146,6 +219,7 @@ function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User
                     </div>
                     <Button type="submit" className="w-full">Create Account</Button>
                 </form>
+                </div>
             </CardContent>
              <CardFooter className="justify-center">
                 <p className="text-sm text-muted-foreground">
@@ -157,7 +231,15 @@ function SignUpForm({ onUserSaved, onSwitchToLogin }: { onUserSaved: (user: User
     );
 }
 
-function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => void; onSwitchToSignUp: () => void; }) {
+function LoginForm({
+  onLogin,
+  onSwitchToSignUp,
+  supabase,
+}: {
+  onLogin: (user: User) => void;
+  onSwitchToSignUp: () => void;
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+}) {
     const loginForm = useForm<z.infer<typeof loginFormSchema>>({
         resolver: zodResolver(loginFormSchema),
         defaultValues: { email: '', password: '' },
@@ -170,43 +252,62 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
     const [isSending, setIsSending] = useState(false);
     const { toast } = useToast();
 
-     const handleLogin = (values: z.infer<typeof loginFormSchema>) => {
-        const allUsersString = localStorage.getItem('users') || '[]';
-        const allUsers: User[] = JSON.parse(allUsersString);
-        const foundUser = allUsers.find(u => u.email === values.email);
-
-        if (!foundUser) {
-            toast({ title: "User not found", description: "No account found with that email.", variant: "destructive" });
+     const handleLogin = async (values: z.infer<typeof loginFormSchema>) => {
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: values.email,
+            password: values.password,
+        });
+        if (error) {
+            const message = error.message.toLowerCase();
+            if (message.includes('email not confirmed')) {
+                toast({
+                  title: "Confirm your email first",
+                  description: "Open your email confirmation link, then sign in again.",
+                  variant: "destructive",
+                });
+                return;
+            }
+            toast({ title: "Login failed", description: error.message, variant: "destructive" });
             return;
         }
-        if (foundUser.password !== values.password) {
-            toast({ title: "Invalid Password", description: "The password you entered is incorrect.", variant: "destructive" });
-            return;
+        if (data.user) {
+          await supabase
+            .from('profiles')
+            .upsert({
+              id: data.user.id,
+              email: values.email,
+              display_name:
+                (data.user.user_metadata?.display_name as string | undefined) ||
+                values.email,
+            });
         }
-        
-        onLogin(foundUser);
-        toast({ title: `Welcome back, ${foundUser.name}!`});
+        const displayName =
+          (data.user?.user_metadata?.display_name as string | undefined) || values.email;
+        const user: User = {
+            name: displayName,
+            email: values.email,
+            password: '',
+            avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`
+        };
+        onLogin(user);
+        toast({ title: `Welcome back, ${displayName}!`});
     };
     
     const handleForgotPassword = async (values: z.infer<typeof forgotPasswordSchema>) => {
         setIsSending(true);
-        try {
-            const allUsersString = localStorage.getItem('users') || '[]';
-            const allUsers: User[] = JSON.parse(allUsersString);
-
-            const result = await sendResetPasswordEmail({ email: values.email, allUsers });
-            toast({
-                title: result.success ? "Password Recovery" : "Error",
-                description: result.message,
-                variant: result.success ? "default" : "destructive",
-            });
-            setIsForgotPassDialogOpen(false);
-            forgotPasswordForm.reset();
-        } catch (error) {
-             toast({ title: "Error", description: "Failed to send reset email. Please try again.", variant: "destructive" });
-        } finally {
+        const { error } = await supabase.auth.resetPasswordForEmail(values.email);
+        if (error) {
+            toast({ title: "Error", description: error.message, variant: "destructive" });
             setIsSending(false);
+            return;
         }
+        toast({
+            title: "Password Recovery",
+            description: "Check your email for a reset link.",
+        });
+        setIsForgotPassDialogOpen(false);
+        forgotPasswordForm.reset();
+        setIsSending(false);
     }
 
     return (
@@ -217,6 +318,8 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                 <CardDescription>Enter your credentials to access your account.</CardDescription>
             </CardHeader>
             <CardContent>
+                <div className="space-y-4">
+                <OAuthButtons supabase={supabase} />
                 <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
                     <div>
                         <Label htmlFor="email-login">Email</Label>
@@ -235,6 +338,7 @@ function LoginForm({ onLogin, onSwitchToSignUp }: { onLogin: (user: User) => voi
                     </div>
                     <Button type="submit" className="w-full">Log In</Button>
                 </form>
+                </div>
             </CardContent>
             <CardFooter className="justify-center">
                 <p className="text-sm text-muted-foreground">
@@ -276,25 +380,98 @@ export default function HomePage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const pathname = usePathname();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const didLogNavigationRef = useRef(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
   const [isJoinClubOpen, setIsJoinClubOpen] = useState(false);
+  const [memberOrgIds, setMemberOrgIds] = useState<Set<string>>(new Set());
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
+  const loadClubsFromStorage = async () => {
+    const { data, error } = await supabase
+      .from('orgs')
+      .select('id,name,join_code,category,description,meeting_time,logo_url');
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    const mapped = (data || []).map(org => ({
+      id: org.id,
+      name: org.name,
+      joinCode: org.join_code,
+      category: org.category || '',
+      description: org.description || '',
+      meetingTime: org.meeting_time || '',
+      logo: org.logo_url || '',
+    }));
+    setClubs(mapped);
+
+    const { data: memberships } = await supabase
+      .from('memberships')
+      .select('org_id');
+    const ids = new Set<string>((memberships || []).map(m => m.org_id));
+    setMemberOrgIds(ids);
+  };
 
   useEffect(() => {
     setIsClient(true);
-    if (localStorage.getItem('users') === null) {
-        localStorage.setItem('users', '[]');
-    }
-    if (localStorage.getItem('clubs') === null) {
-        localStorage.setItem('clubs', '[]');
-    }
-
-    const savedClubs = localStorage.getItem('clubs');
-    if (savedClubs) {
-      setClubs(JSON.parse(savedClubs));
-    }
+    loadClubsFromStorage();
   }, []);
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      const sessionUser = data.session?.user;
+      if (sessionUser) {
+        const displayName =
+          (sessionUser.user_metadata?.display_name as string | undefined) ||
+          sessionUser.email ||
+          'Member';
+        saveUser({
+          name: displayName,
+          email: sessionUser.email || '',
+          avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+        });
+      }
+    };
+    initAuth();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        clearUser();
+        return;
+      }
+      const sessionUser = session.user;
+      const displayName =
+        (sessionUser.user_metadata?.display_name as string | undefined) ||
+        sessionUser.email ||
+        'Member';
+      saveUser({
+        name: displayName,
+        email: sessionUser.email || '',
+        avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+      });
+    });
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, [clearUser, saveUser, supabase]);
+
+  useEffect(() => {
+    if (!isClient || userLoading || didLogNavigationRef.current) return;
+    console.info('[home] navigation settled', {
+      pathname,
+      isAuthenticated: Boolean(user),
+      selectedClubId: localStorage.getItem('selectedClubId'),
+    });
+    didLogNavigationRef.current = true;
+  }, [isClient, pathname, user, userLoading]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    loadClubsFromStorage();
+  }, [isClient, user]);
 
   const clubForm = useForm<z.infer<typeof clubFormSchema>>({
     resolver: zodResolver(clubFormSchema),
@@ -318,64 +495,60 @@ export default function HomePage() {
     }
   };
   
-  const handleCreateClub = (values: z.infer<typeof clubFormSchema>) => {
+  const handleCreateClub = async (values: z.infer<typeof clubFormSchema>) => {
     if (!user) {
         toast({ title: "Error", description: "Cannot create a club without user information.", variant: "destructive" });
         return;
     }
-    
-    const allClubsString = localStorage.getItem('clubs') || '[]';
-    const allClubs: Club[] = JSON.parse(allClubsString);
-    
-    let newJoinCode = '';
-    let isCodeUnique = false;
-    while (!isCodeUnique) {
-        newJoinCode = faker.string.alphanumeric(4).toUpperCase();
-        if (!allClubs.some(club => club.joinCode === newJoinCode)) {
-            isCodeUnique = true;
-        }
+    const newJoinCode = faker.string.alphanumeric(4).toUpperCase();
+    const logo = values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`;
+    const createResponse = await safeFetchJson<{ ok: boolean; orgId: string; error?: { message?: string } }>(
+      '/api/orgs/create',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: values.name,
+          joinCode: newJoinCode,
+          category: values.category,
+          description: values.description,
+          meetingTime: values.meetingTime,
+          logoUrl: logo,
+        }),
+      }
+    );
+    if (!createResponse.ok || !createResponse.data?.ok) {
+      const message =
+        !createResponse.ok
+          ? createResponse.error.message
+          : createResponse.data.error?.message || 'Failed to create club.';
+      toast({ title: "Error", description: message, variant: "destructive" });
+      return;
     }
-
-    const newClub: Club = {
-      id: Date.now().toString(),
-      name: values.name,
-      joinCode: newJoinCode,
-      category: values.category,
-      description: values.description,
-      meetingTime: values.meetingTime,
+    const orgId = createResponse.data.orgId;
+    const { data: authUser } = await supabase.auth.getUser();
+    const initialMember: Member = {
+      id: authUser.user?.id,
+      name: user.name,
+      email: user.email,
+      role: 'President',
+      avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`,
     };
-    
-    const updatedClubs = [...allClubs, newClub];
-    setClubs(updatedClubs);
-    localStorage.setItem('clubs', JSON.stringify(updatedClubs));
-    
-    const firstMember: Member = {
-        name: user.name,
-        email: user.email,
-        role: "President",
-        avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
-    }
-
-    const newClubData = {
-        logo: values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
-        members: [firstMember],
-        events: [],
-        announcements: [],
-        socialPosts: [],
-        transactions: [],
-        messages: {},
-        groupChats: [],
-        galleryImages: [],
-        pointEntries: [],
-        mindmap: {
-          nodes: [{ id: '1', type: 'input', data: { label: `${values.name} Mind Map` }, position: { x: 250, y: 5 } }],
-          edges: [],
-        },
+    const initialState = getDefaultOrgState();
+    initialState.logo = logo;
+    initialState.members = [initialMember];
+    initialState.mindmap = {
+      nodes: [{ id: '1', type: 'input', data: { label: `${values.name} Mind Map` }, position: { x: 250, y: 5 } }],
+      edges: [],
     };
-
-    localStorage.setItem(`club_${newClub.id}`, JSON.stringify(newClubData));
-
-    toast({ title: 'Club created successfully!', description: `Your join code is ${newClub.joinCode}` });
+    await safeFetchJson('/api/org-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orgId, data: initialState }),
+    });
+    await loadClubsFromStorage();
+    localStorage.setItem('selectedClubId', orgId);
+    toast({ title: 'Club created successfully!', description: `Your join code is ${newJoinCode}` });
     clubForm.reset();
     setPreviewImage(null);
     if (fileInputRef.current) {
@@ -384,57 +557,69 @@ export default function HomePage() {
     setIsCreateClubOpen(false);
   };
 
-  const handleJoinClub = (values: z.infer<typeof joinClubFormSchema>) => {
+  const handleJoinClub = async (values: z.infer<typeof joinClubFormSchema>) => {
     if (!user) {
          toast({ title: "Error", description: "Cannot join a club without user information.", variant: "destructive" });
         return;
     }
-    const allClubsString = localStorage.getItem('clubs');
-    if (!allClubsString) {
-        toast({ title: "Error", description: "No clubs found.", variant: "destructive" });
-        return;
+    const joinResponse = await safeFetchJson<{ ok: boolean; orgId: string; error?: { message?: string } }>(
+      '/api/orgs/join',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ joinCode: values.code.toUpperCase() }),
+      }
+    );
+    if (!joinResponse.ok || !joinResponse.data?.ok) {
+      const message =
+        !joinResponse.ok
+          ? joinResponse.error.message
+          : joinResponse.data.error?.message || 'Failed to join club.';
+      toast({ title: "Invalid Code", description: message, variant: "destructive" });
+      return;
     }
-    const allClubs: Club[] = JSON.parse(allClubsString);
-    const clubToJoin = allClubs.find(c => c.joinCode && c.joinCode.toUpperCase() === values.code.toUpperCase());
-
-    if (!clubToJoin) {
-        toast({ title: "Invalid Code", description: "No club found with that join code.", variant: "destructive" });
-        return;
-    }
-
-    const clubDataKey = `club_${clubToJoin.id}`;
-    const clubDataString = localStorage.getItem(clubDataKey);
-    let clubData = clubDataString ? JSON.parse(clubDataString) : { members: [] };
-
-    if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
-        toast({ title: "Already a Member", description: `You are already a member of ${clubToJoin.name}.`, variant: "default" });
-        handleSelectClub(clubToJoin.id);
-        return;
-    }
-
+    const orgId = joinResponse.data.orgId;
+    const { data: stateRow } = await supabase
+      .from('org_state')
+      .select('data')
+      .eq('org_id', orgId)
+      .maybeSingle();
+    const { data: authUser } = await supabase.auth.getUser();
+    const currentState = (stateRow?.data || getDefaultOrgState()) as ReturnType<typeof getDefaultOrgState>;
     const newMember: Member = {
-        name: user.name,
-        email: user.email,
-        role: 'Member',
-        avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`
+      id: authUser.user?.id,
+      name: user.name,
+      email: user.email,
+      role: 'Member',
+      avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`,
     };
-
-    clubData.members = [...(clubData.members || []), newMember];
-    localStorage.setItem(clubDataKey, JSON.stringify(clubData));
-    
-    toast({ title: "Success!", description: `You have successfully joined ${clubToJoin.name}.` });
+    const existingMembers = Array.isArray(currentState.members) ? currentState.members : [];
+    const updatedMembers = existingMembers.some(m => m.email === user.email)
+      ? existingMembers
+      : [...existingMembers, newMember];
+    await safeFetchJson('/api/org-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orgId,
+        data: { ...currentState, members: updatedMembers },
+      }),
+    });
+    await loadClubsFromStorage();
+    localStorage.setItem('selectedClubId', orgId);
+    toast({ title: "Success!", description: `You have successfully joined the club.` });
     joinForm.reset();
     setIsJoinClubOpen(false);
-    handleSelectClub(clubToJoin.id);
+    handleSelectClub(orgId);
   };
 
   const handleSelectClub = (clubId: string) => {
     localStorage.setItem('selectedClubId', clubId);
-    localStorage.setItem('clubhub_ai_sync_key', Date.now().toString());
     router.push('/dashboard');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     clearUser();
     localStorage.removeItem('selectedClubId');
   }
@@ -460,9 +645,9 @@ export default function HomePage() {
 
                 <div className="p-6 pt-0">
                    {authMode === 'login' ? (
-                        <LoginForm onLogin={saveUser} onSwitchToSignUp={() => setAuthMode('signup')} />
+                        <LoginForm onLogin={saveUser} onSwitchToSignUp={() => setAuthMode('signup')} supabase={supabase} />
                    ) : (
-                        <SignUpForm onUserSaved={saveUser} onSwitchToLogin={() => setAuthMode('login')} />
+                        <SignUpForm onUserSaved={saveUser} onSwitchToLogin={() => setAuthMode('login')} supabase={supabase} />
                    )}
                 </div>
             </Card>
@@ -470,37 +655,12 @@ export default function HomePage() {
     );
   }
   
-  const userClubIds = new Set<string>();
-  if (isClient) {
-    Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('club_')) {
-            try {
-                const clubData = JSON.parse(localStorage.getItem(key) || '{}');
-                if (clubData.members && clubData.members.some((m: Member) => m.email === user.email)) {
-                    userClubIds.add(key.replace('club_', ''));
-                }
-            } catch (e) {
-                console.error("Failed to parse club data from local storage", e);
-            }
-        }
-    });
-  }
-
-  const displayedClubs = clubs.filter(club => userClubIds.has(club.id));
+  const displayedClubs = clubs.filter(club => memberOrgIds.has(club.id));
   
-  const clubsWithLogos = displayedClubs.map(club => {
-      if (!isClient) return { ...club, logo: '' };
-      const clubDataString = localStorage.getItem(`club_${club.id}`);
-      if (clubDataString) {
-          try {
-            const clubData = JSON.parse(clubDataString);
-            return { ...club, logo: clubData.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
-          } catch(e) {
-             return { ...club, logo: `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
-          }
-      }
-      return { ...club, logo: `https://placehold.co/100x100.png?text=${club.name.charAt(0)}` };
-  });
+  const clubsWithLogos = displayedClubs.map(club => ({
+    ...club,
+    logo: club.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}`,
+  }));
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">

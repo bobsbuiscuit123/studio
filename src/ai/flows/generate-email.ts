@@ -9,8 +9,10 @@
  * - GenerateEmailOutput - The return type for the generateEmail function.
  */
 
-import {ai, logAiEnvDebug} from '@/ai/genkit';
-import {z} from 'genkit';
+import { callAI } from '@/ai/genkit';
+import { sanitizeAiText } from '@/lib/ai-safety';
+import { ok, type Result } from '@/lib/result';
+import { z } from 'zod';
 
 const GenerateEmailInputSchema = z.object({
   prompt: z.string().describe('A natural language prompt for the email to generate. For example: "Draft an email to all members reminding them about the upcoming bake sale this Friday."'),
@@ -29,38 +31,27 @@ export type GenerateEmailOutput = z.infer<
 
 export async function generateEmail(
   input: GenerateEmailInput
-): Promise<GenerateEmailOutput> {
-  logAiEnvDebug('generateEmail');
-  try {
-    return await generateEmailFlow(input);
-  } catch (error: any) {
-    const message =
-      error?.message ??
-      'Failed to generate email. Please try again in a moment.';
-    console.error('[AI_DEBUG] generateEmail error:', error);
-    throw new Error(message);
-  }
-}
-
-const generateEmailPrompt = ai.definePrompt({
-  name: 'generateEmailPrompt',
-  input: {schema: GenerateEmailInputSchema},
-  output: {schema: GenerateEmailOutputSchema},
-  prompt: `You are a club communication manager. Your task is to write a clear, concise, and friendly email to all club members based on the user's prompt.
-The email should be professional yet approachable.
-
-User prompt: {{{prompt}}}
-`,
-});
-
-const generateEmailFlow = ai.defineFlow(
-  {
-    name: 'generateEmailFlow',
-    inputSchema: GenerateEmailInputSchema,
+): Promise<Result<GenerateEmailOutput>> {
+  const result = await callAI<GenerateEmailOutput>({
+    responseFormat: 'json_object',
     outputSchema: GenerateEmailOutputSchema,
-  },
-  async input => {
-    const {output} = await generateEmailPrompt(input);
-    return output!;
-  }
-);
+    messages: [
+      {
+        role: 'system',
+        content: `You are a club communication manager. Your task is to write a clear, concise, and friendly email to all club members based on the user's prompt.
+The email should be professional yet approachable.
+Return ONLY valid JSON matching: { "subject": string, "body": string }.`,
+      },
+      {
+        role: 'user',
+        content: input.prompt,
+      },
+    ],
+  });
+  if (!result.ok) return result;
+  return ok({
+    ...result.data,
+    subject: sanitizeAiText(result.data.subject),
+    body: sanitizeAiText(result.data.body),
+  });
+}

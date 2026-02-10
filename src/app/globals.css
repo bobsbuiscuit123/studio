@@ -103,4 +103,14 @@ h2, h3, h4, h5, h6 {
     color: black !important;
 }
 
-
+/* Hide Next.js dev issue indicator overlay in the UI */
+#__next-build-watcher,
+#__next-build-watcher *,
+nextjs-portal,
+nextjs-portal *,
+[data-nextjs-toast],
+[data-nextjs-toast] *,
+[data-nextjs-overlay],
+[data-nextjs-overlay] * {
+    display: none !important;
+}

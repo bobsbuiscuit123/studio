@@ -29,11 +29,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Member } from "@/lib/mock-data";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId } = useMembers();
@@ -42,19 +43,22 @@ export default function MembersPage() {
   const { canEditContent, canManageRoles, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const router = useRouter();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
-    if (clubId) {
-      const clubsString = localStorage.getItem('clubs');
-      if (clubsString) {
-        const clubs = JSON.parse(clubsString);
-        const currentClub = clubs.find((c: any) => c.id === clubId);
-        if (currentClub && currentClub.joinCode) {
-          setJoinCode(currentClub.joinCode);
-        }
+    if (!clubId) return;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from('orgs')
+        .select('join_code')
+        .eq('id', clubId)
+        .maybeSingle();
+      if (!error && data?.join_code) {
+        setJoinCode(data.join_code);
       }
-    }
-  }, [clubId]);
+    };
+    load();
+  }, [clubId, supabase]);
 
   const stringToColor = (str: string) => {
     let hash = 0;
@@ -72,11 +76,30 @@ export default function MembersPage() {
     }
   };
 
-  const handleRoleChange = (memberEmail: string, newRole: 'President' | 'Admin' | 'Officer' | 'Member') => {
+  const handleRoleChange = async (memberEmail: string, newRole: 'President' | 'Admin' | 'Officer' | 'Member') => {
     const updatedMembers = members.map(m =>
       m.email === memberEmail ? { ...m, role: newRole } : m
     );
     setMembers(updatedMembers);
+
+    if (!clubId) return;
+    const member = members.find(m => m.email === memberEmail);
+    let memberId = member?.id;
+    if (!memberId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', memberEmail)
+        .maybeSingle();
+      memberId = profile?.id;
+    }
+    if (memberId) {
+      await supabase
+        .from('memberships')
+        .update({ role: newRole === 'Officer' ? 'moderator' : newRole === 'Admin' || newRole === 'President' ? 'admin' : 'member' })
+        .eq('org_id', clubId)
+        .eq('user_id', memberId);
+    }
     toast({ title: "Member role updated successfully!" });
   };
   

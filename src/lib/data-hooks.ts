@@ -1,6 +1,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData } from './mock-data';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { safeFetchJson } from '@/lib/network';
+import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
+import { getDefaultOrgState } from '@/lib/org-state';
+import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 
 type ClubData = {
     members: Member[];
@@ -13,120 +17,137 @@ type ClubData = {
     galleryImages: GalleryImage[];
     pointEntries: PointEntry[];
     presentations: Presentation[];
+    forms: ClubForm[];
     logo: string;
-    mindmap?: MindMapData;
+    mindmap: MindMapData;
 };
 
-// --- Centralized Data Store and Sync ---
+const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+const isDemoRoute = () =>
+  typeof window !== 'undefined' &&
+  (window.location.pathname === '/demo' || window.location.pathname.startsWith('/demo/'));
+const shouldUseDemoData = (hasDemoContext: boolean) =>
+  DEMO_MODE_ENABLED && hasDemoContext && isDemoRoute();
 
-let clubDataCache: { [clubId: string]: ClubData } = {};
-const subscribers = new Set<() => void>();
-const SYNC_KEY = 'clubhub_ai_sync_key';
+const getDefaultClubData = (): ClubData => getDefaultOrgState();
 
-function notifySubscribers() {
-    subscribers.forEach(cb => cb());
-}
-
-// Set up a single listener for storage events
-if (typeof window !== 'undefined') {
-    window.addEventListener('storage', (event) => {
-        if (event.key === SYNC_KEY) {
-            // Invalidate the cache and notify subscribers to refetch
-            clubDataCache = {};
-            notifySubscribers();
-        }
-    });
-}
+const normalizeClubData = (data: ClubData): ClubData => {
+    const defaults = getDefaultClubData();
+    const normalized = {
+        ...data,
+        mindmap: data.mindmap ?? defaults.mindmap,
+    };
+    if (Array.isArray(normalized.events)) {
+        normalized.events = normalized.events.map((event: any) => ({
+            ...event,
+            date: new Date(event.date),
+        }));
+    }
+    return normalized;
+};
 
 function useClubDataStore() {
-    const [_, setUpdateTrigger] = useState(0);
+    const demoCtx = useOptionalDemoCtx();
+    const useDemo = shouldUseDemoData(Boolean(demoCtx));
+    const [clubId, setClubId] = useState<string | null>(null);
+    const [data, setData] = useState<ClubData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
 
     useEffect(() => {
-        const callback = () => {
-            setUpdateTrigger(t => t + 1);
-        };
-        subscribers.add(callback);
-        return () => subscribers.delete(callback);
-    }, []);
+        if (useDemo) return;
+        if (typeof window === 'undefined') return;
+        setClubId(localStorage.getItem('selectedClubId'));
+    }, [useDemo]);
 
-    const clubId = typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null;
-    
-    const { data, loading, error } = useMemo(() => {
+    useEffect(() => {
+        if (useDemo || !supabase) {
+            setLoading(false);
+            return;
+        }
         if (!clubId) {
-            return { data: null, loading: false, error: null };
+            setLoading(false);
+            return;
         }
-
-        if (clubDataCache[clubId]) {
-            return { data: clubDataCache[clubId], loading: false, error: null };
-        }
-        
-        try {
-            const storedClubData = localStorage.getItem(`club_${clubId}`);
-            if (storedClubData) {
-                const parsedData = JSON.parse(storedClubData);
-                // Data transformations for dates
-                if (Array.isArray(parsedData.events)) {
-                    parsedData.events = parsedData.events.map((event: any) => ({
-                        ...event,
-                        date: new Date(event.date),
-                    }));
-                }
-                clubDataCache[clubId] = parsedData;
-                return { data: parsedData, loading: false, error: null };
-            } else {
-                 return { data: null, loading: false, error: new Error(`No data found for club ${clubId}`) };
+        const load = async () => {
+            setLoading(true);
+            const { data: row, error } = await supabase
+                .from('org_state')
+                .select('data')
+                .eq('org_id', clubId)
+                .maybeSingle();
+            if (error) {
+                console.error(`Error loading data for club ${clubId}`, error);
+                setData(null);
+                setLoading(false);
+                return;
             }
-        } catch (e) {
-            console.error(`Error loading data for club ${clubId}`, e);
-            return { data: null, loading: false, error: e as Error };
-        }
-    }, [clubId, _]);
+            if (!row?.data) {
+                const defaults = getDefaultClubData();
+                await supabase.from('org_state').insert({ org_id: clubId, data: defaults });
+                setData(defaults);
+                setLoading(false);
+                return;
+            }
+            setData(normalizeClubData(row.data as ClubData));
+            setLoading(false);
+        };
+        load();
+    }, [clubId, supabase, useDemo]);
 
-    return { clubId, data, loading, error };
+    const updateClubData = useCallback(
+        async (nextData: ClubData) => {
+            if (useDemo && demoCtx) {
+                demoCtx.updateClubData(nextData);
+                return;
+            }
+            if (!clubId) return;
+            setData(nextData);
+            await safeFetchJson('/api/org-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orgId: clubId, data: nextData }),
+                timeoutMs: 10_000,
+                retry: { retries: 1 },
+            });
+        },
+        [clubId, demoCtx, useDemo]
+    );
+
+    if (useDemo && demoCtx) {
+        return {
+            clubId: demoCtx.clubId,
+            data: demoCtx.clubData as ClubData,
+            loading: false,
+            updateClubData,
+        };
+    }
+
+    return { clubId, data, loading, updateClubData };
 }
 
 
 function useSpecificClubData<K extends keyof ClubData>(key: K) {
-    const { clubId, data, loading } = useClubDataStore();
+    const { clubId, data, loading, updateClubData } = useClubDataStore();
 
     const specificData = useMemo(() => {
-        const defaultValues = {
-            members: [],
-            events: [],
-            announcements: [],
-            socialPosts: [],
-            transactions: [],
-            messages: {},
-            groupChats: [],
-            galleryImages: [],
-            pointEntries: [],
-            presentations: [],
-            logo: '',
-            mindmap: { nodes: [], edges: [] },
-        };
-        return data?.[key] ?? defaultValues[key];
+        const defaults = getDefaultClubData();
+        return data?.[key] ?? defaults[key];
     }, [data, key]);
 
-    const updateData = useCallback((newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
-        if (!clubId || !data) return;
-
-        const valueToStore = typeof newData === 'function'
-            ? (newData as (prevData: ClubData[K]) => ClubData[K])(data[key])
-            : newData;
-        
-        const updatedFullData = { ...data, [key]: valueToStore };
-        clubDataCache[clubId] = updatedFullData;
-        
-        try {
-            localStorage.setItem(`club_${clubId}`, JSON.stringify(updatedFullData));
-            // Trigger storage event for other tabs
-            localStorage.setItem(SYNC_KEY, Date.now().toString());
-            // Notify local hooks to update immediately
-            notifySubscribers();
-        } catch (error) {
-            console.error(`Error writing ${key} to localStorage`, error);
-        }
-    }, [clubId, data, key]);
+    const updateData = useCallback(
+        (newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
+            if (!clubId) return;
+            const base = data ?? getDefaultClubData();
+            const valueToStore =
+                typeof newData === 'function'
+                    ? (newData as (prevData: ClubData[K]) => ClubData[K])(base[key])
+                    : newData;
+            const updatedFullData = { ...base, [key]: valueToStore };
+            updateClubData(updatedFullData);
+        },
+        [clubId, data, key, updateClubData]
+    );
 
     return { data: specificData as ClubData[K], loading, updateData, clubId };
 }
@@ -156,6 +177,10 @@ export function usePresentations() {
     return useSpecificClubData('presentations');
 }
 
+export function useForms() {
+    return useSpecificClubData('forms');
+}
+
 export function useGalleryImages() {
     return useSpecificClubData('galleryImages');
 }
@@ -178,24 +203,69 @@ export function useMindMapData() {
 
 
 export function useCurrentUser() {
+  const demoCtx = useOptionalDemoCtx();
+  const useDemo = shouldUseDemoData(Boolean(demoCtx));
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
-    try {
-      const storedUser = localStorage.getItem('currentUser');
-      setUser(storedUser ? JSON.parse(storedUser) : null);
-    } catch (error) {
-      console.error('Error reading user from localStorage on init', error);
-      setUser(null);
-    } finally {
-        setLoading(false);
+    if (useDemo && demoCtx) {
+      setUser(demoCtx.user);
+      setLoading(false);
+      return;
     }
-  }, []);
+    const supabase = createSupabaseBrowserClient();
+    const hydrate = async () => {
+      try {
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+          setUser(JSON.parse(storedUser));
+          return;
+        }
+        const { data } = await supabase.auth.getSession();
+        const sessionUser = data.session?.user;
+        if (sessionUser) {
+          const displayName =
+            (sessionUser.user_metadata?.display_name as string | undefined) ||
+            sessionUser.email ||
+            'Member';
+          const hydratedUser = {
+            name: displayName,
+            email: sessionUser.email || '',
+            avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+          } as User;
+          localStorage.setItem('currentUser', JSON.stringify(hydratedUser));
+          setUser(hydratedUser);
+          return;
+        }
+        setUser(null);
+      } catch (error) {
+        console.error('Error reading user from storage on init', error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    hydrate();
+  }, [demoCtx, useDemo]);
+
+  useEffect(() => {
+    if (!useDemo || !demoCtx) return;
+    setUser(demoCtx.user);
+    setLoading(false);
+  }, [demoCtx, useDemo]);
 
   const saveUser = useCallback((newUser: Partial<User> | ((currentUser: User | null) => User)) => {
+    if (useDemo && demoCtx) {
+      demoCtx.updateUser(currentUser =>
+        typeof newUser === 'function'
+          ? (newUser as (currentUser: User | null) => User)(currentUser)
+          : ({ ...(currentUser || {}), ...newUser } as User)
+      );
+      return;
+    }
     setUser(currentUser => {
         const updatedUser = typeof newUser === 'function'
             ? newUser(currentUser)
@@ -203,12 +273,16 @@ export function useCurrentUser() {
         localStorage.setItem('currentUser', JSON.stringify(updatedUser));
         return updatedUser;
     });
-  }, []);
+  }, [demoCtx, useDemo]);
   
   const clearUser = useCallback(() => {
+    if (useDemo) {
+      setUser(null);
+      return;
+    }
     setUser(null);
     localStorage.removeItem('currentUser');
-  }, []);
+  }, [useDemo]);
 
   return { user: isMounted ? user : null, loading, saveUser, clearUser };
 }
@@ -216,35 +290,61 @@ export function useCurrentUser() {
 
 // Hook to get the current user's role
 export function useCurrentUserRole() {
-    const { data: members, loading: membersLoading } = useMembers();
+    const demoCtx = useOptionalDemoCtx();
+    const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const { user, loading: userLoading } = useCurrentUser();
+    const [role, setRole] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+    const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
 
-    const roleData = useMemo(() => {
-        if (membersLoading || userLoading) {
-            return { role: null, canEditContent: false, canManageRoles: false, loading: true };
-        }
-
-        let currentRole: string | null = null;
-        if (user && members) {
-            const currentUserInClub = (members as Member[]).find((m: Member) => m.email === user.email);
-            currentRole = currentUserInClub ? currentUserInClub.role : null;
-        }
-
-        const canEdit = currentRole === 'President' || currentRole === 'Admin' || currentRole === 'Officer';
-        const canManage = currentRole === 'President' || currentRole === 'Admin';
-        
-        return {
-            role: currentRole,
-            canEditContent: canEdit,
-            canManageRoles: canManage,
-            loading: false,
+    useEffect(() => {
+        const load = async () => {
+            if (userLoading) return;
+            if (useDemo && demoCtx) {
+                setRole(demoCtx.appRole);
+                setLoading(false);
+                return;
+            }
+            const clubId = typeof window !== 'undefined' ? localStorage.getItem('selectedClubId') : null;
+            if (!clubId || !user || !supabase) {
+                setRole(null);
+                setLoading(false);
+                return;
+            }
+            const { data: authUser } = await supabase.auth.getUser();
+            const userId = authUser.user?.id;
+            if (!userId) {
+                setRole(null);
+                setLoading(false);
+                return;
+            }
+            const { data } = await supabase
+                .from('memberships')
+                .select('role')
+                .eq('org_id', clubId)
+                .eq('user_id', userId)
+                .maybeSingle();
+            const mappedRole =
+                data?.role === 'admin'
+                    ? 'Admin'
+                    : data?.role === 'moderator'
+                      ? 'Officer'
+                      : data?.role === 'member'
+                        ? 'Member'
+                        : null;
+            setRole(mappedRole);
+            setLoading(false);
         };
-    }, [members, user, membersLoading, userLoading]);
+        load();
+    }, [demoCtx, supabase, useDemo, user, userLoading]);
 
-    return roleData;
+    const canEdit = role === 'Admin' || role === 'Officer' || role === 'President';
+    const canManage = role === 'Admin' || role === 'President';
+
+    return { role, canEditContent: canEdit, canManageRoles: canManage, loading };
 }
 
-export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance';
+export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance' | 'forms';
 
 export function useNotifications() {
     const { data: announcements, loading: announcementsLoading } = useAnnouncements();
@@ -253,21 +353,23 @@ export function useNotifications() {
     const { data: groupChats, loading: groupsLoading } = useGroupChats();
     const { data: events, loading: eventsLoading } = useEvents();
     const { data: galleryImages, loading: galleryImagesLoading } = useGalleryImages();
+    const { data: forms, loading: formsLoading } = useForms();
     const { user, loading: userLoading } = useCurrentUser();
     const { role, loading: roleLoading } = useCurrentUserRole();
 
-    const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading || roleLoading;
+    const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading || formsLoading || roleLoading;
 
     const unread = useMemo(() => {
         if (loading || !user) {
             return {
-                announcements: false,
-                social: false,
-                messages: false,
-                calendar: false,
-                gallery: false,
-                attendance: false,
-            };
+            announcements: false,
+            social: false,
+            messages: false,
+            calendar: false,
+            gallery: false,
+            forms: false,
+            attendance: false,
+        };
         }
         
         const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
@@ -276,6 +378,7 @@ export function useNotifications() {
         const safeGalleryImages = Array.isArray(galleryImages) ? galleryImages : [];
         const safeGroupChats = Array.isArray(groupChats) ? groupChats : [];
         const safeAllMessages = allMessages && typeof allMessages === 'object' ? allMessages : {};
+        const safeForms = Array.isArray(forms) ? forms : [];
 
 
         const hasUnreadAnnouncements = safeAnnouncements.some((a: Announcement) => !a.read);
@@ -287,6 +390,10 @@ export function useNotifications() {
         
         const hasUnreadEvents = safeEvents.some((e: ClubEvent) => !e.read);
         const hasUnreadGallery = safeGalleryImages.some((i: GalleryImage) => i.status === 'approved' && !i.read);
+        const hasUnreadForms = safeForms.some((f: ClubForm) => {
+            if (!user.email) return false;
+            return !(f.viewedBy || []).includes(user.email);
+        });
         
         let hasUnreadAttendance = false;
         if (role === 'President' || role === 'Admin') {
@@ -299,9 +406,10 @@ export function useNotifications() {
             messages: hasUnreadMessages,
             calendar: hasUnreadEvents,
             gallery: hasUnreadGallery,
+            forms: hasUnreadForms,
             attendance: hasUnreadAttendance,
         };
-    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role]);
+    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms]);
     
     const announcementsHook = useAnnouncements();
     const socialPostsHook = useSocialPosts();
@@ -309,6 +417,7 @@ export function useNotifications() {
     const groupChatsHook = useGroupChats();
     const eventsHook = useEvents();
     const galleryImagesHook = useGalleryImages();
+    const formsHook = useForms();
     
     const markAllAsRead = useCallback((key: NotificationKey) => {
         if (!user?.email) return;
@@ -350,11 +459,17 @@ export function useNotifications() {
             case 'gallery':
                 galleryImagesHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({ ...item, read: true })));
                 break;
+            case 'forms':
+                formsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => {
+                    const viewedBy = Array.isArray(item.viewedBy) ? item.viewedBy : [];
+                    return viewedBy.includes(userEmail) ? item : { ...item, viewedBy: [...viewedBy, userEmail] };
+                }));
+                break;
             case 'attendance':
                 eventsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
                 break;
         }
-    }, [user, announcementsHook, socialPostsHook, messagesHook, groupChatsHook, eventsHook, galleryImagesHook]);
+    }, [user, announcementsHook, socialPostsHook, messagesHook, groupChatsHook, eventsHook, galleryImagesHook, formsHook]);
 
     return { unread, loading, markAllAsRead };
 }

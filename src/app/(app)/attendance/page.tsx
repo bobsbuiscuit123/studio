@@ -88,7 +88,7 @@ export default function AttendancePage() {
   }
 
   if (canEditContent) {
-    // Admin/Officer/President View
+    // Admin/officer view
     return (
       <div className="space-y-6">
         <div>

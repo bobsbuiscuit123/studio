@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Upload, Loader2, Landmark, Sparkles } from "lucide-react";
+import { PlusCircle, Loader2, Landmark, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -31,6 +31,7 @@ import type { Transaction } from "@/lib/mock-data";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { safeFetchJson } from "@/lib/network";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
 const promptFormSchema = z.object({
@@ -40,7 +41,7 @@ const manualFormSchema = z.object({
   description: z.string().min(3, "Description is required."),
   amount: z.number({ invalid_type_error: "Enter a number" }),
   date: z.string().optional(),
-  status: z.enum(['Paid', 'Pending']).default('Paid'),
+  status: z.enum(['Deposit', 'Withdrawal']).default('Deposit'),
 });
 
 export default function FinancesPage() {
@@ -49,7 +50,6 @@ export default function FinancesPage() {
   const [showAi, setShowAi] = useState(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
-  const importFileRef = useRef<HTMLInputElement>(null);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
 
   const form = useForm<z.infer<typeof promptFormSchema>>({
@@ -63,59 +63,13 @@ export default function FinancesPage() {
     defaultValues: {
       description: "",
       amount: 0,
-      status: "Paid",
+      status: "Deposit",
     },
   });
   
-  const handleFileImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      try {
-        const lines = text.split('\n').slice(1); // Skip header row
-        const newTransactions: Transaction[] = lines
-          .map(line => {
-            const [date, description, amountStr] = line.split(',');
-            if (!date || !description || !amountStr) return null;
-            
-            const amount = parseFloat(amountStr);
-            if (isNaN(amount)) return null;
-
-            return {
-              id: `${Date.now()}-${Math.random()}`,
-              date: new Date(date).toLocaleDateString(),
-              description: description.trim(),
-              amount: amount,
-              status: 'Paid',
-            } as Transaction;
-          })
-          .filter((t): t is Transaction => t !== null);
-        
-        if (newTransactions.length > 0) {
-            setTransactions([...newTransactions, ...transactions]);
-            toast({ title: "Import Successful", description: `${newTransactions.length} transactions were imported.`});
-        } else {
-            toast({ title: "Import Failed", description: "Could not find any valid transactions in the file. Please ensure it is a CSV with Date,Description,Amount columns.", variant: "destructive" });
-        }
-
-      } catch (error) {
-        toast({ title: "Import Error", description: "Failed to parse the CSV file.", variant: "destructive"});
-        console.error("CSV parsing error:", error);
-      }
-    };
-    reader.readAsText(file);
-    
-    // Reset file input
-    if(event.target) event.target.value = '';
-  };
-
-
   const handleAddTransaction = async (values: z.infer<typeof promptFormSchema>) => {
     setIsProcessing(true);
-    const result = await safeFetchJson<{ ok: boolean; data?: { description: string; amount: number; date: string; status: 'Paid' | 'Pending' }; error?: { message?: string } }>(
+    const result = await safeFetchJson<{ ok: boolean; data?: { description: string; amount: number; date: string; status?: string }; error?: { message?: string } }>(
       '/api/finances/ai',
       {
         method: 'POST',
@@ -139,7 +93,7 @@ export default function FinancesPage() {
       description: result.data.data.description,
       amount: result.data.data.amount,
       date: new Date(result.data.data.date).toLocaleDateString(),
-      status: result.data.data.status,
+      status: result.data.data.amount >= 0 ? 'Deposit' : 'Withdrawal',
     };
     setTransactions([newTransaction, ...transactions]);
     toast({ title: "Transaction added successfully!" });
@@ -148,16 +102,20 @@ export default function FinancesPage() {
   };
   
   const handleManualAdd = (values: z.infer<typeof manualFormSchema>) => {
+    const normalizedAmount =
+      values.status === 'Deposit'
+        ? Math.abs(values.amount)
+        : -Math.abs(values.amount);
     const newTransaction: Transaction = {
       id: Date.now().toString(),
       description: values.description,
-      amount: values.amount,
+      amount: normalizedAmount,
       date: values.date ? new Date(values.date).toLocaleDateString() : new Date().toLocaleDateString(),
       status: values.status,
     };
     setTransactions([newTransaction, ...transactions]);
     toast({ title: "Transaction added manually!" });
-    manualForm.reset({ description: "", amount: 0, status: "Paid" });
+    manualForm.reset({ description: "", amount: 0, status: "Deposit" });
   };
 
   const totalIncome = transactions
@@ -168,12 +126,12 @@ export default function FinancesPage() {
     .reduce((acc, t) => acc + t.amount, 0);
   const netBalance = totalIncome + totalExpenses;
 
-  if (role !== 'President' && role !== 'Admin') {
+  if (role !== 'Admin') {
     return (
         <div className="flex items-center justify-center h-full">
             <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
-                <CardDescription>This page is only available to club Presidents and Admins.</CardDescription>
+                <CardDescription>This page is only available to group admins.</CardDescription>
             </Card>
         </div>
     )
@@ -217,23 +175,9 @@ export default function FinancesPage() {
                     <div>
                     <CardTitle>Transaction History</CardTitle>
                     <CardDescription>
-                        Track your club's income and expenses. Import from RevTrak or add manually.
+                        Track your club's income and expenses.
                     </CardDescription>
                     </div>
-                    {(role === 'President' || role === 'Admin') && (
-                        <div className="flex gap-2">
-                            <Button variant="outline" onClick={() => importFileRef.current?.click()}>
-                                <Upload className="mr-2"/> Import from RevTrak
-                            </Button>
-                            <Input 
-                                type="file" 
-                                ref={importFileRef}
-                                className="hidden"
-                                accept=".csv"
-                                onChange={handleFileImport}
-                            />
-                        </div>
-                    )}
                 </CardHeader>
                 <CardContent>
                 {loading ? <p>Loading...</p> : 
@@ -265,11 +209,11 @@ export default function FinancesPage() {
                         <TableCell>
                             <Badge
                             variant={
-                                transaction.status === "Paid" ? "default" : "secondary"
+                                transaction.status === "Deposit" ? "default" : "secondary"
                             }
                             className={cn(
-                                transaction.status === "Paid" && "bg-green-100 text-green-800",
-                                transaction.status === "Pending" && "bg-yellow-100 text-yellow-800"
+                                transaction.status === "Deposit" && "bg-green-100 text-green-800",
+                                transaction.status === "Withdrawal" && "bg-red-100 text-red-800"
                             )}
                             >
                             {transaction.status}
@@ -289,7 +233,7 @@ export default function FinancesPage() {
             </Card>
         </div>
         <div className="md:col-span-1">
-             {(role === 'President' || role === 'Admin') && (
+             {role === 'Admin' && (
              <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -356,15 +300,17 @@ export default function FinancesPage() {
                           <FormItem>
                             <FormLabel>Status</FormLabel>
                             <FormControl>
-                              <select
-                                className="w-full rounded-md border px-2 py-2"
-                                value={field.value}
-                                onChange={e => field.onChange(e.target.value as any)}
-                              >
-                                <option value="Paid">Paid</option>
-                                <option value="Pending">Pending</option>
-                              </select>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select transaction type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Deposit">Deposit</SelectItem>
+                                  <SelectItem value="Withdrawal">Withdrawal</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </FormControl>
+                            <FormMessage />
                           </FormItem>
                         )}
                       />
@@ -386,6 +332,7 @@ export default function FinancesPage() {
                               <FormControl>
                                 <Textarea
                                   placeholder="e.g., 'Received $50 for member dues yesterday' or 'Spent $25 on pizza for the meeting last Friday, it has been paid.'"
+                                  
                                   className="min-h-[150px]"
                                   {...field}
                                 />

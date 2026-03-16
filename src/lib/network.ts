@@ -85,12 +85,22 @@ export async function safeFetchJson<T>(
       });
       if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
+        let message = response.status >= 500
+          ? 'Server error. Please try again.'
+          : 'Request failed. Please try again.';
+        try {
+          const parsed = JSON.parse(bodyText) as { error?: { message?: string }; message?: string };
+          if (parsed?.error?.message) {
+            message = parsed.error.message;
+          } else if (parsed?.message) {
+            message = parsed.message;
+          }
+        } catch {
+          // ignore JSON parse errors
+        }
         return err({
           code: 'NETWORK_HTTP_ERROR',
-          message:
-            response.status >= 500
-              ? 'Server error. Please try again.'
-              : 'Request failed. Please try again.',
+          message,
           retryable: response.status >= 500,
           detail: bodyText.slice(0, 400),
           source: 'network',
@@ -126,4 +136,3 @@ export async function safeFetchJson<T>(
     source: 'network',
   });
 }
-

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser } from "@/lib/data-hooks";
+import { useToast } from "@/hooks/use-toast";
 
 type LegacyClub = {
   id: string;
@@ -22,6 +23,7 @@ export function ImportLocalData() {
   const [isImporting, setIsImporting] = useState(false);
   const promptOpenRef = useRef(false);
   const promptKeyRef = useRef<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
@@ -55,34 +57,11 @@ export function ImportLocalData() {
 
   const handleImport = async () => {
     setIsImporting(true);
-    for (const club of legacyClubs) {
-      const clubDataString = localStorage.getItem(`club_${club.id}`);
-      const clubData = clubDataString ? JSON.parse(clubDataString) : {};
-      const response = await fetch("/api/orgs/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: club.name,
-          joinCode: club.joinCode,
-          category: club.category,
-          description: club.description,
-          meetingTime: club.meetingTime,
-          logoUrl: clubData.logo || club.logo || "",
-        }),
-      }).then(res => res.json());
-      if (!response?.ok) {
-        console.error("Import org failed", response?.error);
-        continue;
-      }
-      await fetch("/api/org-state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: response.orgId, data: clubData }),
-      });
-    }
-    if (promptKeyRef.current) {
-      localStorage.setItem(promptKeyRef.current, "1");
-    }
+    toast({
+      title: "Import paused",
+      description: "Create a new organization first, then import.",
+      variant: "destructive",
+    });
     setIsImporting(false);
     setOpen(false);
   };

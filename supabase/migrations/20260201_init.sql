@@ -373,7 +373,7 @@ begin
 end;
 $$;
 
-create or replace function public.join_org(join_code text)
+create or replace function public.join_org(p_join_code text)
 returns uuid
 language plpgsql
 security definer
@@ -382,7 +382,9 @@ as $$
 declare
   target_org_id uuid;
 begin
-  select id into target_org_id from public.orgs where orgs.join_code = join_code;
+  select id into target_org_id
+  from public.orgs
+  where orgs.join_code = p_join_code;
   if target_org_id is null then
     raise exception 'Org not found';
   end if;

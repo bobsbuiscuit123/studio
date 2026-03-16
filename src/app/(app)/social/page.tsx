@@ -45,14 +45,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateSocialMediaPost, GenerateSocialMediaPostOutput } from "@/ai/flows/generate-social-media-post";
+import type { GenerateSocialMediaPostOutput } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { notifyOrgAiUsageChanged, useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { resizeImage } from "@/lib/image-resizer";
+import { safeFetchJson } from "@/lib/network";
 
 const MAX_SOCIAL_POSTS = 5;
 
@@ -195,25 +196,33 @@ export default function SocialPage() {
         photoDataUris = await Promise.all(values.photos.map(file => resizeImage(file)));
       }
       
-      const result = await generateSocialMediaPost({
-        prompt: values.prompt,
-        photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
-      });
+      const result = await safeFetchJson<{ ok: true; data: GenerateSocialMediaPostOutput; error?: { message?: string } }>(
+        '/api/social/ai',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: values.prompt,
+            photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
+          }),
+        }
+      );
       if (!result.ok) {
         toast({
           title: "Error",
-          description: result.error.message || "Failed to generate social media post.",
+          description: result.error?.message || "Failed to generate social media post.",
           variant: "destructive",
         });
         return;
       }
 
+      notifyOrgAiUsageChanged();
       setPostToReview({
-        ...result.data,
-        images: result.data.images || [],
-        dataAiHint: "tech club",
+        ...result.data.data,
+        images: result.data.data.images || [],
+        dataAiHint: "tech group",
       });
-      postForm.reset({ title: result.data.title, content: result.data.postText });
+      postForm.reset({ title: result.data.data.title, content: result.data.data.postText });
     } catch (error) {
       toast({
         title: "Error",
@@ -280,7 +289,7 @@ export default function SocialPage() {
                         <FormLabel>Prompt</FormLabel>
                         <FormControl>
                             <Textarea 
-                            placeholder="e.g., Create a post for the Innovators Club about our next meeting on web development. Target students interested in tech and ask them to join our Discord." 
+                            placeholder="e.g., Create a post for the Innovators Group about our next meeting on web development. Target students interested in tech and ask them to join our Discord." 
                             className="min-h-[150px]"
                             {...field} 
                             />

@@ -13,7 +13,7 @@ try {
 } catch {
   supabaseOrigin = '';
 }
-const csp = [
+const cspDirectives = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
@@ -22,10 +22,13 @@ const csp = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ''}`,
-  `connect-src 'self' https://*.sentry.io${supabaseOrigin ? ` ${supabaseOrigin}` : ''}`,
+  `connect-src 'self' https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com${supabaseOrigin ? ` ${supabaseOrigin}` : ''}`,
   "form-action 'self'",
-  'upgrade-insecure-requests',
-].join('; ');
+];
+if (!isDev) {
+  cspDirectives.push('upgrade-insecure-requests');
+}
+const csp = cspDirectives.join('; ');
 
 const nextConfig: NextConfig = {
   /* config options here */

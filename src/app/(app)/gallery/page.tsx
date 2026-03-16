@@ -119,7 +119,7 @@ export default function GalleryPage() {
             author: user.name,
             date: new Date().toLocaleDateString(),
             likes: 0,
-            liked: false,
+            likedBy: [],
             status: newStatus,
             read: !canEditContent,
         }));
@@ -148,13 +148,18 @@ export default function GalleryPage() {
   };
 
   const handleLike = (imageId: number) => {
+    if (!user?.email) return;
     const updatedImages = images.map((image) => {
       if (image.id === imageId) {
-        const newLikedState = !image.liked;
+        const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
+        const newLikedState = !likedBy.includes(user.email);
+        const nextLikedBy = newLikedState
+          ? [...likedBy, user.email]
+          : likedBy.filter(email => email !== user.email);
         return {
           ...image,
-          likes: newLikedState ? image.likes + 1 : image.likes - 1,
-          liked: newLikedState,
+          likes: nextLikedBy.length,
+          likedBy: nextLikedBy,
         };
       }
       return image;
@@ -301,12 +306,16 @@ export default function GalleryPage() {
       )}
 
       <div>
-        <h2 className="text-2xl font-bold mb-4">Club Gallery</h2>
+        <h2 className="text-2xl font-bold mb-4">Group Gallery</h2>
         {loading ? (
           <p>Loading gallery...</p>
         ) : approvedImages.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {approvedImages.map((image) => (
+            {approvedImages.map((image) => {
+              const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
+              const likedByCurrentUser = Boolean(user?.email && likedBy.includes(user.email));
+              const likeCount = likedBy.length > 0 ? likedBy.length : Math.max(0, image.likes || 0);
+              return (
               <Card key={image.id} className="overflow-hidden flex flex-col">
                 <CardContent className="p-0">
                   <Image
@@ -324,12 +333,12 @@ export default function GalleryPage() {
                   </p>
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
                     <Button
-                      variant={image.liked ? "default" : "outline"}
+                      variant={likedByCurrentUser ? "default" : "outline"}
                       size="sm"
                       onClick={() => handleLike(image.id)}
                       className="flex items-center gap-2"
                     >
-                      <ThumbsUp className="h-4 w-4" /> {image.likes}
+                      <ThumbsUp className="h-4 w-4" /> {likeCount}
                     </Button>
                      <div className="flex gap-1">
                         <Button variant="outline" size="icon" onClick={() => handleDownload(image.src, `gallery-image-${image.id}.webp`)}>
@@ -360,7 +369,7 @@ export default function GalleryPage() {
                   </div>
                 </div>
               </Card>
-            ))}
+            )})}
           </div>
         ) : (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">

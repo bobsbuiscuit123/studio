@@ -15,8 +15,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { generateMeetingSlides } from "@/ai/flows/generate-meeting-slides";
-import { useCurrentUserRole, usePresentations } from "@/lib/data-hooks";
+import type { GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
+import { notifyOrgAiUsageChanged, useCurrentUserRole, usePresentations } from "@/lib/data-hooks";
+import { safeFetchJson } from "@/lib/network";
 import {
   Carousel,
   CarouselContent,
@@ -127,20 +128,28 @@ export default function SlidesPage() {
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsLoading(true);
     setActivePresentation(null);
-    const result = await generateMeetingSlides(values);
+    const result = await safeFetchJson<{ ok: true; data: GenerateMeetingSlidesOutput; error?: { message?: string } }>(
+      '/api/slides/ai',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      }
+    );
     if (!result.ok) {
       toast({
         title: "Error",
-        description: result.error.message || "Failed to generate slides.",
+        description: result.error?.message || "Failed to generate slides.",
         variant: "destructive",
       });
       setIsLoading(false);
       return;
     }
+    notifyOrgAiUsageChanged();
     const newPresentation: PresentationType = {
         id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
         prompt: values.prompt,
-        slides: result.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
+        slides: result.data.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
         createdAt: new Date().toLocaleDateString(),
     }
     setPresentations([newPresentation, ...presentations]);
@@ -222,7 +231,7 @@ export default function SlidesPage() {
                           <FormLabel>Prompt</FormLabel>
                           <FormControl>
                             <Textarea 
-                              placeholder="e.g., Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."
+                              placeholder="e.g., Create slides for the Innovators Group meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."
                               className="min-h-[150px]"
                               {...field} 
                             />

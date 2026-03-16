@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'ClubHub AI',
-    short_name: 'ClubHub',
-    description: 'Club management with AI assistance.',
+    name: 'CASPO',
+    short_name: 'CASPO',
+    description: 'Group management with AI assistance.',
     start_url: '/',
     display: 'standalone',
     background_color: '#F4F0F8',
@@ -18,4 +18,5 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
   };
 }
+
 

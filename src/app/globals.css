@@ -64,8 +64,14 @@
   * {
     @apply border-border;
   }
+  html {
+    height: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
+    min-height: 100%;
+    overscroll-behavior-y: none;
   }
 }
 
@@ -101,6 +107,14 @@
 }
 h2, h3, h4, h5, h6 {
     color: black !important;
+}
+
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* Hide Next.js dev issue indicator overlay in the UI */

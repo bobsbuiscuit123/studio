@@ -1,0 +1,137 @@
+'use client';
+
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+
+const ONLINE_PROBE_URL = '/icon.svg';
+
+const getInitialOnline = () => {
+  if (typeof navigator === 'undefined') return true;
+  return navigator.onLine ?? true;
+};
+
+const probeOnline = async () => {
+  try {
+    await fetch(ONLINE_PROBE_URL, { method: 'HEAD', cache: 'no-store' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const confirmOnline = async () => {
+  if (typeof navigator === 'undefined') return true;
+  if (navigator.onLine) return true;
+  return probeOnline();
+};
+
+export function NetworkStatusBanner() {
+  const { toast } = useToast();
+  const [isOnline, setIsOnline] = useState(getInitialOnline);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncOnline = async () => {
+      const online = await confirmOnline();
+      if (active) setIsOnline(online);
+    };
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast({
+        title: 'Back online',
+        description: 'Connection restored. You can continue where you left off.',
+      });
+    };
+    const handleOffline = async () => {
+      const online = await confirmOnline();
+      if (!active) return;
+      if (online) {
+        setIsOnline(true);
+        return;
+      }
+      setIsOnline(false);
+      toast({
+        title: 'You are offline',
+        description: 'Some features may be unavailable until you reconnect.',
+        variant: 'destructive',
+      });
+    };
+
+    syncOnline();
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      active = false;
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [toast]);
+
+  if (isOnline) return null;
+
+  return (
+    <div
+      className="fixed inset-x-0 top-0 z-50 flex items-center justify-center bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 shadow-md"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.5rem)' }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        <span>You&apos;re offline. Changes may not save.</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => window.location.reload()}
+        >
+          Retry
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function OfflineCallout() {
+  const [isOnline, setIsOnline] = useState(getInitialOnline);
+
+  useEffect(() => {
+    let active = true;
+
+    const syncOnline = async () => {
+      const online = await confirmOnline();
+      if (active) setIsOnline(online);
+    };
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = async () => {
+      const online = await confirmOnline();
+      if (active) setIsOnline(online);
+    };
+
+    syncOnline();
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      active = false;
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (isOnline) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div className="font-semibold">No connection</div>
+      <div className="mt-1 text-amber-800">
+        You&apos;re offline. We&apos;ll keep showing cached data, but updates won&apos;t sync until
+        you reconnect.
+      </div>
+    </div>
+  );
+}

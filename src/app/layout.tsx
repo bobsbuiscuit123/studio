@@ -4,11 +4,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { ErrorReporter } from "@/components/error-reporter";
 import { validateServerEnv } from "@/lib/env";
 import { PwaRegister } from "@/components/pwa-register";
+import { NetworkStatusBanner } from "@/components/network-status";
+import { PolicyViolationToaster } from "@/components/policy-violation-toaster";
+import { SecurityGuard } from "@/components/security-guard";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ClubHub AI",
-  description: "The ultimate club management tool, powered by AI.",
+  title: "CASPO",
+  description: "The ultimate group management tool, powered by AI.",
   icons: {
     icon: "/icon.svg",
   },
@@ -29,10 +32,14 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
         <ErrorReporter />
+        <SecurityGuard />
         <PwaRegister />
+        <NetworkStatusBanner />
+        <PolicyViolationToaster />
         {children}
         <Toaster />
       </body>
     </html>
   );
 }
+

@@ -1,10 +1,7 @@
 
-
 'use client';
 
-
-
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useForm } from 'react-hook-form';
 
@@ -21,10 +18,6 @@ import {
   AlertCircle,
   MessageSquare,
   RefreshCw,
-  Paperclip,
-
-  FileIcon,
-
   X,
 
 } from 'lucide-react';
@@ -58,9 +51,12 @@ import {
   usePresentations,
   useSocialPosts,
   useTransactions,
+  notifyOrgAiUsageChanged,
 } from '@/lib/data-hooks';
 import type { Attachment, ClubForm, FormQuestion, GalleryImage } from '@/lib/mock-data';
 import type { Result } from '@/lib/result';
+import { safeFetchJson } from '@/lib/network';
+import { getSelectedOrgId } from '@/lib/selection';
 import {
   planTasksAction,
   resolveFollowUpAnswersAction,
@@ -72,6 +68,7 @@ import {
   clearAssistantPrefill,
   getAssistantPrefill,
 } from '@/lib/assistant/prefill';
+import { useGroupUserStateSection } from '@/lib/group-user-state';
 
 
 type TaskType =
@@ -95,12 +92,39 @@ type PendingAttachment = Attachment & {
 
 };
 
+type FollowUpAnswer = {
+  question: string;
+  answer: string;
+};
+
+type FollowUpResolution = {
+  answers: FollowUpAnswer[];
+  missing: string[];
+};
+
+type AssistantReplyPayload = {
+  response: string;
+};
+
+type PlannerPayload = {
+  tasks: PlannedTaskInput[];
+  summary: string;
+};
+
+type AnnouncementRecipientsPayload = {
+  mode: 'all' | 'specific';
+  recipients: string[];
+};
+
 const getResultData = <T,>(
   result: Result<T>,
-  onError?: (message: string) => void
+  onError?: (message: string, error?: Result<T> extends { ok: false; error: infer E } ? E : unknown) => void
 ): T | null => {
-  if (result.ok) return result.data;
-  if (onError) onError(result.error.message);
+  if (result.ok) {
+    notifyOrgAiUsageChanged(getSelectedOrgId());
+    return result.data;
+  }
+  if (onError) onError(result.error.message, result.error);
   return null;
 };
 
@@ -178,6 +202,166 @@ type RecentForm = {
   createdAt: string;
 };
 
+type AssistantStoredState = {
+  history: ChatMessage[];
+  recentForms: RecentForm[];
+};
+
+const sanitizePersistedAssistantHistory = (messages: ChatMessage[]): ChatMessage[] =>
+  messages.map(message => {
+    if (!isPlanMessage(message)) return message;
+    return {
+      ...message,
+      plan: {
+        ...message.plan,
+        tasks: message.plan.tasks.map(task => {
+          const { attachments, ...rest } = task as PlannedTask;
+          return rest;
+        }),
+      },
+    };
+  });
+
+const buildPersistedAssistantState = (
+  messages: ChatMessage[],
+  recentForms: RecentForm[],
+  recentFormsLimit: number
+): AssistantStoredState => ({
+  history: sanitizePersistedAssistantHistory(messages),
+  recentForms: recentForms.slice(0, recentFormsLimit),
+});
+
+const stableSerializeAssistantState = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableSerializeAssistantState(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerializeAssistantState(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
+  if (!isObjectRecord(value) || typeof value.id !== 'string') return null;
+  return {
+    id: value.id,
+    type: typeof value.type === 'string' ? (value.type as TaskType) : 'other',
+    prompt: typeof value.prompt === 'string' ? value.prompt : '',
+    followUpQuestions: Array.isArray(value.followUpQuestions)
+      ? value.followUpQuestions.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    recipients: Array.isArray(value.recipients)
+      ? value.recipients.filter((item): item is string => typeof item === 'string')
+      : undefined,
+    clarification: typeof value.clarification === 'string' ? value.clarification : undefined,
+    draft: typeof value.draft === 'string' ? value.draft : undefined,
+    draftSource: typeof value.draftSource === 'string' ? value.draftSource : undefined,
+    draftTyping:
+      isObjectRecord(value.draftTyping) &&
+      typeof value.draftTyping.startedAt === 'number' &&
+      typeof value.draftTyping.fullText === 'string'
+        ? {
+            startedAt: value.draftTyping.startedAt,
+            fullText: value.draftTyping.fullText,
+          }
+        : undefined,
+    draftingStartedAt:
+      typeof value.draftingStartedAt === 'number' ? value.draftingStartedAt : undefined,
+    draftError: typeof value.draftError === 'string' ? value.draftError : undefined,
+    isDrafting: typeof value.isDrafting === 'boolean' ? value.isDrafting : undefined,
+    lastSentDraft: typeof value.lastSentDraft === 'string' ? value.lastSentDraft : undefined,
+    attachments: Array.isArray(value.attachments)
+      ? (value.attachments as PendingAttachment[])
+      : undefined,
+    linkedFormId: typeof value.linkedFormId === 'string' ? value.linkedFormId : undefined,
+    linkedFormTaskId:
+      typeof value.linkedFormTaskId === 'string' ? value.linkedFormTaskId : undefined,
+    status:
+      value.status === 'sent' || value.status === 'error' || value.status === 'pending'
+        ? value.status
+        : 'pending',
+    result: value.result,
+    draftResult: value.draftResult,
+    error: typeof value.error === 'string' ? value.error : undefined,
+  };
+};
+
+const sanitizeChatMessage = (value: unknown): ChatMessage | null => {
+  if (!isObjectRecord(value) || typeof value.id !== 'string' || typeof value.sender !== 'string') {
+    return null;
+  }
+
+  if (value.sender === 'user') {
+    return typeof value.text === 'string'
+      ? { id: value.id, sender: 'user', text: value.text }
+      : null;
+  }
+
+  if (value.sender !== 'assistant') return null;
+
+  if (typeof value.text === 'string') {
+    return {
+      id: value.id,
+      sender: 'assistant',
+      text: value.text,
+      startedAt: typeof value.startedAt === 'number' ? value.startedAt : undefined,
+    };
+  }
+
+  if (isObjectRecord(value.followUp) && Array.isArray(value.followUp.questions)) {
+    return {
+      id: value.id,
+      sender: 'assistant',
+      followUp: {
+        questions: value.followUp.questions.filter((item): item is string => typeof item === 'string'),
+        startedAt:
+          typeof value.followUp.startedAt === 'number' ? value.followUp.startedAt : undefined,
+      },
+    };
+  }
+
+  if (isObjectRecord(value.plan)) {
+    const tasks = Array.isArray(value.plan.tasks)
+      ? value.plan.tasks
+          .map(sanitizePlannedTask)
+          .filter((item): item is PlannedTask => Boolean(item))
+      : [];
+    return {
+      id: value.id,
+      sender: 'assistant',
+      plan: {
+        summary: typeof value.plan.summary === 'string' ? value.plan.summary : '',
+        tasks,
+        startedAt: typeof value.plan.startedAt === 'number' ? value.plan.startedAt : undefined,
+      },
+    };
+  }
+
+  return null;
+};
+
+const sanitizeRecentForms = (value: unknown, limit: number): RecentForm[] =>
+  Array.isArray(value)
+    ? value
+        .filter(isObjectRecord)
+        .map(item => ({
+          id: typeof item.id === 'string' ? item.id : '',
+          title: typeof item.title === 'string' ? item.title : 'Untitled form',
+          description: typeof item.description === 'string' ? item.description : undefined,
+          createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
+        }))
+        .filter(item => item.id)
+        .slice(0, limit)
+    : [];
+
 const isPlanMessage = (message: ChatMessage): message is AssistantPlanMessage =>
   message.sender === 'assistant' && 'plan' in message;
 
@@ -190,6 +374,32 @@ const isAssistantTextMessage = (
   message: ChatMessage
 ): message is AssistantTextMessage =>
   message.sender === 'assistant' && 'text' in message;
+
+const buildAnswerDetails = (
+  answers: Record<string, string> | undefined,
+  questions: FormQuestion[]
+) => {
+  const output: Record<
+    string,
+    { value: string; attachmentDataUri?: string; attachmentType?: string }
+  > = {};
+  const answerEntries = answers ?? {};
+  questions.forEach(question => {
+    const raw = answerEntries[question.id];
+    if (!raw) return;
+    if (typeof raw === 'string' && raw.startsWith('data:')) {
+      const type = raw.slice(5, raw.indexOf(';')) || 'file';
+      output[question.id] = {
+        value: 'Attachment provided',
+        attachmentDataUri: raw,
+        attachmentType: type,
+      };
+      return;
+    }
+    output[question.id] = { value: raw };
+  });
+  return output;
+};
 
 const formSchema = z.object({
   query: z
@@ -385,7 +595,9 @@ function AssistantPageInner() {
   const [showAddPeople, setShowAddPeople] = useState<Record<string, boolean>>({});
   const [recentForms, setRecentForms] = useState<RecentForm[]>([]);
   const [formTaskIdMap, setFormTaskIdMap] = useState<Record<string, string>>({});
+  const [aiBlockedReason, setAiBlockedReason] = useState<'limit' | 'billing' | null>(null);
   const { toast } = useToast();
+  const lastAssistantPersistedRef = useRef('');
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
 
@@ -410,7 +622,7 @@ function AssistantPageInner() {
   const searchParams = useSearchParams();
   const isDemoAssistantRoute =
     pathname === '/demo/app/assistant' || pathname.startsWith('/demo/app/assistant/');
-  const appBrandName = isDemoAssistantRoute ? 'CASPO' : 'ClubHub';
+  const appBrandName = isDemoAssistantRoute ? 'CASPO' : 'CASPO';
   const didApplyPrefillRef = useRef(false);
   const announcements = useAnnouncements();
   const forms = useForms();
@@ -418,6 +630,68 @@ function AssistantPageInner() {
   const galleryImages = useGalleryImages();
   const messagesData = useMessages();
   const groupChats = useGroupChats();
+
+  const handleAiError = (
+    message: string,
+    error?: unknown
+  ) => {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? (error as { code?: string }).code
+        : undefined;
+    if (code === 'DAILY_LIMIT_REACHED') {
+      setAiBlockedReason('limit');
+      toast({
+        title: 'Daily limit reached',
+        description: 'Your AI credits are used up for today.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (code === 'BILLING_INACTIVE') {
+      setAiBlockedReason('billing');
+      toast({
+        title: 'Billing issue',
+        description: 'Ask an admin to update the subscription.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    toast({
+      title: 'AI unavailable',
+      description: message,
+      variant: 'destructive',
+    });
+  };
+
+  useEffect(() => {
+    const orgId = getSelectedOrgId();
+    if (!orgId) return;
+    let cancelled = false;
+    const loadStatus = async () => {
+      const statusResult = await safeFetchJson<{ ok: true; data: { status: string; creditsUsedToday: number; dailyCreditPerUser: number } }>(
+        `/api/orgs/${orgId}/status`,
+        { method: 'GET' }
+      );
+      if (cancelled || !statusResult.ok) return;
+      const statusData = statusResult.data.data;
+      const status = statusData.status;
+      const isActive = status === 'active' || status === 'trialing';
+      if (!isActive) {
+        setAiBlockedReason('billing');
+        return;
+      }
+      if (statusData.creditsUsedToday >= statusData.dailyCreditPerUser) {
+        setAiBlockedReason('limit');
+        return;
+      }
+      setAiBlockedReason(null);
+    };
+    loadStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
   const members = useMembers();
   const socialPosts = useSocialPosts();
   const transactions = useTransactions();
@@ -443,10 +717,17 @@ function AssistantPageInner() {
     clearAssistantPrefill();
   }, [form, searchParams]);
 
-  const STORAGE_KEY = 'assistantChatHistory';
-  const RECENT_FORMS_KEY = 'assistantRecentForms';
-  const storageSuffix = user?.email ? user.email.toLowerCase() : 'guest';
-  const historyStorageKey = `${STORAGE_KEY}:${storageSuffix}`;
+  const {
+    data: assistantState,
+    updateData: updateAssistantState,
+    loading: assistantStateLoading,
+    orgId: assistantOrgId,
+    groupId: assistantGroupId,
+  } =
+    useGroupUserStateSection<AssistantStoredState>('assistant', {
+      history: [],
+      recentForms: [],
+    });
   const RECENT_MESSAGES_LIMIT = 3;
   const RECENT_FORMS_LIMIT = 3;
 
@@ -639,27 +920,31 @@ const buildFastPlan = (
 
     const matchAny = (patterns: RegExp[]) => patterns.some(pattern => pattern.test(lower));
 
-    const type: TaskType | null = matchAny([
-      /\bannouncement\b/,
-      /\bannounce\b/,
-      /\bremind\b/,
-    ])
-      ? 'announcement'
-      : matchAny([/\bmessage\b/, /\btext\b/, /\bdm\b/, /\bchat\b/])
-        ? 'messages'
-        : matchAny([/\bemail\b/])
-          ? 'email'
-          : matchAny([/\bcalendar\b/, /\bevent\b/, /\bmeeting\b/, /\bschedule\b/])
-            ? 'calendar'
-            : matchAny([/\bform\b/, /\bsurvey\b/])
-              ? 'form'
-              : matchAny([/\bgallery\b/, /\bphoto\b/, /\bimage\b/, /\bupload\b/])
-                ? 'gallery'
-                : matchAny([/\btransaction\b/, /\bexpense\b/, /\bpayment\b/, /\bcharge\b/])
-                  ? 'transaction'
-                  : matchAny([/\bsocial\b/, /\bpost\b/])
-                    ? 'social'
-                    : null;
+    const typeMatches: { type: TaskType; matched: boolean }[] = [
+      {
+        type: 'announcement',
+        matched: matchAny([/\bannouncement\b/, /\bannounce\b/, /\bremind\b/]),
+      },
+      { type: 'messages', matched: matchAny([/\bmessage\b/, /\btext\b/, /\bdm\b/, /\bchat\b/]) },
+      { type: 'email', matched: matchAny([/\bemail\b/]) },
+      {
+        type: 'calendar',
+        matched: matchAny([/\bcalendar\b/, /\bevent\b/, /\bmeeting\b/, /\bschedule\b/]),
+      },
+      { type: 'form', matched: matchAny([/\bform\b/, /\bsurvey\b/]) },
+      {
+        type: 'gallery',
+        matched: matchAny([/\bgallery\b/, /\bphoto\b/, /\bimage\b/, /\bupload\b/]),
+      },
+      {
+        type: 'transaction',
+        matched: matchAny([/\btransaction\b/, /\bexpense\b/, /\bpayment\b/, /\bcharge\b/]),
+      },
+      { type: 'social', matched: matchAny([/\bsocial\b/, /\bpost\b/]) },
+    ];
+    const matchedTypes = typeMatches.filter(item => item.matched).map(item => item.type);
+    if (matchedTypes.length > 1) return null;
+    const type: TaskType | null = matchedTypes[0] ?? null;
 
     if (!type) return null;
 
@@ -917,7 +1202,16 @@ const buildFastPlan = (
     const memberNameByEmail = new Map(
       memberList.map(member => [member.email, member.name])
     );
-    return memberNameByEmail.get(value) || value;
+    const fromMembers = memberNameByEmail.get(value);
+    if (fromMembers) return fromMembers;
+    const emailMatch = value.match(/^([^@]+)@/);
+    if (!emailMatch) return value;
+    const base = emailMatch[1].replace(/[._-]+/g, ' ');
+    return base
+      .split(' ')
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
   };
 
   const isAssistantMessageAnimating = (message: AssistantPlanMessage) => {
@@ -1000,78 +1294,58 @@ const buildFastPlan = (
 
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = localStorage.getItem(historyStorageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setMessages(parsed);
-        }
-      }
-      setHasLoadedHistory(true);
-    } catch (error) {
-      console.error('Failed to load assistant chat history', error);
-      setHasLoadedHistory(true);
-    }
-  }, [historyStorageKey]);
+    if (assistantStateLoading || !assistantOrgId || !assistantGroupId) return;
+    const nextHistory = Array.isArray(assistantState.history)
+      ? assistantState.history
+          .map(sanitizeChatMessage)
+          .filter((item): item is ChatMessage => Boolean(item))
+      : [];
+    const nextRecentForms = sanitizeRecentForms(assistantState.recentForms, RECENT_FORMS_LIMIT);
+    lastAssistantPersistedRef.current = stableSerializeAssistantState(
+      buildPersistedAssistantState(nextHistory, nextRecentForms, RECENT_FORMS_LIMIT)
+    );
+    setMessages(prev =>
+      stableSerializeAssistantState(prev) === stableSerializeAssistantState(nextHistory)
+        ? prev
+        : nextHistory
+    );
+    setRecentForms(prev =>
+      stableSerializeAssistantState(prev) === stableSerializeAssistantState(nextRecentForms)
+        ? prev
+        : nextRecentForms
+    );
+    setHasLoadedHistory(true);
+  }, [
+    assistantGroupId,
+    assistantOrgId,
+    assistantState,
+    assistantStateLoading,
+    RECENT_FORMS_LIMIT,
+  ]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const saved = localStorage.getItem(RECENT_FORMS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setRecentForms(
-            parsed
-              .filter(item => item && typeof item.id === 'string')
-              .slice(0, RECENT_FORMS_LIMIT)
-          );
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load assistant recent forms', error);
-    }
-  }, []);
+    if (!hasLoadedHistory) return;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem(
-        RECENT_FORMS_KEY,
-        JSON.stringify(recentForms.slice(0, RECENT_FORMS_LIMIT))
+      const nextPersistedState = buildPersistedAssistantState(
+        messages,
+        recentForms,
+        RECENT_FORMS_LIMIT
       );
-    } catch (error) {
-      console.error('Failed to persist assistant recent forms', error);
-    }
-  }, [recentForms]);
-
-
-  useEffect(() => {
-
-    if (typeof window === 'undefined' || !hasLoadedHistory) return;
-
-    try {
-
-      const safeMessages = messages.map(msg => {
-        if (!isPlanMessage(msg)) return msg;
-        return {
-          ...msg,
-          plan: {
-            ...msg.plan,
-            tasks: msg.plan.tasks.map(task => {
-              const { attachments, ...rest } = task as PlannedTask;
-              return rest;
-            }),
-          },
-        };
-      });
-      localStorage.setItem(historyStorageKey, JSON.stringify(safeMessages));
+      const serializedNextState = stableSerializeAssistantState(nextPersistedState);
+      if (serializedNextState === lastAssistantPersistedRef.current) {
+        return;
+      }
+      lastAssistantPersistedRef.current = serializedNextState;
+      void updateAssistantState(prev => ({
+        ...prev,
+        history: nextPersistedState.history,
+        recentForms: nextPersistedState.recentForms,
+      }));
     } catch (error) {
       console.error('Failed to persist assistant chat history', error);
     }
-  }, [messages, hasLoadedHistory, historyStorageKey]);
+  }, [RECENT_FORMS_LIMIT, messages, recentForms, hasLoadedHistory, updateAssistantState]);
 
 
   useEffect(() => {
@@ -1517,7 +1791,9 @@ const buildFastPlan = (
           values.query
         );
         const response =
-          getResultData(responseResult, message =>
+          getResultData(
+            responseResult as Result<FollowUpResolution>,
+            message =>
             toast({
               title: 'AI unavailable',
               description: message,
@@ -1525,7 +1801,7 @@ const buildFastPlan = (
             })
           ) ?? { answers: [], missing: questionsToResolve };
         const answerMap = new Map(
-          (response.answers || []).map(item => [
+          (response.answers || []).map((item: FollowUpAnswer) => [
             normalizeFollowUpQuestion(item.question),
             item.answer,
           ])
@@ -1552,11 +1828,13 @@ const buildFastPlan = (
           };
         });
         const hydratedTasks = await resolveAnnouncementRecipientsForTasks(updatedTasks);
-        const missingList = Array.isArray(response.missing)
-          ? response.missing.map(item => normalizeFollowUpQuestion(item)).filter(Boolean)
-          : [];
-        const normalizedMissing = missingList.filter(
-          item =>
+          const missingList = Array.isArray(response.missing)
+            ? response.missing
+                .map((item: string) => normalizeFollowUpQuestion(item))
+                .filter(Boolean)
+            : [];
+          const normalizedMissing = missingList.filter(
+          (item: string) =>
             questionsToResolve.includes(item) &&
             !answerMap.has(normalizeFollowUpQuestion(item))
         );
@@ -1603,7 +1881,9 @@ const buildFastPlan = (
                 `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
                 undefined
               );
-              const assistantReply = getResultData(assistantReplyResult);
+              const assistantReply = getResultData(
+                assistantReplyResult as Result<AssistantReplyPayload>
+              );
               if (assistantReply?.response) resolvedSummary = assistantReply.response;
             } catch (error) {
               console.error('Failed to generate post-followup summary', error);
@@ -1641,7 +1921,9 @@ const buildFastPlan = (
               `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
               undefined
             );
-            const assistantReply = getResultData(assistantReplyResult);
+            const assistantReply = getResultData(
+              assistantReplyResult as Result<AssistantReplyPayload>
+            );
             if (assistantReply?.response) {
               resolvedSummary = assistantReply.response;
             }
@@ -1681,13 +1963,12 @@ const buildFastPlan = (
           const appContext = buildAppContextForAssistant();
           const assistantReplyResult = await runAssistantAction(values.query, appContext);
           const assistantReply =
-            getResultData(assistantReplyResult, message =>
-              toast({
-                title: 'AI unavailable',
-                description: message,
-                variant: 'destructive',
-              })
-            ) ?? { response: aiFallbackMessage };
+            getResultData(
+              assistantReplyResult as Result<AssistantReplyPayload>,
+              handleAiError
+            ) ?? {
+              response: aiFallbackMessage,
+            };
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',
@@ -1706,20 +1987,17 @@ const buildFastPlan = (
         }
         const fastPlan = buildFastPlan(values.query, pendingAttachments);
         const contextForPlanner = buildRecentContextForPlanner();
-        const planResult: Result<{
-          tasks: PlannedTaskInput[];
-          summary: string;
-        }> = fastPlan
+        const planResult: Result<PlannerPayload> = fastPlan
           ? { ok: true, data: fastPlan }
-          : await planTasksAction(queryWithAttachments, contextForPlanner);
+          : ((await planTasksAction(
+              queryWithAttachments,
+              contextForPlanner
+            )) as Result<PlannerPayload>);
         const plan =
-          getResultData(planResult, message =>
-            toast({
-              title: 'AI unavailable',
-              description: message,
-              variant: 'destructive',
-            })
-          ) ?? { tasks: [], summary: aiFallbackMessage };
+          getResultData(planResult, handleAiError) ?? {
+            tasks: [],
+            summary: aiFallbackMessage,
+          };
         const normalizedPlan = {
           ...plan,
           tasks: (plan.tasks ?? []).map(task => ({
@@ -1738,13 +2016,12 @@ const buildFastPlan = (
           const appContext = buildAppContextForAssistant();
           const assistantReplyResult = await runAssistantAction(values.query, appContext);
           const assistantReply =
-            getResultData(assistantReplyResult, message =>
-              toast({
-                title: 'AI unavailable',
-                description: message,
-                variant: 'destructive',
-              })
-            ) ?? { response: aiFallbackMessage };
+            getResultData(
+              assistantReplyResult as Result<AssistantReplyPayload>,
+              handleAiError
+            ) ?? {
+              response: aiFallbackMessage,
+            };
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',
@@ -1790,7 +2067,9 @@ const buildFastPlan = (
           const appContext = buildAppContextForAssistant();
           const assistantReplyResult = await runAssistantAction(values.query, appContext);
           const assistantReply =
-            getResultData(assistantReplyResult, message =>
+            getResultData(
+              assistantReplyResult as Result<AssistantReplyPayload>,
+              message =>
               toast({
                 title: 'AI unavailable',
                 description: message,
@@ -1976,11 +2255,13 @@ const buildFastPlan = (
           .join('\n');
         const result = await resolveAnnouncementRecipientsAction(prompt, appContext);
         const data =
-          getResultData(result, message =>
+          getResultData(
+            result as Result<AnnouncementRecipientsPayload>,
+            message =>
             console.warn('Failed to resolve announcement recipients', message)
           ) ?? { mode: 'all', recipients: [] as string[] };
         const recipients = Array.isArray(data.recipients)
-          ? data.recipients.map(item => item.trim()).filter(Boolean)
+          ? data.recipients.map((item: string) => item.trim()).filter(Boolean)
           : [];
         if (data.mode === 'specific' && recipients.length > 0) {
           return { ...task, recipients };
@@ -2371,7 +2652,7 @@ const buildFastPlan = (
     const persistResult = (type: TaskType, result: any) => {
 
       const authorName = user?.name || 'AI Assistant';
-      const authorEmail = user?.email || 'ai@clubhub.local';
+      const authorEmail = user?.email || 'ai@CASPO.local';
       switch (type) {
           case 'announcement': {
             announcements.updateData(prev => {
@@ -2464,7 +2745,7 @@ const buildFastPlan = (
 
               likes: 0,
 
-              liked: false,
+              likedBy: [],
 
               comments: [],
 
@@ -2553,7 +2834,7 @@ const buildFastPlan = (
             author: user.name || 'AI Assistant',
             date: new Date().toLocaleDateString(),
             likes: 0,
-            liked: false,
+            likedBy: [],
             status: 'approved',
             read: false,
           }));
@@ -3078,9 +3359,14 @@ const buildFastPlan = (
                                       ? members.data
                                       : [];
                                     const allEmails = memberList.map(member => member.email);
-                                    const currentRecipients = Array.isArray(task.recipients)
+                                    const rawRecipients = Array.isArray(task.recipients)
                                       ? task.recipients
                                       : allEmails;
+                                    const validRecipients = rawRecipients.filter(email =>
+                                      allEmails.includes(email)
+                                    );
+                                    const currentRecipients =
+                                      validRecipients.length > 0 ? validRecipients : allEmails;
                                     const remainingMembers = memberList.filter(
                                       member => !currentRecipients.includes(member.email)
                                     );
@@ -3328,97 +3614,18 @@ const buildFastPlan = (
 
         >
 
-          {pendingAttachments.length > 0 ? (
-
-            <div className="flex flex-wrap gap-2">
-
-              {pendingAttachments.map((file, index) => (
-
-                <div
-
-                  key={`${file.name}-${index}`}
-
-                  className="flex items-center gap-2 rounded-md bg-muted px-2 py-1 text-xs"
-
-                >
-
-                  <FileIcon className="h-3.5 w-3.5" />
-
-                  <span className="max-w-[220px] truncate">{file.name}</span>
-
-                  <span className="text-muted-foreground">{formatBytes(file.size)}</span>
-
-                  <Button
-
-                    type="button"
-
-                    variant="ghost"
-
-                    size="icon"
-
-                    className="h-5 w-5"
-
-                    onClick={() => removePendingAttachment(index)}
-
-                    disabled={isPlanning}
-
-                  >
-
-                    <X className="h-3.5 w-3.5" />
-
-                  </Button>
-
-                </div>
-
-              ))}
-
-            </div>
-
-          ) : null}
-
-
-
           <div className="flex items-center gap-3">
-
-            <Button
-
-              type="button"
-
-              variant="outline"
-
-              onClick={() => fileInputRef.current?.click()}
-
-              disabled={isPlanning}
-
-              className="shrink-0"
-
-            >
-
-              <Paperclip className="h-4 w-4 mr-2" /> Attach
-
-            </Button>
-
-            <Input
-
-              type="file"
-
-              ref={fileInputRef}
-
-              className="hidden"
-
-              onChange={handleFileChange}
-
-              multiple
-
-            />
-
             <Input
               {...form.register('query')}
               placeholder="Tell the assistant what to do (announcements, forms, calendar, email, social...)"
               autoComplete="off"
-              disabled={isPlanning}
+              disabled={isPlanning || Boolean(aiBlockedReason)}
             />
-            <Button type="submit" disabled={isPlanning} className={AI_SPARKLE}>
+            <Button
+              type="submit"
+              disabled={isPlanning || Boolean(aiBlockedReason)}
+              className={AI_SPARKLE}
+            >
               {isPlanning ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" /> Planning...
@@ -3430,6 +3637,13 @@ const buildFastPlan = (
               )}
             </Button>
           </div>
+          {aiBlockedReason && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+              {aiBlockedReason === 'limit'
+                ? 'Daily limit reached. Try again tomorrow or ask an admin to upgrade your plan.'
+                : 'Billing issue detected. Ask an admin to update the subscription.'}
+            </div>
+          )}
 
         </form>
 
@@ -3441,54 +3655,77 @@ const buildFastPlan = (
 
 }
 
+type AssistantRouteErrorBoundaryProps = {
+  children: React.ReactNode;
+};
+
+type AssistantRouteErrorBoundaryState = {
+  hasError: boolean;
+  retryKey: number;
+};
+
+class AssistantRouteErrorBoundary extends React.Component<
+  AssistantRouteErrorBoundaryProps,
+  AssistantRouteErrorBoundaryState
+> {
+  private hasAutoRetried = false;
+
+  constructor(props: AssistantRouteErrorBoundaryProps) {
+    super(props);
+    this.state = {
+      hasError: false,
+      retryKey: 0,
+    };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error('Assistant route boundary', error);
+    if (!this.hasAutoRetried) {
+      this.hasAutoRetried = true;
+      window.setTimeout(() => {
+        this.setState(prev => ({
+          hasError: false,
+          retryKey: prev.retryKey + 1,
+        }));
+      }, 0);
+    }
+  }
+
+  handleRetry = () => {
+    this.setState(prev => ({
+      hasError: false,
+      retryKey: prev.retryKey + 1,
+    }));
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+          <h1 className="text-2xl font-semibold">Something went wrong</h1>
+          <p className="text-sm text-muted-foreground">
+            Please try again. If the issue persists, restart the app.
+          </p>
+          <Button onClick={this.handleRetry}>Try again</Button>
+        </div>
+      );
+    }
+
+    return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;
+  }
+}
+
 export default function AssistantPage() {
   return (
     <Suspense fallback={<div>Loading assistant...</div>}>
-      <AssistantPageInner />
+      <AssistantRouteErrorBoundary>
+        <AssistantPageInner />
+      </AssistantRouteErrorBoundary>
     </Suspense>
   );
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const buildAnswerDetails = (
-      answers: Record<string, string> | undefined,
-      questions: FormQuestion[]
-    ) => {
-      const output: Record<
-        string,
-        { value: string; attachmentDataUri?: string; attachmentType?: string }
-      > = {};
-      const answerEntries = answers ?? {};
-      questions.forEach(question => {
-        const raw = answerEntries[question.id];
-        if (!raw) return;
-        if (typeof raw === 'string' && raw.startsWith('data:')) {
-          const type = raw.slice(5, raw.indexOf(';')) || 'file';
-          output[question.id] = {
-            value: 'Attachment provided',
-            attachmentDataUri: raw,
-            attachmentType: type,
-          };
-          return;
-        }
-        output[question.id] = { value: raw };
-      });
-      return output;
-    };

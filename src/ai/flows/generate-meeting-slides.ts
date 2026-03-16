@@ -13,7 +13,7 @@ import { type Result } from '@/lib/result';
 import { z } from 'zod';
 
 const GenerateMeetingSlidesInputSchema = z.object({
-  prompt: z.string().describe('A natural language prompt describing the meeting content. For example: "Create slides for the Innovators Club meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."'),
+  prompt: z.string().describe('A natural language prompt describing the meeting content. For example: "Create slides for the Innovators Group meeting on July 26. Key updates are the new project launch and the upcoming hackathon. Action items are to sign up for the hackathon and submit project ideas."'),
 });
 export type GenerateMeetingSlidesInput = z.infer<typeof GenerateMeetingSlidesInputSchema>;
 
@@ -37,7 +37,7 @@ export async function generateMeetingSlides(
     messages: [
       {
         role: 'system',
-        content: `You are an AI assistant designed to generate meeting slides for club presidents.
+        content: `You are an AI assistant designed to generate meeting slides for group presidents.
 Based on the user's prompt, create an array of slides. Each slide should have a title and content formatted in markdown.
 The first slide should be a title slide and the last slide should be a "Q&A" or "Thank you" slide.
 Return ONLY valid JSON matching: { "slides": Array<{ "title": string, "content": string }> }.`,

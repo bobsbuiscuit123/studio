@@ -54,6 +54,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo } from "react";
 import AIInsights from "@/components/officer/ai-insights";
+import { useGroupUserStateSection } from "@/lib/group-user-state";
+import { getUtcDayKey } from "@/lib/day-key";
 
 type ActivityItem = {
   type: string;
@@ -61,6 +63,54 @@ type ActivityItem = {
   date: Date;
   link: string;
   actor: string | null;
+};
+
+type MissedActivitySnapshot = {
+  members: string[];
+  events: string[];
+  rsvps: Record<string, { yes: string[]; no: string[]; maybe: string[] }>;
+  attendees: Record<string, string[]>;
+};
+
+type MissedActivityCache = {
+  contextVersion: string;
+  title: string;
+  bullets: string[];
+  actions: { label: string; href: string }[];
+};
+
+type DashboardStoredState = {
+  missedLastSeenAt: number;
+  missedLastShownDay: string | null;
+  missedSnapshot: MissedActivitySnapshot;
+  missedSummaryCache: MissedActivityCache | null;
+};
+
+const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
+  missedLastSeenAt: 0,
+  missedLastShownDay: null,
+  missedSnapshot: {
+    members: [],
+    events: [],
+    rsvps: {},
+    attendees: {},
+  },
+  missedSummaryCache: null,
+};
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableSerialize(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
 };
 
 const typewriterText = ({
@@ -120,6 +170,9 @@ export default function Dashboard() {
   const [missedDismissed, setMissedDismissed] = React.useState(false);
   const [missedTypingStart, setMissedTypingStart] = React.useState(0);
   const [missedNow, setMissedNow] = React.useState(() => Date.now());
+  const todayDayKey = getUtcDayKey();
+  const { data: dashboardState, updateData: updateDashboardState } =
+    useGroupUserStateSection<DashboardStoredState>("dashboard", DEFAULT_DASHBOARD_STATE);
 
   const hasClub = Boolean(clubId);
   const isAuthLoading = userLoading || roleLoading;
@@ -146,16 +199,18 @@ export default function Dashboard() {
   
   useEffect(() => {
     setMissedDismissed(false);
-  }, [clubId, user?.email]);
+  }, [clubId, todayDayKey, user?.email]);
 
   const dismissMissed = React.useCallback(() => {
     setMissedOpen(false);
     setMissedDismissed(true);
-    if (typeof window !== "undefined" && clubId && user?.email) {
-      const storageKey = `missed_activity_last_seen:${clubId}:${user.email.toLowerCase()}`;
-      localStorage.setItem(storageKey, String(Date.now()));
-    }
-  }, [clubId, user?.email]);
+    const now = Date.now();
+    void updateDashboardState(prev => ({
+      ...prev,
+      missedLastSeenAt: now,
+      missedLastShownDay: getUtcDayKey(new Date(now)),
+    }));
+  }, [updateDashboardState]);
 
   const upcomingEvent = events.length > 0 ? [...events].sort((a,b) => a.date.getTime() - b.date.getTime())[0] : null;
   const upcomingWeekEvents = useMemo(() => {
@@ -449,6 +504,27 @@ export default function Dashboard() {
     user?.email,
   ]);
 
+  const getActionLabel = (link: string) =>
+    link === "/announcements"
+      ? "Announcements"
+      : link === "/calendar"
+      ? "Calendar"
+      : link === "/messages"
+      ? "Messages"
+      : link === "/forms"
+      ? "Forms"
+      : link === "/members"
+      ? "Members"
+      : link === "/gallery"
+      ? "Gallery"
+      : link === "/finances"
+      ? "Finances"
+      : link === "/attendance"
+      ? "Attendance"
+      : link === "/points"
+      ? "Points"
+      : "View";
+
   useEffect(() => {
     if (
       membersLoading ||
@@ -471,39 +547,19 @@ export default function Dashboard() {
     if (missedDismissed) {
       return;
     }
-
-    const storageKey = `missed_activity_last_seen:${clubId}:${user.email.toLowerCase()}`;
-    const snapshotKey = `missed_activity_snapshot:${clubId}:${user.email.toLowerCase()}`;
-    const lastSeenRaw =
-      typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
-    const lastSeen = lastSeenRaw ? Number(lastSeenRaw) : 0;
-    const userEmail = normalizeEmail(user.email);
-
-    let snapshot: {
-      members?: string[];
-      events?: string[];
-      rsvps?: Record<string, { yes: string[]; no: string[]; maybe: string[] }>;
-      attendees?: Record<string, string[]>;
-    } = {};
-
-    if (typeof window !== "undefined") {
-      const rawSnapshot = localStorage.getItem(snapshotKey);
-      if (rawSnapshot) {
-        try {
-          snapshot = JSON.parse(rawSnapshot);
-        } catch {
-          snapshot = {};
-        }
-      }
+    if (dashboardState.missedLastShownDay === todayDayKey) {
+      return;
     }
+
+    const lastSeen = dashboardState.missedLastSeenAt ?? 0;
+    const userEmail = normalizeEmail(user.email);
+    const snapshot = dashboardState.missedSnapshot ?? DEFAULT_DASHBOARD_STATE.missedSnapshot;
 
     const deltaActivities: ActivityItem[] = [];
     const currentMemberEmails = members.map(member =>
       normalizeEmail(member.email)
     );
-    const previousMembers = Array.isArray(snapshot.members)
-      ? snapshot.members
-      : [];
+    const previousMembers = Array.isArray(snapshot.members) ? snapshot.members : [];
     const newMembers = currentMemberEmails.filter(
       email => email && !previousMembers.includes(email) && email !== userEmail
     );
@@ -610,58 +666,74 @@ export default function Dashboard() {
     );
     const unseen = allActivities.filter(item => item.date.getTime() > lastSeen);
 
+    const missedContextVersion = stableSerialize({
+      unseen: unseen.slice(0, 12).map(item => ({
+        type: item.type,
+        title: item.title,
+        at: item.date.toISOString(),
+        link: item.link,
+      })),
+      upcoming: upcomingWeekEvents.slice(0, 5).map(event => ({
+        id: event.id,
+        title: event.title,
+        date: event.date.toISOString(),
+      })),
+      todo: todoItems.slice(0, 5),
+    });
+
     if (unseen.length >= 3 && !missedOpen) {
       setMissedLoading(true);
-      const fallbackBullets = unseen.slice(0, 6).map(item => {
-        return `${item.title} (${item.date.toLocaleDateString()})`;
-      });
-      const fallbackActions = Array.from(new Set(unseen.map(item => item.link)))
-        .slice(0, 3)
-        .map(link => ({
-          href: link,
-          label:
-            link === "/announcements"
-              ? "Announcements"
-              : link === "/calendar"
-              ? "Calendar"
-              : link === "/messages"
-              ? "Messages"
-              : link === "/forms"
-              ? "Forms"
-              : link === "/members"
-              ? "Members"
-              : link === "/gallery"
-              ? "Gallery"
-              : link === "/finances"
-              ? "Finances"
-              : link === "/attendance"
-              ? "Attendance"
-              : link === "/points"
-              ? "Points"
-              : "View",
-        }));
-      setMissedTitle("What you missed");
-      setMissedBullets(fallbackBullets);
-      setMissedActions(fallbackActions);
+      const cachedSummary = dashboardState.missedSummaryCache;
+      const nextSummary =
+        cachedSummary?.contextVersion === missedContextVersion
+          ? cachedSummary
+          : {
+              contextVersion: missedContextVersion,
+              title: "What you missed",
+              bullets: unseen.slice(0, 6).map(item => `${item.title} (${item.date.toLocaleDateString()})`),
+              actions: Array.from(new Set(unseen.map(item => item.link)))
+                .slice(0, 3)
+                .map(link => ({
+                  href: link,
+                  label: getActionLabel(link),
+                })),
+            };
+
+      setMissedTitle(nextSummary.title);
+      setMissedBullets(nextSummary.bullets);
+      setMissedActions(nextSummary.actions);
       setMissedOpen(true);
       setMissedLoading(false);
-    }
 
-    if (typeof window !== "undefined") {
-      localStorage.setItem(storageKey, String(Date.now()));
-      localStorage.setItem(
-        snapshotKey,
-        JSON.stringify({
+      if (cachedSummary?.contextVersion !== missedContextVersion) {
+        void updateDashboardState(prev => ({
+          ...prev,
+          missedSummaryCache: nextSummary,
+          missedSnapshot: {
+            members: currentMemberEmails,
+            events: currentEventIds,
+            rsvps: nextRsvps,
+            attendees: nextAttendees,
+          },
+        }));
+      }
+    } else {
+      void updateDashboardState(prev => ({
+        ...prev,
+        missedSnapshot: {
           members: currentMemberEmails,
           events: currentEventIds,
           rsvps: nextRsvps,
           attendees: nextAttendees,
-        })
-      );
+        },
+      }));
     }
   }, [
     announcementsLoading,
     clubId,
+    dashboardState.missedLastShownDay,
+    dashboardState.missedSnapshot,
+    dashboardState.missedSummaryCache,
     events,
     eventsLoading,
     members,
@@ -675,7 +747,11 @@ export default function Dashboard() {
     recentActivities,
     roleLoading,
     socialPostsLoading,
+    todoItems,
+    todayDayKey,
     transactionsLoading,
+    upcomingWeekEvents,
+    updateDashboardState,
     user?.email,
     userLoading,
   ]);
@@ -708,17 +784,17 @@ export default function Dashboard() {
       <div className="flex flex-col gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>No club selected</CardTitle>
+            <CardTitle>No group selected</CardTitle>
             <CardDescription>
-              Choose a club to view your dashboard, or create/join a new one.
+              Choose a group to view your dashboard, or create/join a new one.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/">Go to club selection</Link>
+              <Link href="/">Go to group selection</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/browse-clubs">Browse clubs</Link>
+              <Link href="/clubs">Your groups</Link>
             </Button>
           </CardContent>
         </Card>

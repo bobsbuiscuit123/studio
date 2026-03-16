@@ -52,7 +52,7 @@ export async function generateClubForm(
     messages: [
       {
         role: 'system',
-        content: `You are a club operations assistant that creates concise forms.
+        content: `You are a group operations assistant that creates concise forms.
 Create a title, optional description, and 1-8 questions based on the user's prompt.
 Use kind values: shortText, single, multi, file.
 Only include options for single or multi questions. Keep options concise (2-6 choices).

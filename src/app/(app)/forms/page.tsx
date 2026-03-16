@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useForm } from "react-hook-form";
-import { ClipboardList, Loader2, Plus, Send, Eye, Megaphone, Sparkles } from "lucide-react";
+import { ClipboardList, Loader2, Plus, Send, Eye, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  CardFooter,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,7 +21,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser, useCurrentUserRole, useForms, useMembers } from "@/lib/data-hooks";
 import type { ClubForm, FormQuestion, FormResponse } from "@/lib/mock-data";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 const formBuilderSchema = z.object({
   title: z.string().min(3, "Title is required"),
@@ -49,7 +48,6 @@ function FormsPageInner() {
   const { user } = useCurrentUser();
   const { canEditContent, role } = useCurrentUserRole();
   const { toast } = useToast();
-  const router = useRouter();
   const searchParams = useSearchParams();
 
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
@@ -184,15 +182,6 @@ function FormsPageInner() {
     toast({ title: "Response submitted", description: "Your answers have been saved." });
   };
 
-  const handleAnnounceForm = (form: ClubForm) => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Add a user to post announcements.", variant: "destructive" });
-      return;
-    }
-    toast({ title: "Announcement drafted", description: "Opening announcements to review the AI draft." });
-    router.push(`/announcements?announceFormId=${encodeURIComponent(form.id)}`);
-  };
-
   const viewedCount = (form: ClubForm) => Array.isArray(form.viewedBy) ? form.viewedBy.length : 0;
   const respondedCount = (form: ClubForm) => Array.isArray(form.responses) ? form.responses.length : 0;
   const resolveOptionLabel = (value: string, options?: string[]) => {
@@ -228,7 +217,7 @@ function FormsPageInner() {
               <CardTitle className="flex items-center gap-2">
                 <Plus className="h-4 w-4" /> Create form
               </CardTitle>
-              <CardDescription>Officers can build a lightweight form and track reads.</CardDescription>
+              <CardDescription>Admins and officers can build a lightweight form and track reads.</CardDescription>
             </CardHeader>
             <CardContent>
               <form
@@ -500,7 +489,7 @@ function FormsPageInner() {
                               );
                             })()}
                             <Separator />
-                            {role === 'President' && (
+                            {role === 'Admin' && (
                               <div className="space-y-3">
                                 <details className="space-y-1">
                                   <summary className="cursor-pointer text-sm font-semibold">
@@ -563,13 +552,6 @@ function FormsPageInner() {
                               </div>
                             )}
                           </CardContent>
-                          {canEditContent && (
-                            <CardFooter className="flex items-center gap-2">
-                              <Button variant="outline" size="sm" onClick={() => handleAnnounceForm(form)} className={aiSparkle}>
-                                <Megaphone className="h-4 w-4 mr-2" /> Announce this form
-                              </Button>
-                            </CardFooter>
-                          )}
                         </>
                       )}
                     </Card>

@@ -1,6 +1,6 @@
 
 "use client";
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@/components/ui/dialog";
 import {
   Sheet,
   SheetContent,
@@ -24,20 +24,35 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Menu, LogOut, Home, User } from "lucide-react";
+import { Menu, LogOut, Home, User, ChevronDown } from "lucide-react";
 import { AppSidebarNav } from "./app-sidebar-nav";
+import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useNotifications, useMembers } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { useNotificationsContext } from "@/components/notifications-provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
 import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
 import { clearStoredDemoSession } from "@/lib/demo/mockData";
+import { ProfileDialog } from "@/components/profile-dialog";
+import { safeFetchJson } from "@/lib/network";
+import {
+  getSelectedGroupId,
+  getSelectedOrgId,
+  clearSelectedGroupId,
+  clearSelectedOrgId,
+} from "@/lib/selection";
 
 
 const pageTitles: { [key: string]: string } = {
@@ -55,6 +70,10 @@ const pageTitles: { [key: string]: string } = {
   "/demo/app/messages": "Messages",
   "/demo/app/assistant": "Assistant",
   "/demo/app/forms": "Forms",
+  "/orgs": "Organizations",
+  "/orgs/create": "Create Organization",
+  "/orgs/join": "Join Organization",
+  "/clubs": "Clubs",
   "/announcements": "Announcements",
   "/calendar": "Calendar",
   "/gallery": "Gallery",
@@ -65,100 +84,32 @@ const pageTitles: { [key: string]: string } = {
   "/email": "Bulk Email",
   "/messages": "Messages",
   "/assistant": "AI Assistant",
-  "/browse-clubs": "Club Directory",
 };
-
-function ProfileDialog({ isOpen, onOpenChange, user, onSave }: { isOpen: boolean; onOpenChange: (isOpen: boolean) => void; user: UserType | null; onSave: (updatedUser: Partial<UserType>) => void; }) {
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [avatar, setAvatar] = useState(user?.avatar || '');
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar || null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      setName(user?.name || '');
-      setEmail(user?.email || '');
-      setAvatar(user?.avatar || '');
-      setAvatarPreview(user?.avatar || null);
-    }
-  }, [user, isOpen]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleSave = () => {
-    if (user) {
-      onSave({
-        name,
-        avatar: avatarPreview || avatar,
-      });
-    }
-    onOpenChange(false);
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Profile Settings</DialogTitle>
-          <DialogDescription>
-            Update your profile picture, name, and email here.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2 flex flex-col items-center">
-             <Avatar className="h-24 w-24">
-                <AvatarImage src={avatarPreview || ''} />
-                <AvatarFallback className="text-3xl">{name.charAt(0)}</AvatarFallback>
-             </Avatar>
-             <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>Change Picture</Button>
-             <Input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} readOnly disabled/>
-          </div>
-        </div>
-        <DialogFooter>
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={handleSave}>Save Changes</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 export function AppHeader() {
   const pathname = usePathname();
   const [clubName, setClubName] = useState("");
+  const [orgName, setOrgName] = useState("");
   const demoCtx = useOptionalDemoCtx();
   const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
-  const appName = useDemo ? 'CASPO' : 'ClubHub AI';
+  const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
-  const homeHref = useDemo ? '/demo/app' : '/';
+  const homeHref = useDemo ? '/demo/app' : '/orgs';
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const membersHook = useMembers();
-  const { unread, markAllAsRead } = useNotifications();
+  const { unread, markTabViewed } = useNotificationsContext();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [adminLeaveOpen, setAdminLeaveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [transferCandidates, setTransferCandidates] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -171,21 +122,29 @@ export function AppHeader() {
         setClubName(demoCtx.clubName);
         return;
       }
-      const clubId = localStorage.getItem('selectedClubId');
-      if (!clubId || !supabase) {
+      const orgId = getSelectedOrgId();
+      const groupId = getSelectedGroupId();
+      if (!orgId || !supabase) {
         setClubName("");
+        setOrgName("");
         return;
       }
-      const { data, error } = await supabase
+      const { data: orgRow } = await supabase
         .from('orgs')
         .select('name')
-        .eq('id', clubId)
+        .eq('id', orgId)
         .maybeSingle();
-      if (error) {
+      setOrgName(orgRow?.name || "");
+      if (!groupId) {
         setClubName("");
         return;
       }
-      setClubName(data?.name || "");
+      const { data: groupRow } = await supabase
+        .from('groups')
+        .select('name')
+        .eq('id', groupId)
+        .maybeSingle();
+      setClubName(groupRow?.name || "");
     };
     load();
   }, [demoCtx, pathname, supabase, useDemo]);
@@ -193,7 +152,8 @@ export function AppHeader() {
   const handleLogout = async () => {
     if (useDemo) {
       clearStoredDemoSession();
-      localStorage.removeItem('selectedClubId');
+      clearSelectedGroupId();
+      clearSelectedOrgId();
       clearUser();
       router.push('/demo');
       return;
@@ -201,27 +161,32 @@ export function AppHeader() {
     if (!supabase) return;
     await supabase.auth.signOut();
     clearUser();
-    localStorage.removeItem('selectedClubId');
+    clearSelectedGroupId();
+    clearSelectedOrgId();
     router.push('/');
   }
 
-  const handleSaveProfile = (updatedUser: Partial<UserType>) => {
-     saveUser(currentUser => ({...currentUser, ...updatedUser} as UserType));
-     if (updatedUser.name || updatedUser.avatar) {
-       membersHook.updateData(prev => {
-         const list = Array.isArray(prev) ? prev : [];
-         return list.map(member =>
-           member.email === user?.email
-             ? {
-                 ...member,
-                 name: updatedUser.name ?? member.name,
-                 avatar: updatedUser.avatar ?? member.avatar,
-               }
-             : member
-         );
-       });
-     }
-  }
+  const handleSaveProfile = async (updatedUser: Partial<UserType>) => {
+     await saveUser(currentUser => ({...currentUser, ...updatedUser} as UserType));
+   }
+
+  const handleDeleted = async () => {
+    if (useDemo) {
+      clearStoredDemoSession();
+      clearSelectedGroupId();
+      clearSelectedOrgId();
+      clearUser();
+      router.push('/demo');
+      return;
+    }
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    clearUser();
+    clearSelectedGroupId();
+    clearSelectedOrgId();
+    router.push('/');
+  };
 
   const getAvatarFallback = (name?: string | null) => name ? name.charAt(0).toUpperCase() : '';
   
@@ -235,6 +200,85 @@ export function AppHeader() {
   };
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
+  const isAdminRole = role === 'Admin';
+  const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
+
+  const loadTransferCandidates = async () => {
+    if (!supabase || !user?.email) return [];
+    const groupId = getSelectedGroupId();
+    if (!groupId) return [];
+    const { data: stateRow } = await supabase
+      .from('group_state')
+      .select('data')
+      .eq('group_id', groupId)
+      .maybeSingle();
+    const members = ((stateRow?.data as { members?: Array<{ id?: string; name: string; email: string; role?: string }> } | null)?.members ?? [])
+      .filter(member => member.id && member.email !== user.email)
+      .map(member => ({ id: member.id!, name: member.name, email: member.email }));
+    setTransferCandidates(members);
+    return members;
+  };
+
+  const openLeaveAction = async () => {
+    if (!hasGroupContext) return;
+    if (!isAdminRole) {
+      setLeaveOpen(true);
+      return;
+    }
+    const candidates = await loadTransferCandidates();
+    if (candidates.length > 0) {
+      setAdminLeaveOpen(true);
+      return;
+    }
+    setAdminLeaveOpen(true);
+  };
+
+  const handleLeaveGroup = async (transferAdminUserId?: string) => {
+    const orgId = getSelectedOrgId();
+    const groupId = getSelectedGroupId();
+    if (!orgId || !groupId) return;
+    setActionLoading(true);
+    const result = await safeFetchJson<{ ok: boolean; error?: { message?: string } }>(
+      "/api/groups/leave",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, groupId, transferAdminUserId }),
+      }
+    );
+    setActionLoading(false);
+    if (!result.ok || !result.data?.ok) {
+      console.error('Leave group failed', !result.ok ? result.error : result.data?.error);
+      return;
+    }
+    clearSelectedGroupId();
+    router.push("/clubs");
+  };
+
+  const handleDeleteGroup = async () => {
+    const orgId = getSelectedOrgId();
+    const groupId = getSelectedGroupId();
+    if (!orgId || !groupId) return;
+    setActionLoading(true);
+    const result = await safeFetchJson<{ ok: boolean; error?: { message?: string } }>(
+      "/api/groups/delete",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId, groupId }),
+      }
+    );
+    setActionLoading(false);
+    if (!result.ok || !result.data?.ok) {
+      console.error('Delete group failed', !result.ok ? result.error : result.data?.error);
+      return;
+    }
+    setDeleteOpen(false);
+    setAdminLeaveOpen(false);
+    clearSelectedGroupId();
+    router.replace("/clubs");
+    router.refresh();
+  };
 
   return (
     <>
@@ -262,7 +306,7 @@ export function AppHeader() {
               <AppSidebarNav 
                 role={role || ''} 
                 notifications={unread}
-                onLinkClick={(key) => markAllAsRead(key)}
+                onLinkClick={(key) => markTabViewed(key)}
               />
             </nav>
           </div>
@@ -270,8 +314,39 @@ export function AppHeader() {
       </Sheet>
 
       <div className="w-full flex-1">
-         <h1 className="text-lg font-semibold md:text-2xl">{title} {clubName && <span className="text-sm text-muted-foreground font-normal">- {clubName}</span>}</h1>
-      </div>
+        <div className="flex flex-wrap items-center gap-3">
+         <h1 className="text-lg font-semibold md:text-2xl">
+            {title}
+            {orgName && <span className="text-sm text-muted-foreground font-normal"> - {orgName}</span>}
+            {clubName && (
+              <span className="text-sm text-muted-foreground font-normal inline-flex items-center">
+                {" / "}{clubName}
+                {hasGroupContext ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="ml-1 h-7 w-7">
+                        <ChevronDown className="h-4 w-4" />
+                        <span className="sr-only">Group actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      {isAdminRole && (
+                        <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
+                          Delete Group
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={openLeaveAction}>
+                        Leave Group
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </span>
+            )}
+          </h1>
+          {!useDemo && getSelectedOrgId() ? <OrgAiQuotaBadge compact /> : null}
+        </div>
+       </div>
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -297,14 +372,97 @@ export function AppHeader() {
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-           <Link href={useDemo ? '/demo' : '/'}>
-             <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Club</DropdownMenuItem>
-            </Link>
+           <Link href={useDemo ? '/demo' : '/clubs'}>
+             <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Group</DropdownMenuItem>
+             </Link>
           <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
-    <ProfileDialog isOpen={isProfileOpen} onOpenChange={setIsProfileOpen} user={user} onSave={handleSaveProfile} />
+    <ProfileDialog
+      isOpen={isProfileOpen}
+      onOpenChange={setIsProfileOpen}
+      user={user}
+      onSave={handleSaveProfile}
+      onDeleted={handleDeleted}
+      mode={useDemo ? 'demo' : 'live'}
+    />
+    <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Leave group?</DialogTitle>
+          <DialogDescription>
+            You’ll lose access to this group until you rejoin.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setLeaveOpen(false)}>Cancel</Button>
+          <Button onClick={() => handleLeaveGroup()} disabled={actionLoading}>Leave group</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={adminLeaveOpen} onOpenChange={setAdminLeaveOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Admin required</DialogTitle>
+          <DialogDescription>
+            You’re the only admin. Assign a new admin or delete the group before leaving.
+          </DialogDescription>
+        </DialogHeader>
+        {transferCandidates.length > 0 ? (
+          <div className="space-y-3 py-2">
+            <Select value={transferTarget} onValueChange={setTransferTarget}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select new admin" />
+              </SelectTrigger>
+              <SelectContent>
+                {transferCandidates.map(member => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.name} ({member.email})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No other members to promote.</p>
+        )}
+        <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+          <Button variant="destructive" onClick={() => {
+            setAdminLeaveOpen(false);
+            setDeleteOpen(true);
+          }}>
+            Delete group
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setAdminLeaveOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => handleLeaveGroup(transferTarget)}
+              disabled={!transferTarget || actionLoading}
+            >
+              Assign admin & leave
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete group?</DialogTitle>
+          <DialogDescription>
+            This permanently deletes the group and all of its data.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={handleDeleteGroup} disabled={actionLoading}>
+            Delete group
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
     </>
   );
 }
+

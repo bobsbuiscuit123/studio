@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 
 export async function POST(request: Request) {
+  try {
   const headerList = await headers();
   const ip =
     headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -25,7 +27,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const schema = z.object({
-    joinCode: z.string().min(4),
+    joinCode: z.string().min(3),
   });
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -56,15 +58,59 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await supabase.rpc('join_org', {
-    join_code: parsed.data.joinCode.toUpperCase(),
-  });
-  if (error) {
+  const admin = createSupabaseAdmin();
+  const joinCode = parsed.data.joinCode.toUpperCase();
+  const { data: orgRow } = await admin
+    .from('orgs')
+    .select('id')
+    .eq('join_code', joinCode)
+    .maybeSingle();
+  if (!orgRow?.id) {
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
-      { status: 400, headers: getRateLimitHeaders(limiter) }
+      err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
+      { status: 404, headers: getRateLimitHeaders(limiter) }
     );
   }
 
-  return NextResponse.json({ ok: true, orgId: data }, { headers: getRateLimitHeaders(limiter) });
+  const { data: plan } = await admin
+    .from('org_billing_plans')
+    .select('max_user_limit')
+    .eq('org_id', orgRow.id)
+    .maybeSingle();
+  const maxUserLimit = plan?.max_user_limit ?? 0;
+  const { count } = await admin
+    .from('memberships')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('org_id', orgRow.id);
+  if (maxUserLimit > 0 && (count ?? 0) >= maxUserLimit) {
+    return NextResponse.json(
+      err({ code: 'ORG_FULL', message: 'Organization is at capacity.', source: 'app' }),
+      { status: 409, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const { error: insertError } = await admin
+    .from('memberships')
+    .insert({ org_id: orgRow.id, user_id: userId, role: 'member' });
+  if (insertError && insertError.code !== '23505') {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: insertError.message, source: 'network' }),
+      { status: 500, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  return NextResponse.json(
+    { ok: true, orgId: orgRow.id },
+    { headers: getRateLimitHeaders(limiter) }
+  );
+  } catch (error) {
+    const message =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message)
+        : 'Join failed.';
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message, source: 'network' }),
+      { status: 500 }
+    );
+  }
 }

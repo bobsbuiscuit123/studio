@@ -9,9 +9,18 @@ const isLocalhost = (hostname: string) =>
 
 export async function middleware(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl;
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
   const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
   const demoModeEnabled = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
   const demoAllowRemote = process.env.DEMO_ALLOW_REMOTE === 'true';
+
+  if (demoModeEnabled && (pathname === '/' || pathname === '/login')) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = '/demo';
+    return NextResponse.redirect(redirectUrl);
+  }
 
   if (isDemoRoute) {
     if (!demoModeEnabled || (!demoAllowRemote && !isLocalhost(hostname))) {
@@ -47,41 +56,52 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const privateRoutePrefixes = [
-    '/dashboard',
-    '/announcements',
-    '/assistant',
-    '/attendance',
-    '/calendar',
-    '/email',
-    '/finances',
-    '/forms',
-    '/gallery',
-    '/members',
-    '/messages',
-    '/metrics',
-    '/mindmap',
-    '/points',
-    '/slides',
-    '/social',
-  ];
-  const isPrivateRoute = privateRoutePrefixes.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  );
+  const publicRoutes = ['/login', '/auth/callback'];
+  const isPublicRoute =
+    publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const isRootRoute = pathname === '/';
+  const orgRoute =
+    pathname === '/orgs' ||
+    pathname.startsWith('/orgs/') ||
+    pathname === '/org' ||
+    pathname.startsWith('/org/');
+  const clubsRoute = pathname === '/clubs' || pathname.startsWith('/clubs/');
 
-  if (isPrivateRoute && !user) {
-    console.info(`[middleware] unauthenticated request to private route: ${pathname}`);
+  if (!user && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = '/';
+    redirectUrl.pathname = '/login';
     const redirectResponse = NextResponse.redirect(redirectUrl);
-    response.cookies.getAll().forEach(cookie => {
+    response.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie);
     });
     return redirectResponse;
+  }
+
+  if (user) {
+    const selectedOrgId = request.cookies.get('selectedOrgId')?.value;
+    const selectedGroupId = request.cookies.get('selectedGroupId')?.value;
+
+    if (pathname === '/login' || isRootRoute) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = selectedOrgId ? '/clubs' : '/orgs';
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    if (!selectedOrgId && !orgRoute && !isPublicRoute) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/orgs';
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    if (selectedOrgId && !selectedGroupId && !orgRoute && !clubsRoute && !isPublicRoute) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = '/clubs';
+      return NextResponse.redirect(redirectUrl);
+    }
   }
   return response;
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest).*)'],
 };

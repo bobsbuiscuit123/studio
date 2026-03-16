@@ -80,46 +80,55 @@ export default function MessagesPage() {
         }
     }, [membersLoading, members]);
 
-    // Effect to mark messages in the *active* conversation as read
+    // Mark only the newly opened conversation as read instead of reprocessing
+    // the full message state tree on every message/group change.
     useEffect(() => {
       if (!activeConversation || !user?.email) return;
       const userEmail = user.email;
 
       if (activeConversation.type === 'dm') {
         const conversationId = getConversationId(userEmail, activeConversation.partner.email);
-        const currentMessages = allMessages[conversationId] || [];
-        if (currentMessages.some(m => !m.readBy.includes(userEmail))) {
-            setAllMessages(prev => {
-                const updatedMessages = (prev[conversationId] || []).map(msg => {
-                    if (!msg.readBy.includes(userEmail)) {
-                        return { ...msg, readBy: [...msg.readBy, userEmail] };
-                    }
-                    return msg;
-                });
-                return { ...prev, [conversationId]: updatedMessages };
-            });
-        }
-      } else { // group
-          const chat = activeConversation.chat;
-          if (chat.messages.some(m => !m.readBy.includes(userEmail))) {
-            setGroupChats(prev => prev.map(g => {
-                if (g.id === chat.id) {
-                    return {
-                        ...g,
-                        messages: g.messages.map(msg => {
-                            if (!msg.readBy.includes(userEmail)) {
-                                return { ...msg, readBy: [...msg.readBy, userEmail] };
-                            }
-                            return msg;
-                        })
-                    };
-                }
-                return g;
-            }));
+        setAllMessages(prev => {
+          const currentMessages = prev[conversationId] || [];
+          if (!currentMessages.some(msg => !msg.readBy.includes(userEmail))) {
+            return prev;
           }
+          const updatedMessages = currentMessages.map(msg => {
+            if (!msg.readBy.includes(userEmail)) {
+              return { ...msg, readBy: [...msg.readBy, userEmail] };
+            }
+            return msg;
+          });
+          return { ...prev, [conversationId]: updatedMessages };
+        });
+      } else {
+        const activeChatId = activeConversation.chat.id;
+        setGroupChats(prev => {
+          let changed = false;
+          const nextChats = prev.map(chat => {
+            if (chat.id !== activeChatId) {
+              return chat;
+            }
+            const hasUnread = chat.messages.some(msg => !msg.readBy.includes(userEmail));
+            if (!hasUnread) {
+              return chat;
+            }
+            changed = true;
+            return {
+              ...chat,
+              messages: chat.messages.map(msg => {
+                if (!msg.readBy.includes(userEmail)) {
+                  return { ...msg, readBy: [...msg.readBy, userEmail] };
+                }
+                return msg;
+              }),
+            };
+          });
+          return changed ? nextChats : prev;
+        });
       }
       scrollToBottom();
-    }, [activeConversation, user?.email, allMessages, setAllMessages, groupChats, setGroupChats]);
+    }, [activeConversation, setAllMessages, setGroupChats, user?.email]);
 
 
     const messageForm = useForm<z.infer<typeof messageFormSchema>>({
@@ -285,26 +294,32 @@ export default function MessagesPage() {
             <ScrollArea className="flex-1">
                  <div className="p-2">
                     {searchTerm ? (
-                        filteredMembers.map(member => (
-                            <div
-                                key={member.email}
-                                onClick={() => setActiveConversation({ type: 'dm', partner: member })}
-                                className={cn(
-                                    "flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted",
-                                    activeConversation?.type === 'dm' && activeConversation.partner.email === member.email && "bg-muted"
-                                )}
-                            >
-                                <Avatar className="h-10 w-10">
-                                    <AvatarImage src={member.avatar} />
-                                    <AvatarFallback style={{ backgroundColor: stringToColor(member.name) }}>
-                                        {member.name.charAt(0)}
-                                    </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 truncate">
-                                    <p className="font-semibold">{member.name}</p>
+                        filteredMembers.length > 0 ? (
+                            filteredMembers.map(member => (
+                                <div
+                                    key={member.email}
+                                    onClick={() => setActiveConversation({ type: 'dm', partner: member })}
+                                    className={cn(
+                                        "flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-muted",
+                                        activeConversation?.type === 'dm' && activeConversation.partner.email === member.email && "bg-muted"
+                                    )}
+                                >
+                                    <Avatar className="h-10 w-10">
+                                        <AvatarImage src={member.avatar} />
+                                        <AvatarFallback style={{ backgroundColor: stringToColor(member.name) }}>
+                                            {member.name.charAt(0)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 truncate">
+                                        <p className="font-semibold">{member.name}</p>
+                                    </div>
                                 </div>
+                            ))
+                        ) : (
+                            <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                                No members match your search.
                             </div>
-                        ))
+                        )
                     ) : (
                         <>
                          <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
@@ -353,6 +368,11 @@ export default function MessagesPage() {
                             </DialogContent>
                         </Dialog>
                         <Separator className="my-2" />
+                        {conversations.length === 0 && (
+                          <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                            No conversations yet. Start a DM or create a group chat.
+                          </div>
+                        )}
                         {conversations.map((convo) => {
                             const name = convo.type === 'dm' ? convo.partner.name : convo.chat.name;
                             const avatar = convo.type === 'dm' ? convo.partner.avatar : undefined;
@@ -384,11 +404,13 @@ export default function MessagesPage() {
                                     </Avatar>
                                 ) : icon}
                                 <div className="flex-1 truncate">
-                                <p className="font-semibold">{name}</p>
+                                <p className="font-semibold inline-flex items-center gap-2">
+                                    <span className="truncate">{name}</span>
+                                    {isUnread && (
+                                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary"></span>
+                                    )}
+                                </p>
                                 </div>
-                                {isUnread && (
-                                    <span className="ml-auto h-2.5 w-2.5 rounded-full bg-primary"></span>
-                                )}
                             </div>
                         )})}
                         </>
@@ -417,6 +439,12 @@ export default function MessagesPage() {
                 </header>
                 <ScrollArea className="flex-1 p-4">
                     <div className="space-y-4">
+                        {activeMessages.length === 0 && (
+                          <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
+                            <span>No messages here yet.</span>
+                            <span>Send the first one to get the conversation going.</span>
+                          </div>
+                        )}
                         {activeMessages.map((msg, index) => {
                             const sender = members.find(m => m.email === msg.sender);
                             const isMe = msg.sender === user.email;

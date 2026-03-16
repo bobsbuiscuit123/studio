@@ -5,18 +5,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole, useNotifications } from "@/lib/data-hooks";
+import { useCurrentUserRole } from "@/lib/data-hooks";
+import { useNotificationsContext } from "@/components/notifications-provider";
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { role } = useCurrentUserRole();
-  const { unread, markAllAsRead } = useNotifications();
+  const { unread, markTabViewed } = useNotificationsContext();
   const isDemoApp = pathname === '/demo/app' || pathname.startsWith('/demo/app/');
   const homeHref = isDemoApp ? '/demo/app' : '/';
-  const appName = isDemoApp ? 'CASPO' : 'ClubHub AI';
+  const appName = isDemoApp ? 'CASPO' : 'CASPO';
 
   return (
-    <div className="hidden border-r bg-muted/40 md:block">
+    <div className={`border-r bg-muted/40 ${isDemoApp ? 'block' : 'hidden md:block'}`}>
       <div className="flex h-full max-h-screen flex-col gap-2">
         <div className="flex h-14 shrink-0 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href={homeHref} className="flex items-center gap-2 font-semibold">
@@ -29,7 +30,7 @@ export function AppSidebar() {
             <AppSidebarNav 
               role={role || 'Member'}
               notifications={unread}
-              onLinkClick={(key) => markAllAsRead(key)}
+              onLinkClick={(key) => markTabViewed(key)}
             />
           </nav>
         </div>
@@ -37,3 +38,4 @@ export function AppSidebar() {
     </div>
   );
 }
+

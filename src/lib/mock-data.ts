@@ -10,7 +10,7 @@ export type User = {
 export type Member = {
   id?: string;
   name: string;
-  role: 'President' | 'Admin' | 'Officer' | 'Member';
+  role: 'Admin' | 'Officer' | 'Member';
   avatar: string;
   email: string;
   dataAiHint?: string;
@@ -142,7 +142,7 @@ export type Transaction = {
   description: string;
   amount: number;
   date: string;
-  status: 'Paid' | 'Pending';
+  status: 'Deposit' | 'Withdrawal';
 };
 
 export type GalleryImage = {
@@ -152,7 +152,7 @@ export type GalleryImage = {
   author: string;
   date: string;
   likes: number;
-  liked: boolean;
+  likedBy?: string[];
   status: 'pending' | 'approved';
   read?: boolean;
 };

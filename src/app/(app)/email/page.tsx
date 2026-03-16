@@ -21,8 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
-import { generateEmail } from "@/ai/flows/generate-email";
+import { notifyOrgAiUsageChanged, useMembers, useCurrentUserRole } from "@/lib/data-hooks";
+import type { GenerateEmailOutput } from "@/ai/flows/generate-email";
+import { safeFetchJson } from "@/lib/network";
 
 
 const promptFormSchema = z.object({
@@ -79,20 +80,28 @@ function EmailPageInner() {
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
     setIsGenerating(true);
-    const result = await generateEmail(values);
+    const result = await safeFetchJson<{ ok: true; data: GenerateEmailOutput; error?: { message?: string } }>(
+      '/api/email/ai',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      }
+    );
     if (!result.ok) {
       toast({
         title: "Error",
-        description: result.error.message || "Failed to generate email draft.",
+        description: result.error?.message || "Failed to generate email draft.",
         variant: "destructive",
       });
       setIsGenerating(false);
       return;
     }
     setEmailContent({
-      subject: result.data.subject,
-      body: result.data.body,
+      subject: result.data.data.subject,
+      body: result.data.data.body,
     });
+    notifyOrgAiUsageChanged();
     toast({ title: "Email draft generated!" });
     setIsGenerating(false);
   };
@@ -246,8 +255,8 @@ function EmailPageInner() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Users className="h-4 w-4" />
             {members.length > 0
-              ? `This email will be addressed to all ${members.length} members of the club.`
-              : "There are currently no members in this club."
+              ? `This email will be addressed to all ${members.length} members of the group.`
+              : "There are currently no members in this group."
             }
           </div>
         </CardFooter>

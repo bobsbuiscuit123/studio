@@ -54,7 +54,7 @@ export async function planAssistantTasks(
   const context = input.context?.trim();
   const trimmedContext =
     context && context.length > 4000 ? context.slice(-4000) : context;
-  const baseSystemMessage = `You are an orchestration planner for a club management assistant.
+  const baseSystemMessage = `You are an orchestration planner for a group management assistant.
 Break the user's request into tasks. Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
 Be concise and specific in the prompt field so it can be executed directly. If the user supplied exact wording for an announcement/event/etc., preserve it verbatim in the prompt wrapped in double quotes (do not rewrite).
 Only add followUpQuestions when required details are missing per the task rules below. Do NOT ask for extra or random info. Each missing detail should be its own question in the followUpQuestions array.

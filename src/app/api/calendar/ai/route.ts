@@ -1,13 +1,11 @@
 'use server';
 
 import { NextResponse } from 'next/server';
-import { addCalendarEvent } from '@/ai/flows/add-calendar-event';
 import { runWithAiAction } from '@/ai/ai-action-context';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { z } from 'zod';
-import { enforceAiQuota } from '@/lib/ai-quota';
 
 export async function POST(request: Request) {
   return runWithAiAction('calendarAiRoute', async () => {
@@ -44,13 +42,6 @@ export async function POST(request: Request) {
           { status: 400, headers: getRateLimitHeaders(limiter) }
         );
       }
-      const quota = await enforceAiQuota();
-      if (!quota.ok) {
-        return NextResponse.json(quota, {
-          status: 429,
-          headers: getRateLimitHeaders(limiter),
-        });
-      }
       const prompt = parsed.data.prompt;
       if (!prompt || prompt.length < 5) {
         return NextResponse.json(
@@ -62,10 +53,28 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
-      const result = await addCalendarEvent({ prompt });
-      const status = result.ok ? 200 : 502;
-      return NextResponse.json(result, {
-        status,
+      const origin =
+        headerList.get('origin') ||
+        `${headerList.get('x-forwarded-proto') || 'http'}://${headerList.get('x-forwarded-host') || 'localhost:3000'}`;
+      const response = await fetch(`${origin}/api/ai/consume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: headerList.get('cookie') ?? '',
+        },
+        body: JSON.stringify({
+          feature: 'chat',
+          action: 'calendar',
+          payload: { prompt },
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      return NextResponse.json(json ?? err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Invalid server response.',
+        source: 'network',
+      }), {
+        status: response.status,
         headers: getRateLimitHeaders(limiter),
       });
     } catch (error: any) {

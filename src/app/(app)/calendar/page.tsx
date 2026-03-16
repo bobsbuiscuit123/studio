@@ -89,7 +89,7 @@ export default function CalendarPage() {
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
-  const { canManageRoles } = useCurrentUserRole();
+  const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { data: members } = useMembers();
   const currentEmail = user?.email || "";
@@ -394,7 +394,7 @@ export default function CalendarPage() {
         </Card>
       </div>
       <div className="space-y-4 flex flex-col">
-        {canManageRoles && (
+        {canEditContent && (
             <Card>
             <CardHeader className="flex items-center justify-between">
                 <div>
@@ -550,7 +550,7 @@ export default function CalendarPage() {
                                 </p>
                                 </div>
                             </AccordionTrigger>
-                            {canManageRoles && (
+                            {canEditContent && (
                                 <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleEditClick(event);}} className="ml-4 shrink-0">
                                     <Pencil className="h-4 w-4" />
                                 </Button>
@@ -572,7 +572,7 @@ export default function CalendarPage() {
                                 </p>
                               )}
 
-                             {!canManageRoles && event.rsvpRequired && (
+                             {!canEditContent && event.rsvpRequired && (
                                <div className="flex items-center gap-2">
                                  {(() => {
                                    const rsvpYes = event.rsvps?.yes || [];
@@ -599,7 +599,7 @@ export default function CalendarPage() {
                                  })()}
                                </div>
                              )}
-                             {canManageRoles ? (
+                             {canEditContent ? (
                                <div className="space-y-2 text-xs text-muted-foreground">
                                  {event.rsvpRequired && (
                                    <details>
@@ -676,7 +676,7 @@ export default function CalendarPage() {
                       </p>
                     )}
 
-                    {!canManageRoles && selectedEvent.rsvpRequired && (
+                    {!canEditContent && selectedEvent.rsvpRequired && (
                       <div className="flex items-center gap-2">
                         {(() => {
                           const rsvpYes = selectedEvent.rsvps?.yes || [];
@@ -703,7 +703,7 @@ export default function CalendarPage() {
                         })()}
                       </div>
                     )}
-                    {canManageRoles ? (
+                    {canEditContent ? (
                       <div className="space-y-2 text-xs text-muted-foreground">
                         {selectedEvent.rsvpRequired && (
                           <details>
@@ -748,7 +748,7 @@ export default function CalendarPage() {
                             <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
                         </Button>
                     </Link>
-                    {canManageRoles && (
+                    {canEditContent && (
                         <Button onClick={() => handleEditClick(selectedEvent)}>
                             <Pencil className="mr-2 h-4 w-4" /> Edit Event
                         </Button>
@@ -809,7 +809,7 @@ export default function CalendarPage() {
                     </FormItem>
                   )}
                 />
-                {canManageRoles && (
+                {canEditContent && (
                   <FormField
                     control={editForm.control}
                     name="points"

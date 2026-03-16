@@ -12,6 +12,7 @@ import {
   storeDemoSession,
   type DemoRole,
 } from '@/lib/demo/mockData';
+import { setSelectedGroupId } from '@/lib/selection';
 
 const ROLE_OPTIONS: DemoRole[] = ['Admin', 'Parent', 'Student'];
 
@@ -25,7 +26,7 @@ export default function DemoRolePage() {
     const sharedGroupId = getStoredDemoGroupId();
     const session = createDemoSession(role, existingSession?.groupId ?? sharedGroupId ?? undefined);
     storeDemoSession(session);
-    localStorage.setItem('selectedClubId', session.groupId);
+    setSelectedGroupId(session.groupId);
     localStorage.removeItem('currentUser');
     router.push('/demo/app');
   };

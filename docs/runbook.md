@@ -1,4 +1,4 @@
-# ClubHub AI Runbook
+# CASPO Runbook
 
 ## AI Outage
 - Symptom: AI endpoints return errors or timeouts.
@@ -12,7 +12,7 @@
 ## Provider Errors (429/Quota)
 - Symptom: AI quota errors in logs and UI toasts.
 - Action:
-  - Confirm billing/quota on provider.
+  - Confirm provider quota and org plan limits.
   - Lower AI traffic (feature flag) or upgrade quota.
   - Monitor error rate in Sentry.
 
@@ -25,4 +25,5 @@
 ## Rollback
 - Revert to last known good release.
 - Confirm `/api/health` and core flows (login, create announcement, AI prompt).
+
 

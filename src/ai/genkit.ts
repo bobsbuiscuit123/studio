@@ -56,6 +56,7 @@ const aiConfigError =
 
 const aiDisabledByEnv = process.env.AI_ENABLED === 'false';
 export const aiEnabled = !aiConfigError && !aiDisabledByEnv;
+const isDebugLoggingEnabled = process.env.NODE_ENV !== 'production';
 
 if (aiConfigError) {
   console.warn(`[AI_DEBUG] AI disabled: ${aiConfigError}`);
@@ -120,6 +121,7 @@ export const activeModelName =
   provider === 'openrouter' ? OPENROUTER_MODEL : provider === 'openai' ? OPENAI_MODEL : GEMINI_MODEL;
 
 export function logAiEnvDebug(callSite?: string) {
+  if (!isDebugLoggingEnabled) return;
   const keyPresent =
     provider === 'openrouter'
       ? Boolean(OPENROUTER_API_KEY)
@@ -153,15 +155,17 @@ const recordCircuitFailure = (code: string) => {
   state.lastErrorCode = code;
   if (state.failures >= AI_CIRCUIT_FAILURE_THRESHOLD) {
     state.blockedUntil = Date.now() + AI_CIRCUIT_COOLDOWN_MS;
-    console.info(
-      `[AI_DEBUG] AI circuit opened | failures=${state.failures} | cooldownMs=${AI_CIRCUIT_COOLDOWN_MS}`
-    );
+    if (isDebugLoggingEnabled) {
+      console.info(
+        `[AI_DEBUG] AI circuit opened | failures=${state.failures} | cooldownMs=${AI_CIRCUIT_COOLDOWN_MS}`
+      );
+    }
   }
 };
 
 const recordCircuitSuccess = () => {
   const state = getCircuitState();
-  if (state.failures > 0 || state.blockedUntil) {
+  if (isDebugLoggingEnabled && (state.failures > 0 || state.blockedUntil)) {
     console.info('[AI_DEBUG] AI circuit reset after success');
   }
   state.failures = 0;
@@ -254,7 +258,7 @@ async function callOpenRouterChat(options: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${OPENROUTER_API_KEY}`,
       'HTTP-Referer': 'http://localhost',
-      'X-Title': 'ClubHub Sandbox',
+      'X-Title': 'CASPO Sandbox',
     },
     body: JSON.stringify({
       model,
@@ -425,9 +429,11 @@ export async function callAI<TOutput>(options: {
     Date.now() < globalForGenkit.__aiQuotaBlockedUntil
   ) {
     const remainingMs = globalForGenkit.__aiQuotaBlockedUntil - Date.now();
-    console.info(
-      `[AI_DEBUG] Gemini cooldown active | remainingMs=${Math.max(0, remainingMs)}`
-    );
+    if (isDebugLoggingEnabled) {
+      console.info(
+        `[AI_DEBUG] Gemini cooldown active | remainingMs=${Math.max(0, remainingMs)}`
+      );
+    }
     return err(
       makeAiError(
         'AI_QUOTA',
@@ -442,9 +448,11 @@ export async function callAI<TOutput>(options: {
     Date.now() < globalForGenkit.__aiQuotaBlockedUntil
   ) {
     const remainingMs = globalForGenkit.__aiQuotaBlockedUntil - Date.now();
-    console.info(
-      `[AI_DEBUG] Gemini cooldown ignored in dev | remainingMs=${Math.max(0, remainingMs)}`
-    );
+    if (isDebugLoggingEnabled) {
+      console.info(
+        `[AI_DEBUG] Gemini cooldown ignored in dev | remainingMs=${Math.max(0, remainingMs)}`
+      );
+    }
   }
 
   const blockQuota = (error: unknown) => {
@@ -460,13 +468,17 @@ export async function callAI<TOutput>(options: {
       if (consecutive >= 2) {
         const cooldownMs = Math.min(10_000, 8_000);
         globalForGenkit.__aiQuotaBlockedUntil = Date.now() + cooldownMs;
-        console.info(
-          `[AI_DEBUG] Gemini cooldown set | consecutive429=${consecutive} | cooldownMs=${cooldownMs}`
-        );
+        if (isDebugLoggingEnabled) {
+          console.info(
+            `[AI_DEBUG] Gemini cooldown set | consecutive429=${consecutive} | cooldownMs=${cooldownMs}`
+          );
+        }
       } else {
-        console.info(
-          `[AI_DEBUG] Gemini 429 detected | consecutive429=${consecutive} | cooldown not set`
-        );
+        if (isDebugLoggingEnabled) {
+          console.info(
+            `[AI_DEBUG] Gemini 429 detected | consecutive429=${consecutive} | cooldown not set`
+          );
+        }
       }
       return;
     }
@@ -474,7 +486,10 @@ export async function callAI<TOutput>(options: {
   };
 
   const clearQuotaCooldown = () => {
-    if (typeof globalForGenkit.__aiQuotaBlockedUntil === 'number') {
+    if (
+      isDebugLoggingEnabled &&
+      typeof globalForGenkit.__aiQuotaBlockedUntil === 'number'
+    ) {
       console.info('[AI_DEBUG] Gemini cooldown cleared after success');
     }
     globalForGenkit.__aiQuotaBlockedUntil = undefined;
@@ -498,12 +513,11 @@ export async function callAI<TOutput>(options: {
       const { googleAI } = modules.googleAIModule;
       const resolvedGeminiModel = GEMINI_MODEL;
       const keyPresent = Boolean(geminiKey);
-      console.log(
-        '[AI_DEBUG] GEMINI_MODEL =',
-        resolvedGeminiModel,
-        '| key_present =',
-        keyPresent
-      );
+      if (isDebugLoggingEnabled) {
+        console.info(
+          `[AI_DEBUG] GEMINI_MODEL=${resolvedGeminiModel} | key_present=${keyPresent}`
+        );
+      }
       recordGeminiRequest(resolvedGeminiModel, keyPresent);
       let res: Awaited<ReturnType<typeof ai.generate>>;
       try {
@@ -621,3 +635,4 @@ export async function callAI<TOutput>(options: {
   inFlightMap.set(inFlightKey, promise);
   return promise;
 }
+

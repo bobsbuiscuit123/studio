@@ -40,7 +40,7 @@ export async function generateClubAnnouncement(
     messages: [
       {
         role: 'system',
-        content: `You are a club communication manager. Generate a concise and engaging announcement for the club members based on the user's prompt.
+        content: `You are a group communication manager. Generate a concise and engaging announcement for the group members based on the user's prompt.
 From the user's prompt, determine a good title for the announcement.
 - Return the title in the "title" field.
 - Return the body in "announcement" and DO NOT repeat the title there; keep it as pure body copy.

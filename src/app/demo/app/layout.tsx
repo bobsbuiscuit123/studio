@@ -11,6 +11,7 @@ import {
   getStoredDemoSession,
   type DemoSession,
 } from '@/lib/demo/mockData';
+import { setSelectedGroupId } from '@/lib/selection';
 
 export default function DemoAppLayout({
   children,
@@ -30,7 +31,7 @@ export default function DemoAppLayout({
       router.replace('/demo');
       return;
     }
-    localStorage.setItem('selectedClubId', parsed.groupId);
+    setSelectedGroupId(parsed.groupId);
     setSession(parsed);
   }, [router]);
 

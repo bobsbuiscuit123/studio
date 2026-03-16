@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getOfficerInsights } from '@/lib/analytics/officerInsights';
+import type { OfficerInsights } from '@/lib/analytics/officerInsights';
 import { getMemberInsights } from '@/lib/analytics/memberInsights';
 import { openAssistantWithContext } from '@/lib/assistant/prefill';
 import {
@@ -24,9 +25,11 @@ import {
   useGroupChats,
   useMembers,
   useMessages,
+  notifyOrgAiUsageChanged,
   useTransactions,
 } from '@/lib/data-hooks';
 import { resolveInsightRequestAction } from '@/app/(app)/assistant/actions';
+import { useGroupUserStateSection } from '@/lib/group-user-state';
 
 type InsightListKey = 'action' | 'engagement' | 'finance';
 type InsightBoxKey = InsightListKey | string;
@@ -61,6 +64,71 @@ type HiddenInsightBox = {
   id: string;
   title: string;
 };
+
+type InsightResolutionCache = {
+  contextVersion: string;
+  text?: string;
+  actionLabel?: string;
+  actionHref?: string | null;
+  contextText?: string;
+  status?: string;
+  missingInfo?: string;
+};
+
+type InsightResolutionResult = {
+  status?: string;
+  text?: string;
+  actionLabel?: string;
+  actionHref?: string | null;
+  contextText?: string;
+  missingInfo?: string;
+};
+
+type AiInsightsStoredState = {
+  customRequests: CustomInsightRequest[];
+  hiddenInsights: Record<string, HiddenInsight[]>;
+  customBoxes: CustomInsightBox[];
+  hiddenBoxes: HiddenInsightBox[];
+  promptCache: Record<string, InsightResolutionCache>;
+  requestCache: Record<string, InsightResolutionCache>;
+};
+
+const DEFAULT_AI_INSIGHTS_STATE: AiInsightsStoredState = {
+  customRequests: [],
+  hiddenInsights: { action: [], engagement: [], finance: [] },
+  customBoxes: [],
+  hiddenBoxes: [],
+  promptCache: {},
+  requestCache: {},
+};
+
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableSerialize(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
+
+const hashString = (value: string) => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16);
+};
+
+const areAiInsightStatesEqual = (
+  left: AiInsightsStoredState,
+  right: AiInsightsStoredState
+) => stableSerialize(left) === stableSerialize(right);
 
 const MAX_ITEMS = 3;
 
@@ -292,22 +360,18 @@ export default function AIInsights({
   const [insightError, setInsightError] = useState<string | null>(null);
   const [isResolvingCustomInsights, setIsResolvingCustomInsights] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(false);
+  const lastSubmittedStateRef = useRef<string>('');
+  const [promptCache, setPromptCache] = useState<Record<string, InsightResolutionCache>>({});
+  const [requestCache, setRequestCache] = useState<Record<string, InsightResolutionCache>>({});
+  const { data: persistedAiState, updateData: updatePersistedAiState, loading: aiStateLoading } =
+    useGroupUserStateSection<AiInsightsStoredState>('aiInsights', DEFAULT_AI_INSIGHTS_STATE);
 
-  const customStorageKey = user?.email
-    ? `ai_custom_insights:${user.email.toLowerCase()}`
-    : null;
-  const hiddenStorageKey = user?.email
-    ? `ai_hidden_insights:${user.email.toLowerCase()}`
-    : null;
-  const hiddenBoxesStorageKey = user?.email
-    ? `ai_hidden_insight_boxes:${user.email.toLowerCase()}`
-    : null;
-  const boxesStorageKey = user?.email
-    ? `ai_custom_insight_boxes:${user.email.toLowerCase()}`
+  const storageScope = clubId && user?.email
+    ? `${user.email.toLowerCase()}:${clubId}`
     : null;
   const animationStorageKey =
-    clubId && user?.email
-      ? `ai_insights_seen:${clubId}:${user.email.toLowerCase()}`
+    storageScope
+      ? `ai_insights_seen:${storageScope}`
       : null;
 
   useEffect(() => {
@@ -325,122 +389,91 @@ export default function AIInsights({
   }, [animationStorageKey]);
 
   useEffect(() => {
-    if (!customStorageKey || typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(customStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as CustomInsightRequest[];
-        if (Array.isArray(parsed)) {
-          setCustomRequests(parsed);
-          setCustomHydrated(true);
-          return;
-        }
-      }
-    } catch (error) {
-      // ignore invalid storage
-    }
-    setCustomRequests([]);
+    if (aiStateLoading) return;
+    setCustomRequests(Array.isArray(persistedAiState.customRequests) ? persistedAiState.customRequests : []);
+    setCustomBoxes(Array.isArray(persistedAiState.customBoxes) ? persistedAiState.customBoxes : []);
+    setHiddenBoxes(Array.isArray(persistedAiState.hiddenBoxes) ? persistedAiState.hiddenBoxes : []);
+    setHiddenInsights(
+      persistedAiState.hiddenInsights && typeof persistedAiState.hiddenInsights === 'object'
+        ? persistedAiState.hiddenInsights
+        : { action: [], engagement: [], finance: [] }
+    );
+    setPromptCache(
+      persistedAiState.promptCache && typeof persistedAiState.promptCache === 'object'
+        ? persistedAiState.promptCache
+        : {}
+    );
+    setRequestCache(
+      persistedAiState.requestCache && typeof persistedAiState.requestCache === 'object'
+        ? persistedAiState.requestCache
+        : {}
+    );
+    lastSubmittedStateRef.current = stableSerialize({
+      customRequests: Array.isArray(persistedAiState.customRequests) ? persistedAiState.customRequests : [],
+      hiddenInsights:
+        persistedAiState.hiddenInsights && typeof persistedAiState.hiddenInsights === 'object'
+          ? persistedAiState.hiddenInsights
+          : { action: [], engagement: [], finance: [] },
+      customBoxes: Array.isArray(persistedAiState.customBoxes) ? persistedAiState.customBoxes : [],
+      hiddenBoxes: Array.isArray(persistedAiState.hiddenBoxes) ? persistedAiState.hiddenBoxes : [],
+      promptCache:
+        persistedAiState.promptCache && typeof persistedAiState.promptCache === 'object'
+          ? persistedAiState.promptCache
+          : {},
+      requestCache:
+        persistedAiState.requestCache && typeof persistedAiState.requestCache === 'object'
+          ? persistedAiState.requestCache
+          : {},
+    });
     setCustomHydrated(true);
-  }, [customStorageKey]);
-
-  useEffect(() => {
-    if (!boxesStorageKey || typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(boxesStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as CustomInsightBox[];
-        if (Array.isArray(parsed)) {
-          setCustomBoxes(parsed);
-          setBoxesHydrated(true);
-          return;
-        }
-      }
-    } catch {
-      // ignore invalid storage
-    }
-    setCustomBoxes([]);
     setBoxesHydrated(true);
-  }, [boxesStorageKey]);
-
-  useEffect(() => {
-    if (!hiddenStorageKey || typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(hiddenStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as Record<string, HiddenInsight[]>;
-        if (parsed && typeof parsed === 'object') {
-          setHiddenInsights(parsed);
-          setHiddenHydrated(true);
-          return;
-        }
-      }
-    } catch (error) {
-      // ignore invalid storage
-    }
-    setHiddenInsights({ action: [], engagement: [], finance: [] });
     setHiddenHydrated(true);
-  }, [hiddenStorageKey]);
-
-  useEffect(() => {
-    if (!hiddenBoxesStorageKey || typeof window === 'undefined') return;
-    try {
-      const stored = localStorage.getItem(hiddenBoxesStorageKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as HiddenInsightBox[];
-        if (Array.isArray(parsed)) {
-          setHiddenBoxes(parsed);
-          setHiddenBoxesHydrated(true);
-          return;
-        }
-      }
-    } catch {
-      // ignore invalid storage
-    }
-    setHiddenBoxes([]);
     setHiddenBoxesHydrated(true);
-  }, [hiddenBoxesStorageKey]);
-
-  useEffect(() => {
-    if (!customStorageKey || typeof window === 'undefined' || !customHydrated) return;
-    try {
-      localStorage.setItem(customStorageKey, JSON.stringify(customRequests));
-    } catch (error) {
-      // ignore storage failures
-    }
-  }, [customHydrated, customRequests, customStorageKey]);
-
-  useEffect(() => {
-    if (!boxesStorageKey || typeof window === 'undefined' || !boxesHydrated) return;
-    try {
-      localStorage.setItem(boxesStorageKey, JSON.stringify(customBoxes));
-    } catch {
-      // ignore storage failures
-    }
-  }, [boxesHydrated, customBoxes, boxesStorageKey]);
-
-  useEffect(() => {
-    if (!hiddenStorageKey || typeof window === 'undefined' || !hiddenHydrated) return;
-    try {
-      localStorage.setItem(hiddenStorageKey, JSON.stringify(hiddenInsights));
-    } catch (error) {
-      // ignore storage failures
-    }
-  }, [hiddenHydrated, hiddenInsights, hiddenStorageKey]);
+  }, [aiStateLoading, persistedAiState]);
 
   useEffect(() => {
     if (
-      !hiddenBoxesStorageKey ||
-      typeof window === 'undefined' ||
+      aiStateLoading ||
+      !customHydrated ||
+      !boxesHydrated ||
+      !hiddenHydrated ||
       !hiddenBoxesHydrated
     ) {
       return;
     }
-    try {
-      localStorage.setItem(hiddenBoxesStorageKey, JSON.stringify(hiddenBoxes));
-    } catch {
-      // ignore storage failures
+    const nextState: AiInsightsStoredState = {
+      customRequests,
+      hiddenInsights,
+      customBoxes,
+      hiddenBoxes,
+      promptCache,
+      requestCache,
+    };
+    const serializedNextState = stableSerialize(nextState);
+    if (serializedNextState === lastSubmittedStateRef.current) {
+      return;
     }
-  }, [hiddenBoxes, hiddenBoxesHydrated, hiddenBoxesStorageKey]);
+    if (areAiInsightStatesEqual(nextState, persistedAiState)) {
+      lastSubmittedStateRef.current = serializedNextState;
+      return;
+    }
+    lastSubmittedStateRef.current = serializedNextState;
+    void updatePersistedAiState(nextState);
+  }, [
+    aiStateLoading,
+    boxesHydrated,
+    customBoxes,
+    customHydrated,
+    customRequests,
+    hiddenBoxes,
+    hiddenBoxesHydrated,
+    hiddenHydrated,
+    hiddenInsights,
+    promptCache,
+    persistedAiState,
+    requestCache,
+    updatePersistedAiState,
+  ]);
 
   const loading =
     announcements.loading ||
@@ -565,69 +598,16 @@ export default function AIInsights({
     mode,
   ]);
 
-  const contextVersion = useMemo(() => {
-    const toTime = (value?: string | Date | null) => {
-      if (!value) return 0;
-      const date = value instanceof Date ? value : new Date(value);
-      return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-    };
-
-    const latestAnnouncement = (announcements.data ?? []).reduce((latest, item) => {
-      const time = toTime(item.date);
-      return Math.max(latest, time);
-    }, 0);
-    const latestEvent = (events.data ?? []).reduce((latest, item) => {
-      const time = toTime(item.date);
-      return Math.max(latest, time);
-    }, 0);
-    const latestForm = (forms.data ?? []).reduce((latest, item) => {
-      const time = toTime(item.createdAt);
-      return Math.max(latest, time);
-    }, 0);
-    const latestTransaction = (transactions.data ?? []).reduce((latest, item) => {
-      const time = toTime(item.date);
-      return Math.max(latest, time);
-    }, 0);
-    const latestMessage = Object.values(messages.data ?? {}).flat().reduce(
-      (latest, item) => Math.max(latest, toTime(item.timestamp)),
-      0
-    );
-    const latestGroupChat = (groupChats.data ?? []).reduce((latest, chat) => {
-      const latestChat = (chat.messages ?? []).reduce(
-        (chatLatest, msg) => Math.max(chatLatest, toTime(msg.timestamp)),
-        0
-      );
-      return Math.max(latest, latestChat);
-    }, 0);
-
-    return [
-      clubId ?? 'club',
-      user?.email ?? 'user',
-      (members.data ?? []).length,
-      (announcements.data ?? []).length,
-      (events.data ?? []).length,
-      (forms.data ?? []).length,
-      (transactions.data ?? []).length,
-      (groupChats.data ?? []).length,
-      Object.keys(messages.data ?? {}).length,
-      latestAnnouncement,
-      latestEvent,
-      latestForm,
-      latestTransaction,
-      latestMessage,
-      latestGroupChat,
-    ].join('|');
-  }, [
-    announcements.data,
-    clubId,
-    events.data,
-    forms.data,
-    groupChats.data,
-    members.data,
-    messages.data,
-    transactions.data,
-    user,
-  ]);
+  const contextVersion = useMemo(
+    () =>
+      [
+        clubId ?? 'group',
+        mode,
+        user?.email ?? 'user',
+        hashString(insightsContext),
+      ].join('|'),
+    [clubId, insightsContext, mode, user?.email]
+  );
 
   useEffect(() => {
     if (loading) return;
@@ -757,63 +737,46 @@ export default function AIInsights({
     setIsResolvingInsight(true);
     try {
       const promptKey = `ai_insight_prompt_cache:${contextVersion}:${newInsightList}:${trimmed.toLowerCase()}`;
-      if (typeof window !== 'undefined') {
-        const cached =
-          localStorage.getItem(promptKey) ?? sessionStorage.getItem(promptKey);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            const cachedText =
-              typeof parsed?.text === 'string' ? parsed.text.trim() : '';
-            if (cachedText) {
-              const requestId = crypto.randomUUID();
-              const inferredHref = inferActionHref(trimmed);
-              const finalActionHref = parsed.actionHref ?? inferredHref ?? undefined;
-              const finalActionLabel =
-                parsed.actionLabel ?? (finalActionHref ? 'Review' : undefined);
-              const cacheKey = `ai_custom_insight_cache:${contextVersion}:${requestId}`;
-              localStorage.setItem(
-                cacheKey,
-                JSON.stringify({
-                  ...parsed,
-                  actionHref: finalActionHref,
-                  actionLabel: finalActionLabel,
-                })
-              );
-              sessionStorage.setItem(
-                cacheKey,
-                JSON.stringify({
-                  ...parsed,
-                  actionHref: finalActionHref,
-                  actionLabel: finalActionLabel,
-                })
-              );
-              setCustomRequests(prev => [
-                ...prev,
-                { id: requestId, listKey: newInsightList, prompt: trimmed },
-              ]);
-              setCustomInsights(prev => ({
-                ...prev,
-                [newInsightList]: [
-                  ...(prev[newInsightList] ?? []),
-                  {
-                    id: requestId,
-                    text: cachedText,
-                    actionLabel: finalActionLabel,
-                    actionHref: finalActionHref,
-                    contextText: parsed.contextText,
-                    createdAt: Date.now(),
-                    source: 'custom' as const,
-                  },
-                ],
-              }));
-              setNewInsightText('');
-              return;
-            }
-          } catch {
-            // ignore cache parse errors
-          }
-        }
+      const cachedPrompt = promptCache[promptKey];
+      const cachedText =
+        typeof cachedPrompt?.text === 'string' ? cachedPrompt.text.trim() : '';
+      if (cachedText) {
+        const requestId = crypto.randomUUID();
+        const inferredHref = inferActionHref(trimmed);
+        const finalActionHref = cachedPrompt.actionHref ?? inferredHref ?? undefined;
+        const finalActionLabel =
+          cachedPrompt.actionLabel ?? (finalActionHref ? 'Review' : undefined);
+        const resolvedCache = {
+          ...cachedPrompt,
+          contextVersion,
+          actionHref: finalActionHref,
+          actionLabel: finalActionLabel,
+        };
+        setRequestCache(prev => ({
+          ...prev,
+          [requestId]: resolvedCache,
+        }));
+        setCustomRequests(prev => [
+          ...prev,
+          { id: requestId, listKey: newInsightList, prompt: trimmed },
+        ]);
+        setCustomInsights(prev => ({
+          ...prev,
+          [newInsightList]: [
+            ...(prev[newInsightList] ?? []),
+            {
+              id: requestId,
+              text: cachedText,
+              actionLabel: finalActionLabel,
+              actionHref: finalActionHref,
+              contextText: cachedPrompt.contextText,
+              createdAt: Date.now(),
+              source: 'custom' as const,
+            },
+          ],
+        }));
+        setNewInsightText('');
+        return;
       }
 
       const resolvedResult = await resolveInsightRequestAction(trimmed, insightsContext);
@@ -821,7 +784,8 @@ export default function AIInsights({
         setInsightError(resolvedResult.error.message);
         return;
       }
-      const resolved = resolvedResult.data;
+      notifyOrgAiUsageChanged();
+      const resolved = resolvedResult.data as InsightResolutionResult;
       const status = resolved?.status ?? 'ok';
       if (status === 'invalid') {
         setInsightError("That request doesn't make sense as an insight.");
@@ -846,41 +810,20 @@ export default function AIInsights({
       const inferredHref = inferActionHref(trimmed);
       const finalActionHref = resolved.actionHref ?? inferredHref ?? undefined;
       const finalActionLabel = resolved.actionLabel ?? (finalActionHref ? 'Review' : undefined);
-      if (typeof window !== 'undefined' && resolved?.text) {
-        localStorage.setItem(
-          promptKey,
-          JSON.stringify({
-            ...resolved,
-            actionHref: finalActionHref,
-            actionLabel: finalActionLabel,
-          })
-        );
-        sessionStorage.setItem(
-          promptKey,
-          JSON.stringify({
-            ...resolved,
-            actionHref: finalActionHref,
-            actionLabel: finalActionLabel,
-          })
-        );
-        const cacheKey = `ai_custom_insight_cache:${contextVersion}:${requestId}`;
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            ...resolved,
-            actionHref: finalActionHref,
-            actionLabel: finalActionLabel,
-          })
-        );
-        sessionStorage.setItem(
-          cacheKey,
-          JSON.stringify({
-            ...resolved,
-            actionHref: finalActionHref,
-            actionLabel: finalActionLabel,
-          })
-        );
-      }
+      const resolvedCache = {
+        ...resolved,
+        contextVersion,
+        actionHref: finalActionHref,
+        actionLabel: finalActionLabel,
+      };
+      setPromptCache(prev => ({
+        ...prev,
+        [promptKey]: resolvedCache,
+      }));
+      setRequestCache(prev => ({
+        ...prev,
+        [requestId]: resolvedCache,
+      }));
       setCustomRequests(prev => [
         ...prev,
         { id: requestId, listKey: newInsightList, prompt: trimmed },
@@ -962,44 +905,36 @@ export default function AIInsights({
       finance: [],
     };
     customRequests.forEach(request => {
-      const cacheKey = `ai_custom_insight_cache:${contextVersion}:${request.id}`;
-      if (typeof window === 'undefined') return;
-      const cached =
-        localStorage.getItem(cacheKey) ?? sessionStorage.getItem(cacheKey);
-      if (!cached) return;
-      try {
-        const parsed = JSON.parse(cached);
-        if (parsed?.status === 'invalid' || parsed?.status === 'needs_info') return;
-        const parsedText =
-          typeof parsed?.text === 'string' ? parsed.text.trim() : '';
-        if (!parsedText) return;
-        const inferredHref = inferActionHref(request.prompt);
-        const resolved = {
-          ...parsed,
-          actionHref: parsed.actionHref ?? inferredHref,
-          actionLabel:
-            parsed.actionLabel ??
-            (parsed.actionHref || inferredHref ? 'Review' : undefined),
-        };
-        if (!next[request.listKey]) {
-          next[request.listKey] = [];
-        }
-        next[request.listKey].push({
-          id: request.id,
-          text: parsedText,
-          actionLabel: resolved.actionLabel,
-          actionHref: resolved.actionHref,
-          contextText: resolved.contextText,
-          createdAt: Date.now(),
-          source: 'custom' as const,
-        });
-      } catch {
-        // ignore cache parsing errors
+      const parsed = requestCache[request.id];
+      if (!parsed) return;
+      if (parsed.contextVersion !== contextVersion) return;
+      if (parsed.status === 'invalid' || parsed.status === 'needs_info') return;
+      const parsedText = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+      if (!parsedText) return;
+      const inferredHref = inferActionHref(request.prompt);
+      const resolved = {
+        ...parsed,
+        actionHref: parsed.actionHref ?? inferredHref,
+        actionLabel:
+          parsed.actionLabel ??
+          (parsed.actionHref || inferredHref ? 'Review' : undefined),
+      };
+      if (!next[request.listKey]) {
+        next[request.listKey] = [];
       }
+      next[request.listKey].push({
+        id: request.id,
+        text: parsedText,
+        actionLabel: resolved.actionLabel,
+            actionHref: resolved.actionHref ?? undefined,
+        contextText: resolved.contextText,
+        createdAt: Date.now(),
+        source: 'custom' as const,
+      });
     });
     setCustomInsights(next);
     setIsResolvingCustomInsights(false);
-  }, [contextVersion, customRequests]);
+  }, [contextVersion, customRequests, requestCache]);
 
   if (loading) {
     return (
@@ -1241,7 +1176,7 @@ export default function AIInsights({
         )}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <AlertTriangle className="h-3.5 w-3.5" />
-        AI insights change as new data comes in.
+        Default insights are based on live group data. Adding a custom insight uses AI.
       </div>
       </CardContent>
     </Card>

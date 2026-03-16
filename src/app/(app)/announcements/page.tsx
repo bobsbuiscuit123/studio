@@ -33,11 +33,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { generateClubAnnouncement, type GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
+import type { GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
+import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
 import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { safeFetchJson } from "@/lib/network";
 
 
 const promptFormSchema = z.object({
@@ -90,7 +91,7 @@ function AnnouncementsPageInner() {
     if (!clubId) return;
     const load = async () => {
       const { data, error } = await supabase
-        .from('orgs')
+        .from('groups')
         .select('name')
         .eq('id', clubId)
         .maybeSingle();
@@ -195,21 +196,27 @@ function AnnouncementsPageInner() {
         const promptText = targetForm.title
           ? `tell everyone to fill out this form titled "${targetForm.title}"`
           : "tell everyone to fill out this form";
-        const result = await generateClubAnnouncement({
-          prompt: promptText,
-        });
+        const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
+          '/api/announcements/ai',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: promptText }),
+          }
+        );
         if (!result.ok) {
           toast({
             title: "Error",
-            description: result.error.message,
+            description: result.error?.message || "Failed to generate announcement for this form.",
             variant: "destructive",
           });
           return;
         }
-        setGeneratedAnnouncement(result.data);
+        notifyOrgAiUsageChanged();
+        setGeneratedAnnouncement(result.data.data);
         announcementForm.reset({
-          title: result.data.title,
-          content: result.data.announcement
+          title: result.data.data.title,
+          content: result.data.data.announcement
         });
         setIsPostDialogOpen(true);
       } catch (error) {
@@ -308,22 +315,28 @@ function AnnouncementsPageInner() {
 
   const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
     setIsLoading(true);
-    const result = await generateClubAnnouncement({
-      prompt: values.prompt,
-    });
+    const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
+      '/api/announcements/ai',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: values.prompt }),
+      }
+    );
     if (!result.ok) {
       toast({
         title: "Error",
-        description: result.error.message || "Failed to generate announcement.",
+        description: result.error?.message || "Failed to generate announcement.",
         variant: "destructive",
       });
       setIsLoading(false);
       return;
     }
-    setGeneratedAnnouncement(result.data);
+    notifyOrgAiUsageChanged();
+    setGeneratedAnnouncement(result.data.data);
     announcementForm.reset({
-        title: result.data.title,
-        content: result.data.announcement
+        title: result.data.data.title,
+        content: result.data.data.announcement
     });
     setIsPostDialogOpen(true);
     setIsLoading(false);
@@ -353,7 +366,7 @@ function AnnouncementsPageInner() {
         id: newId,
         title: values.title,
         content: values.content,
-        author: user?.name || "Club Admin",
+        author: user?.name || "Group Admin",
         date: new Date().toISOString(),
         recipients,
         viewedBy: user.email ? [user.email] : [],
@@ -756,7 +769,14 @@ function AnnouncementsPageInner() {
           ) : (
             <Card className="flex items-center justify-center py-12">
               <CardContent>
-                <p className="text-muted-foreground">No announcements yet. {canEditContent && "Create one to get started!"}</p>
+                <div className="text-center">
+                  <p className="text-muted-foreground">No announcements yet.</p>
+                  {canEditContent ? (
+                    <p className="text-muted-foreground">Create one to update your members.</p>
+                  ) : (
+                    <p className="text-muted-foreground">Check back soon for updates from your admins.</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}

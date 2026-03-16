@@ -1,27 +1,49 @@
 'use server';
 
-import { planAssistantTasks } from '@/ai/flows/assistant-planner';
-import { generateClubAnnouncement } from '@/ai/flows/generate-announcement';
-import { generateClubForm } from '@/ai/flows/generate-form';
-import { resolveFollowUpAnswers } from '@/ai/flows/resolve-followups';
-import { runAssistant } from '@/ai/flows/assistant';
-import { generateMessage } from '@/ai/flows/generate-message';
-import { generateGalleryDescription } from '@/ai/flows/generate-gallery-description';
-import { addCalendarEvent } from '@/ai/flows/add-calendar-event';
-import { generateEmail } from '@/ai/flows/generate-email';
-import { addTransaction } from '@/ai/flows/add-transaction';
-import { generateSocialMediaPost } from '@/ai/flows/generate-social-media-post';
-import { resolveAnnouncementRecipients } from '@/ai/flows/resolve-announcement-recipients';
-import { resolveInsightRequest } from '@/ai/flows/resolve-insight-request';
-import { resolveMetricValue } from '@/ai/flows/resolve-metric-value';
-import { resolveGraphRequest } from '@/ai/flows/resolve-graph-request';
-import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import { runWithAiAction } from '@/ai/ai-action-context';
 import { err, ok, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 import { z } from 'zod';
-import { enforceAiQuota } from '@/lib/ai-quota';
+
+const resolveOrigin = async () => {
+  const headerList = await headers();
+  return (
+    headerList.get('origin') ||
+    `${headerList.get('x-forwarded-proto') || 'http'}://${headerList.get('x-forwarded-host') || 'localhost:3000'}`
+  );
+};
+
+const getSelectedOrgId = async () => {
+  const cookieStore = await cookies();
+  return cookieStore.get('selectedOrgId')?.value ?? null;
+};
+
+const callAiConsume = async <T>(
+  feature: 'chat' | 'insights' | 'whats_new',
+  action: string,
+  payload: unknown
+): Promise<Result<T>> => {
+  const origin = await resolveOrigin();
+  const headerList = await headers();
+  const cookieHeader = headerList.get('cookie') ?? '';
+  const orgId = await getSelectedOrgId();
+  const response = await fetch(`${origin}/api/ai/consume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
+    body: JSON.stringify({ orgId, feature, action, payload }),
+    cache: 'no-store',
+  });
+  const json = await response.json().catch(() => null);
+  if (!json || typeof json !== 'object' || !('ok' in json)) {
+    return err({
+      code: 'NETWORK_HTTP_ERROR',
+      message: 'Invalid server response.',
+      source: 'network',
+    });
+  }
+  return json as Result<T>;
+};
 
 export async function planTasksAction(query: string, context?: string) {
   return runWithAiAction('planTasksAction', async () => {
@@ -46,11 +68,12 @@ export async function planTasksAction(query: string, context?: string) {
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
     const trimmedContext =
       context && context.length > 3000 ? context.slice(-3000) : context;
-    return planAssistantTasks({ query, context: trimmedContext });
+    return callAiConsume('chat', 'plan_tasks', {
+      query,
+      context: trimmedContext,
+    });
   });
 }
 
@@ -85,9 +108,7 @@ export async function resolveFollowUpAnswersAction(
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveFollowUpAnswers({ questions, reply });
+    return callAiConsume('chat', 'followups', { questions, reply });
   });
 }
 
@@ -114,14 +135,12 @@ export async function runAssistantAction(query: string, context?: string) {
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
     const trimmedContext =
       context && context.length > 3000 ? context.slice(-3000) : context;
-    const content = trimmedContext
-      ? `App context:\n${trimmedContext}\n\nUser: ${query}`
-      : query;
-    return runAssistant({ query: content });
+    return callAiConsume('chat', 'assistant', {
+      query,
+      context: trimmedContext,
+    });
   });
 }
 
@@ -151,9 +170,7 @@ export async function resolveAnnouncementRecipientsAction(
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveAnnouncementRecipients({ prompt, context });
+    return callAiConsume('chat', 'announcement_recipients', { prompt, context });
   });
 }
 
@@ -180,9 +197,7 @@ export async function resolveInsightRequestAction(prompt: string, context?: stri
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveInsightRequest({ prompt, context });
+    return callAiConsume('insights', 'resolve_insight_request', { prompt, context });
   });
 }
 
@@ -209,9 +224,7 @@ export async function resolveMetricValueAction(prompt: string, context?: string)
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveMetricValue({ prompt, context });
+    return callAiConsume('chat', 'metric', { prompt, context });
   });
 }
 
@@ -238,9 +251,7 @@ export async function resolveGraphRequestAction(prompt: string, context?: string
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveGraphRequest({ prompt, context });
+    return callAiConsume('chat', 'graph', { prompt, context });
   });
 }
 
@@ -267,9 +278,7 @@ export async function resolveMissedActivityAction(summary: string) {
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
-    return resolveMissedActivity({ summary });
+    return callAiConsume('chat', 'missed_activity', { summary });
   });
 }
 type TaskType =
@@ -315,13 +324,11 @@ export async function runTaskAction(
         source: 'app',
       });
     }
-    const quota = await enforceAiQuota();
-    if (!quota.ok) return quota;
     switch (type) {
       case 'announcement':
-        return generateClubAnnouncement({ prompt });
+        return callAiConsume('chat', 'announcement', { prompt });
       case 'form':
-        return generateClubForm({ prompt });
+        return callAiConsume('chat', 'form', { prompt });
       case 'slides':
         return err({
           code: 'VALIDATION',
@@ -329,17 +336,17 @@ export async function runTaskAction(
           source: 'app',
         });
       case 'calendar':
-        return addCalendarEvent({ prompt });
+        return callAiConsume('chat', 'calendar', { prompt });
       case 'email':
-        return generateEmail({ prompt });
+        return callAiConsume('chat', 'email', { prompt });
       case 'messages':
-        return generateMessage({ prompt });
+        return callAiConsume('chat', 'messages', { prompt });
       case 'gallery':
-        return generateGalleryDescription({ prompt });
+        return callAiConsume('chat', 'gallery', { prompt });
       case 'transaction':
-        return addTransaction({ prompt });
+        return callAiConsume('chat', 'transaction', { prompt });
       case 'social':
-        return generateSocialMediaPost({ prompt });
+        return callAiConsume('chat', 'social', { prompt });
       case 'other':
         return ok({
           message:

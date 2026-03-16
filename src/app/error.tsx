@@ -11,6 +11,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
+    console.error('Route error boundary', error);
     captureException(error, { digest: error.digest, scope: 'route-error' });
   }, [error]);
 
@@ -29,4 +30,3 @@ export default function Error({
     </div>
   );
 }
-

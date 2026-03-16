@@ -2,8 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import Image from 'next/image';
-import { PlusCircle, ArrowRight, LogIn, UserPlus, Compass, Chrome, Apple } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -19,17 +17,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useForm } from 'react-hook-form';
@@ -38,22 +28,11 @@ import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
 import { usePathname, useRouter } from 'next/navigation';
-import { Member, User } from '@/lib/mock-data';
+import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
-import { faker } from '@faker-js/faker';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { getDefaultOrgState } from '@/lib/org-state';
 import { safeFetchJson } from '@/lib/network';
-
-const clubCategories = ["STEM", "Arts", "Sports", "Service", "Academic", "Cultural", "Other"];
-
-const clubFormSchema = z.object({
-  name: z.string().min(4, 'Club name must be at least 4 characters.'),
-  logo: z.any().optional(),
-  category: z.string().min(1, "Please select a category."),
-  description: z.string().min(10, "Description must be at least 10 characters long."),
-  meetingTime: z.string().min(3, "Please enter a meeting time."),
-});
+import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
@@ -75,19 +54,39 @@ const forgotPasswordSchema = z.object({
 });
 
 
-const joinClubFormSchema = z.object({
-    code: z.string().length(4, "Join code must be 4 characters long.").regex(/^[A-Z0-9]{4}$/, "Code must be uppercase letters and numbers."),
-});
+function getEmailRedirectTo() {
+  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
+    return `${configuredSiteUrl.replace(/\/+$/, '')}/auth/callback`;
+  }
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/auth/callback`;
+  }
+  return undefined;
+}
 
-type Club = {
-  id: string;
-  name: string;
-  joinCode: string;
-  category: string;
-  description: string;
-  meetingTime: string;
-  logo?: string;
-};
+function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.39 3.63v2.99h3.87c2.26-2.08 3.54-5.14 3.54-8.86Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.96-1.07 7.95-2.91l-3.87-2.99c-1.07.72-2.44 1.14-4.08 1.14-3.13 0-5.78-2.11-6.72-4.95H1.29v3.08A12 12 0 0 0 12 24Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.29A7.19 7.19 0 0 1 4.91 12c0-.8.14-1.57.37-2.29V6.63H1.29A12 12 0 0 0 0 12c0 1.94.46 3.78 1.29 5.37l3.99-3.08Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.77c1.77 0 3.36.61 4.61 1.8l3.45-3.45A11.96 11.96 0 0 0 12 0 12 12 0 0 0 1.29 6.63l3.99 3.08C6.22 6.87 8.87 4.77 12 4.77Z"
+      />
+    </svg>
+  );
+}
 
 function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
     const [providerLoading, setProviderLoading] = useState<'google' | 'apple' | null>(null);
@@ -95,11 +94,10 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
 
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
+        const redirectTo = getEmailRedirectTo();
         const { error } = await supabase.auth.signInWithOAuth({
             provider,
-            options: {
-                redirectTo: `${window.location.origin}/auth/callback`,
-            },
+            options: redirectTo ? { redirectTo } : {},
         });
         if (error) {
             toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
@@ -116,16 +114,7 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
                 onClick={() => handleOAuth('google')}
                 disabled={providerLoading !== null}
             >
-                <Chrome className="mr-2 h-4 w-4" /> Continue with Google
-            </Button>
-            <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => handleOAuth('apple')}
-                disabled={providerLoading !== null}
-            >
-                <Apple className="mr-2 h-4 w-4" /> Continue with Apple
+                <GoogleLogoIcon /> Continue with Google
             </Button>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <div className="h-px flex-1 bg-border" />
@@ -134,6 +123,17 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
             </div>
         </div>
     );
+}
+
+function getAuthDisplayName(
+  user?: { user_metadata?: Record<string, unknown> | null; email?: string | null }
+) {
+  const meta = user?.user_metadata || {};
+  const fromMeta =
+    (meta['full_name'] as string | undefined) ||
+    (meta['name'] as string | undefined) ||
+    (meta['display_name'] as string | undefined);
+  return fromMeta || user?.email || 'Member';
 }
 
 function SignUpForm({
@@ -152,30 +152,45 @@ function SignUpForm({
     const { toast } = useToast();
 
     const handleSaveUser = async (values: z.infer<typeof userFormSchema>) => {
-        const { data, error } = await supabase.auth.signUp({
-            email: values.email,
-            password: values.password,
-            options: {
-              data: { display_name: values.name },
-              emailRedirectTo: `${window.location.origin}/auth/callback`,
-            },
+        const signupResponse = await safeFetchJson<{ ok: boolean; userId?: string; error?: string }>(
+          '/api/auth/signup',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: values.name,
+              email: values.email,
+              password: values.password,
+            }),
+          }
+        );
+        if (!signupResponse.ok || !signupResponse.data?.ok) {
+          const message =
+            !signupResponse.ok
+              ? signupResponse.error.message
+              : signupResponse.data?.error || 'Signup failed.';
+          toast({ title: "Signup failed", description: message, variant: "destructive" });
+          return;
+        }
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: values.email,
+          password: values.password,
         });
         if (error) {
-            toast({ title: "Signup failed", description: error.message, variant: "destructive" });
-            return;
-        }
-        if (!data.session) {
-            toast({
-              title: "Check your email",
-              description: "Use the confirmation link to verify your account and sign in.",
-            });
-            onSwitchToLogin();
-            return;
+          toast({ title: "Login failed", description: error.message, variant: "destructive" });
+          onSwitchToLogin();
+          return;
         }
         if (data.user) {
           await supabase
             .from('profiles')
-            .upsert({ id: data.user.id, email: values.email, display_name: values.name });
+            .upsert({
+              id: data.user.id,
+              email: values.email,
+              display_name: values.name,
+              avatar_url: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
+            });
         }
         const newUser: User = {
             name: values.name,
@@ -183,6 +198,8 @@ function SignUpForm({
             password: '',
             avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`
         };
+        clearSelectedOrgId();
+        clearSelectedGroupId();
         onUserSaved(newUser);
         toast({ title: `Welcome, ${values.name}!` });
     };
@@ -191,7 +208,7 @@ function SignUpForm({
         <div className="w-full max-w-md">
             <CardHeader>
                 <CardTitle className="text-3xl">Create your Account</CardTitle>
-                <CardDescription>Get started with ClubHub AI by creating an account.</CardDescription>
+                <CardDescription>Get started with CASPO by creating an account.</CardDescription>
             </CardHeader>
             <CardContent>
                 <div className="space-y-4">
@@ -258,31 +275,20 @@ function LoginForm({
             password: values.password,
         });
         if (error) {
-            const message = error.message.toLowerCase();
-            if (message.includes('email not confirmed')) {
-                toast({
-                  title: "Confirm your email first",
-                  description: "Open your email confirmation link, then sign in again.",
-                  variant: "destructive",
-                });
-                return;
-            }
             toast({ title: "Login failed", description: error.message, variant: "destructive" });
             return;
         }
+        const displayName = getAuthDisplayName(data.user);
         if (data.user) {
           await supabase
             .from('profiles')
             .upsert({
               id: data.user.id,
               email: values.email,
-              display_name:
-                (data.user.user_metadata?.display_name as string | undefined) ||
-                values.email,
+              display_name: displayName,
+              avatar_url: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
             });
         }
-        const displayName =
-          (data.user?.user_metadata?.display_name as string | undefined) || values.email;
         const user: User = {
             name: displayName,
             email: values.email,
@@ -295,7 +301,11 @@ function LoginForm({
     
     const handleForgotPassword = async (values: z.infer<typeof forgotPasswordSchema>) => {
         setIsSending(true);
-        const { error } = await supabase.auth.resetPasswordForEmail(values.email);
+        const emailRedirectTo = getEmailRedirectTo();
+        const { error } = await supabase.auth.resetPasswordForEmail(
+          values.email,
+          emailRedirectTo ? { redirectTo: emailRedirectTo } : undefined
+        );
         if (error) {
             toast({ title: "Error", description: error.message, variant: "destructive" });
             setIsSending(false);
@@ -314,7 +324,7 @@ function LoginForm({
         <>
          <div className="w-full max-w-md">
              <CardHeader>
-                <CardTitle className="text-3xl">Log In to ClubHub AI</CardTitle>
+                <CardTitle className="text-3xl">Log In to CASPO</CardTitle>
                 <CardDescription>Enter your credentials to access your account.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -374,62 +384,32 @@ function LoginForm({
 }
 
 export default function HomePage() {
-  const { user, loading: userLoading, saveUser, clearUser } = useCurrentUser();
-  const [clubs, setClubs] = useState<Club[]>([]);
+  const { user, loading: userLoading, saveUser, clearUser, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const didLogNavigationRef = useRef(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [isCreateClubOpen, setIsCreateClubOpen] = useState(false);
-  const [isJoinClubOpen, setIsJoinClubOpen] = useState(false);
-  const [memberOrgIds, setMemberOrgIds] = useState<Set<string>>(new Set());
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-
-  const loadClubsFromStorage = async () => {
-    const { data, error } = await supabase
-      .from('orgs')
-      .select('id,name,join_code,category,description,meeting_time,logo_url');
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-      return;
-    }
-    const mapped = (data || []).map(org => ({
-      id: org.id,
-      name: org.name,
-      joinCode: org.join_code,
-      category: org.category || '',
-      description: org.description || '',
-      meetingTime: org.meeting_time || '',
-      logo: org.logo_url || '',
-    }));
-    setClubs(mapped);
-
-    const { data: memberships } = await supabase
-      .from('memberships')
-      .select('org_id');
-    const ids = new Set<string>((memberships || []).map(m => m.org_id));
-    setMemberOrgIds(ids);
-  };
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
   useEffect(() => {
     setIsClient(true);
-    loadClubsFromStorage();
   }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+    setSelectedOrgId(localStorage.getItem('selectedOrgId'));
+  }, [isClient]);
 
   useEffect(() => {
     const initAuth = async () => {
       const { data } = await supabase.auth.getSession();
       const sessionUser = data.session?.user;
       if (sessionUser) {
-        const displayName =
-          (sessionUser.user_metadata?.display_name as string | undefined) ||
-          sessionUser.email ||
-          'Member';
-        saveUser({
+        const displayName = getAuthDisplayName(sessionUser);
+        setLocalUser({
           name: displayName,
           email: sessionUser.email || '',
           avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
@@ -443,11 +423,8 @@ export default function HomePage() {
         return;
       }
       const sessionUser = session.user;
-      const displayName =
-        (sessionUser.user_metadata?.display_name as string | undefined) ||
-        sessionUser.email ||
-        'Member';
-      saveUser({
+      const displayName = getAuthDisplayName(sessionUser);
+      setLocalUser({
         name: displayName,
         email: sessionUser.email || '',
         avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
@@ -456,179 +433,80 @@ export default function HomePage() {
     return () => {
       listener.subscription.unsubscribe();
     };
-  }, [clearUser, saveUser, supabase]);
+  }, [clearUser, setLocalUser, supabase]);
 
   useEffect(() => {
     if (!isClient || userLoading || didLogNavigationRef.current) return;
-    console.info('[home] navigation settled', {
-      pathname,
-      isAuthenticated: Boolean(user),
-      selectedClubId: localStorage.getItem('selectedClubId'),
-    });
     didLogNavigationRef.current = true;
-  }, [isClient, pathname, user, userLoading]);
+  }, [isClient, pathname, selectedOrgId, user, userLoading]);
 
   useEffect(() => {
-    if (!isClient) return;
-    loadClubsFromStorage();
-  }, [isClient, user]);
+    if (!isClient || userLoading) return;
+    let active = true;
 
-  const clubForm = useForm<z.infer<typeof clubFormSchema>>({
-    resolver: zodResolver(clubFormSchema),
-    defaultValues: { name: '', category: '', description: '', meetingTime: '' },
-  });
-  
-  const joinForm = useForm<z.infer<typeof joinClubFormSchema>>({
-    resolver: zodResolver(joinClubFormSchema),
-    defaultValues: { code: '' },
-  });
-
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string);
-        clubForm.setValue('logo', reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-  
-  const handleCreateClub = async (values: z.infer<typeof clubFormSchema>) => {
-    if (!user) {
-        toast({ title: "Error", description: "Cannot create a club without user information.", variant: "destructive" });
+    const routeUser = async () => {
+      if (isDemoMode) {
+        router.replace('/demo');
         return;
-    }
-    const newJoinCode = faker.string.alphanumeric(4).toUpperCase();
-    const logo = values.logo || `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`;
-    const createResponse = await safeFetchJson<{ ok: boolean; orgId: string; error?: { message?: string } }>(
-      '/api/orgs/create',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: values.name,
-          joinCode: newJoinCode,
-          category: values.category,
-          description: values.description,
-          meetingTime: values.meetingTime,
-          logoUrl: logo,
-        }),
       }
-    );
-    if (!createResponse.ok || !createResponse.data?.ok) {
-      const message =
-        !createResponse.ok
-          ? createResponse.error.message
-          : createResponse.data.error?.message || 'Failed to create club.';
-      toast({ title: "Error", description: message, variant: "destructive" });
-      return;
-    }
-    const orgId = createResponse.data.orgId;
-    const { data: authUser } = await supabase.auth.getUser();
-    const initialMember: Member = {
-      id: authUser.user?.id,
-      name: user.name,
-      email: user.email,
-      role: 'President',
-      avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`,
-    };
-    const initialState = getDefaultOrgState();
-    initialState.logo = logo;
-    initialState.members = [initialMember];
-    initialState.mindmap = {
-      nodes: [{ id: '1', type: 'input', data: { label: `${values.name} Mind Map` }, position: { x: 250, y: 5 } }],
-      edges: [],
-    };
-    await safeFetchJson('/api/org-state', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orgId, data: initialState }),
-    });
-    await loadClubsFromStorage();
-    localStorage.setItem('selectedClubId', orgId);
-    toast({ title: 'Club created successfully!', description: `Your join code is ${newJoinCode}` });
-    clubForm.reset();
-    setPreviewImage(null);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-    }
-    setIsCreateClubOpen(false);
-  };
+      if (user) {
+        if (!selectedOrgId) {
+          router.replace('/orgs');
+          return;
+        }
 
-  const handleJoinClub = async (values: z.infer<typeof joinClubFormSchema>) => {
-    if (!user) {
-         toast({ title: "Error", description: "Cannot join a club without user information.", variant: "destructive" });
+        const { data: authUser } = await supabase.auth.getUser();
+        const userId = authUser.user?.id;
+        if (!active) return;
+        if (!userId) {
+          router.replace('/login');
+          return;
+        }
+
+        const { data: membership } = await supabase
+          .from('memberships')
+          .select('org_id')
+          .eq('org_id', selectedOrgId)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (!active) return;
+
+        if (membership) {
+          router.replace('/clubs');
+          return;
+        }
+
+        clearSelectedOrgId();
+        clearSelectedGroupId();
+        setSelectedOrgId(null);
+        router.replace('/orgs');
         return;
-    }
-    const joinResponse = await safeFetchJson<{ ok: boolean; orgId: string; error?: { message?: string } }>(
-      '/api/orgs/join',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ joinCode: values.code.toUpperCase() }),
       }
-    );
-    if (!joinResponse.ok || !joinResponse.data?.ok) {
-      const message =
-        !joinResponse.ok
-          ? joinResponse.error.message
-          : joinResponse.data.error?.message || 'Failed to join club.';
-      toast({ title: "Invalid Code", description: message, variant: "destructive" });
-      return;
-    }
-    const orgId = joinResponse.data.orgId;
-    const { data: stateRow } = await supabase
-      .from('org_state')
-      .select('data')
-      .eq('org_id', orgId)
-      .maybeSingle();
-    const { data: authUser } = await supabase.auth.getUser();
-    const currentState = (stateRow?.data || getDefaultOrgState()) as ReturnType<typeof getDefaultOrgState>;
-    const newMember: Member = {
-      id: authUser.user?.id,
-      name: user.name,
-      email: user.email,
-      role: 'Member',
-      avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`,
+      if (pathname === '/') {
+        router.replace('/login');
+      }
     };
-    const existingMembers = Array.isArray(currentState.members) ? currentState.members : [];
-    const updatedMembers = existingMembers.some(m => m.email === user.email)
-      ? existingMembers
-      : [...existingMembers, newMember];
-    await safeFetchJson('/api/org-state', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orgId,
-        data: { ...currentState, members: updatedMembers },
-      }),
-    });
-    await loadClubsFromStorage();
-    localStorage.setItem('selectedClubId', orgId);
-    toast({ title: "Success!", description: `You have successfully joined the club.` });
-    joinForm.reset();
-    setIsJoinClubOpen(false);
-    handleSelectClub(orgId);
-  };
 
-  const handleSelectClub = (clubId: string) => {
-    localStorage.setItem('selectedClubId', clubId);
-    router.push('/dashboard');
-  };
+    void routeUser();
+    return () => {
+      active = false;
+    };
+  }, [isClient, isDemoMode, pathname, router, selectedOrgId, supabase, user, userLoading]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    clearUser();
-    localStorage.removeItem('selectedClubId');
-  }
   
   if (!isClient || userLoading) {
     return (
         <div className="min-h-screen bg-background flex flex-col items-center justify-center">
             <Logo className="h-16 w-16 animate-pulse text-primary" />
         </div>
+    );
+  }
+
+  if (isDemoMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Redirecting to demo...</p>
+      </div>
     );
   }
 
@@ -639,7 +517,7 @@ export default function HomePage() {
                 <CardHeader className="items-center">
                     <div className="flex justify-center items-center gap-4 mb-2">
                         <Logo className="h-10 w-10 text-primary" />
-                        <CardTitle className="text-4xl">ClubHub AI</CardTitle>
+                        <CardTitle className="text-4xl">CASPO</CardTitle>
                     </div>
                 </CardHeader>
 
@@ -654,147 +532,11 @@ export default function HomePage() {
         </div>
     );
   }
-  
-  const displayedClubs = clubs.filter(club => memberOrgIds.has(club.id));
-  
-  const clubsWithLogos = displayedClubs.map(club => ({
-    ...club,
-    logo: club.logo || `https://placehold.co/100x100.png?text=${club.name.charAt(0)}`,
-  }));
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="text-center mb-8">
-        <div className="flex justify-center items-center gap-4 mb-4">
-            <Logo className="h-12 w-12 text-primary" />
-            <h1 className="text-5xl font-bold">ClubHub AI</h1>
-        </div>
-        <p className="text-muted-foreground text-lg">Your all-in-one club management platform.</p>
-         <p className="text-muted-foreground text-md mt-2">Welcome back, {user.name}!</p>
-      </div>
-
-      <div className="w-full max-w-4xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-semibold">Your Clubs</h2>
-           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => router.push('/browse-clubs')}><Compass className="mr-2"/> Browse All Clubs</Button>
-            <Dialog open={isJoinClubOpen} onOpenChange={setIsJoinClubOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="secondary"><UserPlus className="mr-2" /> Join Club</Button>
-                </DialogTrigger>
-                <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Join a Club</DialogTitle>
-                    <DialogDescription>
-                    Enter the 4-character join code provided by the club president.
-                    </DialogDescription>
-                </DialogHeader>
-                 <form onSubmit={joinForm.handleSubmit(handleJoinClub)} className="space-y-4 pt-4">
-                    <Input 
-                        {...joinForm.register('code')} 
-                        placeholder="ABCD" 
-                        maxLength={4}
-                        className="uppercase text-center text-2xl tracking-[0.5em]"
-                    />
-                     {joinForm.formState.errors.code && (
-                        <p className="text-red-500 text-sm">{joinForm.formState.errors.code.message}</p>
-                    )}
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                        <Button type="submit">Join Club</Button>
-                    </DialogFooter>
-                 </form>
-                </DialogContent>
-            </Dialog>
-            <Dialog open={isCreateClubOpen} onOpenChange={setIsCreateClubOpen}>
-                <DialogTrigger asChild>
-                <Button>
-                    <PlusCircle className="mr-2" /> Create Club
-                </Button>
-                </DialogTrigger>
-                <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Create a New Club</DialogTitle>
-                    <DialogDescription>
-                    Enter the details for your new club. You will automatically be assigned the 'President' role.
-                    </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={clubForm.handleSubmit(handleCreateClub)} className="space-y-4 pt-4">
-                    <div>
-                      <Label>Club Name</Label>
-                      <Input {...clubForm.register('name')} placeholder="e.g., Innovators Club" />
-                      {clubForm.formState.errors.name && <p className="text-destructive text-sm">{clubForm.formState.errors.name.message}</p>}
-                    </div>
-                    <div>
-                      <Label>Club Category</Label>
-                       <Select onValueChange={(value) => clubForm.setValue('category', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {clubCategories.map(cat => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      {clubForm.formState.errors.category && <p className="text-destructive text-sm">{clubForm.formState.errors.category.message}</p>}
-                    </div>
-                     <div>
-                      <Label>Club Description</Label>
-                      <Input {...clubForm.register('description')} placeholder="What is your club about?" />
-                      {clubForm.formState.errors.description && <p className="text-destructive text-sm">{clubForm.formState.errors.description.message}</p>}
-                    </div>
-                     <div>
-                      <Label>Meeting Time / Location</Label>
-                      <Input {...clubForm.register('meetingTime')} placeholder="e.g., Tuesdays at 4 PM in Room 101" />
-                      {clubForm.formState.errors.meetingTime && <p className="text-destructive text-sm">{clubForm.formState.errors.meetingTime.message}</p>}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Label>Club Logo (Optional)</Label>
-                      <Input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageChange} />
-                    </div>
-                    {previewImage && <Image src={previewImage} alt="logo preview" width={100} height={100} className="rounded-md" />}
-                    <DialogFooter>
-                    <DialogClose asChild>
-                        <Button type="button" variant="ghost">Cancel</Button>
-                    </DialogClose>
-                    <Button type="submit">Create Club</Button>
-                    </DialogFooter>
-                </form>
-                </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
-        {clubsWithLogos.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {clubsWithLogos.map((club) => (
-              <Card key={club.id}>
-                <CardHeader className="flex-row items-center gap-4">
-                  <Image src={club.logo || ''} alt={`${club.name} logo`} width={64} height={64} className="rounded-lg aspect-square object-cover" />
-                  <div>
-                    <CardTitle>{club.name}</CardTitle>
-                    <CardDescription>Manage this club</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardFooter>
-                  <Button className="w-full" onClick={() => handleSelectClub(club.id)}>
-                      Open Dashboard <ArrowRight className="ml-2" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-16 border-2 border-dashed rounded-lg">
-            <p className="text-muted-foreground">You haven't created or joined any clubs yet.</p>
-            <p className="text-muted-foreground">Click "Create Club" or "Join Club" to get started!</p>
-          </div>
-        )}
-      </div>
-       <div className="mt-8">
-            <Button variant="outline" onClick={handleLogout}>
-                <LogIn className="mr-2"/> Log Out
-            </Button>
-       </div>
+    <div className="min-h-screen bg-background flex items-center justify-center">
+      <p className="text-muted-foreground">Redirecting to organizations...</p>
     </div>
   );
 }
+

@@ -1,8 +1,11 @@
 export type AppErrorCode =
   | 'UNKNOWN'
+  | 'ADMIN_REQUIRED'
   | 'AI_DISABLED'
   | 'AI_TIMEOUT'
   | 'AI_QUOTA'
+  | 'DAILY_LIMIT_REACHED'
+  | 'BILLING_INACTIVE'
   | 'AI_BAD_RESPONSE'
   | 'AI_SCHEMA_INVALID'
   | 'AI_PROVIDER_ERROR'
@@ -11,7 +14,8 @@ export type AppErrorCode =
   | 'NETWORK_ABORTED'
   | 'NETWORK_HTTP_ERROR'
   | 'NETWORK_PARSE_ERROR'
-  | 'VALIDATION';
+  | 'VALIDATION'
+  | 'ORG_FULL';
 
 export type AppError = {
   code: AppErrorCode;
@@ -54,4 +58,3 @@ export const normalizeErrorMessage = (error: unknown, fallback: string) => {
   }
   return fallback;
 };
-

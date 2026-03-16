@@ -22,15 +22,16 @@ import 'reactflow/dist/style.css';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { useMindMapData } from '@/lib/data-hooks';
 import type { MindMapData } from '@/lib/mock-data';
 import { PlusCircle } from 'lucide-react';
+import { useGroupUserStateSection } from '@/lib/group-user-state';
 
 let id = 2;
 const getId = () => `${id++}`;
 
 export default function MindMapPage() {
-  const { data: mindMapData, updateData: setMindMapData, loading } = useMindMapData();
+  const { data: mindMapData, updateData: setMindMapData, loading } =
+    useGroupUserStateSection<MindMapData>('mindmap', { nodes: [], edges: [] });
 
   const [nodes, setNodes, onNodesChange] = useNodesState(mindMapData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(mindMapData.edges);

@@ -38,7 +38,7 @@ export async function generateEmail(
     messages: [
       {
         role: 'system',
-        content: `You are a club communication manager. Your task is to write a clear, concise, and friendly email to all club members based on the user's prompt.
+        content: `You are a group communication manager. Your task is to write a clear, concise, and friendly email to all group members based on the user's prompt.
 The email should be professional yet approachable.
 Return ONLY valid JSON matching: { "subject": string, "body": string }.`,
       },

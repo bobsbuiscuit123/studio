@@ -1,31 +1,12 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err, ok, type Result } from '@/lib/result';
-import { headers } from 'next/headers';
 
 const DEFAULT_DAILY_QUOTA = 50;
-
-const DEMO_PATH_REGEX = /\/demo(?:\/|$)/i;
-
-const isDemoAiRequest = async () => {
-  if (process.env.NEXT_PUBLIC_DEMO_MODE !== 'true') return false;
-  try {
-    const headerList = await headers();
-    const referer = headerList.get('referer') ?? '';
-    const nextUrl = headerList.get('next-url') ?? '';
-    return DEMO_PATH_REGEX.test(referer) || DEMO_PATH_REGEX.test(nextUrl);
-  } catch {
-    return false;
-  }
-};
 
 export const enforceAiQuota = async (
   limit = DEFAULT_DAILY_QUOTA
 ): Promise<Result<{ remaining: number }>> => {
-  if (await isDemoAiRequest()) {
-    return ok({ remaining: Number.MAX_SAFE_INTEGER });
-  }
-
   const supabase = await createSupabaseServerClient();
   const { data: userData, error } = await supabase.auth.getUser();
   if (error || !userData.user) {

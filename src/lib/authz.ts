@@ -16,7 +16,7 @@ export const requireUser = async () => {
 
 export const requireOrgRole = async (
   orgId: string,
-  roles: Array<'admin' | 'moderator' | 'member'>
+  roles: Array<'owner' | 'member'>
 ) => {
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -41,7 +41,7 @@ export const requireOrgRole = async (
       source: 'app',
     });
   }
-  if (!roles.includes(data.role as 'admin' | 'moderator' | 'member')) {
+  if (!roles.includes(data.role as 'owner' | 'member')) {
     return err({
       code: 'VALIDATION',
       message: 'Insufficient permissions.',

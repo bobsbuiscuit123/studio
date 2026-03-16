@@ -69,7 +69,7 @@ const createMembers = (groupName: string): Member[] => [
     id: `president-${groupName.toLowerCase().replace(/\s+/g, '-')}`,
     name: 'Jordan Lee',
     email: 'jordan.lee@clubhub.demo',
-    role: 'President',
+    role: 'Admin',
     avatar: 'https://placehold.co/100x100.png?text=J',
   },
   {
@@ -160,14 +160,14 @@ const createTransactions = (): Transaction[] => [
     description: 'Venue reservation',
     amount: 180,
     date: addDaysIso(-4),
-    status: 'Paid',
+    status: 'Deposit',
   },
   {
     id: 'txn-2',
     description: 'Snack supplies',
-    amount: 62,
+    amount: -62,
     date: addDaysIso(-1),
-    status: 'Pending',
+    status: 'Withdrawal',
   },
 ];
 
@@ -220,11 +220,11 @@ const createGalleryImages = (): GalleryImage[] => [
   {
     id: 301,
     src: 'https://placehold.co/800x600.png?text=Demo+Gallery+1',
-    alt: 'Club meeting photo',
+    alt: 'Group meeting photo',
     author: 'evan.kim@clubhub.demo',
     date: addDaysIso(-3),
     likes: 12,
-    liked: false,
+    likedBy: [],
     status: 'approved',
     read: false,
   },
@@ -342,7 +342,7 @@ const cloneOrgState = (state: OrgState): OrgState => ({
     members: [...chat.members],
     messages: chat.messages.map(message => ({ ...message, readBy: [...message.readBy] })),
   })),
-  galleryImages: state.galleryImages.map(image => ({ ...image })),
+  galleryImages: state.galleryImages.map(image => ({ ...image, likedBy: image.likedBy ? [...image.likedBy] : undefined })),
   pointEntries: state.pointEntries.map(entry => ({ ...entry })),
   presentations: state.presentations.map(presentation => ({
     ...presentation,

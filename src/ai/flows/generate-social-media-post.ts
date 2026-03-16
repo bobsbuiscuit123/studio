@@ -15,7 +15,7 @@ import { err, ok, type Result } from '@/lib/result';
 import { z } from 'zod';
 
 const GenerateSocialMediaPostInputSchema = z.object({
-  prompt: z.string().describe('A natural language prompt describing the social media post. For example: "Create a post for the Innovators Club about our next meeting on web development. The target audience is students interested in tech. Include a call to action to join our Discord."'),
+  prompt: z.string().describe('A natural language prompt describing the social media post. For example: "Create a post for the Innovators Group about our next meeting on web development. The target audience is students interested in tech. Include a call to action to join our Discord."'),
   photoDataUris: z
     .array(z.string())
     .optional()
@@ -52,7 +52,7 @@ export async function generateSocialMediaPost(
       {
         role: 'system',
         content: `You are a social media marketing expert for school clubs.
-Your task is to create an engaging social media post based on the user's prompt to promote club activities and attract new members.
+Your task is to create an engaging social media post based on the user's prompt to promote group activities and attract new members.
 Based on the user's prompt, generate a short, catchy title for the post.
 The social media post text should be no more than 280 characters.
 If photos are provided, create an engaging image caption. If no photos are provided, do not include an imageCaption.

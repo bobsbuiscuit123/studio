@@ -7,5 +7,12 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  event.respondWith(fetch(event.request));
+  // Avoid interfering with cross-origin requests and prevent noisy errors in dev.
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+  event.respondWith(
+    fetch(event.request).catch(() => new Response('', { status: 503 }))
+  );
 });

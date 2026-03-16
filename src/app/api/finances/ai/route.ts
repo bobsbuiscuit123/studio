@@ -1,13 +1,11 @@
 'use server';
 
 import { NextResponse } from 'next/server';
-import { addTransaction } from '@/ai/flows/add-transaction';
 import { runWithAiAction } from '@/ai/ai-action-context';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { z } from 'zod';
-import { enforceAiQuota } from '@/lib/ai-quota';
 
 export async function POST(request: Request) {
   return runWithAiAction('financesAiRoute', async () => {
@@ -44,17 +42,28 @@ export async function POST(request: Request) {
           { status: 400, headers: getRateLimitHeaders(limiter) }
         );
       }
-      const quota = await enforceAiQuota();
-      if (!quota.ok) {
-        return NextResponse.json(quota, {
-          status: 429,
-          headers: getRateLimitHeaders(limiter),
-        });
-      }
-      const result = await addTransaction({ prompt: parsed.data.prompt });
-      const status = result.ok ? 200 : 502;
-      return NextResponse.json(result, {
-        status,
+      const origin =
+        headerList.get('origin') ||
+        `${headerList.get('x-forwarded-proto') || 'http'}://${headerList.get('x-forwarded-host') || 'localhost:3000'}`;
+      const response = await fetch(`${origin}/api/ai/consume`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          cookie: headerList.get('cookie') ?? '',
+        },
+        body: JSON.stringify({
+          feature: 'chat',
+          action: 'transaction',
+          payload: { prompt: parsed.data.prompt },
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      return NextResponse.json(json ?? err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Invalid server response.',
+        source: 'network',
+      }), {
+        status: response.status,
         headers: getRateLimitHeaders(limiter),
       });
     } catch (error: unknown) {

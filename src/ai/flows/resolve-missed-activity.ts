@@ -35,7 +35,7 @@ export async function resolveMissedActivity(
     messages: [
       {
         role: 'system',
-        content: `You summarize missed club activity into a short title, 3-5 bullets, and 2-3 action links.
+        content: `You summarize missed group activity into a short title, 3-5 bullets, and 2-3 action links.
 Only use these hrefs: /announcements, /calendar, /messages, /forms, /members, /gallery, /finances.
 Keep bullets short, specific, and tied to the provided summary (no generic text like "new activity happened").
 Return JSON matching: { "title": string, "bullets": string[], "actions": { "label": string, "href": string }[] }`,

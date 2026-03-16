@@ -31,13 +31,12 @@ jobs:
           ls node_modules/@capacitor
           ./node_modules/.bin/cap sync ios
 
-      - name: Build iOS project
+      - name: Build iOS
         run: |
           cd ios/App
           xcodebuild \
             -project App.xcodeproj \
             -scheme App \
             -configuration Release \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO

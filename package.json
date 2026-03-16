@@ -17,6 +17,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
     "@faker-js/faker": "^8.4.1",
     "@genkit-ai/ai": "^1.15.0",
     "@genkit-ai/googleai": "^1.15.0",

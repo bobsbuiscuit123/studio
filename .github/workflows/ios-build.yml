@@ -38,4 +38,6 @@ jobs:
             -project App.xcodeproj \
             -scheme App \
             -configuration Release \
-            -sdk iphoneos
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO

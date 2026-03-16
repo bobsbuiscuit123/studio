@@ -20,16 +20,20 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          pwd
+          ls
+          npm install
+          npm install @capacitor/core @capacitor/ios
 
       - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
 
-      - name: Install Capacitor runtime
-        run: npm install @capacitor/core @capacitor/ios
-
       - name: Sync Capacitor
-        run: npx cap sync ios
+        run: |
+          pwd
+          ls node_modules/@capacitor
+          npx cap sync ios
 
       - name: Install CocoaPods
         run: |

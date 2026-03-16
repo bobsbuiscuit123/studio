@@ -59,4 +59,5 @@ Rotate leaked keys before public launch.
 - This app uses a server-side signup endpoint with the Supabase service role to create users immediately.
 - Email confirmation is not required for signup; accounts are created if the email is not already in use.
 - `SUPABASE_SERVICE_ROLE_KEY` must be set for `/api/auth/signup` to work.
+- trigger ios pipeline
 

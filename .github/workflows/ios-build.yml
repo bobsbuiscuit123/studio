@@ -22,8 +22,11 @@ jobs:
       - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
 
+      - name: Install Capacitor runtime
+        run: npm install @capacitor/core @capacitor/ios
+
       - name: Sync Capacitor
-        run: ./node_modules/.bin/cap sync ios
+        run: npx cap sync ios
 
       - name: Install CocoaPods
         run: |

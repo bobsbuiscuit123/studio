@@ -209,6 +209,16 @@ function AnnouncementsPageInner() {
   }, [safeAnnouncements]);
 
   useEffect(() => {
+    if (!Array.isArray(safeAnnouncements) || safeAnnouncements.length === 0) return;
+    const normalizedAnnouncements = safeAnnouncements.map(normalizeAnnouncementForDisplay);
+    const changed = normalizedAnnouncements.some(
+      (announcement, index) => announcement.title !== safeAnnouncements[index]?.title
+    );
+    if (!changed) return;
+    setAnnouncements(normalizedAnnouncements as Announcement[]);
+  }, [safeAnnouncements, setAnnouncements]);
+
+  useEffect(() => {
     if (!canEditContent) return;
     const announceFormId = searchParams.get('announceFormId');
     if (!announceFormId || announceFormId === handledFormId || formsLoading) return;

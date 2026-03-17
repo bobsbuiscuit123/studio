@@ -2916,12 +2916,10 @@ const mergePlanTasksWithExplicitTypes = (
                   : attachmentsFromTask;
               const announcementId = Date.now();
               const recipients = Array.isArray(task.recipients) ? task.recipients : [];
-              const savedAnnouncementTitle =
-                typeof result?.title === 'string' &&
-                result.title.trim() &&
-                !isInstructionLikeAnnouncementTitle(result.title)
-                  ? result.title.trim()
-                  : deriveAnnouncementTitle(finalDraft || result.announcement || '', task.prompt);
+              const savedAnnouncementTitle = deriveAnnouncementTitle(
+                finalDraft || result.announcement || '',
+                task.prompt
+              );
               const newItem = {
                 id: announcementId,
                 title: savedAnnouncementTitle,

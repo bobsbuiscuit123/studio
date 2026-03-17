@@ -2575,6 +2575,97 @@ const mergePlanTasksWithExplicitTypes = (
     };
   };
 
+  const startCase = (value: string) =>
+    value
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+
+  const cleanTaskIntent = (value: string) => {
+    return value
+      .replace(/\b(send|write|draft|create|make|post|email|announcement|announce|message|text|dm)\b/gi, ' ')
+      .replace(/\b(to|for)\s+(everyone|everybody|all|the whole group|the entire group)\b/gi, ' ')
+      .replace(/[,:]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const extractReminderTopic = (value: string) => {
+    const normalized = value.trim();
+    const reminderMatch =
+      normalized.match(/\bremind(?:ing)?(?:\s+\w+){0,4}\s+to\s+(.+)$/i) ??
+      normalized.match(/\babout\s+(.+)$/i);
+    return (reminderMatch?.[1] ?? normalized).replace(/[.?!]+$/, '').trim();
+  };
+
+  const buildLocalDraftResult = (task: PlannedTask) => {
+    const messageDraft = buildLocalMessageDraft(task);
+    if (messageDraft) return messageDraft;
+
+    const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+    if (!combined) return null;
+    const cleanedIntent = cleanTaskIntent(combined);
+    const topic = extractReminderTopic(cleanedIntent || combined) || cleanedIntent || combined;
+
+    switch (task.type) {
+      case 'announcement': {
+        const announcement = `${startCase(topic)}. Please take care of this as soon as you can.`;
+        return {
+          title: startCase(topic).slice(0, 80) || 'Announcement',
+          announcement,
+        };
+      }
+      case 'email': {
+        const subjectTopic = startCase(topic).slice(0, 70) || 'Update';
+        const bodyTopic = topic.replace(/[.?!]+$/, '');
+        return {
+          subject: subjectTopic.startsWith('Reminder') ? subjectTopic : `Reminder: ${subjectTopic}`,
+          body: `Hi everyone,\n\nThis is a reminder to ${bodyTopic}.\n\nThank you.`,
+        };
+      }
+      case 'calendar': {
+        const dateMatch = combined.match(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b|\btomorrow\b|\btonight\b|\bnext\s+\w+\b/i);
+        const timeMatch = combined.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\bnoon\b|\bmidnight\b/i);
+        const title = startCase(cleanedIntent || 'Event').slice(0, 80) || 'Event';
+        const parsedDate = new Date(
+          `${dateMatch?.[0] ?? new Date().toLocaleDateString()} ${timeMatch?.[0] ?? ''}`.trim()
+        );
+        return {
+          title,
+          date: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
+          location: '',
+          description: combined,
+          hasTime: Boolean(timeMatch),
+        };
+      }
+      case 'transaction': {
+        const amountMatch = combined.match(/\$?\d+(?:\.\d{2})?/);
+        const amountText = amountMatch?.[0] ?? '';
+        const amount = Number(amountText.replace(/[^0-9.-]/g, ''));
+        return {
+          description: startCase(cleanedIntent || combined).slice(0, 100),
+          amount: Number.isFinite(amount) ? amount : amountText,
+          date: new Date().toISOString(),
+          status: 'completed',
+        };
+      }
+      case 'social':
+        return {
+          title: startCase(topic).slice(0, 80) || 'Post',
+          postText: `${startCase(topic)}.`,
+        };
+      case 'gallery':
+        return {
+          description: startCase(topic).slice(0, 120),
+        };
+      case 'other':
+        return { message: combined };
+      default:
+        return null;
+    }
+  };
+
   const hydrateTasksForDisplay = (tasks: PlannedTask[]) =>
     tasks.map(task => {
       const baseTask: PlannedTask = {
@@ -2585,16 +2676,19 @@ const mergePlanTasksWithExplicitTypes = (
             : task.draftSource,
         autoDraftRequested: true,
       };
-      const localMessageDraft = buildLocalMessageDraft(baseTask);
-      if (!localMessageDraft) {
+      if (typeof baseTask.draft === 'string' && baseTask.draft.trim().length > 0) {
         return baseTask;
       }
-      const draftText = formatDraft(baseTask.type, localMessageDraft);
+      const localDraftResult = buildLocalDraftResult(baseTask);
+      if (!localDraftResult) {
+        return baseTask;
+      }
+      const draftText = formatDraft(baseTask.type, localDraftResult);
       return {
         ...baseTask,
         draft: draftText,
         draftSource: draftText,
-        draftResult: localMessageDraft,
+        draftResult: localDraftResult,
       };
     });
 

@@ -1086,6 +1086,15 @@ const buildFastPlan = (
     if (!normalized) return false;
     const startsAsQuestion =
       normalized.endsWith('?') ||
+      normalized.startsWith('did ') ||
+      normalized.startsWith('do ') ||
+      normalized.startsWith('does ') ||
+      normalized.startsWith('is ') ||
+      normalized.startsWith('are ') ||
+      normalized.startsWith('can ') ||
+      normalized.startsWith('could ') ||
+      normalized.startsWith('would ') ||
+      normalized.startsWith('will ') ||
       normalized.startsWith('how ') ||
       normalized.startsWith('what ') ||
       normalized.startsWith('which ') ||
@@ -1097,7 +1106,7 @@ const buildFastPlan = (
       normalized.startsWith('tell me ') ||
       normalized.startsWith('summarize ') ||
       normalized.startsWith('summarise ');
-    const hasRetrievalTerms = /\b(latest|recent|summary|status|list|show|count|total|how many)\b/.test(
+    const hasRetrievalTerms = /\b(latest|recent|summary|status|list|show|count|total|how many|view|views|seen|read|who viewed|did any)\b/.test(
       normalized
     );
     const hasExecutionIntent = /\b(create|post|send|draft|add|schedule|make|generate|upload|publish|announce|compose|write|record|log)\b/.test(
@@ -1865,7 +1874,7 @@ const buildFastPlan = (
         }));
         const updatedTasks = tasksWithAttachments.map(task => {
           const questionList =
-            pendingPlan.taskQuestionMap[task.id] ?? (getMandatoryFollowUps(task) ?? []);
+            pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
           if (questionList.length === 0) return task;
           const answersForTask = questionList
             .map(question => answerMap.get(normalizeFollowUpQuestion(question)))
@@ -1876,17 +1885,12 @@ const buildFastPlan = (
             clarification: mergeClarifications(task.clarification, answersForTask),
           };
         });
-        const hydratedTasks = hydrateTasksForDisplay(
-          sanitizePlannedTasksForExecution(
-            [pendingPlan.summary, values.query].filter(Boolean).join(' '),
-            updatedTasks
-          )
-        );
+        const hydratedTasks = hydrateTasksForDisplay(updatedTasks);
         const combinedMissing = Array.from(
           new Set(
             hydratedTasks.flatMap(task => {
               const remainingQuestions =
-                pendingPlan.taskQuestionMap[task.id] ?? (getMandatoryFollowUps(task) ?? []);
+                pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
               return remainingQuestions.filter(
                 question => !answerMap.has(normalizeFollowUpQuestion(question))
               );
@@ -2003,7 +2007,6 @@ const buildFastPlan = (
           }
           return;
         }
-        const fastPlan = buildFastPlan(values.query, pendingAttachments);
         const contextForPlanner = buildRecentContextForPlanner();
         const plannerResponse = getResultData(
           (await planTasksAction(
@@ -2015,24 +2018,17 @@ const buildFastPlan = (
         const plan =
           plannerResponse && Array.isArray(plannerResponse.tasks) && plannerResponse.tasks.length > 0
             ? plannerResponse
-            : fastPlan ?? {
+            : {
                 tasks: [],
                 summary:
                   "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
               };
-        const sanitizedTasks = sanitizePlannedTasksForExecution(
-          values.query,
-          (plan.tasks ?? []).map(task => ({
+        const normalizedPlan = {
+          ...plan,
+          tasks: (plan.tasks ?? []).map(task => ({
             ...task,
             status: (task as PlannedTask).status ?? 'pending',
-          }))
-        );
-        const forcedPlan = shouldForceAnnouncementOnly(values.query)
-          ? forceAnnouncementOnlyPlan(values.query, sanitizedTasks, plan.summary)
-          : null;
-        const normalizedPlan = {
-          ...(forcedPlan ?? plan),
-          tasks: forcedPlan?.tasks ?? sanitizedTasks,
+          })),
         };
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = canManageRoles
@@ -2261,7 +2257,7 @@ const buildFastPlan = (
     const taskQuestionMap: Record<string, string[]> = {};
 
     tasks.forEach(task => {
-      const taskQuestions = normalizeQuestionList(getMandatoryFollowUps(task) ?? []);
+      const taskQuestions = normalizeQuestionList(task.followUpQuestions ?? []);
       if (taskQuestions.length === 0) return;
       taskQuestionMap[task.id] = taskQuestions;
       taskQuestions.forEach(question => {
@@ -2697,8 +2693,15 @@ const buildFastPlan = (
       value
     ) || explicitCalendarIntentInText(value);
 
+  const isQuestionStyleLookup = (value: string) =>
+    /\?$/.test(value.trim()) ||
+    /^(did|do|does|is|are|can|could|would|will|how|what|which|who|when|where|show|list|tell me)\b/i.test(
+      value.trim()
+    );
+
   const shouldForceAnnouncementOnly = (value: string) =>
     /\b(remind|reminder|announcement|announce|tell everyone|notify everyone)\b/i.test(value) &&
+    !isQuestionStyleLookup(value) &&
     !hasExplicitNonAnnouncementTaskIntent(value);
 
   const forceAnnouncementOnlyPlan = (

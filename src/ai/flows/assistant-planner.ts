@@ -59,46 +59,40 @@ export type PlannerOutput = z.infer<typeof PlannerOutputSchema>;
 export async function planAssistantTasks(
   input: PlannerInput
 ): Promise<Result<PlannerOutput>> {
-  const baseSystemMessage = `You plan task boxes for a school/group management app. Return JSON only: {"tasks":[...],"summary":"..."}.
-Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, other.
-Split the user's request into 1-5 tasks when they asked for multiple things.
-Each task must have: id, type, prompt. Add title when useful, especially for announcements. Add draft only when enough detail exists right now. Add followUpQuestions only for required missing details. Do not ask unnecessary questions.
-Use the task types like this:
-- announcement: school/group announcement or reminder to everyone/some audience
-- email: email draft with subject and body
-- messages: direct message or group chat message
-- calendar: event with title/date/time
-- form: form/survey with actual questions
-- gallery: image upload/description
-- transaction: finance entry
-- other: unsupported request only
+  const baseSystemMessage = `Plan task boxes for a school/group app. Return JSON only: {"tasks":[...],"summary":"..."}.
+Allowed types: announcement, form, calendar, email, messages, gallery, transaction, other.
+Each task: id, type, prompt. Optional: title, draft, followUpQuestions.
+Capabilities + required fields:
+- announcement: create reminder/update for members; core message alone is enough
+- email: create email; core message alone is enough
+- messages: DM/group message; recipient required
+- calendar: create event; topic/title + date + time required
+- form: create form; actual questions required
+- gallery: add gallery images; at least one image required
+- transaction: finance entry; amount required
+- other: unsupported or informational query, not a task
 Rules:
-- Preserve any exact wording the user gave inside the prompt.
-- For announcements, the core message is enough. Do not ask for date, time, location, or event details unless the user explicitly asked to include them.
-- Reminder requests can be announcement, email, messages, or multiple if the user asked for multiple channels.
-- If the user explicitly asks for multiple channels, return multiple tasks.
-- Do not create a calendar task just because the user mentioned an event. Only create calendar when they explicitly ask to create, add, schedule, or put something on the calendar.
-- If details are missing, keep the right task type and ask only for the missing required detail.
-- Only ask follow-up questions for fields that are truly mandatory to complete that task.
-- Do not use type "other" for normal announcement/email/calendar/form requests just because they are incomplete.
+- Preserve exact wording when useful.
+- Ask follow-ups only for truly required missing fields. If the task can already be done in-app, ask none.
+- For announcements, do NOT ask for date/time/location/event details unless the user explicitly asks to include them.
+- Do NOT create calendar just because the user mentioned an event. Calendar only when they explicitly ask to create/add/schedule/put on calendar.
+- If user asks a question about existing app data, return one type "other" task with a short helpful response in prompt.
+- Multiple requested channels -> multiple tasks.
 Examples:
-- "remind everyone to come to our event" -> announcement only, not calendar
+- "remind everyone to come to our event" -> announcement only
 - "announce and email everyone about dues" -> announcement + email
 - "put our halloween social on the calendar for tomorrow at 5pm at Dulles High School" -> calendar
-Draft format:
+- "did any members view my last announcement" -> other
+Drafts:
 - announcement: body only
-- email: "Subject: ..." then blank line then body
-- messages: message text only
+- email: Subject line, blank line, body
+- messages: message only
 - calendar: Title, Date, Time, Location, blank line, Details
-- form: Title, Description, then numbered questions
+- form: Title, Description, numbered questions
 - transaction: Description, Amount, Date, Status
 - gallery: short description
-Title rules:
-- For announcement tasks with enough detail, always include a short title in the separate title field.
-- The title must be concise and not the same sentence as the draft body.
-- Good announcement titles are like "Dues Reminder", "Blood Drive Tomorrow", "Banquet Update".
-If details are missing, omit draft instead of guessing.
-Summary should be 1-2 short natural sentences.`;
+- For announcement tasks with enough detail, include a short separate title like "Dues Reminder".
+If details are missing, omit draft instead of guessing. Summary: 1-2 short natural sentences.`;
   const rawQuery = clampAssistantPrompt(input.query).trim();
   const rawContext = clampAssistantPrompt(input.context?.trim());
   const contextLabel = '\n\nRecent context:\n';

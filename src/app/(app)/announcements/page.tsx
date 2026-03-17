@@ -212,7 +212,7 @@ function AnnouncementsPageInner() {
           });
           return;
         }
-        notifyOrgAiUsageChanged();
+        notifyOrgAiUsageChanged(undefined, 1);
         setGeneratedAnnouncement(result.data.data);
         announcementForm.reset({
           title: result.data.data.title,
@@ -332,7 +332,7 @@ function AnnouncementsPageInner() {
       setIsLoading(false);
       return;
     }
-    notifyOrgAiUsageChanged();
+    notifyOrgAiUsageChanged(undefined, 1);
     setGeneratedAnnouncement(result.data.data);
     announcementForm.reset({
         title: result.data.data.title,

@@ -121,7 +121,7 @@ const getResultData = <T,>(
   onError?: (message: string, error?: Result<T> extends { ok: false; error: infer E } ? E : unknown) => void
 ): T | null => {
   if (result.ok) {
-    notifyOrgAiUsageChanged(getSelectedOrgId());
+    notifyOrgAiUsageChanged(getSelectedOrgId(), 1);
     return result.data;
   }
   if (onError) onError(result.error.message, result.error);
@@ -949,44 +949,64 @@ const buildFastPlan = (
     if (!type) return null;
 
     const followUpQuestions: string[] = [];
-    const nameMatches = (members.data ?? [])
-      .map(member => member.name)
-      .filter(Boolean)
-      .some(name => lower.includes(name.toLowerCase()));
-    const groupMatches = (groupChats.data ?? [])
+    const memberList = Array.isArray(members.data) ? members.data : [];
+    const groupList = Array.isArray(groupChats.data) ? groupChats.data : [];
+    const roleMentioned = /\b(admin|officer|member|president|vice president|treasurer|secretary)\b/.test(
+      lower
+    );
+    const nameMatches = memberList
+      .map(member => [member.name, member.email, member.role] as const)
+      .some(([name, email, role]) => {
+        const baseEmail = email?.split('@')[0] ?? '';
+        return [name, email, baseEmail, role]
+          .filter(Boolean)
+          .some(value => lower.includes(String(value).toLowerCase()));
+      });
+    const groupMatches = groupList
       .map(chat => chat.name)
       .filter(Boolean)
       .some(name => lower.includes(name.toLowerCase()));
+    const explicitRecipientMentioned =
+      /\b(to|for|message|dm|text|send)\b/.test(lower) &&
+      (nameMatches ||
+        groupMatches ||
+        roleMentioned ||
+        /\b(all|everyone|everybody|whole group|entire group)\b/.test(lower) ||
+        /\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b/.test(lower));
+    const hasDate = matchAny([
+      /\btomorrow\b/,
+      /\btomorow\b/,
+      /\btomorows\b/,
+      /\btomorrow's\b/,
+      /\btmr\b/,
+      /\btmrw\b/,
+      /\btonight\b/,
+      /\btonite\b/,
+      /\bnext\b/,
+      /\bthis\s+(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
+      /\b(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
+      /\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/,
+      /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\b/,
+    ]);
+    const hasTime = matchAny([
+      /\b\d{1,2}(:\d{2})?\s?(am|pm)\b/,
+      /\b(noon|midnight|morning|afternoon|evening)\b/,
+    ]);
+    const hasQuestions = matchAny([/\bquestion\b/, /\bquestions\b/, /\bask\b/, /\?/]);
+    const hasAmount = matchAny([/\$?\d+(?:\.\d{2})?\b/]);
 
     if (type === 'messages') {
-      if (!nameMatches && !groupMatches) {
+      if (!explicitRecipientMentioned) {
         followUpQuestions.push('Who should receive the message?');
       }
     }
 
     if (type === 'calendar') {
-      const hasDate = matchAny([
-        /\btomorrow\b/,
-        /\btomorow\b/,
-        /\btomorows\b/,
-        /\btomorrow's\b/,
-        /\btmr\b/,
-        /\btmrw\b/,
-        /\btonight\b/,
-        /\btonite\b/,
-        /\bnext\b/,
-        /\bthis\s+(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
-        /\b(mon|tue|wed|thu|thur|fri|sat|sun)\w*\b/,
-        /\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/,
-        /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\b/,
-      ]);
-      const hasTime = matchAny([/\b\d{1,2}(:\d{2})?\s?(am|pm)\b/]);
       if (!hasDate) followUpQuestions.push('What is the event date?');
       if (!hasTime) followUpQuestions.push('What time is the event?');
     }
 
     if (type === 'form') {
-      const hasQuestions = matchAny([/\bquestion\b/, /\bquestions\b/, /\bask\b/, /\?/]);
       if (!hasQuestions) {
         followUpQuestions.push(
           'Please list the questions you want in the form and any answer choices for multiple-choice questions.'
@@ -998,7 +1018,7 @@ const buildFastPlan = (
       followUpQuestions.push('Please attach at least one image.');
     }
 
-    if (type === 'transaction' && !matchAny([/\$?\d+(?:\.\d{2})?\b/])) {
+    if (type === 'transaction' && !hasAmount) {
       followUpQuestions.push('What is the amount?');
     }
 
@@ -1903,9 +1923,6 @@ const buildFastPlan = (
             ]);
             activeAutoscrollMessageIdRef.current = planId;
             autoscrollDisabledForMessageRef.current.delete(planId);
-            resolvedTasks
-              .filter(task => task.type !== 'other')
-              .forEach(task => generateDraft(planId, task));
             setPendingPlan(null);
           }
         } else {
@@ -1945,9 +1962,6 @@ const buildFastPlan = (
           ]);
           activeAutoscrollMessageIdRef.current = planId;
           autoscrollDisabledForMessageRef.current.delete(planId);
-          resolvedTasks
-            .filter(task => task.type !== 'other')
-            .forEach(task => generateDraft(planId, task));
           setPendingPlan(null);
         }
       } else {
@@ -2013,19 +2027,10 @@ const buildFastPlan = (
           ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
           : normalizedPlan.tasks;
         if (!canManageRoles && rawTasks.length === 0) {
-          const appContext = buildAppContextForAssistant();
-          const assistantReplyResult = await runAssistantAction(values.query, appContext);
-          const assistantReply =
-            getResultData(
-              assistantReplyResult as Result<AssistantReplyPayload>,
-              handleAiError
-            ) ?? {
-              response: aiFallbackMessage,
-            };
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',
-            text: assistantReply.response,
+            text: normalizedPlan.summary || aiFallbackMessage,
             startedAt: Date.now(),
           };
           setMessages(prev => [...prev, userMessage, assistantMessage]);
@@ -2064,22 +2069,10 @@ const buildFastPlan = (
         const isNonTaskRequest = !hasRunnableTask && finalFollowUps.length === 0;
 
         if (isNonTaskRequest) {
-          const appContext = buildAppContextForAssistant();
-          const assistantReplyResult = await runAssistantAction(values.query, appContext);
-          const assistantReply =
-            getResultData(
-              assistantReplyResult as Result<AssistantReplyPayload>,
-              message =>
-              toast({
-                title: 'AI unavailable',
-                description: message,
-                variant: 'destructive',
-              })
-            ) ?? { response: aiFallbackMessage };
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',
-            text: assistantReply.response,
+            text: safeSummary || aiFallbackMessage,
             startedAt: Date.now(),
           };
           setMessages(prev => [...prev, userMessage, assistantMessage]);
@@ -2123,10 +2116,6 @@ const buildFastPlan = (
           ]);
           activeAutoscrollMessageIdRef.current = planId;
           autoscrollDisabledForMessageRef.current.delete(planId);
-          // Auto-generate drafts when no follow-up info is needed.
-          tasksToRender
-            .filter(task => !(task.followUpQuestions?.length) && task.type !== 'other')
-            .forEach(task => generateDraft(planId, task));
         }
 
       }
@@ -2427,6 +2416,7 @@ const buildFastPlan = (
     const normalized = normalizeRecipient(recipient);
     const memberList = Array.isArray(members.data) ? members.data : [];
     const groupList = Array.isArray(groupChats.data) ? groupChats.data : [];
+    const currentUserEmail = normalizeRecipient(user?.email ?? '');
 
     const findMember = () =>
       memberList.find(
@@ -2434,6 +2424,24 @@ const buildFastPlan = (
           normalizeRecipient(member.email) === normalized ||
           normalizeRecipient(member.name) === normalized
       );
+    const findMemberByRoleAlias = () => {
+      const roleAliasMap: Record<string, Array<'Admin' | 'Officer' | 'Member'>> = {
+        admin: ['Admin'],
+        admins: ['Admin'],
+        officer: ['Officer'],
+        officers: ['Officer'],
+        member: ['Member'],
+        members: ['Member'],
+      };
+      const allowedRoles = roleAliasMap[normalized];
+      if (!allowedRoles) return null;
+      const matchingMembers = memberList.filter(member => allowedRoles.includes(member.role));
+      if (matchingMembers.length === 0) return null;
+      return (
+        matchingMembers.find(member => normalizeRecipient(member.email) !== currentUserEmail) ??
+        matchingMembers[0]
+      );
+    };
     const findGroup = () =>
       groupList.find(chat => normalizeRecipient(chat.name) === normalized);
 
@@ -2442,11 +2450,11 @@ const buildFastPlan = (
       return group ? { kind: 'group', id: group.id } : null;
     }
     if (recipientType === 'person') {
-      const member = findMember();
+      const member = findMember() ?? findMemberByRoleAlias();
       return member ? { kind: 'dm', email: member.email } : null;
     }
 
-    const member = findMember();
+    const member = findMember() ?? findMemberByRoleAlias();
     if (member) return { kind: 'dm', email: member.email };
     const group = findGroup();
     return group ? { kind: 'group', id: group.id } : null;

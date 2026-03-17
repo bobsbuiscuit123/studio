@@ -101,7 +101,7 @@ function EmailPageInner() {
       subject: result.data.data.subject,
       body: result.data.data.body,
     });
-    notifyOrgAiUsageChanged();
+    notifyOrgAiUsageChanged(undefined, 1);
     toast({ title: "Email draft generated!" });
     setIsGenerating(false);
   };

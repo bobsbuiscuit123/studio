@@ -280,8 +280,12 @@ export async function POST(request: Request) {
 
     const { success } = await consumeCredit();
     if (!success) {
-      console.info('[ai] quota exceeded after successful generation', { orgId, userId, action });
-      return quotaExceededResponse();
+      console.info('[ai] quota reconciliation failed after successful generation', {
+        orgId,
+        userId,
+        action,
+      });
+      return NextResponse.json(response);
     }
 
     return NextResponse.json(response);
@@ -342,8 +346,12 @@ export async function POST(request: Request) {
 
   const { success } = await consumeCredit();
   if (!success) {
-    console.info('[ai] quota exceeded after successful generation', { orgId, userId, feature });
-    return quotaExceededResponse();
+    console.info('[ai] quota reconciliation failed after successful generation', {
+      orgId,
+      userId,
+      feature,
+    });
+    return NextResponse.json(response);
   }
 
   await admin.from('org_cache').upsert({

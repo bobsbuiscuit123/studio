@@ -584,11 +584,17 @@ export type OrgAiQuotaStatus = {
     creditsUsedToday: number;
 };
 
-export const notifyOrgAiUsageChanged = (orgId?: string | null) => {
+export const notifyOrgAiUsageChanged = (
+    orgId?: string | null,
+    delta: number = 0
+) => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
         new CustomEvent('org-ai-usage-changed', {
-            detail: { orgId: orgId ?? getSelectedOrgId() ?? null },
+            detail: {
+                orgId: orgId ?? getSelectedOrgId() ?? null,
+                delta,
+            },
         })
     );
 };
@@ -598,13 +604,15 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
     const [loading, setLoading] = useState(true);
     const orgId = orgIdOverride ?? getSelectedOrgId();
 
-    const refresh = useCallback(async () => {
+    const refresh = useCallback(async (options?: { silent?: boolean }) => {
         if (!orgId) {
             setStatus(null);
             setLoading(false);
             return;
         }
-        setLoading(true);
+        if (!options?.silent) {
+            setLoading(true);
+        }
         const response = await safeFetchJson<{ ok: true; data: OrgAiQuotaStatus }>(
             `/api/orgs/${orgId}/status`,
             { method: 'GET' }
@@ -625,22 +633,37 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible') {
-                void refresh();
+                void refresh({ silent: true });
             }
         };
         const handleUsageChanged = (event?: Event) => {
-            const changedOrgId =
+            const detail =
                 event && 'detail' in event
-                    ? (event as CustomEvent<{ orgId?: string | null }>).detail?.orgId
-                    : null;
+                    ? (event as CustomEvent<{ orgId?: string | null; delta?: number }>).detail
+                    : undefined;
+            const changedOrgId = detail?.orgId ?? null;
             if (changedOrgId && orgId && changedOrgId !== orgId) return;
-            void refresh();
+            const delta = Math.max(0, Number(detail?.delta ?? 0));
+            if (delta > 0) {
+                setStatus(prev =>
+                    prev
+                        ? {
+                              ...prev,
+                              creditsUsedToday: Math.min(
+                                  prev.dailyCreditPerUser,
+                                  prev.creditsUsedToday + delta
+                              ),
+                          }
+                        : prev
+                );
+            }
+            void refresh({ silent: true });
         };
         window.addEventListener('visibilitychange', handleVisibilityChange);
         window.addEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
         const intervalId = window.setInterval(() => {
             if (document.visibilityState === 'visible') {
-                void refresh();
+                void refresh({ silent: true });
             }
         }, 10000);
         return () => {

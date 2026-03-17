@@ -784,7 +784,7 @@ export default function AIInsights({
         setInsightError(resolvedResult.error.message);
         return;
       }
-      notifyOrgAiUsageChanged();
+      notifyOrgAiUsageChanged(undefined, 1);
       const resolved = resolvedResult.data as InsightResolutionResult;
       const status = resolved?.status ?? 'ok';
       if (status === 'invalid') {

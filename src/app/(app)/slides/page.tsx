@@ -145,7 +145,7 @@ export default function SlidesPage() {
       setIsLoading(false);
       return;
     }
-    notifyOrgAiUsageChanged();
+    notifyOrgAiUsageChanged(undefined, 1);
     const newPresentation: PresentationType = {
         id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
         prompt: values.prompt,

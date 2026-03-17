@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
+import { getUtcDayKey } from '@/lib/day-key';
 
 export async function GET(
   _request: Request,
@@ -61,7 +62,7 @@ export async function GET(
       .select('credits_used')
       .eq('org_id', parsed.data)
       .eq('user_id', userId)
-      .eq('usage_date', new Date().toISOString().slice(0, 10))
+      .eq('usage_date', getUtcDayKey())
       .maybeSingle(),
   ]);
 

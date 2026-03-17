@@ -49,12 +49,7 @@ const loginFormSchema = z.object({
     password: z.string().min(1, "Password is required."),
 });
 
-const forgotPasswordSchema = z.object({
-  email: z.string().email("Please enter a valid email address."),
-});
-
-
-function getEmailRedirectTo() {
+function getConfiguredSiteOrigin() {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
     try {
@@ -64,7 +59,7 @@ function getEmailRedirectTo() {
         parsed.hostname === '127.0.0.1' ||
         parsed.hostname === '0.0.0.0';
       if (!isLocalhost) {
-        return `${parsed.origin}/auth/callback`;
+        return parsed.origin;
       }
     } catch {
       // Fall through to runtime origin below.
@@ -72,12 +67,14 @@ function getEmailRedirectTo() {
   }
   if (typeof window !== 'undefined') {
     const runtimeOrigin = window.location.origin;
-    if (!/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(runtimeOrigin)) {
-      return `${runtimeOrigin}/auth/callback`;
-    }
-    return `${runtimeOrigin}/auth/callback`;
+    return runtimeOrigin;
   }
   return undefined;
+}
+
+function getOAuthRedirectTo() {
+  const origin = getConfiguredSiteOrigin();
+  return origin ? `${origin}/auth/callback` : undefined;
 }
 
 function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
@@ -109,7 +106,7 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
 
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
-        const redirectTo = getEmailRedirectTo();
+        const redirectTo = getOAuthRedirectTo();
         const { error } = await supabase.auth.signInWithOAuth({
             provider,
             options: redirectTo ? { redirectTo } : {},
@@ -276,12 +273,7 @@ function LoginForm({
         resolver: zodResolver(loginFormSchema),
         defaultValues: { email: '', password: '' },
     });
-    const forgotPasswordForm = useForm<z.infer<typeof forgotPasswordSchema>>({
-        resolver: zodResolver(forgotPasswordSchema),
-        defaultValues: { email: "" },
-    });
     const [isForgotPassDialogOpen, setIsForgotPassDialogOpen] = useState(false);
-    const [isSending, setIsSending] = useState(false);
     const { toast } = useToast();
 
      const handleLogin = async (values: z.infer<typeof loginFormSchema>) => {
@@ -314,27 +306,6 @@ function LoginForm({
         toast({ title: `Welcome back, ${displayName}!`});
     };
     
-    const handleForgotPassword = async (values: z.infer<typeof forgotPasswordSchema>) => {
-        setIsSending(true);
-        const emailRedirectTo = getEmailRedirectTo();
-        const { error } = await supabase.auth.resetPasswordForEmail(
-          values.email,
-          emailRedirectTo ? { redirectTo: emailRedirectTo } : undefined
-        );
-        if (error) {
-            toast({ title: "Error", description: error.message, variant: "destructive" });
-            setIsSending(false);
-            return;
-        }
-        toast({
-            title: "Password Recovery",
-            description: "Check your email for a reset link.",
-        });
-        setIsForgotPassDialogOpen(false);
-        forgotPasswordForm.reset();
-        setIsSending(false);
-    }
-
     return (
         <>
          <div className="w-full max-w-md">
@@ -376,22 +347,14 @@ function LoginForm({
         <Dialog open={isForgotPassDialogOpen} onOpenChange={setIsForgotPassDialogOpen}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Reset Your Password</DialogTitle>
+                    <DialogTitle>Password Recovery</DialogTitle>
                     <DialogDescription>
-                        Enter your email address and we'll help you recover your password.
+                        Password recovery is not available yet. Contact support at clubhubai@gmail.com.
                     </DialogDescription>
                 </DialogHeader>
-                <form onSubmit={forgotPasswordForm.handleSubmit(handleForgotPassword)} className="space-y-4 pt-4">
-                    <div>
-                        <Label htmlFor="email-forgot">Email Address</Label>
-                        <Input id="email-forgot" {...forgotPasswordForm.register('email')} placeholder="e.g., alex.j@example.com" />
-                        {forgotPasswordForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{forgotPasswordForm.formState.errors.email.message}</p>}
-                    </div>
-                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSending}>{isSending ? "Recovering..." : "Recover Password"}</Button>
-                    </DialogFooter>
-                </form>
+                <DialogFooter className="pt-4">
+                    <DialogClose asChild><Button type="button">Close</Button></DialogClose>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
         </>

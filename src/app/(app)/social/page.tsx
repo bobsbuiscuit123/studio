@@ -216,7 +216,7 @@ export default function SocialPage() {
         return;
       }
 
-      notifyOrgAiUsageChanged();
+      notifyOrgAiUsageChanged(undefined, 1);
       setPostToReview({
         ...result.data.data,
         images: result.data.data.images || [],

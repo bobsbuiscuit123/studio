@@ -87,7 +87,7 @@ Draft format:
 - transaction: Description, Amount, Date, Status
 - gallery: short description
 Title rules:
-- For announcement tasks with enough detail, include a short title in the separate title field.
+- For announcement tasks with enough detail, always include a short title in the separate title field.
 - The title must be concise and not the same sentence as the draft body.
 - Good announcement titles are like "Dues Reminder", "Blood Drive Tomorrow", "Banquet Update".
 If details are missing, omit draft instead of guessing.

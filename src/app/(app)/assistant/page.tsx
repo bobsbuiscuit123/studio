@@ -2600,6 +2600,42 @@ const mergePlanTasksWithExplicitTypes = (
     return (reminderMatch?.[1] ?? normalized).replace(/[.?!]+$/, '').trim();
   };
 
+  function deriveAnnouncementTitle(draftText: string, promptText?: string) {
+    const source = [draftText, promptText ?? ''].filter(Boolean).join(' ').trim().toLowerCase();
+    const topicMatchers: Array<[RegExp, string]> = [
+      [/\bblood drive\b/, 'Blood Drive Reminder'],
+      [/\bclub dues\b|\bdues\b/, 'Dues Reminder'],
+      [/\bbanquet\b/, 'Banquet Reminder'],
+      [/\bsocial\b/, 'Social Reminder'],
+      [/\bmeeting\b/, 'Meeting Reminder'],
+      [/\bevent\b/, 'Event Reminder'],
+      [/\bpayment\b|\bpay\b/, 'Payment Reminder'],
+      [/\bform\b/, 'Form Reminder'],
+    ];
+    for (const [pattern, title] of topicMatchers) {
+      if (pattern.test(source)) {
+        return title;
+      }
+    }
+
+    const firstNonEmptyLine =
+      draftText
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .find(Boolean) ?? '';
+    const cleanedLine = firstNonEmptyLine
+      .replace(/^(this is a reminder to|reminder|announcement)\s*:?\s*/i, '')
+      .replace(/\bfailure to do so.*$/i, '')
+      .replace(/\bplease\b/gi, '')
+      .replace(/[.!?]+$/, '')
+      .trim();
+    const words = cleanedLine.split(/\s+/).filter(Boolean);
+    const condensed = words.slice(0, 4).join(' ');
+    const fallback = startCase(extractReminderTopic(cleanTaskIntent(promptText ?? ''))).slice(0, 40);
+    const baseTitle = startCase(condensed || fallback || 'Announcement');
+    return baseTitle.length > 48 ? `${baseTitle.slice(0, 45).trimEnd()}...` : baseTitle;
+  }
+
   const buildLocalDraftResult = (task: PlannedTask) => {
     const messageDraft = buildLocalMessageDraft(task);
     if (messageDraft) return messageDraft;
@@ -2672,11 +2708,26 @@ const mergePlanTasksWithExplicitTypes = (
       autoDraftRequested: true,
     };
     if (typeof baseTask.draft === 'string' && baseTask.draft.trim().length > 0) {
-      if (baseTask.type === 'announcement' && baseTask.title && !baseTask.draftResult) {
+      if (baseTask.type === 'announcement') {
+        const ensuredTitle =
+          typeof baseTask.title === 'string' && baseTask.title.trim().length > 0
+            ? baseTask.title.trim()
+            : deriveAnnouncementTitle(baseTask.draft, baseTask.prompt);
+        if (baseTask.draftResult) {
+          return {
+            ...baseTask,
+            title: ensuredTitle,
+            draftResult:
+              typeof baseTask.draftResult === 'object' && baseTask.draftResult
+                ? { ...baseTask.draftResult, title: ensuredTitle }
+                : baseTask.draftResult,
+          };
+        }
         return {
           ...baseTask,
+          title: ensuredTitle,
           draftResult: {
-            title: baseTask.title,
+            title: ensuredTitle,
             announcement: baseTask.draft,
           },
         };
@@ -3238,25 +3289,6 @@ const mergePlanTasksWithExplicitTypes = (
       }
 
       return values;
-    };
-
-    const deriveAnnouncementTitle = (draftText: string, promptText?: string) => {
-      const firstNonEmptyLine =
-        draftText
-          .split(/\r?\n/)
-          .map(line => line.trim())
-          .find(Boolean) ?? '';
-      const cleanedLine = firstNonEmptyLine
-        .replace(/^(reminder|announcement)\s*:\s*/i, '')
-        .replace(/[.!?]+$/, '')
-        .trim();
-      const fallback = startCase(cleanTaskIntent(promptText ?? '')).slice(0, 80);
-      const compact = cleanedLine
-        .replace(/\b(please|remember|everyone|all members|failure to do so.*)$/i, '')
-        .replace(/\b(to|by)\b.*$/i, '')
-        .trim();
-      const baseTitle = compact || fallback || 'Announcement';
-      return baseTitle.length > 48 ? `${baseTitle.slice(0, 45).trimEnd()}...` : baseTitle;
     };
 
     const isInstructionLikeAnnouncementTitle = (value?: string | null) => {

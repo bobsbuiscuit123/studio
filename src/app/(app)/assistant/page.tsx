@@ -67,7 +67,6 @@ import { safeFetchJson } from '@/lib/network';
 import { getSelectedOrgId } from '@/lib/selection';
 import {
   planTasksAction,
-  runAssistantAction,
   runTaskAction,
 } from './actions';
 import {
@@ -121,11 +120,53 @@ const isSupportedAssistantTaskType = (value: unknown): value is TaskType =>
   typeof value === 'string' &&
   supportedAssistantTaskTypes.includes(value as TaskType);
 
-type AssistantReplyPayload = {
-  response: string;
+type AssistantQuestionLookup = {
+  entity:
+    | 'announcement'
+    | 'form'
+    | 'event'
+    | 'finance'
+    | 'message'
+    | 'gallery'
+    | 'attendance'
+    | 'points'
+    | 'unknown';
+  metric:
+    | 'views'
+    | 'viewers'
+    | 'count'
+    | 'responses'
+    | 'rsvps'
+    | 'attendance'
+    | 'balance'
+    | 'points'
+    | 'status'
+    | 'unknown';
+  subject: 'last' | 'latest' | 'recent' | 'current' | 'mine' | 'unknown';
+  responseStyle: 'yes_no' | 'count' | 'who' | 'summary';
+};
+
+type PlannedLookup = {
+  id: string;
+  kind: 'announcement_viewers' | 'form_non_viewers';
+  subject: 'last' | 'latest' | 'recent' | 'current' | 'mine' | 'unknown';
+  responseStyle: 'yes_no' | 'count' | 'who' | 'summary';
+};
+
+type LookupResolution = {
+  reply?: string;
+  recipients?: string[];
+};
+
+type AssistantQuestionRouterPayload = {
+  kind: 'lookup' | 'reply';
+  lookup?: AssistantQuestionLookup;
+  reply?: string;
 };
 
 type PlannerPayload = {
+  reply?: string;
+  lookups?: PlannedLookup[];
   tasks: PlannedTaskInput[];
   summary: string;
 };
@@ -153,6 +194,7 @@ type PlannedTask = {
   prompt: string;
   title?: string;
   followUpQuestions?: string[];
+  recipientLookupId?: string;
   recipients?: string[];
   clarification?: string;
   draft?: string;
@@ -281,6 +323,8 @@ const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
     followUpQuestions: Array.isArray(value.followUpQuestions)
       ? value.followUpQuestions.filter((item): item is string => typeof item === 'string')
       : undefined,
+    recipientLookupId:
+      typeof value.recipientLookupId === 'string' ? value.recipientLookupId : undefined,
     recipients: Array.isArray(value.recipients)
       ? value.recipients.filter((item): item is string => typeof item === 'string')
       : undefined,
@@ -1156,6 +1200,139 @@ const buildFastPlan = (
     return mentionsExistingRecord && asksStatusOrView;
   };
 
+  const resolveExistingDataLookupLocally = (
+    query: string,
+    lookup?: PlannedLookup
+  ): LookupResolution | null => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return null;
+
+    const isAnnouncementLookup =
+      (lookup?.kind === 'announcement_viewers' &&
+        (lookup.subject === 'last' ||
+          lookup.subject === 'latest' ||
+          lookup.subject === 'recent' ||
+          lookup.subject === 'mine')) ||
+      (/\bannouncement\b/.test(normalized) &&
+        /\b(view|views|viewed|read|seen|who|how many|count)\b/.test(normalized) &&
+        /\b(last|latest|recent|my)\b/.test(normalized));
+
+    if (isAnnouncementLookup) {
+      if (!canManageRoles) {
+        return { reply: "You don't have access to announcement view data." };
+      }
+
+      const announcementList = Array.isArray(announcements.data) ? announcements.data : [];
+      const currentUserName = String(user?.name ?? '').trim().toLowerCase();
+      const authoredAnnouncements = announcementList.filter(item => {
+        const author = String(item.author ?? '').trim().toLowerCase();
+        if (!author) return false;
+        if (/\bmy\b/.test(normalized)) {
+          return Boolean(currentUserName) && author === currentUserName;
+        }
+        return true;
+      });
+      const sortedAnnouncements = [...authoredAnnouncements].sort((a, b) => {
+        const aTime = new Date(a.date ?? 0).getTime();
+        const bTime = new Date(b.date ?? 0).getTime();
+        return bTime - aTime;
+      });
+      const lastAnnouncement = sortedAnnouncements[0];
+      if (!lastAnnouncement) {
+        return {
+          reply: /\bmy\b/.test(normalized)
+            ? "I couldn't find one of your announcements yet."
+            : 'I could not find a recent announcement.',
+        };
+      }
+
+      const viewedBy = Array.isArray(lastAnnouncement.viewedBy)
+        ? lastAnnouncement.viewedBy.filter((value): value is string => typeof value === 'string')
+        : [];
+      const viewedNames = viewedBy.map(resolveMemberName).filter(Boolean);
+      const title = String(lastAnnouncement.title ?? '').trim();
+      const label = title ? `"${title}"` : 'your last announcement';
+
+      if (lookup?.responseStyle === 'who' || /\bwho\b/.test(normalized)) {
+        if (viewedNames.length === 0) {
+          return { reply: `No members have viewed ${label} yet.` };
+        }
+        return { reply: `Yes. ${label} was viewed by ${viewedNames.join(', ')}.` };
+      }
+
+      if (lookup?.responseStyle === 'count' || /\bhow many\b|\bcount\b/.test(normalized)) {
+        return {
+          reply: `${viewedNames.length} member${viewedNames.length === 1 ? '' : 's'} viewed ${label}.`,
+        };
+      }
+
+      if (lookup?.responseStyle === 'yes_no' || /\bdid any\b|\bany members\b/.test(normalized)) {
+        return {
+          reply:
+            viewedNames.length > 0
+              ? `Yes. ${viewedNames.length} member${viewedNames.length === 1 ? '' : 's'} viewed ${label}.`
+              : `No. No members have viewed ${label} yet.`,
+        };
+      }
+
+      return {
+        reply:
+          viewedNames.length > 0
+            ? `${label} has ${viewedNames.length} view${viewedNames.length === 1 ? '' : 's'}.`
+            : `${label} has no views yet.`,
+      };
+    }
+
+    if (lookup?.kind === 'form_non_viewers') {
+      if (!canManageRoles) {
+        return { reply: "You don't have access to form view data." };
+      }
+      const formList = Array.isArray(forms.data) ? forms.data : [];
+      const sortedForms = [...formList].sort((a, b) => {
+        const aTime = new Date(a.createdAt ?? 0).getTime();
+        const bTime = new Date(b.createdAt ?? 0).getTime();
+        return bTime - aTime;
+      });
+      const targetForm = sortedForms[0];
+      if (!targetForm) {
+        return { reply: 'I could not find a recent form.' };
+      }
+      const viewedBy = Array.isArray(targetForm.viewedBy)
+        ? targetForm.viewedBy.filter((value): value is string => typeof value === 'string')
+        : [];
+      const memberList = Array.isArray(members.data) ? members.data : [];
+      const recipients = memberList
+        .map(member => member.email)
+        .filter(email => !viewedBy.includes(email));
+      const recipientNames = recipients.map(resolveMemberName).filter(Boolean);
+      const formLabel = targetForm.title ? `"${targetForm.title}"` : 'your recent form';
+      if (lookup.responseStyle === 'who') {
+        return {
+          recipients,
+          reply:
+            recipientNames.length > 0
+              ? `${recipientNames.join(', ')} have not viewed ${formLabel} yet.`
+              : `Everyone has viewed ${formLabel}.`,
+        };
+      }
+      if (lookup.responseStyle === 'count') {
+        return {
+          recipients,
+          reply: `${recipients.length} member${recipients.length === 1 ? '' : 's'} have not viewed ${formLabel}.`,
+        };
+      }
+      return {
+        recipients,
+        reply:
+          recipientNames.length > 0
+            ? `${recipientNames.length} member${recipientNames.length === 1 ? ' has' : 's have'} not viewed ${formLabel} yet.`
+            : `Everyone has viewed ${formLabel}.`,
+      };
+    }
+
+    return null;
+  };
+
   const buildAppContextForAssistant = () => {
     const maxStringLength = 1200;
     const maxDepth = 7;
@@ -2004,36 +2181,6 @@ const buildFastPlan = (
         const queryWithAttachments = attachmentContext
           ? `${values.query}\n\n${attachmentContext}`
           : values.query;
-        if (treatAsInsight) {
-          if (pendingPlan) {
-            console.info('[AI_DEBUG] Treating insight query as new request; clearing pending plan.');
-            setPendingPlan(null);
-          }
-          const appContext = buildAppContextForAssistant();
-          const assistantReplyResult = await runAssistantAction(values.query, appContext);
-          const assistantReply =
-            getResultData(
-              assistantReplyResult as Result<AssistantReplyPayload>,
-              handleAiError
-            ) ?? {
-              response: aiFallbackMessage,
-            };
-          const assistantMessage: ChatMessage = {
-            id: `assistant-${Date.now()}`,
-            sender: 'assistant',
-            text: assistantReply.response,
-            startedAt: Date.now(),
-          };
-          setMessages(prev => [...prev, userMessage, assistantMessage]);
-          activeAutoscrollMessageIdRef.current = assistantMessage.id;
-          autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
-          setPendingPlan(null);
-          if (pendingAttachments.length > 0) {
-            setPendingAttachments([]);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-          }
-          return;
-        }
         const contextForPlanner = buildRecentContextForPlanner();
         const plannerResponse = getResultData(
           (await planTasksAction(
@@ -2042,14 +2189,21 @@ const buildFastPlan = (
           )) as Result<PlannerPayload>,
           handleAiError
         );
-        const plan =
-          plannerResponse && Array.isArray(plannerResponse.tasks) && plannerResponse.tasks.length > 0
-            ? plannerResponse
-            : {
-                tasks: [],
-                summary:
-                  "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
-              };
+        const plan = plannerResponse ?? {
+          tasks: [],
+          lookups: [],
+          reply:
+            "I couldn't confidently classify that yet. Try asking more specifically.",
+          summary:
+            "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions.",
+        };
+        const lookupResolutions = new Map<string, LookupResolution>();
+        for (const lookup of Array.isArray(plan.lookups) ? plan.lookups : []) {
+          const resolved = resolveExistingDataLookupLocally(values.query, lookup);
+          if (resolved) {
+            lookupResolutions.set(lookup.id, resolved);
+          }
+        }
         const normalizedPlan = {
           ...plan,
           tasks: (plan.tasks ?? []).map(task => ({
@@ -2064,11 +2218,30 @@ const buildFastPlan = (
         const rawTasks = allowedTaskTypes
           ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
           : normalizedPlan.tasks;
+        const tasksWithLookupResults = rawTasks.map(task => {
+          const lookupRecipients =
+            task.recipientLookupId && lookupResolutions.has(task.recipientLookupId)
+              ? lookupResolutions.get(task.recipientLookupId)?.recipients
+              : undefined;
+          return {
+            ...task,
+            recipients:
+              Array.isArray(lookupRecipients) && lookupRecipients.length > 0
+                ? lookupRecipients
+                : task.recipients,
+          };
+        });
         if (!canManageRoles && rawTasks.length === 0) {
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',
-            text: normalizedPlan.summary || aiFallbackMessage,
+            text:
+              plan.reply?.trim() ||
+              Array.from(lookupResolutions.values())
+                .map(item => item.reply)
+                .find((value): value is string => Boolean(value?.trim())) ||
+              normalizedPlan.summary ||
+              aiFallbackMessage,
             startedAt: Date.now(),
           };
           setMessages(prev => [...prev, userMessage, assistantMessage]);
@@ -2082,7 +2255,7 @@ const buildFastPlan = (
           return;
         }
         const plannedTasks = hydrateTasksForDisplay(
-          rawTasks.map(task => ({
+          tasksWithLookupResults.map(task => ({
             ...task,
             status: 'pending' as const,
             clarification: '',
@@ -2096,9 +2269,15 @@ const buildFastPlan = (
         );
         const hasRunnableTask = plannedTasks.some(t => t.type !== 'other');
         const fallbackPrompt = plannedTasks.find(t => t.type === 'other')?.prompt?.trim();
+        const lookupReply =
+          Array.from(lookupResolutions.values())
+            .map(item => item.reply)
+            .find((value): value is string => Boolean(value?.trim())) ?? '';
         const safeSummary = hasRunnableTask
           ? normalizedPlan.summary
-          : fallbackPrompt ||
+          : plan.reply?.trim() ||
+            lookupReply ||
+            fallbackPrompt ||
             `Sorry - I can't do that in ${appBrandName} yet. Try asking for an announcement, a form, a calendar event, an email, a message, a gallery upload, or a transaction.`;
         const {
           questions: rawFollowUps,

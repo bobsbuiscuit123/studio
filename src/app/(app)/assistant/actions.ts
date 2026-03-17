@@ -178,6 +178,41 @@ export async function runAssistantAction(query: string, context?: string) {
   });
 }
 
+export async function routeAssistantQuestionAction(query: string, context?: string) {
+  return runWithAiAction('routeAssistantQuestionAction', async () => {
+    const headerList = await headers();
+    const ip =
+      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      headerList.get('x-real-ip') ||
+      'unknown';
+    const limiter = rateLimit(`ai-question-router:${ip}`, 40, 60_000);
+    if (!limiter.allowed) {
+      return err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      });
+    }
+    const parsed = z.string().min(1).safeParse(query);
+    if (!parsed.success) {
+      return err({
+        code: 'VALIDATION',
+        message: parsed.error.errors[0]?.message ?? 'Invalid query.',
+        source: 'app',
+      });
+    }
+    const trimmedContext = clampAssistantPrompt(
+      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
+        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
+        : context
+    );
+    return callAiConsume('chat', 'assistant_question', {
+      query: clampAssistantPrompt(query),
+      context: trimmedContext,
+    });
+  });
+}
+
 export async function resolveAnnouncementRecipientsAction(
   prompt: string,
   context?: string

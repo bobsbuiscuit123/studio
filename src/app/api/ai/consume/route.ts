@@ -9,6 +9,7 @@ import { generateClubAnnouncement } from '@/ai/flows/generate-announcement';
 import { generateClubForm } from '@/ai/flows/generate-form';
 import { resolveFollowUpAnswers } from '@/ai/flows/resolve-followups';
 import { runAssistant } from '@/ai/flows/assistant';
+import { routeAssistantQuestion } from '@/ai/flows/assistant-question-router';
 import { generateMessage } from '@/ai/flows/generate-message';
 import { generateGalleryDescription } from '@/ai/flows/generate-gallery-description';
 import { addCalendarEvent } from '@/ai/flows/add-calendar-event';
@@ -296,6 +297,12 @@ export async function POST(request: Request) {
             break;
           case 'assistant':
             response = await runAssistant({
+              query: String(payload.query ?? ''),
+              context: typeof payload.context === 'string' ? payload.context : undefined,
+            });
+            break;
+          case 'assistant_question':
+            response = await routeAssistantQuestion({
               query: String(payload.query ?? ''),
               context: typeof payload.context === 'string' ? payload.context : undefined,
             });

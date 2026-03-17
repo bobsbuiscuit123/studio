@@ -198,7 +198,7 @@ export default function CalendarPage() {
     return event.date.toLocaleString('en-US', { hour: '2-digit', minute:'2-digit' });
   };
 
-  const handleRsvp = (event: ClubEvent, status: 'yes') => {
+  const handleRsvp = (event: ClubEvent) => {
     if (!currentEmail) {
       toast({ title: "Sign in required", description: "Add a user to RSVP.", variant: "destructive" });
       return;
@@ -218,8 +218,11 @@ export default function CalendarPage() {
         const filteredMaybe = (rsvps.maybe || []).filter(
           e => normalizeEmail(e) !== normalizedEmail
         );
+        const isCurrentlyRsvped = (rsvps.yes || []).some(
+          e => normalizeEmail(e) === normalizedEmail
+        );
         const next = {
-          yes: status === 'yes' ? [...filteredYes, normalizedEmail] : filteredYes,
+          yes: isCurrentlyRsvped ? filteredYes : [...filteredYes, normalizedEmail],
           no: filteredNo,
           maybe: filteredMaybe,
         };
@@ -228,7 +231,13 @@ export default function CalendarPage() {
         return { ...ev, rsvps: next, viewedBy: nextViewed, read: true };
       });
     });
-    toast({ title: "RSVP recorded", description: "Marked as RSVP'd." });
+    const isCurrentlyRsvped = (event.rsvps?.yes || []).some(
+      e => normalizeEmail(e) === normalizedEmail
+    );
+    toast({
+      title: isCurrentlyRsvped ? "RSVP removed" : "RSVP recorded",
+      description: isCurrentlyRsvped ? "You are no longer RSVP'd." : "Marked as RSVP'd.",
+    });
   };
 
 
@@ -584,8 +593,7 @@ export default function CalendarPage() {
                                        size="sm"
                                        variant={isRsvped ? "default" : "outline"}
                                        className={isRsvped ? "bg-emerald-500 hover:bg-emerald-600 text-white" : ""}
-                                       onClick={() => handleRsvp(event, 'yes')}
-                                       disabled={isRsvped}
+                                       onClick={() => handleRsvp(event)}
                                      >
                                        {isRsvped ? (
                                          <>
@@ -688,8 +696,7 @@ export default function CalendarPage() {
                               size="sm"
                               variant={isRsvped ? "default" : "outline"}
                               className={isRsvped ? "bg-emerald-500 hover:bg-emerald-600 text-white" : ""}
-                              onClick={() => handleRsvp(selectedEvent, 'yes')}
-                              disabled={isRsvped}
+                              onClick={() => handleRsvp(selectedEvent)}
                             >
                               {isRsvped ? (
                                 <>

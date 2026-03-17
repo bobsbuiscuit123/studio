@@ -9,6 +9,18 @@ import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const stableSerialize = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(item => stableSerialize(item)).join(',')}]`;
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+};
 
 const uniqueStrings = (values: unknown[]) =>
   Array.from(
@@ -19,10 +31,11 @@ const uniqueStrings = (values: unknown[]) =>
     )
   );
 
-const mergeEvents = (currentEvents: unknown, nextEvents: unknown) => {
+const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: string | null) => {
   const currentList = Array.isArray(currentEvents) ? currentEvents : [];
   const nextList = Array.isArray(nextEvents) ? nextEvents : [];
   const currentById = new Map<string, Record<string, any>>();
+  const normalizedActorEmail = actorEmail ? normalizeEmail(actorEmail) : '';
 
   currentList.forEach(event => {
     if (!event || typeof event !== 'object') return;
@@ -48,22 +61,42 @@ const mergeEvents = (currentEvents: unknown, nextEvents: unknown) => {
     const currentRsvps = currentEvent.rsvps && typeof currentEvent.rsvps === 'object' ? currentEvent.rsvps : {};
     const nextRsvps = nextEvent.rsvps && typeof nextEvent.rsvps === 'object' ? nextEvent.rsvps : {};
 
-    const mergedYes = uniqueStrings([
-      ...(Array.isArray(currentRsvps.yes) ? currentRsvps.yes : []),
-      ...(Array.isArray(nextRsvps.yes) ? nextRsvps.yes : []),
-    ]).map(normalizeEmail);
-    const mergedNo = uniqueStrings([
-      ...(Array.isArray(currentRsvps.no) ? currentRsvps.no : []),
-      ...(Array.isArray(nextRsvps.no) ? nextRsvps.no : []),
-    ])
-      .map(normalizeEmail)
-      .filter(email => !mergedYes.includes(email));
-    const mergedMaybe = uniqueStrings([
-      ...(Array.isArray(currentRsvps.maybe) ? currentRsvps.maybe : []),
-      ...(Array.isArray(nextRsvps.maybe) ? nextRsvps.maybe : []),
-    ])
-      .map(normalizeEmail)
-      .filter(email => !mergedYes.includes(email) && !mergedNo.includes(email));
+    const currentYes = uniqueStrings(Array.isArray(currentRsvps.yes) ? currentRsvps.yes : []).map(normalizeEmail);
+    const currentNo = uniqueStrings(Array.isArray(currentRsvps.no) ? currentRsvps.no : []).map(normalizeEmail);
+    const currentMaybe = uniqueStrings(Array.isArray(currentRsvps.maybe) ? currentRsvps.maybe : []).map(normalizeEmail);
+    const nextYes = uniqueStrings(Array.isArray(nextRsvps.yes) ? nextRsvps.yes : []).map(normalizeEmail);
+    const nextNo = uniqueStrings(Array.isArray(nextRsvps.no) ? nextRsvps.no : []).map(normalizeEmail);
+    const nextMaybe = uniqueStrings(Array.isArray(nextRsvps.maybe) ? nextRsvps.maybe : []).map(normalizeEmail);
+
+    const actorRsvp =
+      normalizedActorEmail && nextYes.includes(normalizedActorEmail)
+        ? 'yes'
+        : normalizedActorEmail && nextNo.includes(normalizedActorEmail)
+          ? 'no'
+          : normalizedActorEmail && nextMaybe.includes(normalizedActorEmail)
+            ? 'maybe'
+            : null;
+
+    const baseYes = uniqueStrings([...currentYes, ...nextYes]).map(normalizeEmail);
+    const baseNo = uniqueStrings([...currentNo, ...nextNo]).map(normalizeEmail);
+    const baseMaybe = uniqueStrings([...currentMaybe, ...nextMaybe]).map(normalizeEmail);
+
+    const withoutActor = (values: string[]) =>
+      normalizedActorEmail ? values.filter(email => email !== normalizedActorEmail) : values;
+
+    const mergedYes = withoutActor(baseYes);
+    const mergedNo = withoutActor(baseNo).filter(email => !mergedYes.includes(email));
+    const mergedMaybe = withoutActor(baseMaybe).filter(
+      email => !mergedYes.includes(email) && !mergedNo.includes(email)
+    );
+
+    if (normalizedActorEmail && actorRsvp === 'yes') {
+      mergedYes.push(normalizedActorEmail);
+    } else if (normalizedActorEmail && actorRsvp === 'no') {
+      mergedNo.push(normalizedActorEmail);
+    } else if (normalizedActorEmail && actorRsvp === 'maybe') {
+      mergedMaybe.push(normalizedActorEmail);
+    }
 
     return {
       ...nextEvent,
@@ -190,11 +223,11 @@ export async function POST(request: Request) {
   const nextData = parsed.data.data as Record<string, any>;
   const mergedData = {
     ...nextData,
-    events: mergeEvents(currentData.events, nextData.events),
+    events: mergeEvents(currentData.events, nextData.events, userData.user.email),
   };
   const groupRole = normalizeGroupRole(membership.role);
-  const currentMembers = JSON.stringify(Array.isArray(currentData.members) ? currentData.members : []);
-  const nextMembers = JSON.stringify(Array.isArray(nextData.members) ? nextData.members : []);
+  const currentMembers = stableSerialize(Array.isArray(currentData.members) ? currentData.members : []);
+  const nextMembers = stableSerialize(Array.isArray(nextData.members) ? nextData.members : []);
   if (currentMembers !== nextMembers && !canManageGroupRoles(groupRole)) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Only group admins can manage member roles.', source: 'app' }),
@@ -203,10 +236,10 @@ export async function POST(request: Request) {
   }
 
   const announcementsChanged =
-    JSON.stringify(currentData.announcements ?? null) !== JSON.stringify(nextData.announcements ?? null);
+    stableSerialize(currentData.announcements ?? null) !== stableSerialize(nextData.announcements ?? null);
   const eventContentChanged =
-    JSON.stringify(stripCollaborativeEventFields(currentData.events)) !==
-    JSON.stringify(stripCollaborativeEventFields(nextData.events));
+    stableSerialize(stripCollaborativeEventFields(currentData.events)) !==
+    stableSerialize(stripCollaborativeEventFields(nextData.events));
 
   if ((announcementsChanged || eventContentChanged) && !canEditGroupContent(groupRole)) {
     return NextResponse.json(

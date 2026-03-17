@@ -2896,7 +2896,7 @@ const mergePlanTasksWithExplicitTypes = (
       const authorName = user?.name || 'AI Assistant';
       const authorEmail = user?.email || 'ai@CASPO.local';
       switch (type) {
-          case 'announcement': {
+        case 'announcement': {
             announcements.updateData(prev => {
               const list = Array.isArray(prev) ? prev : [];
               const attachmentsFromTask = Array.isArray(task.attachments)
@@ -2916,9 +2916,13 @@ const mergePlanTasksWithExplicitTypes = (
                   : attachmentsFromTask;
               const announcementId = Date.now();
               const recipients = Array.isArray(task.recipients) ? task.recipients : [];
+              const savedAnnouncementTitle = deriveAnnouncementTitle(
+                finalDraft || result.announcement || '',
+                task.prompt
+              );
               const newItem = {
                 id: announcementId,
-                title: result.title ?? 'Announcement',
+                title: savedAnnouncementTitle,
                 content: finalDraft || result.announcement || '',
                 author: authorName,
                 date: new Date().toISOString(),
@@ -2947,9 +2951,15 @@ const mergePlanTasksWithExplicitTypes = (
             const parsedDate = result.date ? new Date(result.date) : new Date();
             const hasTime =
               typeof result?.hasTime === 'boolean' ? result.hasTime : true;
+            const savedCalendarTitle = deriveShortFieldFromDraft(
+              finalDraft || formatDraft('calendar', result),
+              task.prompt,
+              'Event',
+              80
+            );
             const newItem = {
               id: `${Date.now()}`,
-              title: result.title ?? 'Event',
+              title: savedCalendarTitle,
               description: result.description ?? '',
               date: Number.isNaN(parsedDate.getTime()) ? new Date() : parsedDate,
               location: result.location ?? '',
@@ -3049,10 +3059,12 @@ const mergePlanTasksWithExplicitTypes = (
           break;
         }
         case 'form': {
-            const title =
-              typeof result?.title === 'string' && result.title.trim()
-                ? result.title.trim()
-                : 'New Form';
+            const title = deriveShortFieldFromDraft(
+              finalDraft || formatDraft('form', result),
+              task.prompt,
+              'New Form',
+              80
+            );
           const description =
             typeof result?.description === 'string' && result.description.trim()
               ? result.description.trim()
@@ -3085,11 +3097,17 @@ const mergePlanTasksWithExplicitTypes = (
         case 'transaction': {
           transactions.updateData(prev => {
             const list = Array.isArray(prev) ? prev : [];
+            const savedTransactionDescription = deriveShortFieldFromDraft(
+              finalDraft || formatDraft('transaction', result),
+              task.prompt,
+              'Transaction',
+              100
+            );
             const newItem = {
 
               id: `${Date.now()}`,
 
-              description: result.description ?? 'Transaction',
+              description: savedTransactionDescription,
 
               amount: Number(result.amount ?? 0),
 

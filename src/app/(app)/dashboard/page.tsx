@@ -375,17 +375,19 @@ export default function Dashboard() {
       });
     });
 
-    (transactions ?? []).forEach(transaction => {
-      const date = toDate(transaction.date);
-      if (!date) return;
-      items.push({
-        type: 'finance',
-        title: transaction.description ?? 'Transaction',
-        date,
-        link: '/finances',
-        actor: null,
+    if (canEditContent) {
+      (transactions ?? []).forEach(transaction => {
+        const date = toDate(transaction.date);
+        if (!date) return;
+        items.push({
+          type: 'finance',
+          title: transaction.description ?? 'Transaction',
+          date,
+          link: '/finances',
+          actor: null,
+        });
       });
-    });
+    }
 
     (pointEntries ?? []).forEach(entry => {
       if (normalizeEmail(entry.awardedBy) === userEmail) return;
@@ -415,6 +417,7 @@ export default function Dashboard() {
     pointEntries,
     socialPosts,
     transactions,
+    canEditContent,
     user?.email,
     memberNameByEmail,
   ]);

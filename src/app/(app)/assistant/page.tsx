@@ -3292,7 +3292,10 @@ const mergePlanTasksWithExplicitTypes = (
       switch (task.type) {
         case 'announcement':
           return {
-            title: deriveAnnouncementTitle(draft, task.prompt),
+            title:
+              typeof task.title === 'string' && task.title.trim()
+                ? task.title.trim()
+                : deriveAnnouncementTitle(draft, task.prompt),
             announcement: draft,
           };
         case 'email': {
@@ -3696,6 +3699,24 @@ const mergePlanTasksWithExplicitTypes = (
                                       wordDelayMs={40}
                                     />
                                   </label>
+                                  {task.type === 'announcement' ? (
+                                    <Input
+                                      value={task.title ?? ''}
+                                      onChange={e =>
+                                        updatePlanTask(message.id, task.id, t => ({
+                                          ...t,
+                                          title: e.target.value,
+                                          draftResult:
+                                            t.draftResult && typeof t.draftResult === 'object'
+                                              ? { ...t.draftResult, title: e.target.value }
+                                              : t.draftResult,
+                                        }))
+                                      }
+                                      placeholder="Announcement title"
+                                      className="text-sm"
+                                      disabled={task.isDrafting || Boolean(task.draftTyping)}
+                                    />
+                                  ) : null}
                                   <Textarea
                                     value={draftDisplayValue}
                                     onChange={e =>

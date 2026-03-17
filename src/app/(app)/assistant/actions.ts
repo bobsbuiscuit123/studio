@@ -332,13 +332,11 @@ export async function resolveMissedActivityAction(summary: string) {
 type TaskType =
   | 'announcement'
   | 'form'
-  | 'slides'
   | 'calendar'
   | 'email'
   | 'messages'
   | 'gallery'
   | 'transaction'
-  | 'social'
   | 'other';
 
 export async function runTaskAction(
@@ -377,12 +375,6 @@ export async function runTaskAction(
         return callAiConsume('chat', 'announcement', { prompt: clampAssistantPrompt(prompt) });
       case 'form':
         return callAiConsume('chat', 'form', { prompt: clampAssistantPrompt(prompt) });
-      case 'slides':
-        return err({
-          code: 'VALIDATION',
-          message: 'Slides are currently disabled in the assistant.',
-          source: 'app',
-        });
       case 'calendar':
         return callAiConsume('chat', 'calendar', { prompt: clampAssistantPrompt(prompt) });
       case 'email':
@@ -393,12 +385,10 @@ export async function runTaskAction(
         return callAiConsume('chat', 'gallery', { prompt: clampAssistantPrompt(prompt) });
       case 'transaction':
         return callAiConsume('chat', 'transaction', { prompt: clampAssistantPrompt(prompt) });
-      case 'social':
-        return callAiConsume('chat', 'social', { prompt: clampAssistantPrompt(prompt) });
       case 'other':
         return ok({
           message:
-            "Sorry - I can't do that in this app yet. I can help with announcements, forms, calendar events, emails, messages, gallery uploads, transactions, and social posts.",
+            "Sorry - I can't do that in this app yet. I can help with announcements, forms, calendar events, emails, messages, gallery uploads, and transactions.",
         });
       default:
         return err({

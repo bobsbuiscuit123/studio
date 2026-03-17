@@ -32,7 +32,6 @@ const TaskSchema = z.object({
       'messages',
       'gallery',
       'transaction',
-      'social',
       'other',
     ])
     .describe('What type of task to run.'),
@@ -57,7 +56,7 @@ export async function planAssistantTasks(
   input: PlannerInput
 ): Promise<Result<PlannerOutput>> {
   const baseSystemMessage = `You plan task boxes for a school/group management app. Return JSON only: {"tasks":[...],"summary":"..."}.
-Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
+Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, other.
 Split the user's request into 1-5 tasks when they asked for multiple things.
 Each task must have: id, type, prompt. Add draft only when enough detail exists right now. Add followUpQuestions only for required missing details. Do not ask unnecessary questions.
 Use the task types like this:
@@ -68,7 +67,6 @@ Use the task types like this:
 - form: form/survey with actual questions
 - gallery: image upload/description
 - transaction: finance entry
-- social: social post
 - other: unsupported request only
 Rules:
 - Preserve any exact wording the user gave inside the prompt.
@@ -83,7 +81,6 @@ Draft format:
 - calendar: Title, Date, Time, Location, blank line, Details
 - form: Title, Description, then numbered questions
 - transaction: Description, Amount, Date, Status
-- social: Title, Post
 - gallery: short description
 If details are missing, omit draft instead of guessing.
 Summary should be 1-2 short natural sentences.`;

@@ -58,8 +58,6 @@ import {
   useGroupChats,
   useMembers,
   useMessages,
-  usePresentations,
-  useSocialPosts,
   useTransactions,
   notifyOrgAiUsageChanged,
 } from '@/lib/data-hooks';
@@ -82,13 +80,11 @@ import { useGroupUserStateSection } from '@/lib/group-user-state';
 type TaskType =
   | 'announcement'
   | 'form'
-  | 'slides'
   | 'calendar'
   | 'email'
   | 'messages'
   | 'gallery'
   | 'transaction'
-  | 'social'
   | 'other';
 
 
@@ -707,9 +703,7 @@ function AssistantPageInner() {
     };
   }, [pathname]);
   const members = useMembers();
-  const socialPosts = useSocialPosts();
   const transactions = useTransactions();
-  const presentations = usePresentations();
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -959,7 +953,6 @@ const buildFastPlan = (
         type: 'transaction',
         matched: matchAny([/\btransaction\b/, /\bexpense\b/, /\bpayment\b/, /\bcharge\b/]),
       },
-      { type: 'social', matched: matchAny([/\bsocial\b/, /\bpost\b/]) },
     ];
     const matchedTypes = typeMatches.filter(item => item.matched).map(item => item.type);
     const uniqueMatchedTypes = Array.from(new Set(matchedTypes));
@@ -1250,7 +1243,6 @@ const mergePlanTasksWithExplicitTypes = (
               'messages',
               'gallery',
               'transaction',
-              'social',
             ],
           }
         : {
@@ -1262,7 +1254,6 @@ const mergePlanTasksWithExplicitTypes = (
       announcements: announcementsSnapshot,
       forms: formsSnapshot,
       events: eventsSnapshot,
-      socialPosts: socialPosts.data ?? [],
       transactions: canManageRoles ? transactions.data ?? [] : [],
       galleryImages: galleryImages.data ?? [],
       groupChats: groupChats.data ?? [],
@@ -2026,10 +2017,10 @@ const mergePlanTasksWithExplicitTypes = (
             handleAiError
           ) ??
           fastPlan ?? {
-            tasks: [],
-            summary:
-              "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, transactions, and social posts. Ask for one of those directly.",
-          };
+              tasks: [],
+              summary:
+              "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
+        };
         const normalizedPlan = {
           ...plan,
           tasks: mergePlanTasksWithExplicitTypes(
@@ -2082,7 +2073,7 @@ const mergePlanTasksWithExplicitTypes = (
         const safeSummary = hasRunnableTask
           ? normalizedPlan.summary
           : fallbackPrompt ||
-            `Sorry - I can't do that in ${appBrandName} yet. Try asking for an announcement, a form, a calendar event, an email, a message, a gallery upload, a transaction, or a social post.`;
+            `Sorry - I can't do that in ${appBrandName} yet. Try asking for an announcement, a form, a calendar event, an email, a message, a gallery upload, or a transaction.`;
         const {
           questions: rawFollowUps,
           questionTaskMap,
@@ -2414,16 +2405,6 @@ const mergePlanTasksWithExplicitTypes = (
             : 'No questions generated.';
         return `Title: ${r.title ?? ''}\nDescription: ${r.description ?? ''}\n\nQuestions:\n${questionLines}`;
       }
-      case 'slides':
-        return (r.slides || [])
-          .map(
-            (s: any, idx: number) =>
-              `Slide ${idx + 1}: ${s.title}\n${s.content}`
-
-          )
-
-          .join('\n\n---\n\n');
-
       case 'calendar': {
         const friendlyDate = formatDateForDisplay(r.date);
         const hasTime = typeof r.hasTime === 'boolean' ? r.hasTime : true;
@@ -2438,8 +2419,6 @@ const mergePlanTasksWithExplicitTypes = (
       case 'transaction':
         const friendlyDate = formatDateForDisplay(r.date);
         return `Description: ${r.description ?? ''}\nAmount: ${r.amount ?? ''}\nDate: ${friendlyDate}\nStatus: ${r.status ?? ''}`;
-      case 'social':
-        return `Title: ${r.title ?? ''}\nPost: ${r.postText ?? ''}${r.imageCaption ? `\nImage caption: ${r.imageCaption}` : ''}`;
       case 'gallery':
         return r.description ?? '';
       case 'other':
@@ -2654,11 +2633,6 @@ const mergePlanTasksWithExplicitTypes = (
           status: 'completed',
         };
       }
-      case 'social':
-        return {
-          title: startCase(topic).slice(0, 80) || 'Post',
-          postText: `${startCase(topic)}.`,
-        };
       case 'gallery':
         return {
           description: startCase(topic).slice(0, 120),
@@ -2712,8 +2686,6 @@ const mergePlanTasksWithExplicitTypes = (
         return toAppRoute('/announcements');
       case 'form':
         return toAppRoute('/forms');
-      case 'slides':
-        return toAppRoute('/slides');
       case 'calendar':
 
         return toAppRoute('/calendar');
@@ -2724,8 +2696,6 @@ const mergePlanTasksWithExplicitTypes = (
         return toAppRoute('/messages');
       case 'transaction':
         return toAppRoute('/finances');
-      case 'social':
-        return toAppRoute('/social');
       case 'gallery':
         return toAppRoute('/gallery');
       default:
@@ -2747,16 +2717,6 @@ const mergePlanTasksWithExplicitTypes = (
           draft: task.prompt,
           draftError: undefined,
           isDrafting: false,
-          autoDraftRequested: true,
-        }));
-        return;
-      }
-      if (task.type === 'slides') {
-        updatePlanTask(planId, task.id, t => ({
-          ...t,
-          draftError: 'Slides are currently disabled in the assistant.',
-          isDrafting: false,
-          draftingStartedAt: undefined,
           autoDraftRequested: true,
         }));
         return;
@@ -2874,20 +2834,6 @@ const mergePlanTasksWithExplicitTypes = (
       setSendingId(null);
       return;
     }
-    if (task.type === 'slides') {
-      updatePlanTask(planId, task.id, t => ({
-        ...t,
-        status: 'error',
-        error: 'Slides are currently disabled in the assistant.',
-      }));
-      toast({
-        title: 'Slides disabled',
-        description: 'Slides are currently disabled in the assistant.',
-        variant: 'destructive',
-      });
-      setSendingId(null);
-      return;
-    }
     if (task.type === 'announcement') {
       if (Array.isArray(task.recipients) && task.recipients.length === 0) {
         updatePlanTask(planId, task.id, t => ({
@@ -2997,44 +2943,6 @@ const mergePlanTasksWithExplicitTypes = (
               read: false,
             };
             return [...list, newItem];
-          });
-          break;
-        }
-        case 'social': {
-          socialPosts.updateData(prev => {
-
-            const list = Array.isArray(prev) ? prev : [];
-
-            const newItem = {
-
-              id: Date.now(),
-
-              title: result.title ?? 'Post',
-
-              content:
-
-                finalDraft ||
-
-                `${result.postText ?? ''}${result.imageCaption ? `\n${result.imageCaption}` : ''}`,
-
-              images: result.images ?? [],
-
-              author: authorName,
-
-              date: new Date().toISOString(),
-
-              likes: 0,
-
-              likedBy: [],
-
-              comments: [],
-
-              read: false,
-
-            };
-
-            return [...list, newItem];
-
           });
           break;
         }
@@ -3183,48 +3091,6 @@ const mergePlanTasksWithExplicitTypes = (
 
         }
 
-        case 'slides': {
-
-          presentations.updateData(prev => {
-
-            const list = Array.isArray(prev) ? prev : [];
-
-            const slidesArray =
-
-              Array.isArray(result.slides) && result.slides.length > 0
-
-                ? result.slides.map((s: any, idx: number) => ({
-
-                    id: `${Date.now()}-${idx}`,
-
-                    title: s.title ?? `Slide ${idx + 1}`,
-
-                    content: s.content ?? '',
-
-                  }))
-
-                : [];
-
-            const newPresentation = {
-
-              id: Date.now(),
-
-              prompt: finalPrompt,
-
-              slides: slidesArray,
-
-              createdAt: new Date().toISOString(),
-
-            };
-
-            return [...list, newPresentation];
-
-          });
-
-          break;
-
-        }
-
         default:
 
           break;
@@ -3350,17 +3216,6 @@ const mergePlanTasksWithExplicitTypes = (
         }
         case 'gallery':
           return { description: draft };
-        case 'social': {
-          const values = parseLabeledDraft(draft);
-          const title = values.title || task.prompt.trim().slice(0, 80) || 'Post';
-          const postText = values.post || draft;
-          const imageCaption = values['image caption'] || '';
-          return {
-            title,
-            postText,
-            imageCaption: imageCaption || undefined,
-          };
-        }
         case 'transaction': {
           const values = parseLabeledDraft(draft);
           const description = values.description || task.prompt.trim();
@@ -4022,7 +3877,7 @@ const mergePlanTasksWithExplicitTypes = (
           <div className="flex items-center gap-3">
             <Input
               {...form.register('query')}
-              placeholder="Tell the assistant what to do (announcements, forms, calendar, email, social...)"
+              placeholder="Tell the assistant what to do (announcements, forms, calendar, email, messages...)"
               autoComplete="off"
               disabled={isPlanning || Boolean(aiBlockedReason)}
             />

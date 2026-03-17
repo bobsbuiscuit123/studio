@@ -958,12 +958,10 @@ const buildFastPlan = (
       { type: 'social', matched: matchAny([/\bsocial\b/, /\bpost\b/]) },
     ];
     const matchedTypes = typeMatches.filter(item => item.matched).map(item => item.type);
-    if (matchedTypes.length > 1) return null;
-    const type: TaskType | null = matchedTypes[0] ?? null;
+    const uniqueMatchedTypes = Array.from(new Set(matchedTypes));
+    if (uniqueMatchedTypes.length === 0) return null;
+    if (uniqueMatchedTypes.length > 3) return null;
 
-    if (!type) return null;
-
-    const followUpQuestions: string[] = [];
     const memberList = Array.isArray(members.data) ? members.data : [];
     const groupList = Array.isArray(groupChats.data) ? groupChats.data : [];
     const roleMentioned = /\b(admin|officer|member|president|vice president|treasurer|secretary)\b/.test(
@@ -1010,46 +1008,53 @@ const buildFastPlan = (
     const hasQuestions = matchAny([/\bquestion\b/, /\bquestions\b/, /\bask\b/, /\?/]);
     const hasAmount = matchAny([/\$?\d+(?:\.\d{2})?\b/]);
 
-    if (type === 'messages') {
-      if (!explicitRecipientMentioned) {
-        followUpQuestions.push('Who should receive the message?');
+    const buildFollowUpsForType = (type: TaskType) => {
+      const followUpQuestions: string[] = [];
+
+      if (type === 'messages') {
+        if (!explicitRecipientMentioned) {
+          followUpQuestions.push('Who should receive the message?');
+        }
       }
-    }
 
-    if (type === 'calendar') {
-      if (!hasDate) followUpQuestions.push('What is the event date?');
-      if (!hasTime) followUpQuestions.push('What time is the event?');
-    }
-
-    if (type === 'form') {
-      if (!hasQuestions) {
-        followUpQuestions.push(
-          'Please list the questions you want in the form and any answer choices for multiple-choice questions.'
-        );
+      if (type === 'calendar') {
+        if (!hasDate) followUpQuestions.push('What is the event date?');
+        if (!hasTime) followUpQuestions.push('What time is the event?');
       }
-    }
 
-    if (type === 'gallery' && !hasAttachment) {
-      followUpQuestions.push('Please attach at least one image.');
-    }
+      if (type === 'form') {
+        if (!hasQuestions) {
+          followUpQuestions.push(
+            'Please list the questions you want in the form and any answer choices for multiple-choice questions.'
+          );
+        }
+      }
 
-    if (type === 'transaction' && !hasAmount) {
-      followUpQuestions.push('What is the amount?');
-    }
+      if (type === 'gallery' && !hasAttachment) {
+        followUpQuestions.push('Please attach at least one image.');
+      }
 
-  return {
-      tasks: [
-        {
-          id: `fast-${Date.now()}`,
+      if (type === 'transaction' && !hasAmount) {
+        followUpQuestions.push('What is the amount?');
+      }
+
+      return followUpQuestions.length > 0 ? followUpQuestions : undefined;
+    };
+
+    return {
+      tasks: uniqueMatchedTypes.map((type, index) => ({
+          id: `fast-${Date.now()}-${index}`,
           type,
           prompt: text,
-          followUpQuestions: followUpQuestions.length > 0 ? followUpQuestions : undefined,
+          followUpQuestions: buildFollowUpsForType(type),
           status: 'pending',
-        },
-      ],
-      summary: "Got it - here's a draft.",
+        })),
+      summary:
+        uniqueMatchedTypes.length > 1
+          ? "Got it - I split that into separate tasks."
+          : "Got it - here's a draft.",
+    };
   };
-};
 
   const isInsightQuery = (query: string) => {
     const normalized = query.trim().toLowerCase();

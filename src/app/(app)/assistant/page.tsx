@@ -301,7 +301,7 @@ const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
     linkedFormTaskId:
       typeof value.linkedFormTaskId === 'string' ? value.linkedFormTaskId : undefined,
     autoDraftRequested:
-      typeof value.autoDraftRequested === 'boolean' ? value.autoDraftRequested : true,
+      typeof value.autoDraftRequested === 'boolean' ? value.autoDraftRequested : false,
     status:
       value.status === 'sent' || value.status === 'error' || value.status === 'pending'
         ? value.status
@@ -618,6 +618,7 @@ function AssistantPageInner() {
     useState<DraftRegenerationRequest>(null);
   const { toast } = useToast();
   const lastAssistantPersistedRef = useRef('');
+  const draftGenerationInFlightRef = useRef<Set<string>>(new Set());
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
 
@@ -2517,6 +2518,54 @@ const buildFastPlan = (
     return group ? { kind: 'group', id: group.id } : null;
   };
 
+  const buildLocalMessageDraft = (task: PlannedTask) => {
+    if (task.type !== 'messages') return null;
+    if (Array.isArray(task.attachments) && task.attachments.length > 0) return null;
+
+    const rawPrompt = [task.prompt?.trim(), task.clarification?.trim()]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    if (!rawPrompt) return null;
+
+    const patterns = [
+      /^(?:send|write|draft)\s+(?:a\s+)?(?:message|dm|text)\s+(?:to\s+)?(.+?)\s+(?:saying|that says|about|to)\s+(.+)$/i,
+      /^(?:message|text|dm|tell|ask|remind|notify)\s+(.+?)\s+to\s+(.+)$/i,
+    ];
+
+    let recipient = '';
+    let content = '';
+    for (const pattern of patterns) {
+      const match = rawPrompt.match(pattern);
+      if (!match) continue;
+      recipient = (match[1] ?? '').trim();
+      content = (match[2] ?? '').trim();
+      if (recipient && content) break;
+    }
+
+    if (!recipient || !content) return null;
+
+    const target = resolveMessageTarget(recipient, 'person') ?? resolveMessageTarget(recipient);
+    if (!target) return null;
+
+    const recipientName =
+      target.kind === 'dm'
+        ? resolveMemberName(target.email)
+        : recipient;
+    const normalizedContent = content.replace(/^[,:\-\s]+/, '').trim();
+    if (!normalizedContent) return null;
+
+    const text = /^(hi|hello|hey|dear)\b/i.test(normalizedContent)
+      ? normalizedContent
+      : `Hi ${recipientName}, ${normalizedContent.replace(/[.!?]*$/, '')}.`;
+
+    return {
+      recipient,
+      recipientType: target.kind === 'group' ? 'group' : 'person',
+      text,
+    };
+  };
+
 
   const toAppRoute = (path: string) => {
     if (!isDemoAssistantRoute) return path;
@@ -2554,26 +2603,32 @@ const buildFastPlan = (
 
 
   const generateDraft = async (planId: string, task: PlannedTask) => {
-    if (task.type === 'other') {
-      updatePlanTask(planId, task.id, t => ({
-        ...t,
-        draft: task.prompt,
-        draftError: undefined,
-        isDrafting: false,
-        autoDraftRequested: true,
-      }));
+    const draftKey = `${planId}:${task.id}`;
+    if (draftGenerationInFlightRef.current.has(draftKey)) {
       return;
     }
-    if (task.type === 'slides') {
-      updatePlanTask(planId, task.id, t => ({
-        ...t,
-        draftError: 'Slides are currently disabled in the assistant.',
-        isDrafting: false,
-        draftingStartedAt: undefined,
-        autoDraftRequested: true,
-      }));
-      return;
-    }
+    draftGenerationInFlightRef.current.add(draftKey);
+    try {
+      if (task.type === 'other') {
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          draft: task.prompt,
+          draftError: undefined,
+          isDrafting: false,
+          autoDraftRequested: true,
+        }));
+        return;
+      }
+      if (task.type === 'slides') {
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          draftError: 'Slides are currently disabled in the assistant.',
+          isDrafting: false,
+          draftingStartedAt: undefined,
+          autoDraftRequested: true,
+        }));
+        return;
+      }
 
       const clar = task.clarification?.trim();
       const linkedFormId =
@@ -2598,53 +2653,63 @@ const buildFastPlan = (
         .filter(Boolean)
         .join('\n\n');
 
-
-    updatePlanTask(planId, task.id, t => ({
-
-      ...t,
-
-      isDrafting: true,
-      autoDraftRequested: true,
-
-      draftingStartedAt: Date.now(),
-
-      draftError: undefined,
-
-    }));
-
-
-
-    const previewResult = await runTaskAction(task.type, promptForDraft);
-    const preview =
-      getResultData(previewResult, message =>
-        toast({
-          title: 'AI unavailable',
-          description: message,
-          variant: 'destructive',
-        })
-      ) ?? null;
-    if (!preview) {
       updatePlanTask(planId, task.id, t => ({
         ...t,
+        isDrafting: true,
+        autoDraftRequested: true,
+        draftingStartedAt: Date.now(),
+        draftError: undefined,
+      }));
+
+      const localMessageDraft = buildLocalMessageDraft(task);
+      if (localMessageDraft) {
+        const draftText = formatDraft(task.type, localMessageDraft);
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          draft: '',
+          draftSource: draftText,
+          draftTyping: { startedAt: Date.now(), fullText: draftText },
+          isDrafting: false,
+          draftingStartedAt: undefined,
+          draftError: undefined,
+          draftResult: localMessageDraft,
+        }));
+        return;
+      }
+
+      const previewResult = await runTaskAction(task.type, promptForDraft);
+      const preview =
+        getResultData(previewResult, message =>
+          toast({
+            title: 'AI unavailable',
+            description: message,
+            variant: 'destructive',
+          })
+        ) ?? null;
+      if (!preview) {
+        updatePlanTask(planId, task.id, t => ({
+          ...t,
+          isDrafting: false,
+          draftingStartedAt: undefined,
+          draftError: aiFallbackMessage,
+        }));
+        return;
+      }
+      const draftText = formatDraft(task.type, preview);
+
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        draft: '',
+        draftSource: draftText,
+        draftTyping: { startedAt: Date.now(), fullText: draftText },
         isDrafting: false,
         draftingStartedAt: undefined,
-        draftError: aiFallbackMessage,
+        draftError: undefined,
+        draftResult: preview,
       }));
-      return;
+    } finally {
+      draftGenerationInFlightRef.current.delete(draftKey);
     }
-    const draftText = formatDraft(task.type, preview);
-
-    updatePlanTask(planId, task.id, t => ({
-      ...t,
-      draft: '',
-      draftSource: draftText,
-      draftTyping: { startedAt: Date.now(), fullText: draftText },
-      isDrafting: false,
-      draftingStartedAt: undefined,
-      draftError: undefined,
-      draftResult: preview,
-    }));
-
   };
 
   useEffect(() => {
@@ -2661,6 +2726,10 @@ const buildFastPlan = (
   }, [messages]);
 
   const requestDraftGeneration = (planId: string, task: PlannedTask) => {
+    const draftKey = `${planId}:${task.id}`;
+    if (draftGenerationInFlightRef.current.has(draftKey)) {
+      return;
+    }
     if (task.isDrafting) {
       return;
     }

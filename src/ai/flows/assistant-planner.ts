@@ -56,41 +56,53 @@ export type PlannerOutput = z.infer<typeof PlannerOutputSchema>;
 export async function planAssistantTasks(
   input: PlannerInput
 ): Promise<Result<PlannerOutput>> {
-  const cappedQuery = clampAssistantPrompt(input.query);
-  const context = clampAssistantPrompt(input.context?.trim());
+  const baseSystemMessage = `You plan task boxes for a school/group management app. Return JSON only: {"tasks":[...],"summary":"..."}.
+Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
+Split the user's request into 1-5 tasks when they asked for multiple things.
+Each task must have: id, type, prompt. Add draft only when enough detail exists right now. Add followUpQuestions only for required missing details. Do not ask unnecessary questions.
+Use the task types like this:
+- announcement: school/group announcement or reminder to everyone/some audience
+- email: email draft with subject and body
+- messages: direct message or group chat message
+- calendar: event with title/date/time
+- form: form/survey with actual questions
+- gallery: image upload/description
+- transaction: finance entry
+- social: social post
+- other: unsupported request only
+Rules:
+- Preserve any exact wording the user gave inside the prompt.
+- Reminder requests can be announcement, email, messages, or multiple if the user asked for multiple channels.
+- If the user explicitly asks for multiple channels, return multiple tasks.
+- If details are missing, keep the right task type and ask only for the missing required detail.
+- Do not use type "other" for normal announcement/email/calendar/form requests just because they are incomplete.
+Draft format:
+- announcement: body only
+- email: "Subject: ..." then blank line then body
+- messages: message text only
+- calendar: Title, Date, Time, Location, blank line, Details
+- form: Title, Description, then numbered questions
+- transaction: Description, Amount, Date, Status
+- social: Title, Post
+- gallery: short description
+If details are missing, omit draft instead of guessing.
+Summary should be 1-2 short natural sentences.`;
+  const rawQuery = clampAssistantPrompt(input.query).trim();
+  const rawContext = clampAssistantPrompt(input.context?.trim());
+  const contextLabel = '\n\nRecent context:\n';
+  const maxTotalChars = 2936;
+  const maxQueryChars = Math.max(0, maxTotalChars - baseSystemMessage.length - 64);
+  const cappedQuery = rawQuery.slice(0, maxQueryChars);
+  const remainingForContext = Math.max(
+    0,
+    maxTotalChars - baseSystemMessage.length - cappedQuery.length - contextLabel.length
+  );
   const trimmedContext =
-    context && context.length > 4000 ? context.slice(-4000) : context;
-  const baseSystemMessage = `You are an orchestration planner for a group management assistant.
-Break the user's request into tasks. Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
-Be concise and specific in the prompt field so it can be executed directly. If the user supplied exact wording for an announcement/event/etc., preserve it verbatim in the prompt wrapped in double quotes (do not rewrite).
-Only add followUpQuestions when required details are missing per the task rules below. Do NOT ask for extra or random info. Each missing detail should be its own question in the followUpQuestions array.
-When enough information is available, include a concise draft string in the optional "draft" field so the UI can show an editable first draft without another AI call.
-Task requirements:
-- announcement: need a general prompt about the announcement (the topic/what it's about) and recipients (everyone or specific). Exact text is optional (do not ask for it if a topic is provided). Attachments are optional (do not ask).
-- messages: need the person or group chat to send to, and either exact text or a prompt to generate the message.
-- calendar: need title (or enough context to generate it), date, and time. Location is optional. Relative dates like "tomorrow" count as date (do not ask for a specific date if provided). If points not mentioned, default to 0. If RSVP not mentioned, default to "no RSVP required".
-- form: need title (or enough context to generate it) and the questions (plus answer choices for multiple choice). Description can be generated from title. Default all questions to required, but allow edits later.
-- gallery: need at least one image. Description is optional (leave blank if not provided); if some context is given, you can generate a short description.
-- email: need either exact body text or enough context to generate it, plus a generated title/subject. Attachments are optional (do not ask).
-If the user asks to create a form but does not provide the actual questions (and answer choices for multiple-choice questions), include a followUpQuestions entry requesting those, phrased like: "Please list the questions you want in the form and any answer choices for multiple-choice questions."
-Treat reminder-style requests (e.g., "remind everyone to pay dues") as announcement tasks.
-If the request is extremely incomplete, still return the correct task type (e.g., announcement) and use followUpQuestions to ask for the missing detail; do not use type "other" for announcements/forms/emails just because details are missing.
-Draft formatting rules:
-- announcement: body copy only, no markdown bullets unless needed.
-- email: include "Subject: ..." on the first line, then a blank line, then the body.
-- messages: draft only the message text to send.
-- calendar: use lines for Title, Date, Time, Location, then a blank line and Details.
-- form: use lines for Title and Description, then a numbered list of questions.
-- transaction: use lines for Description, Amount, Date, Status.
-- social: use lines for Title and Post.
-- gallery: short description only.
-If details are missing, omit the draft field instead of guessing.
-Provide 1-5 tasks maximum, each with at most five followUpQuestions.
-If the user asks for something you cannot do with the allowed task types, return exactly ONE task with type "other" and put a brief apology + explanation in the prompt (also mention what you *can* do in this app).
-Write 'summary' as a natural, varied assistant reply (1-2 short sentences). Avoid canned phrasing.
-Return ONLY JSON matching: { "tasks": Task[], "summary": string } with Task { id, type, prompt, draft?, followUpQuestions? }.`;
+    rawContext && remainingForContext > 0
+      ? rawContext.slice(Math.max(0, rawContext.length - Math.min(remainingForContext, 500)))
+      : '';
   const systemContent = trimmedContext
-    ? `${baseSystemMessage}\n\nRecent context (use this to resolve references like "that form" or "the announcement"):\n${trimmedContext}`
+    ? `${baseSystemMessage}${contextLabel}${trimmedContext}`
     : baseSystemMessage;
   const output = await callAI<PlannerOutput>({
     responseFormat: 'json_object',

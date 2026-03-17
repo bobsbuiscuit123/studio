@@ -36,6 +36,10 @@ const TaskSchema = z.object({
     ])
     .describe('What type of task to run.'),
   prompt: z.string().describe('The prompt/details to use when executing the task.'),
+  title: z
+    .string()
+    .optional()
+    .describe('A concise AI-generated title when the task type benefits from one, especially announcements.'),
   draft: z
     .string()
     .optional()
@@ -58,7 +62,7 @@ export async function planAssistantTasks(
   const baseSystemMessage = `You plan task boxes for a school/group management app. Return JSON only: {"tasks":[...],"summary":"..."}.
 Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, other.
 Split the user's request into 1-5 tasks when they asked for multiple things.
-Each task must have: id, type, prompt. Add draft only when enough detail exists right now. Add followUpQuestions only for required missing details. Do not ask unnecessary questions.
+Each task must have: id, type, prompt. Add title when useful, especially for announcements. Add draft only when enough detail exists right now. Add followUpQuestions only for required missing details. Do not ask unnecessary questions.
 Use the task types like this:
 - announcement: school/group announcement or reminder to everyone/some audience
 - email: email draft with subject and body
@@ -82,6 +86,10 @@ Draft format:
 - form: Title, Description, then numbered questions
 - transaction: Description, Amount, Date, Status
 - gallery: short description
+Title rules:
+- For announcement tasks with enough detail, include a short title in the separate title field.
+- The title must be concise and not the same sentence as the draft body.
+- Good announcement titles are like "Dues Reminder", "Blood Drive Tomorrow", "Banquet Update".
 If details are missing, omit draft instead of guessing.
 Summary should be 1-2 short natural sentences.`;
   const rawQuery = clampAssistantPrompt(input.query).trim();

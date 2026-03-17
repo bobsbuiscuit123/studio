@@ -151,6 +151,7 @@ type PlannedTask = {
   id: string;
   type: TaskType;
   prompt: string;
+  title?: string;
   followUpQuestions?: string[];
   recipients?: string[];
   clarification?: string;
@@ -276,6 +277,7 @@ const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
     id: value.id,
     type: value.type,
     prompt: typeof value.prompt === 'string' ? value.prompt : '',
+    title: typeof value.title === 'string' ? value.title : undefined,
     followUpQuestions: Array.isArray(value.followUpQuestions)
       ? value.followUpQuestions.filter((item): item is string => typeof item === 'string')
       : undefined,
@@ -2670,6 +2672,15 @@ const mergePlanTasksWithExplicitTypes = (
       autoDraftRequested: true,
     };
     if (typeof baseTask.draft === 'string' && baseTask.draft.trim().length > 0) {
+      if (baseTask.type === 'announcement' && baseTask.title && !baseTask.draftResult) {
+        return {
+          ...baseTask,
+          draftResult: {
+            title: baseTask.title,
+            announcement: baseTask.draft,
+          },
+        };
+      }
       return baseTask;
     }
     const localDraftResult = buildLocalDraftResult(baseTask);
@@ -2920,9 +2931,15 @@ const mergePlanTasksWithExplicitTypes = (
                 finalDraft || result.announcement || '',
                 task.prompt
               );
+              const finalAnnouncementTitle =
+                typeof task.title === 'string' && task.title.trim()
+                  ? task.title.trim()
+                  : typeof result?.title === 'string' && result.title.trim()
+                    ? result.title.trim()
+                    : savedAnnouncementTitle;
               const newItem = {
                 id: announcementId,
-                title: savedAnnouncementTitle,
+                title: finalAnnouncementTitle,
                 content: finalDraft || result.announcement || '',
                 author: authorName,
                 date: new Date().toISOString(),
@@ -3234,8 +3251,12 @@ const mergePlanTasksWithExplicitTypes = (
         .replace(/[.!?]+$/, '')
         .trim();
       const fallback = startCase(cleanTaskIntent(promptText ?? '')).slice(0, 80);
-      const baseTitle = cleanedLine || fallback || 'Announcement';
-      return baseTitle.length > 80 ? `${baseTitle.slice(0, 77).trimEnd()}...` : baseTitle;
+      const compact = cleanedLine
+        .replace(/\b(please|remember|everyone|all members|failure to do so.*)$/i, '')
+        .replace(/\b(to|by)\b.*$/i, '')
+        .trim();
+      const baseTitle = compact || fallback || 'Announcement';
+      return baseTitle.length > 48 ? `${baseTitle.slice(0, 45).trimEnd()}...` : baseTitle;
     };
 
     const isInstructionLikeAnnouncementTitle = (value?: string | null) => {

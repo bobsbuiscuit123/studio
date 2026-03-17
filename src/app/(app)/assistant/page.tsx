@@ -69,7 +69,6 @@ import { safeFetchJson } from '@/lib/network';
 import { getSelectedOrgId } from '@/lib/selection';
 import {
   planTasksAction,
-  resolveFollowUpAnswersAction,
   runAssistantAction,
   runTaskAction,
 } from './actions';
@@ -938,7 +937,12 @@ const buildFastPlan = (
     const typeMatches: { type: TaskType; matched: boolean }[] = [
       {
         type: 'announcement',
-        matched: matchAny([/\bannouncement\b/, /\bannounce\b/, /\bremind\b/]),
+        matched: matchAny([
+          /\bannouncement\b/,
+          /\bannounce\b/,
+          /\bpost (an )?announcement\b/,
+          /\bsend (an )?announcement\b/,
+        ]),
       },
       { type: 'messages', matched: matchAny([/\bmessage\b/, /\btext\b/, /\bdm\b/, /\bchat\b/]) },
       { type: 'email', matched: matchAny([/\bemail\b/]) },
@@ -1857,27 +1861,13 @@ const mergePlanTasksWithExplicitTypes = (
       const treatAsInsight = isInsightQuery(values.query);
       if (pendingPlan && !treatAsInsight) {
         const questionsToResolve = normalizeQuestionList(pendingPlan.questions);
-        const responseResult = await resolveFollowUpAnswersAction(
-          questionsToResolve,
-          values.query
-        );
-        const response =
-          getResultData(
-            responseResult as Result<FollowUpResolution>,
-            message =>
-            toast({
-              title: 'AI unavailable',
-              description: message,
-              variant: 'destructive',
-            })
-          ) ?? { answers: [], missing: questionsToResolve };
+        const response = resolveFollowUpAnswersLocally(questionsToResolve, values.query);
         const answerMap = new Map(
           (response.answers || []).map((item: FollowUpAnswer) => [
             normalizeFollowUpQuestion(item.question),
             item.answer,
           ])
         );
-        // Rely entirely on Gemini to interpret follow-up answers.
         const tasksWithAttachments = pendingPlan.tasks.map(task => ({
           ...task,
           attachments:
@@ -2023,18 +2013,19 @@ const mergePlanTasksWithExplicitTypes = (
         }
         const fastPlan = buildFastPlan(values.query, pendingAttachments);
         const contextForPlanner = buildRecentContextForPlanner();
-        const plan = fastPlan
-          ? fastPlan
-          : getResultData(
-              (await planTasksAction(
-                queryWithAttachments,
-                contextForPlanner
-              )) as Result<PlannerPayload>,
-              handleAiError
-            ) ?? {
-              tasks: [],
-              summary: aiFallbackMessage,
-            };
+        const plan =
+          getResultData(
+            (await planTasksAction(
+              queryWithAttachments,
+              contextForPlanner
+            )) as Result<PlannerPayload>,
+            handleAiError
+          ) ??
+          fastPlan ?? {
+            tasks: [],
+            summary:
+              "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, transactions, and social posts. Ask for one of those directly.",
+          };
         const normalizedPlan = {
           ...plan,
           tasks: mergePlanTasksWithExplicitTypes(
@@ -2194,6 +2185,49 @@ const mergePlanTasksWithExplicitTypes = (
   const cleanFollowUp = (text?: string) => {
     if (!text) return '';
     return text.replace(/\?+$/, '');
+  };
+
+  const resolveFollowUpAnswersLocally = (questions: string[], reply: string) => {
+    const normalizedQuestions = normalizeQuestionList(questions);
+    const trimmedReply = reply.trim();
+    if (!trimmedReply) {
+      return {
+        answers: [] as FollowUpAnswer[],
+        missing: normalizedQuestions,
+      };
+    }
+
+    if (normalizedQuestions.length <= 1) {
+      return {
+        answers: normalizedQuestions.map(question => ({ question, answer: trimmedReply })),
+        missing: [] as string[],
+      };
+    }
+
+    const chunks = trimmedReply
+      .split(/\n+|;\s+/)
+      .map(chunk => chunk.replace(/^\s*(?:[-*]|\d+[\).:-]?)\s*/, '').trim())
+      .filter(Boolean);
+
+    if (chunks.length >= normalizedQuestions.length) {
+      return {
+        answers: normalizedQuestions
+          .map((question, index) => ({
+            question,
+            answer: chunks[index] ?? '',
+          }))
+          .filter(item => item.answer),
+        missing: [] as string[],
+      };
+    }
+
+    return {
+      answers:
+        normalizedQuestions.length > 0
+          ? [{ question: normalizedQuestions[0], answer: trimmedReply }]
+          : [],
+      missing: normalizedQuestions.slice(1),
+    };
   };
 
   const normalizeFollowUpQuestion = (text?: string) => {

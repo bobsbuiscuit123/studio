@@ -2594,8 +2594,27 @@ const buildFastPlan = (
     if (!extracted) {
       return 'Reminder: Please check the latest update.';
     }
-    const lowered = extracted.charAt(0).toLowerCase() + extracted.slice(1);
-    return `Reminder: ${lowered.charAt(0).toUpperCase() + lowered.slice(1)}.`;
+    const cleaned = extracted
+      .replace(/\bcome to our event\b/i, "don't forget to come to our event")
+      .replace(/\s+/g, ' ')
+      .trim();
+    const sentence = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    return `Reminder: ${sentence}.`;
+  };
+
+  const buildAnnouncementTitleFromIntent = (value: string) => {
+    const normalized = value.toLowerCase();
+    if (/\bdues\b/.test(normalized)) return 'Dues Reminder';
+    if (/\bblood drive\b/.test(normalized)) return 'Blood Drive Reminder';
+    if (/\bbanquet\b/.test(normalized)) return 'Banquet Reminder';
+    if (/\bsocial\b/.test(normalized)) return 'Event Reminder';
+    if (/\bevent\b/.test(normalized)) return 'Event Reminder';
+    const topic = extractReminderTopic(value);
+    const cleaned = topic
+      .replace(/\bcome to\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned ? `${startCase(cleaned)} Reminder` : 'Reminder';
   };
 
   const extractEventDate = (value: string) =>
@@ -2688,7 +2707,7 @@ const buildFastPlan = (
   ) => {
     const existingAnnouncement = tasks.find(task => task.type === 'announcement');
     const forcedDraft = buildAnnouncementBodyFromIntent(query);
-    const forcedTitle = deriveAnnouncementTitle(forcedDraft, query);
+    const forcedTitle = buildAnnouncementTitleFromIntent(query);
     const announcementTask: PlannedTask = existingAnnouncement
       ? {
           ...existingAnnouncement,
@@ -2892,7 +2911,7 @@ const buildFastPlan = (
         const ensuredTitle =
           typeof baseTask.title === 'string' && baseTask.title.trim().length > 0
             ? baseTask.title.trim()
-            : deriveAnnouncementTitle(baseTask.draft, baseTask.prompt);
+            : buildAnnouncementTitleFromIntent(baseTask.prompt || baseTask.draft);
         if (baseTask.draftResult) {
           return {
             ...baseTask,

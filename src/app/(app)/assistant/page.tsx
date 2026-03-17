@@ -3205,6 +3205,41 @@ const mergePlanTasksWithExplicitTypes = (
       return values;
     };
 
+    const deriveAnnouncementTitle = (draftText: string, promptText?: string) => {
+      const firstNonEmptyLine =
+        draftText
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .find(Boolean) ?? '';
+      const cleanedLine = firstNonEmptyLine
+        .replace(/^(reminder|announcement)\s*:\s*/i, '')
+        .replace(/[.!?]+$/, '')
+        .trim();
+      const fallback = startCase(cleanTaskIntent(promptText ?? '')).slice(0, 80);
+      const baseTitle = cleanedLine || fallback || 'Announcement';
+      return baseTitle.length > 80 ? `${baseTitle.slice(0, 77).trimEnd()}...` : baseTitle;
+    };
+
+    const deriveShortFieldFromDraft = (
+      draftText: string,
+      promptText: string | undefined,
+      fallback: string,
+      maxLength = 80
+    ) => {
+      const firstNonEmptyLine =
+        draftText
+          .split(/\r?\n/)
+          .map(line => line.trim())
+          .find(Boolean) ?? '';
+      const cleanedLine = firstNonEmptyLine
+        .replace(/^[A-Za-z ]+:\s*/i, '')
+        .replace(/[.!?]+$/, '')
+        .trim();
+      const fallbackText = startCase(cleanTaskIntent(promptText ?? '')).slice(0, maxLength);
+      const value = cleanedLine || fallbackText || fallback;
+      return value.length > maxLength ? `${value.slice(0, maxLength - 3).trimEnd()}...` : value;
+    };
+
     const parseDraftToResult = (task: PlannedTask, draftText: string): any | null => {
       const draft = draftText.trim();
       if (!draft) return null;
@@ -3212,7 +3247,7 @@ const mergePlanTasksWithExplicitTypes = (
       switch (task.type) {
         case 'announcement':
           return {
-            title: task.prompt.trim().slice(0, 80) || 'Announcement',
+            title: deriveAnnouncementTitle(draft, task.prompt),
             announcement: draft,
           };
         case 'email': {
@@ -3234,7 +3269,9 @@ const mergePlanTasksWithExplicitTypes = (
           return { description: draft };
         case 'transaction': {
           const values = parseLabeledDraft(draft);
-          const description = values.description || task.prompt.trim();
+          const description =
+            values.description ||
+            deriveShortFieldFromDraft(draft, task.prompt, 'Transaction', 100);
           const amountText = values.amount || '';
           const numericAmount = Number(amountText.replace(/[^0-9.-]/g, ''));
           return {
@@ -3246,7 +3283,8 @@ const mergePlanTasksWithExplicitTypes = (
         }
         case 'calendar': {
           const values = parseLabeledDraft(draft);
-          const title = values.title || task.prompt.trim().slice(0, 80) || 'Event';
+          const title =
+            values.title || deriveShortFieldFromDraft(draft, task.prompt, 'Event', 80);
           const dateText = values.date || '';
           const timeText = values.time || '';
           const combinedDate = [dateText, timeText && timeText.toLowerCase() !== 'na' ? timeText : '']
@@ -3287,7 +3325,9 @@ const mergePlanTasksWithExplicitTypes = (
             };
           });
           return {
-            title: titleLine?.replace(/^Title:\s*/i, '').trim() || task.prompt.trim().slice(0, 80) || 'Form',
+            title:
+              titleLine?.replace(/^Title:\s*/i, '').trim() ||
+              deriveShortFieldFromDraft(draft, task.prompt, 'Form', 80),
             description: descriptionLine?.replace(/^Description:\s*/i, '').trim() || '',
             questions,
           };

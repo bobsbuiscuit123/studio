@@ -73,6 +73,18 @@ const deriveAnnouncementTitleFromContent = (content?: string | null, fallback?: 
   return value.length > 80 ? `${value.slice(0, 77).trimEnd()}...` : value;
 };
 
+const normalizeAnnouncementForDisplay = <T extends { title?: string | null; content?: string | null }>(
+  announcement: T
+) => {
+  const nextTitle = isInstructionLikeAnnouncementTitle(announcement.title)
+    ? deriveAnnouncementTitleFromContent(announcement.content, announcement.title)
+    : String(announcement.title ?? '');
+  return {
+    ...announcement,
+    title: nextTitle,
+  };
+};
+
 function AnnouncementsPageInner() {
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
   const { data: announcements, updateData: setAnnouncements, loading, clubId } = useAnnouncements();
@@ -293,12 +305,13 @@ function AnnouncementsPageInner() {
   }
   
   const handleEditClick = (announcement: Announcement) => {
-    setEditingAnnouncement(announcement);
+    const normalizedAnnouncement = normalizeAnnouncementForDisplay(announcement);
+    setEditingAnnouncement(normalizedAnnouncement as Announcement);
     const recips = Array.isArray(announcement.recipients) ? announcement.recipients : [];
     setRecipientMode(recips.length > 0 ? 'specific' : 'all');
     setSelectedRecipients(recips);
     announcementForm.reset({
-        title: announcement.title,
+        title: normalizedAnnouncement.title,
         content: announcement.content,
     });
   };
@@ -468,7 +481,7 @@ function AnnouncementsPageInner() {
     const merged = (() => {
       const optimisticIds = new Set(optimisticAnnouncements.map(a => a.id));
       const dedupedSafe = safeAnnouncements.filter(a => !optimisticIds.has(a.id));
-      return [...optimisticAnnouncements, ...dedupedSafe];
+      return [...optimisticAnnouncements, ...dedupedSafe].map(normalizeAnnouncementForDisplay);
     })();
     return [...merged].sort((a: any, b: any) => {
       const aDate = new Date(a?.date ?? 0).getTime();

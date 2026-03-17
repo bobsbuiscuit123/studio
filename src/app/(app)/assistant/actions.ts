@@ -6,6 +6,8 @@ import { rateLimit } from '@/lib/rate-limit';
 import { headers, cookies } from 'next/headers';
 import { z } from 'zod';
 
+const AI_CONSUME_TIMEOUT_MS = 20_000;
+
 const resolveOrigin = async () => {
   const headerList = await headers();
   return (
@@ -28,12 +30,34 @@ const callAiConsume = async <T>(
   const headerList = await headers();
   const cookieHeader = headerList.get('cookie') ?? '';
   const orgId = await getSelectedOrgId();
-  const response = await fetch(`${origin}/api/ai/consume`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
-    body: JSON.stringify({ orgId, feature, action, payload }),
-    cache: 'no-store',
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_CONSUME_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${origin}/api/ai/consume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
+      body: JSON.stringify({ orgId, feature, action, payload }),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    const message =
+      error && typeof error === 'object' && 'name' in error
+        ? String((error as { name?: string }).name)
+        : '';
+    return err({
+      code: message === 'AbortError' ? 'NETWORK_TIMEOUT' : 'NETWORK_HTTP_ERROR',
+      message:
+        message === 'AbortError'
+          ? 'AI request timed out. Please try again.'
+          : 'Network request failed. Please try again.',
+      source: 'network',
+      retryable: true,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   const json = await response.json().catch(() => null);
   if (!json || typeof json !== 'object' || !('ok' in json)) {
     return err({

@@ -35,13 +35,15 @@ const ResolveInsightRequestOutputSchema = z.object({
 });
 export type ResolveInsightRequestOutput = z.infer<typeof ResolveInsightRequestOutputSchema>;
 
+const RESOLVE_INSIGHT_TIMEOUT_MS = 12_000;
+
 export async function resolveInsightRequest(
   input: ResolveInsightRequestInput
 ): Promise<Result<ResolveInsightRequestOutput>> {
   const result = await callAI<ResolveInsightRequestOutput>({
     responseFormat: 'json_object',
     outputSchema: ResolveInsightRequestOutputSchema,
-    timeoutMs: 0,
+    timeoutMs: RESOLVE_INSIGHT_TIMEOUT_MS,
     messages: [
       {
         role: 'system',

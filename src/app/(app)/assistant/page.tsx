@@ -301,7 +301,7 @@ const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
     linkedFormTaskId:
       typeof value.linkedFormTaskId === 'string' ? value.linkedFormTaskId : undefined,
     autoDraftRequested:
-      typeof value.autoDraftRequested === 'boolean' ? value.autoDraftRequested : false,
+      typeof value.autoDraftRequested === 'boolean' ? value.autoDraftRequested : true,
     status:
       value.status === 'sent' || value.status === 'error' || value.status === 'pending'
         ? value.status
@@ -1868,7 +1868,7 @@ const buildFastPlan = (
             clarification: mergeClarifications(task.clarification, answersForTask),
           };
         });
-        const hydratedTasks = await resolveAnnouncementRecipientsForTasks(updatedTasks);
+        const hydratedTasks = hydrateTasksForDisplay(updatedTasks);
           const missingList = Array.isArray(response.missing)
             ? response.missing
                 .map((item: string) => normalizeFollowUpQuestion(item))
@@ -1914,21 +1914,7 @@ const buildFastPlan = (
               ...task,
               followUpQuestions: undefined,
             }));
-            let resolvedSummary = "All set - here's the draft.";
-            try {
-              const taskTypes =
-                resolvedTasks.map(task => task.type).join(', ') || 'task';
-              const assistantReplyResult = await runAssistantAction(
-                `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
-                undefined
-              );
-              const assistantReply = getResultData(
-                assistantReplyResult as Result<AssistantReplyPayload>
-              );
-              if (assistantReply?.response) resolvedSummary = assistantReply.response;
-            } catch (error) {
-              console.error('Failed to generate post-followup summary', error);
-            }
+            const resolvedSummary = "All set - here's the draft.";
             setMessages(prev => [
               ...prev,
               userMessage,
@@ -1952,22 +1938,7 @@ const buildFastPlan = (
             ...task,
             followUpQuestions: undefined,
           }));
-            let resolvedSummary = "All set - here's the draft.";
-          try {
-            const taskTypes = resolvedTasks.map(task => task.type).join(', ') || 'task';
-            const assistantReplyResult = await runAssistantAction(
-              `The user answered the follow-up questions for a ${taskTypes}. Provide a brief, friendly response. Do not include any draft content, fields, or placeholders. Do not ask for more details.`,
-              undefined
-            );
-            const assistantReply = getResultData(
-              assistantReplyResult as Result<AssistantReplyPayload>
-            );
-            if (assistantReply?.response) {
-              resolvedSummary = assistantReply.response;
-            }
-          } catch (error) {
-            console.error('Failed to generate post-followup summary', error);
-          }
+          const resolvedSummary = "All set - here's the draft.";
           setMessages(prev => [
             ...prev,
             userMessage,
@@ -2022,17 +1993,18 @@ const buildFastPlan = (
         }
         const fastPlan = buildFastPlan(values.query, pendingAttachments);
         const contextForPlanner = buildRecentContextForPlanner();
-        const planResult: Result<PlannerPayload> = fastPlan
-          ? { ok: true, data: fastPlan }
-          : ((await planTasksAction(
-              queryWithAttachments,
-              contextForPlanner
-            )) as Result<PlannerPayload>);
-        const plan =
-          getResultData(planResult, handleAiError) ?? {
-            tasks: [],
-            summary: aiFallbackMessage,
-          };
+        const plan = fastPlan
+          ? fastPlan
+          : getResultData(
+              (await planTasksAction(
+                queryWithAttachments,
+                contextForPlanner
+              )) as Result<PlannerPayload>,
+              handleAiError
+            ) ?? {
+              tasks: [],
+              summary: aiFallbackMessage,
+            };
         const normalizedPlan = {
           ...plan,
           tasks: (plan.tasks ?? []).map(task => ({
@@ -2064,17 +2036,17 @@ const buildFastPlan = (
           }
           return;
         }
-        const plannedTasks = await resolveAnnouncementRecipientsForTasks(
+        const plannedTasks = hydrateTasksForDisplay(
           rawTasks.map(task => ({
-          ...task,
-          status: 'pending' as const,
-          clarification: '',
-          draft: '',
-          draftError: undefined,
-          isDrafting: false,
-          autoDraftRequested: false,
-          attachments: pendingAttachments,
-        }))
+            ...task,
+            status: 'pending' as const,
+            clarification: '',
+            draft: '',
+            draftError: undefined,
+            isDrafting: false,
+            autoDraftRequested: true,
+            attachments: pendingAttachments,
+          }))
         );
         const hasRunnableTask = plannedTasks.some(t => t.type !== 'other');
         const fallbackPrompt = plannedTasks.find(t => t.type === 'other')?.prompt?.trim();
@@ -2565,6 +2537,25 @@ const buildFastPlan = (
       text,
     };
   };
+
+  const hydrateTasksForDisplay = (tasks: PlannedTask[]) =>
+    tasks.map(task => {
+      const baseTask: PlannedTask = {
+        ...task,
+        autoDraftRequested: true,
+      };
+      const localMessageDraft = buildLocalMessageDraft(baseTask);
+      if (!localMessageDraft) {
+        return baseTask;
+      }
+      const draftText = formatDraft(baseTask.type, localMessageDraft);
+      return {
+        ...baseTask,
+        draft: draftText,
+        draftSource: draftText,
+        draftResult: localMessageDraft,
+      };
+    });
 
 
   const toAppRoute = (path: string) => {

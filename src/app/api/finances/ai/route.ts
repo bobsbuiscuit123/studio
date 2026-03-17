@@ -50,6 +50,7 @@ export async function POST(request: Request) {
         headers: {
           'Content-Type': 'application/json',
           cookie: headerList.get('cookie') ?? '',
+          'X-Idempotency-Key': headerList.get('x-idempotency-key') ?? '',
         },
         body: JSON.stringify({
           feature: 'chat',

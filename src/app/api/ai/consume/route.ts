@@ -29,6 +29,22 @@ import type { Result } from '@/lib/result';
 const hashPayload = (value: unknown) =>
   crypto.createHash('sha256').update(JSON.stringify(value ?? {})).digest('hex');
 
+type StoredIdempotentResponse = {
+  body: unknown;
+  status: number;
+};
+
+const pendingIdempotentRequests =
+  (globalThis as typeof globalThis & {
+    __pendingAiIdempotentRequests?: Map<string, Promise<StoredIdempotentResponse>>;
+  }).__pendingAiIdempotentRequests ??
+  new Map<string, Promise<StoredIdempotentResponse>>();
+
+if (!(globalThis as typeof globalThis & { __pendingAiIdempotentRequests?: Map<string, Promise<StoredIdempotentResponse>> }).__pendingAiIdempotentRequests) {
+  (globalThis as typeof globalThis & { __pendingAiIdempotentRequests?: Map<string, Promise<StoredIdempotentResponse>> }).__pendingAiIdempotentRequests =
+    pendingIdempotentRequests;
+}
+
 const buildAssistantContent = (query: string, context?: string | null) => {
   const trimmedContext =
     context && context.length > 3000 ? context.slice(-3000) : context;
@@ -52,6 +68,7 @@ const isResultShape = <T,>(value: unknown): value is Result<T> => {
 
 export async function POST(request: Request) {
   const headerList = await headers();
+  const requestIdempotencyKey = headerList.get('x-idempotency-key')?.trim() || '';
   const ip =
     headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     headerList.get('x-real-ip') ||
@@ -183,112 +200,196 @@ export async function POST(request: Request) {
         message: 'Daily limit reached.',
         source: 'ai',
       }),
-      { status: 429 }
+        { status: 429 }
     );
 
   const feature = parsed.data.feature;
-  if (feature === 'chat') {
-    if (!hasCreditRemaining) {
-      console.info('[ai] quota exceeded', { orgId, userId });
-      return quotaExceededResponse();
-    }
+  const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);
+  const idempotencyCacheKey = requestIdempotencyKey
+    ? `idempotency:${feature}:${action}:${userId}`
+    : null;
+  const idempotencyInputHash = requestIdempotencyKey
+    ? hashPayload({ idempotencyKey: requestIdempotencyKey })
+    : null;
+  const pendingRequestKey =
+    requestIdempotencyKey && idempotencyCacheKey && idempotencyInputHash
+      ? `${orgId}:${idempotencyCacheKey}:${idempotencyInputHash}`
+      : null;
 
-    const action = parsed.data.action || 'assistant';
-    const payload = parsed.data.payload as any;
-    let response: unknown;
-    try {
-      switch (action) {
-        case 'plan_tasks':
-          response = await planAssistantTasks(payload);
-          break;
-        case 'followups':
-          response = await resolveFollowUpAnswers(payload);
-          break;
-        case 'assistant':
-          response = await runAssistant({
-            query: buildAssistantContent(payload.query, payload.context),
-          });
-          break;
-        case 'announcement':
-          response = await generateClubAnnouncement(payload);
-          break;
-        case 'form':
-          response = await generateClubForm(payload);
-          break;
-        case 'calendar':
-          response = await addCalendarEvent(payload);
-          break;
-        case 'email':
-          response = await generateEmail(payload);
-          break;
-        case 'messages':
-          response = await generateMessage(payload);
-          break;
-        case 'gallery':
-          response = await generateGalleryDescription(payload);
-          break;
-        case 'transaction':
-          response = await addTransaction(payload);
-          break;
-        case 'social':
-          response = await generateSocialMediaPost(payload);
-          break;
-        case 'slides':
-          response = await generateMeetingSlides(payload);
-          break;
-        case 'announcement_recipients':
-          response = await resolveAnnouncementRecipients(payload);
-          break;
-        case 'metric':
-          response = await resolveMetricValue(payload);
-          break;
-        case 'graph':
-          response = await resolveGraphRequest(payload);
-          break;
-        case 'missed_activity':
-          response = await resolveMissedActivity(payload);
-          break;
-        default:
-          return NextResponse.json(
-            err({ code: 'VALIDATION', message: 'Unknown AI action.', source: 'app' }),
-            { status: 400 }
-          );
+  const loadCachedIdempotentResponse = async () => {
+    if (!idempotencyCacheKey || !idempotencyInputHash) return null;
+    const { data: cached } = await admin
+      .from('org_cache')
+      .select('content, expires_at')
+      .eq('org_id', orgId)
+      .eq('cache_key', idempotencyCacheKey)
+      .eq('input_hash', idempotencyInputHash)
+      .maybeSingle();
+    if (!cached || new Date(cached.expires_at).getTime() <= Date.now()) {
+      return null;
+    }
+    const content = cached.content as Partial<StoredIdempotentResponse> | null;
+    if (!content || typeof content !== 'object' || !('body' in content)) {
+      return null;
+    }
+    return {
+      body: content.body,
+      status: typeof content.status === 'number' ? content.status : 200,
+    } satisfies StoredIdempotentResponse;
+  };
+
+  const storeCachedIdempotentResponse = async (response: StoredIdempotentResponse) => {
+    if (!idempotencyCacheKey || !idempotencyInputHash) return;
+    await admin.from('org_cache').upsert({
+      org_id: orgId,
+      cache_key: idempotencyCacheKey,
+      input_hash: idempotencyInputHash,
+      content: response as any,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    });
+  };
+
+  const executeWithIdempotency = async (
+    run: () => Promise<StoredIdempotentResponse>
+  ) => {
+    if (!pendingRequestKey) {
+      return run();
+    }
+    const cachedResponse = await loadCachedIdempotentResponse();
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    const existingPending = pendingIdempotentRequests.get(pendingRequestKey);
+    if (existingPending) {
+      return existingPending;
+    }
+    const pending = (async () => {
+      const response = await run();
+      if (response.status < 500 && response.status !== 429) {
+        await storeCachedIdempotentResponse(response);
       }
-    } catch (error) {
-      console.error('[ai] chat action failed', { orgId, userId, action, error });
-      return NextResponse.json(
-        err({
-          code: 'AI_PROVIDER_ERROR',
-          message: 'AI is unavailable right now.',
-          source: 'ai',
-        }),
-        { status: 503 }
-      );
+      return response;
+    })();
+    pendingIdempotentRequests.set(pendingRequestKey, pending);
+    try {
+      return await pending;
+    } finally {
+      pendingIdempotentRequests.delete(pendingRequestKey);
     }
+  };
+  if (feature === 'chat') {
+    const idempotentResponse = await executeWithIdempotency(async () => {
+      if (!hasCreditRemaining) {
+        console.info('[ai] quota exceeded', { orgId, userId });
+        return {
+          body: err({
+            code: 'DAILY_LIMIT_REACHED',
+            message: 'Daily limit reached.',
+            source: 'ai',
+          }),
+          status: 429,
+        };
+      }
 
-    if (!isResultShape(response) || !response.ok) {
-      return NextResponse.json(
-        response ??
-          err({
+      const payload = parsed.data.payload as any;
+      let response: unknown;
+      try {
+        switch (action) {
+          case 'plan_tasks':
+            response = await planAssistantTasks(payload);
+            break;
+          case 'followups':
+            response = await resolveFollowUpAnswers(payload);
+            break;
+          case 'assistant':
+            response = await runAssistant({
+              query: buildAssistantContent(payload.query, payload.context),
+            });
+            break;
+          case 'announcement':
+            response = await generateClubAnnouncement(payload);
+            break;
+          case 'form':
+            response = await generateClubForm(payload);
+            break;
+          case 'calendar':
+            response = await addCalendarEvent(payload);
+            break;
+          case 'email':
+            response = await generateEmail(payload);
+            break;
+          case 'messages':
+            response = await generateMessage(payload);
+            break;
+          case 'gallery':
+            response = await generateGalleryDescription(payload);
+            break;
+          case 'transaction':
+            response = await addTransaction(payload);
+            break;
+          case 'social':
+            response = await generateSocialMediaPost(payload);
+            break;
+          case 'slides':
+            response = await generateMeetingSlides(payload);
+            break;
+          case 'announcement_recipients':
+            response = await resolveAnnouncementRecipients(payload);
+            break;
+          case 'metric':
+            response = await resolveMetricValue(payload);
+            break;
+          case 'graph':
+            response = await resolveGraphRequest(payload);
+            break;
+          case 'missed_activity':
+            response = await resolveMissedActivity(payload);
+            break;
+          default:
+            return {
+              body: err({ code: 'VALIDATION', message: 'Unknown AI action.', source: 'app' }),
+              status: 400,
+            };
+        }
+      } catch (error) {
+        console.error('[ai] chat action failed', { orgId, userId, action, error });
+        return {
+          body: err({
             code: 'AI_PROVIDER_ERROR',
             message: 'AI is unavailable right now.',
             source: 'ai',
           }),
-        { status: 200 }
-      );
-    }
+          status: 503,
+        };
+      }
 
-    const { success } = await consumeCredit();
-    if (!success) {
-      console.info('[ai] quota reconciliation failed after successful generation', {
-        orgId,
-        userId,
-        action,
-      });
-      return NextResponse.json(response);
-    }
+      if (!isResultShape(response) || !response.ok) {
+        return {
+          body:
+            response ??
+            err({
+              code: 'AI_PROVIDER_ERROR',
+              message: 'AI is unavailable right now.',
+              source: 'ai',
+            }),
+          status: 200,
+        };
+      }
 
-    return NextResponse.json(response);
+      const { success } = await consumeCredit();
+      if (!success) {
+        console.info('[ai] quota reconciliation failed after successful generation', {
+          orgId,
+          userId,
+          action,
+        });
+      }
+
+      return { body: response, status: 200 };
+    });
+
+    return NextResponse.json(idempotentResponse.body, { status: idempotentResponse.status });
   }
 
   const payload = parsed.data.payload ?? {};
@@ -305,63 +406,74 @@ export async function POST(request: Request) {
     return NextResponse.json(cached.content);
   }
 
-  if (!hasCreditRemaining) {
-    console.info('[ai] quota exceeded', { orgId, userId, feature });
-    return quotaExceededResponse();
-  }
-
-  console.info('[ai] cache miss', { feature, orgId });
-  let response: unknown = null;
-  try {
-    if (feature === 'insights') {
-      response = await resolveInsightRequest(payload as any);
-    } else {
-      response = await runAssistant({
-        query: buildAssistantContent((payload as any)?.prompt ?? '', (payload as any)?.context),
-      });
+  const idempotentResponse = await executeWithIdempotency(async () => {
+    if (!hasCreditRemaining) {
+      console.info('[ai] quota exceeded', { orgId, userId, feature });
+      return {
+        body: err({
+          code: 'DAILY_LIMIT_REACHED',
+          message: 'Daily limit reached.',
+          source: 'ai',
+        }),
+        status: 429,
+      };
     }
-  } catch (error) {
-    console.error('[ai] cached feature generation failed', { orgId, userId, feature, error });
-    return NextResponse.json(
-      err({
-        code: 'AI_PROVIDER_ERROR',
-        message: 'AI is unavailable right now.',
-        source: 'ai',
-      }),
-      { status: 503 }
-    );
-  }
 
-  if (!isResultShape(response) || !response.ok) {
-    return NextResponse.json(
-      response ??
-        err({
+    console.info('[ai] cache miss', { feature, orgId });
+    let response: unknown = null;
+    try {
+      if (feature === 'insights') {
+        response = await resolveInsightRequest(payload as any);
+      } else {
+        response = await runAssistant({
+          query: buildAssistantContent((payload as any)?.prompt ?? '', (payload as any)?.context),
+        });
+      }
+    } catch (error) {
+      console.error('[ai] cached feature generation failed', { orgId, userId, feature, error });
+      return {
+        body: err({
           code: 'AI_PROVIDER_ERROR',
           message: 'AI is unavailable right now.',
           source: 'ai',
         }),
-      { status: 200 }
-    );
-  }
+        status: 503,
+      };
+    }
 
-  const { success } = await consumeCredit();
-  if (!success) {
-    console.info('[ai] quota reconciliation failed after successful generation', {
-      orgId,
-      userId,
-      feature,
+    if (!isResultShape(response) || !response.ok) {
+      return {
+        body:
+          response ??
+          err({
+            code: 'AI_PROVIDER_ERROR',
+            message: 'AI is unavailable right now.',
+            source: 'ai',
+          }),
+        status: 200,
+      };
+    }
+
+    const { success } = await consumeCredit();
+    if (!success) {
+      console.info('[ai] quota reconciliation failed after successful generation', {
+        orgId,
+        userId,
+        feature,
+      });
+    }
+
+    await admin.from('org_cache').upsert({
+      org_id: orgId,
+      cache_key: feature,
+      input_hash: inputHash,
+      content: response as any,
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
-    return NextResponse.json(response);
-  }
 
-  await admin.from('org_cache').upsert({
-    org_id: orgId,
-    cache_key: feature,
-    input_hash: inputHash,
-    content: response as any,
-    created_at: new Date().toISOString(),
-    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    return { body: response, status: 200 };
   });
 
-  return NextResponse.json(response);
+  return NextResponse.json(idempotentResponse.body, { status: idempotentResponse.status });
 }

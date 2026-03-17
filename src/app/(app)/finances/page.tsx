@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Card,
   CardContent,
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
+import { notifyOrgAiUsageChanged, useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Loader2, Landmark, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -48,6 +48,7 @@ export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
   const [isProcessing, setIsProcessing] = useState(false);
   const [showAi, setShowAi] = useState(false);
+  const aiRequestInFlightRef = useRef(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
@@ -68,7 +69,13 @@ export default function FinancesPage() {
   });
   
   const handleAddTransaction = async (values: z.infer<typeof promptFormSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsProcessing(true);
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const result = await safeFetchJson<{ ok: boolean; data?: { description: string; amount: number; date: string; status?: string }; error?: { message?: string } }>(
       '/api/finances/ai',
       {
@@ -76,7 +83,8 @@ export default function FinancesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(values),
         timeoutMs: 12_000,
-        retry: { retries: 1 },
+        retry: { retries: 0 },
+        idempotencyKey,
       }
     );
     if (!result.ok || !result.data?.ok || !result.data.data) {
@@ -85,6 +93,7 @@ export default function FinancesPage() {
         description: result.ok ? result.data?.error?.message || "Failed to add transaction from prompt." : result.error.message,
         variant: "destructive",
       });
+      aiRequestInFlightRef.current = false;
       setIsProcessing(false);
       return;
     }
@@ -96,8 +105,10 @@ export default function FinancesPage() {
       status: result.data.data.amount >= 0 ? 'Deposit' : 'Withdrawal',
     };
     setTransactions([newTransaction, ...transactions]);
+    notifyOrgAiUsageChanged(undefined, 1);
     toast({ title: "Transaction added successfully!" });
     form.reset();
+    aiRequestInFlightRef.current = false;
     setIsProcessing(false);
   };
   

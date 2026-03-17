@@ -85,6 +85,7 @@ function AnnouncementsPageInner() {
   const [showAi, setShowAi] = useState(false);
   const [handledFormId, setHandledFormId] = useState<string | null>(null);
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
+  const aiRequestInFlightRef = useRef(false);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   useEffect(() => {
@@ -196,12 +197,19 @@ function AnnouncementsPageInner() {
         const promptText = targetForm.title
           ? `tell everyone to fill out this form titled "${targetForm.title}"`
           : "tell everyone to fill out this form";
+        const idempotencyKey =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
         const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
           '/api/announcements/ai',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: promptText }),
+            timeoutMs: 15_000,
+            retry: { retries: 0 },
+            idempotencyKey,
           }
         );
         if (!result.ok) {
@@ -314,32 +322,44 @@ function AnnouncementsPageInner() {
   };
 
   const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsLoading(true);
-    const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
-      '/api/announcements/ai',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: values.prompt }),
+    try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
+        '/api/announcements/ai',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: values.prompt }),
+          timeoutMs: 15_000,
+          retry: { retries: 0 },
+          idempotencyKey,
+        }
+      );
+      if (!result.ok) {
+        toast({
+          title: "Error",
+          description: result.error?.message || "Failed to generate announcement.",
+          variant: "destructive",
+        });
+        return;
       }
-    );
-    if (!result.ok) {
-      toast({
-        title: "Error",
-        description: result.error?.message || "Failed to generate announcement.",
-        variant: "destructive",
+      notifyOrgAiUsageChanged(undefined, 1);
+      setGeneratedAnnouncement(result.data.data);
+      announcementForm.reset({
+          title: result.data.data.title,
+          content: result.data.data.announcement
       });
+      setIsPostDialogOpen(true);
+    } finally {
+      aiRequestInFlightRef.current = false;
       setIsLoading(false);
-      return;
     }
-    notifyOrgAiUsageChanged(undefined, 1);
-    setGeneratedAnnouncement(result.data.data);
-    announcementForm.reset({
-        title: result.data.data.title,
-        content: result.data.data.announcement
-    });
-    setIsPostDialogOpen(true);
-    setIsLoading(false);
   };
 
   const handlePostAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {

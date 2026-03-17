@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -95,6 +95,7 @@ export default function CalendarPage() {
   const currentEmail = user?.email || "";
   const safeEvents = Array.isArray(events) ? events : [];
   const [showAi, setShowAi] = useState(false);
+  const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
 
   useEffect(() => {
@@ -242,6 +243,8 @@ export default function CalendarPage() {
 
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsLoading(true);
     try {
       const idempotencyKey =
@@ -253,7 +256,7 @@ export default function CalendarPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: values.prompt }),
         timeoutMs: 15_000,
-        retry: { retries: 1 },
+        retry: { retries: 0 },
         idempotencyKey,
       });
       if (!response.ok) {
@@ -295,6 +298,7 @@ export default function CalendarPage() {
         variant: "destructive",
       });
     } finally {
+      aiRequestInFlightRef.current = false;
       setIsLoading(false);
     }
   };

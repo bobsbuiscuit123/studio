@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Suspense, useState, useMemo, useEffect } from "react";
+import { Suspense, useState, useMemo, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -45,6 +45,7 @@ function EmailPageInner() {
   const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
   const [hydratedFromQuery, setHydratedFromQuery] = useState(false);
   const [showAi, setShowAi] = useState(false);
+  const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
@@ -79,31 +80,43 @@ function EmailPageInner() {
   }, [hydratedFromQuery, searchParams]);
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsGenerating(true);
-    const result = await safeFetchJson<{ ok: true; data: GenerateEmailOutput; error?: { message?: string } }>(
-      '/api/email/ai',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+    try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const result = await safeFetchJson<{ ok: true; data: GenerateEmailOutput; error?: { message?: string } }>(
+        '/api/email/ai',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values),
+          timeoutMs: 15_000,
+          retry: { retries: 0 },
+          idempotencyKey,
+        }
+      );
+      if (!result.ok) {
+        toast({
+          title: "Error",
+          description: result.error?.message || "Failed to generate email draft.",
+          variant: "destructive",
+        });
+        return;
       }
-    );
-    if (!result.ok) {
-      toast({
-        title: "Error",
-        description: result.error?.message || "Failed to generate email draft.",
-        variant: "destructive",
+      setEmailContent({
+        subject: result.data.data.subject,
+        body: result.data.data.body,
       });
+      notifyOrgAiUsageChanged(undefined, 1);
+      toast({ title: "Email draft generated!" });
+    } finally {
+      aiRequestInFlightRef.current = false;
       setIsGenerating(false);
-      return;
     }
-    setEmailContent({
-      subject: result.data.data.subject,
-      body: result.data.data.body,
-    });
-    notifyOrgAiUsageChanged(undefined, 1);
-    toast({ title: "Email draft generated!" });
-    setIsGenerating(false);
   };
   
   const gmailLink = useMemo(() => {

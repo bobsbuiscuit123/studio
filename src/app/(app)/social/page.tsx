@@ -85,6 +85,7 @@ export default function SocialPage() {
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
+  const aiRequestInFlightRef = useRef(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -188,6 +189,8 @@ export default function SocialPage() {
   };
 
   const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsLoading(true);
     
     let photoDataUris: string[] = [];
@@ -195,6 +198,10 @@ export default function SocialPage() {
       if (values.photos && values.photos.length > 0) {
         photoDataUris = await Promise.all(values.photos.map(file => resizeImage(file)));
       }
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
       
       const result = await safeFetchJson<{ ok: true; data: GenerateSocialMediaPostOutput; error?: { message?: string } }>(
         '/api/social/ai',
@@ -205,6 +212,9 @@ export default function SocialPage() {
             prompt: values.prompt,
             photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
           }),
+          timeoutMs: 20_000,
+          retry: { retries: 0 },
+          idempotencyKey,
         }
       );
       if (!result.ok) {
@@ -230,6 +240,7 @@ export default function SocialPage() {
         variant: "destructive",
       });
     } finally {
+      aiRequestInFlightRef.current = false;
       setIsLoading(false);
     }
   };

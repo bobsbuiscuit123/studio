@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -73,6 +73,7 @@ export default function SlidesPage() {
   const { data: presentations, updateData: setPresentations, loading: presentationsLoading } = usePresentations();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [printableContent, setPrintableContent] = useState<PresentationType | null>(null);
+  const aiRequestInFlightRef = useRef(false);
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -126,36 +127,48 @@ export default function SlidesPage() {
 
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
+    if (aiRequestInFlightRef.current) return;
+    aiRequestInFlightRef.current = true;
     setIsLoading(true);
     setActivePresentation(null);
-    const result = await safeFetchJson<{ ok: true; data: GenerateMeetingSlidesOutput; error?: { message?: string } }>(
-      '/api/slides/ai',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+    try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const result = await safeFetchJson<{ ok: true; data: GenerateMeetingSlidesOutput; error?: { message?: string } }>(
+        '/api/slides/ai',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values),
+          timeoutMs: 20_000,
+          retry: { retries: 0 },
+          idempotencyKey,
+        }
+      );
+      if (!result.ok) {
+        toast({
+          title: "Error",
+          description: result.error?.message || "Failed to generate slides.",
+          variant: "destructive",
+        });
+        return;
       }
-    );
-    if (!result.ok) {
-      toast({
-        title: "Error",
-        description: result.error?.message || "Failed to generate slides.",
-        variant: "destructive",
-      });
+      notifyOrgAiUsageChanged(undefined, 1);
+      const newPresentation: PresentationType = {
+          id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
+          prompt: values.prompt,
+          slides: result.data.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
+          createdAt: new Date().toLocaleDateString(),
+      }
+      setPresentations([newPresentation, ...presentations]);
+      setActivePresentation(newPresentation);
+      toast({ title: "Slides generated successfully!" });
+    } finally {
+      aiRequestInFlightRef.current = false;
       setIsLoading(false);
-      return;
     }
-    notifyOrgAiUsageChanged(undefined, 1);
-    const newPresentation: PresentationType = {
-        id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
-        prompt: values.prompt,
-        slides: result.data.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
-        createdAt: new Date().toLocaleDateString(),
-    }
-    setPresentations([newPresentation, ...presentations]);
-    setActivePresentation(newPresentation);
-    toast({ title: "Slides generated successfully!" });
-    setIsLoading(false);
   };
   
   const handleDownload = async (presentation: PresentationType) => {

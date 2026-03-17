@@ -2916,10 +2916,12 @@ const mergePlanTasksWithExplicitTypes = (
                   : attachmentsFromTask;
               const announcementId = Date.now();
               const recipients = Array.isArray(task.recipients) ? task.recipients : [];
-              const savedAnnouncementTitle = deriveAnnouncementTitle(
-                finalDraft || result.announcement || '',
-                task.prompt
-              );
+              const savedAnnouncementTitle =
+                typeof result?.title === 'string' &&
+                result.title.trim() &&
+                !isInstructionLikeAnnouncementTitle(result.title)
+                  ? result.title.trim()
+                  : deriveAnnouncementTitle(finalDraft || result.announcement || '', task.prompt);
               const newItem = {
                 id: announcementId,
                 title: savedAnnouncementTitle,
@@ -3236,6 +3238,12 @@ const mergePlanTasksWithExplicitTypes = (
       const fallback = startCase(cleanTaskIntent(promptText ?? '')).slice(0, 80);
       const baseTitle = cleanedLine || fallback || 'Announcement';
       return baseTitle.length > 80 ? `${baseTitle.slice(0, 77).trimEnd()}...` : baseTitle;
+    };
+
+    const isInstructionLikeAnnouncementTitle = (value?: string | null) => {
+      const text = String(value ?? '').trim().toLowerCase();
+      if (!text) return true;
+      return /^(send|write|draft|create|post)\b/.test(text) || /\bannouncement\b/.test(text);
     };
 
     const deriveShortFieldFromDraft = (

@@ -52,6 +52,27 @@ const announcementFormSchema = z.object({
     recipients: z.string().optional(),
 });
 
+const isInstructionLikeAnnouncementTitle = (value?: string | null) => {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return true;
+  return /^(send|write|draft|create|post)\b/.test(text) || /\bannouncement\b/.test(text);
+};
+
+const deriveAnnouncementTitleFromContent = (content?: string | null, fallback?: string | null) => {
+  const firstLine =
+    String(content ?? '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .find(Boolean) ?? '';
+  const cleaned = firstLine
+    .replace(/^(reminder|announcement)\s*:\s*/i, '')
+    .replace(/[.!?]+$/, '')
+    .trim();
+  const fallbackText = String(fallback ?? '').trim();
+  const value = cleaned || fallbackText || 'Announcement';
+  return value.length > 80 ? `${value.slice(0, 77).trimEnd()}...` : value;
+};
+
 function AnnouncementsPageInner() {
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
   const { data: announcements, updateData: setAnnouncements, loading, clubId } = useAnnouncements();
@@ -697,7 +718,11 @@ function AnnouncementsPageInner() {
                     <CardHeader>
                       <div className="flex justify-between items-start">
                           <div>
-                              <CardTitle>{announcement.title}</CardTitle>
+                              <CardTitle>
+                                {isInstructionLikeAnnouncementTitle(announcement.title)
+                                  ? deriveAnnouncementTitleFromContent(announcement.content, announcement.title)
+                                  : announcement.title}
+                              </CardTitle>
                               <CardDescription>
                               {announcement.author} - {clubName} - {formatFriendlyDate(announcement.date)}
                               </CardDescription>

@@ -2595,11 +2595,12 @@ const buildFastPlan = (
       return 'Reminder: Please check the latest update.';
     }
     const cleaned = extracted
-      .replace(/\bcome to our event\b/i, "don't forget to come to our event")
+      .replace(/\bcome to our event\b/i, 'join us at our event')
+      .replace(/\bcome to the event\b/i, 'join us at the event')
       .replace(/\s+/g, ' ')
       .trim();
     const sentence = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-    return `Reminder: ${sentence}.`;
+    return `A friendly reminder: ${sentence}!`;
   };
 
   const buildAnnouncementTitleFromIntent = (value: string) => {
@@ -3181,9 +3182,14 @@ const buildFastPlan = (
                 finalDraft || result.announcement || '',
                 task.prompt
               );
+              const derivedVisibleAnnouncementTitle = buildAnnouncementTitleFromIntent(
+                task.prompt || finalDraft || ''
+              );
               const finalAnnouncementTitle =
                 typeof task.title === 'string' && task.title.trim()
                   ? task.title.trim()
+                  : derivedVisibleAnnouncementTitle
+                    ? derivedVisibleAnnouncementTitle
                   : typeof result?.title === 'string' && result.title.trim()
                     ? result.title.trim()
                     : savedAnnouncementTitle;
@@ -3848,6 +3854,11 @@ const buildFastPlan = (
                               const draftButtonClassName = isGenerateDraft ? AI_SPARKLE : '';
 
                               const taskTitleText = getTaskTitleText(task.type);
+                              const announcementTitleValue =
+                                task.type === 'announcement'
+                                  ? (task.title ?? '').trim() ||
+                                    buildAnnouncementTitleFromIntent(task.prompt || task.draft || '')
+                                  : '';
                               const { taskBaseStartAt, draftSectionStartAt } = getTaskAnimationTimings({
                                 tasksStartAt,
                                 index,
@@ -3932,7 +3943,7 @@ const buildFastPlan = (
                                   </label>
                                   {task.type === 'announcement' ? (
                                     <Input
-                                      value={task.title ?? ''}
+                                      value={announcementTitleValue}
                                       onChange={e =>
                                         updatePlanTask(message.id, task.id, t => ({
                                           ...t,

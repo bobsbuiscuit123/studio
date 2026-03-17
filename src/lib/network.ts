@@ -1,4 +1,5 @@
 import { err, ok, type AppError, type Result } from '@/lib/result';
+import { getClientTimeZoneHeaderName } from '@/lib/day-key';
 
 type RetryOptions = {
   retries: number;
@@ -28,6 +29,11 @@ const backoffDelay = (attempt: number, retry: RetryOptions) => {
 };
 
 const isBrowser = () => typeof window !== 'undefined';
+
+const getBrowserTimeZone = () => {
+  if (!isBrowser()) return null;
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+};
 
 const normalizeFetchError = (error: unknown): AppError => {
   const message =
@@ -75,6 +81,10 @@ export async function safeFetchJson<T>(
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = new Headers(options.headers || {});
+      const timeZone = getBrowserTimeZone();
+      if (timeZone) {
+        headers.set(getClientTimeZoneHeaderName(), timeZone);
+      }
       if (options.idempotencyKey && method !== 'GET') {
         headers.set('X-Idempotency-Key', options.idempotencyKey);
       }

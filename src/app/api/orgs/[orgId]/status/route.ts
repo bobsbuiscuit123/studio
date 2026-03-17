@@ -3,10 +3,10 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
-import { getUtcDayKey } from '@/lib/day-key';
+import { getRequestDayKey } from '@/lib/day-key';
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
   const { orgId } = await params;
@@ -62,7 +62,7 @@ export async function GET(
       .select('credits_used')
       .eq('org_id', parsed.data)
       .eq('user_id', userId)
-      .eq('usage_date', getUtcDayKey())
+      .eq('usage_date', getRequestDayKey(request))
       .maybeSingle(),
   ]);
 

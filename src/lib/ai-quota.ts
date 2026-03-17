@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { getUtcDayKey } from '@/lib/day-key';
 import { err, ok, type Result } from '@/lib/result';
 
 const DEFAULT_DAILY_QUOTA = 50;
@@ -17,7 +18,7 @@ export const enforceAiQuota = async (
     });
   }
   const userId = userData.user.id;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getUtcDayKey();
   const admin = createSupabaseAdmin();
   const { data: existing } = await admin
     .from('ai_usage')

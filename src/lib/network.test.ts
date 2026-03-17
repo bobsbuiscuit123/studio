@@ -72,4 +72,37 @@ describe('safeFetchJson', () => {
       expect(result.data.value).toBe(42);
     }
   });
+
+  it('adds the browser timezone header to requests', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-timezone')).toBe('America/Chicago');
+      return new Response(JSON.stringify({ value: 42 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const originalDateTimeFormat = Intl.DateTimeFormat;
+    const dateTimeFormatMock = vi.fn(() => ({
+      resolvedOptions: () => ({ timeZone: 'America/Chicago' }),
+    }));
+    Intl.DateTimeFormat = dateTimeFormatMock as unknown as typeof Intl.DateTimeFormat;
+
+    try {
+      const result = await safeFetchJson<{ value: number }>('https://example.com');
+      expect(result.ok).toBe(true);
+    } finally {
+      Intl.DateTimeFormat = originalDateTimeFormat;
+    }
+  });
 });

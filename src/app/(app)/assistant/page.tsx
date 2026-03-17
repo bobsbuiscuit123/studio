@@ -33,6 +33,16 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import { ToastAction } from '@/components/ui/toast';
 
@@ -150,6 +160,7 @@ type PlannedTask = {
   attachments?: PendingAttachment[];
   linkedFormId?: string;
   linkedFormTaskId?: string;
+  autoDraftRequested?: boolean;
   status: 'pending' | 'sent' | 'error';
   result?: any;
   draftResult?: any;
@@ -194,6 +205,11 @@ type PendingPlan = {
   questionTaskMap: Record<string, string[]>;
   taskQuestionMap: Record<string, string[]>;
 };
+
+type DraftRegenerationRequest = {
+  planId: string;
+  task: PlannedTask;
+} | null;
 
 type RecentForm = {
   id: string;
@@ -284,6 +300,8 @@ const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
     linkedFormId: typeof value.linkedFormId === 'string' ? value.linkedFormId : undefined,
     linkedFormTaskId:
       typeof value.linkedFormTaskId === 'string' ? value.linkedFormTaskId : undefined,
+    autoDraftRequested:
+      typeof value.autoDraftRequested === 'boolean' ? value.autoDraftRequested : true,
     status:
       value.status === 'sent' || value.status === 'error' || value.status === 'pending'
         ? value.status
@@ -596,6 +614,8 @@ function AssistantPageInner() {
   const [recentForms, setRecentForms] = useState<RecentForm[]>([]);
   const [formTaskIdMap, setFormTaskIdMap] = useState<Record<string, string>>({});
   const [aiBlockedReason, setAiBlockedReason] = useState<'limit' | 'billing' | null>(null);
+  const [draftRegenerationRequest, setDraftRegenerationRequest] =
+    useState<DraftRegenerationRequest>(null);
   const { toast } = useToast();
   const lastAssistantPersistedRef = useRef('');
 
@@ -2051,6 +2071,7 @@ const buildFastPlan = (
           draft: '',
           draftError: undefined,
           isDrafting: false,
+          autoDraftRequested: false,
           attachments: pendingAttachments,
         }))
         );
@@ -2503,6 +2524,7 @@ const buildFastPlan = (
         draft: task.prompt,
         draftError: undefined,
         isDrafting: false,
+        autoDraftRequested: true,
       }));
       return;
     }
@@ -2512,6 +2534,7 @@ const buildFastPlan = (
         draftError: 'Slides are currently disabled in the assistant.',
         isDrafting: false,
         draftingStartedAt: undefined,
+        autoDraftRequested: true,
       }));
       return;
     }
@@ -2545,6 +2568,7 @@ const buildFastPlan = (
       ...t,
 
       isDrafting: true,
+      autoDraftRequested: true,
 
       draftingStartedAt: Date.now(),
 
@@ -2585,6 +2609,30 @@ const buildFastPlan = (
       draftResult: preview,
     }));
 
+  };
+
+  useEffect(() => {
+    for (const message of messages) {
+      if (!isPlanMessage(message)) continue;
+      for (const task of message.plan.tasks) {
+        if (task.type === 'other' || task.type === 'slides') continue;
+        if (task.followUpQuestions?.length) continue;
+        if (task.autoDraftRequested || task.isDrafting || task.draftTyping) continue;
+        if (task.draft?.trim() || task.draftResult) continue;
+        void generateDraft(message.id, task);
+      }
+    }
+  }, [messages]);
+
+  const requestDraftGeneration = (planId: string, task: PlannedTask) => {
+    if (task.isDrafting) {
+      return;
+    }
+    if (task.draft?.trim()) {
+      setDraftRegenerationRequest({ planId, task });
+      return;
+    }
+    void generateDraft(planId, task);
   };
 
 
@@ -3025,9 +3073,7 @@ const buildFastPlan = (
 
       try {
         const shouldUseDraftResult =
-          task.type === 'form' &&
           task.draftResult &&
-          !task.clarification &&
           (!task.draft || task.draft === task.draftSource);
         let resultData = shouldUseDraftResult ? task.draftResult : null;
         if (!shouldUseDraftResult) {
@@ -3488,7 +3534,7 @@ const buildFastPlan = (
                                     size="sm"
                                     variant={draftButtonVariant}
                                     className={`h-7 px-2 ${draftButtonClassName}`}
-                                    onClick={() => generateDraft(message.id, task)}
+                                    onClick={() => requestDraftGeneration(message.id, task)}
                                   >
                                     {DraftButtonIcon ? <DraftButtonIcon className="h-3 w-3 mr-1" /> : null}
                                     {draftButtonLabel}
@@ -3509,7 +3555,7 @@ const buildFastPlan = (
                                       variant={draftButtonVariant}
                                       size="sm"
                                       className={`h-8 px-2 text-xs ${draftButtonClassName}`}
-                                      onClick={() => generateDraft(message.id, task)}
+                                      onClick={() => requestDraftGeneration(message.id, task)}
                                       disabled={task.isDrafting}
                                     >
                                       {DraftButtonIcon ? <DraftButtonIcon className="h-3 w-3 mr-2" /> : null}
@@ -3656,6 +3702,40 @@ const buildFastPlan = (
         </form>
 
       </div>
+
+      <AlertDialog
+        open={Boolean(draftRegenerationRequest)}
+        onOpenChange={open => {
+          if (!open) {
+            setDraftRegenerationRequest(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Regenerating this draft will use 1 more AI request for today.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (draftRegenerationRequest) {
+                  void generateDraft(
+                    draftRegenerationRequest.planId,
+                    draftRegenerationRequest.task
+                  );
+                }
+                setDraftRegenerationRequest(null);
+              }}
+            >
+              Regenerate draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
 

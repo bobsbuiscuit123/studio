@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { getUtcDayKey } from '@/lib/day-key';
+import { getRequestDayKey } from '@/lib/day-key';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 
-export async function POST() {
+export async function POST(request: Request) {
   const headerList = await headers();
   const ip =
     headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -96,7 +96,7 @@ export async function POST() {
   }
 
   const dailyLimit = plan?.daily_credit_per_user ?? 0;
-  const usageDate = getUtcDayKey();
+  const usageDate = getRequestDayKey(request);
   const { data: result } = await admin.rpc('increment_daily_credits', {
     p_org_id: orgId,
     p_user_id: userId,

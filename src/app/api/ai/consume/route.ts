@@ -22,7 +22,7 @@ import { resolveMetricValue } from '@/ai/flows/resolve-metric-value';
 import { resolveGraphRequest } from '@/ai/flows/resolve-graph-request';
 import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import crypto from 'crypto';
-import { getUtcDayKey } from '@/lib/day-key';
+import { getRequestDayKey } from '@/lib/day-key';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 import type { Result } from '@/lib/result';
 
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
   }
 
   const dailyLimit = plan?.daily_credit_per_user ?? 0;
-  const usageDate = getUtcDayKey();
+  const usageDate = getRequestDayKey(request);
   const { data: currentUsage } = await admin
     .from('org_usage_daily')
     .select('credits_used')

@@ -57,10 +57,25 @@ const forgotPasswordSchema = z.object({
 function getEmailRedirectTo() {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
-    return `${configuredSiteUrl.replace(/\/+$/, '')}/auth/callback`;
+    try {
+      const parsed = new URL(configuredSiteUrl);
+      const isLocalhost =
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '0.0.0.0';
+      if (!isLocalhost) {
+        return `${parsed.origin}/auth/callback`;
+      }
+    } catch {
+      // Fall through to runtime origin below.
+    }
   }
   if (typeof window !== 'undefined') {
-    return `${window.location.origin}/auth/callback`;
+    const runtimeOrigin = window.location.origin;
+    if (!/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/i.test(runtimeOrigin)) {
+      return `${runtimeOrigin}/auth/callback`;
+    }
+    return `${runtimeOrigin}/auth/callback`;
   }
   return undefined;
 }

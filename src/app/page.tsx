@@ -372,6 +372,16 @@ export default function HomePage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
+  const navigateWithFallback = (targetPath: string) => {
+    router.replace(targetPath);
+    if (typeof window === 'undefined') return;
+    window.setTimeout(() => {
+      if (window.location.pathname !== targetPath) {
+        window.location.replace(targetPath);
+      }
+    }, 1200);
+  };
+
   useEffect(() => {
     setIsClient(true);
   }, []);
@@ -424,12 +434,12 @@ export default function HomePage() {
 
     const routeUser = async () => {
       if (isDemoMode) {
-        router.replace('/demo');
+        navigateWithFallback('/demo');
         return;
       }
       if (user) {
         if (!selectedOrgId) {
-          router.replace('/orgs');
+          navigateWithFallback('/orgs');
           return;
         }
 
@@ -437,7 +447,7 @@ export default function HomePage() {
         const userId = authUser.user?.id;
         if (!active) return;
         if (!userId) {
-          router.replace('/login');
+          navigateWithFallback('/login');
           return;
         }
 
@@ -450,18 +460,18 @@ export default function HomePage() {
         if (!active) return;
 
         if (membership) {
-          router.replace('/clubs');
+          navigateWithFallback('/clubs');
           return;
         }
 
         clearSelectedOrgId();
         clearSelectedGroupId();
         setSelectedOrgId(null);
-        router.replace('/orgs');
+        navigateWithFallback('/orgs');
         return;
       }
       if (pathname === '/') {
-        router.replace('/login');
+        navigateWithFallback('/login');
       }
     };
 

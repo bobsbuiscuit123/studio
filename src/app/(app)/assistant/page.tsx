@@ -72,7 +72,6 @@ import {
   resolveFollowUpAnswersAction,
   runAssistantAction,
   runTaskAction,
-  resolveAnnouncementRecipientsAction,
 } from './actions';
 import {
   clearAssistantPrefill,
@@ -119,11 +118,6 @@ type AssistantReplyPayload = {
 type PlannerPayload = {
   tasks: PlannedTaskInput[];
   summary: string;
-};
-
-type AnnouncementRecipientsPayload = {
-  mode: 'all' | 'specific';
-  recipients: string[];
 };
 
 const getResultData = <T,>(
@@ -2229,37 +2223,6 @@ const buildFastPlan = (
     return `${base}\n${uniqueAdditions.join('\n')}`;
   };
 
-  const resolveAnnouncementRecipientsForTasks = async (tasks: PlannedTask[]) => {
-    const appContext = buildAppContextForAssistant();
-    const updates = await Promise.all(
-      tasks.map(async task => {
-        if (task.type !== 'announcement') return task;
-        if (Array.isArray(task.recipients)) return task;
-        const prompt = [
-          task.prompt,
-          task.clarification ? `Clarification: ${task.clarification}` : null,
-        ]
-          .filter(Boolean)
-          .join('\n');
-        const result = await resolveAnnouncementRecipientsAction(prompt, appContext);
-        const data =
-          getResultData(
-            result as Result<AnnouncementRecipientsPayload>,
-            message =>
-            console.warn('Failed to resolve announcement recipients', message)
-          ) ?? { mode: 'all', recipients: [] as string[] };
-        const recipients = Array.isArray(data.recipients)
-          ? data.recipients.map((item: string) => item.trim()).filter(Boolean)
-          : [];
-        if (data.mode === 'specific' && recipients.length > 0) {
-          return { ...task, recipients };
-        }
-        return { ...task, recipients: undefined };
-      })
-    );
-    return updates;
-  };
-
   const formatDateForDisplay = (dateValue: string | number | Date | undefined) => {
     if (!dateValue) return '';
     const parsed = new Date(dateValue);
@@ -2542,6 +2505,10 @@ const buildFastPlan = (
     tasks.map(task => {
       const baseTask: PlannedTask = {
         ...task,
+        draftSource:
+          typeof task.draft === 'string' && task.draft.trim().length > 0
+            ? task.draft
+            : task.draftSource,
         autoDraftRequested: true,
       };
       const localMessageDraft = buildLocalMessageDraft(baseTask);
@@ -2702,19 +2669,6 @@ const buildFastPlan = (
       draftGenerationInFlightRef.current.delete(draftKey);
     }
   };
-
-  useEffect(() => {
-    for (const message of messages) {
-      if (!isPlanMessage(message)) continue;
-      for (const task of message.plan.tasks) {
-        if (task.type === 'other' || task.type === 'slides') continue;
-        if (task.followUpQuestions?.length) continue;
-        if (task.autoDraftRequested || task.isDrafting || task.draftTyping) continue;
-        if (task.draft?.trim() || task.draftResult) continue;
-        void generateDraft(message.id, task);
-      }
-    }
-  }, [messages]);
 
   const requestDraftGeneration = (planId: string, task: PlannedTask) => {
     const draftKey = `${planId}:${task.id}`;

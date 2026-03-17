@@ -24,6 +24,8 @@ export type ChatMessage = {
   content: string;
 };
 
+const MAX_APP_AI_PROMPT_CHARS = 2936;
+
 // Gemini setup (only validated when provider is gemini)
 const geminiKey =
   process.env.GEMINI_API_KEY ??
@@ -222,6 +224,35 @@ function normalizeMessagesForGenkit(messages: ChatMessage[]) {
     };
   });
 }
+
+const clampMessagesToTotalChars = (messages: ChatMessage[], maxChars: number) => {
+  if (maxChars <= 0) {
+    return messages.map(message => ({ ...message, content: '' }));
+  }
+
+  let remaining = maxChars;
+  const next = [...messages];
+
+  for (let index = next.length - 1; index >= 0; index -= 1) {
+    const message = next[index];
+    const content = String(message.content ?? '');
+    if (remaining <= 0) {
+      next[index] = { ...message, content: '' };
+      continue;
+    }
+    if (content.length <= remaining) {
+      remaining -= content.length;
+      continue;
+    }
+    next[index] = {
+      ...message,
+      content: content.slice(content.length - remaining),
+    };
+    remaining = 0;
+  }
+
+  return next;
+};
 
 const redactPII = (value: string) => {
   const emailRedacted = value.replace(
@@ -500,6 +531,10 @@ export async function callAI<TOutput>(options: {
     ...message,
     content: redactPII(message.content),
   }));
+  const cappedMessages = clampMessagesToTotalChars(
+    redactedMessages,
+    MAX_APP_AI_PROMPT_CHARS
+  );
 
   const run = async () => {
     if (provider === 'gemini') {
@@ -522,7 +557,7 @@ export async function callAI<TOutput>(options: {
       let res: Awaited<ReturnType<typeof ai.generate>>;
       try {
         const request = ai.generate({
-          messages: normalizeMessagesForGenkit(redactedMessages),
+          messages: normalizeMessagesForGenkit(cappedMessages),
           config: { temperature: temperature ?? 0.4 },
           output: outputSchema ? { schema: outputSchema } : undefined,
           model: googleAI.model(resolvedGeminiModel),
@@ -562,7 +597,7 @@ export async function callAI<TOutput>(options: {
 
     if (provider === 'openrouter') {
       const content = await callOpenRouterChat({
-        messages: redactedMessages,
+        messages: cappedMessages,
         temperature,
         responseFormat: effectiveResponseFormat,
         modelOverride,
@@ -588,7 +623,7 @@ export async function callAI<TOutput>(options: {
     }
 
     const content = await callOpenAIChat({
-      messages: redactedMessages,
+      messages: cappedMessages,
       temperature,
       responseFormat: effectiveResponseFormat,
       modelOverride,

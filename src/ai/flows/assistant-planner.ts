@@ -4,6 +4,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { type Result } from '@/lib/result';
 import { z } from 'zod';
 
@@ -36,6 +37,10 @@ const TaskSchema = z.object({
     ])
     .describe('What type of task to run.'),
   prompt: z.string().describe('The prompt/details to use when executing the task.'),
+  draft: z
+    .string()
+    .optional()
+    .describe('An editable draft preview for the task when enough details are available.'),
   followUpQuestions: z
     .array(z.string())
     .optional()
@@ -51,13 +56,15 @@ export type PlannerOutput = z.infer<typeof PlannerOutputSchema>;
 export async function planAssistantTasks(
   input: PlannerInput
 ): Promise<Result<PlannerOutput>> {
-  const context = input.context?.trim();
+  const cappedQuery = clampAssistantPrompt(input.query);
+  const context = clampAssistantPrompt(input.context?.trim());
   const trimmedContext =
     context && context.length > 4000 ? context.slice(-4000) : context;
   const baseSystemMessage = `You are an orchestration planner for a group management assistant.
 Break the user's request into tasks. Allowed task types: announcement, form, calendar, email, messages, gallery, transaction, social, other.
 Be concise and specific in the prompt field so it can be executed directly. If the user supplied exact wording for an announcement/event/etc., preserve it verbatim in the prompt wrapped in double quotes (do not rewrite).
 Only add followUpQuestions when required details are missing per the task rules below. Do NOT ask for extra or random info. Each missing detail should be its own question in the followUpQuestions array.
+When enough information is available, include a concise draft string in the optional "draft" field so the UI can show an editable first draft without another AI call.
 Task requirements:
 - announcement: need a general prompt about the announcement (the topic/what it's about) and recipients (everyone or specific). Exact text is optional (do not ask for it if a topic is provided). Attachments are optional (do not ask).
 - messages: need the person or group chat to send to, and either exact text or a prompt to generate the message.
@@ -68,10 +75,20 @@ Task requirements:
 If the user asks to create a form but does not provide the actual questions (and answer choices for multiple-choice questions), include a followUpQuestions entry requesting those, phrased like: "Please list the questions you want in the form and any answer choices for multiple-choice questions."
 Treat reminder-style requests (e.g., "remind everyone to pay dues") as announcement tasks.
 If the request is extremely incomplete, still return the correct task type (e.g., announcement) and use followUpQuestions to ask for the missing detail; do not use type "other" for announcements/forms/emails just because details are missing.
+Draft formatting rules:
+- announcement: body copy only, no markdown bullets unless needed.
+- email: include "Subject: ..." on the first line, then a blank line, then the body.
+- messages: draft only the message text to send.
+- calendar: use lines for Title, Date, Time, Location, then a blank line and Details.
+- form: use lines for Title and Description, then a numbered list of questions.
+- transaction: use lines for Description, Amount, Date, Status.
+- social: use lines for Title and Post.
+- gallery: short description only.
+If details are missing, omit the draft field instead of guessing.
 Provide 1-5 tasks maximum, each with at most five followUpQuestions.
 If the user asks for something you cannot do with the allowed task types, return exactly ONE task with type "other" and put a brief apology + explanation in the prompt (also mention what you *can* do in this app).
 Write 'summary' as a natural, varied assistant reply (1-2 short sentences). Avoid canned phrasing.
-Return ONLY JSON matching: { "tasks": Task[], "summary": string } with Task { id, type, prompt, followUpQuestions? }.`;
+Return ONLY JSON matching: { "tasks": Task[], "summary": string } with Task { id, type, prompt, draft?, followUpQuestions? }.`;
   const systemContent = trimmedContext
     ? `${baseSystemMessage}\n\nRecent context (use this to resolve references like "that form" or "the announcement"):\n${trimmedContext}`
     : baseSystemMessage;
@@ -85,7 +102,7 @@ Return ONLY JSON matching: { "tasks": Task[], "summary": string } with Task { id
       },
       {
         role: 'user',
-        content: input.query,
+        content: cappedQuery,
       },
     ],
   });

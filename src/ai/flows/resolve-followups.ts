@@ -5,6 +5,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { type Result } from '@/lib/result';
 import { z } from 'zod';
 
@@ -32,6 +33,7 @@ export type ResolveFollowUpsOutput = z.infer<typeof ResolveFollowUpsOutputSchema
 export async function resolveFollowUpAnswers(
   input: ResolveFollowUpsInput
 ): Promise<Result<ResolveFollowUpsOutput>> {
+  const cappedReply = clampAssistantPrompt(input.reply);
   const result = await callAI<ResolveFollowUpsOutput>({
     responseFormat: 'json_object',
     outputSchema: ResolveFollowUpsOutputSchema,
@@ -49,7 +51,7 @@ Return ONLY valid JSON matching: { "answers": Array<{ "question": string, "answe
       },
       {
         role: 'user',
-        content: `Questions:\n${input.questions.join('\n')}\n\nReply:\n${input.reply}`,
+        content: clampAssistantPrompt(`Questions:\n${input.questions.join('\n')}\n\nReply:\n${cappedReply}`),
       },
     ],
   });

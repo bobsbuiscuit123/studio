@@ -9,6 +9,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { sanitizeAiText } from '@/lib/ai-safety';
 import { type Result } from '@/lib/result';
 import { z } from 'zod';
@@ -30,6 +31,7 @@ export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 export async function runAssistant(
   input: AssistantInput
 ): Promise<Result<AssistantOutput>> {
+  const cappedQuery = clampAssistantPrompt(input.query);
   const content = await callAI({
     messages: [
       {
@@ -39,7 +41,7 @@ export async function runAssistant(
       },
       {
         role: 'user',
-        content: input.query,
+        content: cappedQuery,
       },
     ],
     temperature: 0.5,

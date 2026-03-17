@@ -1,6 +1,7 @@
 'use server';
 
 import { runWithAiAction } from '@/ai/ai-action-context';
+import { MAX_ASSISTANT_PROMPT_CHARS, clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { err, ok, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { headers, cookies } from 'next/headers';
@@ -92,10 +93,13 @@ export async function planTasksAction(query: string, context?: string) {
         source: 'app',
       });
     }
-    const trimmedContext =
-      context && context.length > 3000 ? context.slice(-3000) : context;
+    const trimmedContext = clampAssistantPrompt(
+      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
+        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
+        : context
+    );
     return callAiConsume('chat', 'plan_tasks', {
-      query,
+      query: clampAssistantPrompt(query),
       context: trimmedContext,
     });
   });
@@ -132,7 +136,10 @@ export async function resolveFollowUpAnswersAction(
         source: 'app',
       });
     }
-    return callAiConsume('chat', 'followups', { questions, reply });
+    return callAiConsume('chat', 'followups', {
+      questions,
+      reply: clampAssistantPrompt(reply),
+    });
   });
 }
 
@@ -159,10 +166,13 @@ export async function runAssistantAction(query: string, context?: string) {
         source: 'app',
       });
     }
-    const trimmedContext =
-      context && context.length > 3000 ? context.slice(-3000) : context;
+    const trimmedContext = clampAssistantPrompt(
+      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
+        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
+        : context
+    );
     return callAiConsume('chat', 'assistant', {
-      query,
+      query: clampAssistantPrompt(query),
       context: trimmedContext,
     });
   });
@@ -194,7 +204,10 @@ export async function resolveAnnouncementRecipientsAction(
         source: 'app',
       });
     }
-    return callAiConsume('chat', 'announcement_recipients', { prompt, context });
+    return callAiConsume('chat', 'announcement_recipients', {
+      prompt: clampAssistantPrompt(prompt),
+      context: clampAssistantPrompt(context),
+    });
   });
 }
 
@@ -221,7 +234,10 @@ export async function resolveInsightRequestAction(prompt: string, context?: stri
         source: 'app',
       });
     }
-    return callAiConsume('insights', 'resolve_insight_request', { prompt, context });
+    return callAiConsume('insights', 'resolve_insight_request', {
+      prompt: clampAssistantPrompt(prompt),
+      context: clampAssistantPrompt(context),
+    });
   });
 }
 
@@ -248,7 +264,10 @@ export async function resolveMetricValueAction(prompt: string, context?: string)
         source: 'app',
       });
     }
-    return callAiConsume('chat', 'metric', { prompt, context });
+    return callAiConsume('chat', 'metric', {
+      prompt: clampAssistantPrompt(prompt),
+      context: clampAssistantPrompt(context),
+    });
   });
 }
 
@@ -275,7 +294,10 @@ export async function resolveGraphRequestAction(prompt: string, context?: string
         source: 'app',
       });
     }
-    return callAiConsume('chat', 'graph', { prompt, context });
+    return callAiConsume('chat', 'graph', {
+      prompt: clampAssistantPrompt(prompt),
+      context: clampAssistantPrompt(context),
+    });
   });
 }
 
@@ -302,7 +324,9 @@ export async function resolveMissedActivityAction(summary: string) {
         source: 'app',
       });
     }
-    return callAiConsume('chat', 'missed_activity', { summary });
+    return callAiConsume('chat', 'missed_activity', {
+      summary: clampAssistantPrompt(summary),
+    });
   });
 }
 type TaskType =
@@ -350,9 +374,9 @@ export async function runTaskAction(
     }
     switch (type) {
       case 'announcement':
-        return callAiConsume('chat', 'announcement', { prompt });
+        return callAiConsume('chat', 'announcement', { prompt: clampAssistantPrompt(prompt) });
       case 'form':
-        return callAiConsume('chat', 'form', { prompt });
+        return callAiConsume('chat', 'form', { prompt: clampAssistantPrompt(prompt) });
       case 'slides':
         return err({
           code: 'VALIDATION',
@@ -360,17 +384,17 @@ export async function runTaskAction(
           source: 'app',
         });
       case 'calendar':
-        return callAiConsume('chat', 'calendar', { prompt });
+        return callAiConsume('chat', 'calendar', { prompt: clampAssistantPrompt(prompt) });
       case 'email':
-        return callAiConsume('chat', 'email', { prompt });
+        return callAiConsume('chat', 'email', { prompt: clampAssistantPrompt(prompt) });
       case 'messages':
-        return callAiConsume('chat', 'messages', { prompt });
+        return callAiConsume('chat', 'messages', { prompt: clampAssistantPrompt(prompt) });
       case 'gallery':
-        return callAiConsume('chat', 'gallery', { prompt });
+        return callAiConsume('chat', 'gallery', { prompt: clampAssistantPrompt(prompt) });
       case 'transaction':
-        return callAiConsume('chat', 'transaction', { prompt });
+        return callAiConsume('chat', 'transaction', { prompt: clampAssistantPrompt(prompt) });
       case 'social':
-        return callAiConsume('chat', 'social', { prompt });
+        return callAiConsume('chat', 'social', { prompt: clampAssistantPrompt(prompt) });
       case 'other':
         return ok({
           message:

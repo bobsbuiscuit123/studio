@@ -76,8 +76,14 @@ Rules:
 - Preserve any exact wording the user gave inside the prompt.
 - Reminder requests can be announcement, email, messages, or multiple if the user asked for multiple channels.
 - If the user explicitly asks for multiple channels, return multiple tasks.
+- Do not create a calendar task just because the user mentioned an event. Only create calendar when they explicitly ask to create, add, schedule, or put something on the calendar.
 - If details are missing, keep the right task type and ask only for the missing required detail.
+- Only ask follow-up questions for fields that are truly mandatory to complete that task.
 - Do not use type "other" for normal announcement/email/calendar/form requests just because they are incomplete.
+Examples:
+- "remind everyone to come to our event" -> announcement only, not calendar
+- "announce and email everyone about dues" -> announcement + email
+- "put our halloween social on the calendar for tomorrow at 5pm at Dulles High School" -> calendar
 Draft format:
 - announcement: body only
 - email: "Subject: ..." then blank line then body

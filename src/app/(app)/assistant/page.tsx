@@ -954,13 +954,20 @@ const buildFastPlan = (
           /\bannounce\b/,
           /\bpost (an )?announcement\b/,
           /\bsend (an )?announcement\b/,
+          /\bremind(?:er|ing)?\b/,
         ]),
       },
       { type: 'messages', matched: matchAny([/\bmessage\b/, /\btext\b/, /\bdm\b/, /\bchat\b/]) },
       { type: 'email', matched: matchAny([/\bemail\b/]) },
       {
         type: 'calendar',
-        matched: matchAny([/\bcalendar\b/, /\bevent\b/, /\bmeeting\b/, /\bschedule\b/]),
+        matched: matchAny([
+          /\bcalendar\b/,
+          /\bschedule\b/,
+          /\badd (?:an )?event\b/,
+          /\bcreate (?:an )?event\b/,
+          /\bput (?:it|this) on (?:the )?calendar\b/,
+        ]),
       },
       { type: 'form', matched: matchAny([/\bform\b/, /\bsurvey\b/]) },
       {
@@ -1035,6 +1042,9 @@ const buildFastPlan = (
       if (type === 'calendar') {
         if (!hasDate) followUpQuestions.push('What is the event date?');
         if (!hasTime) followUpQuestions.push('What time is the event?');
+        if (!/\b(it'?s|it is|called|named)\b/.test(lower) && !/\bhalloween social\b/.test(lower)) {
+          followUpQuestions.push('What is the event about?');
+        }
       }
 
       if (type === 'form') {
@@ -1070,37 +1080,6 @@ const buildFastPlan = (
           : "Got it - here's a draft.",
     };
   };
-
-const mergePlanTasksWithExplicitTypes = (
-  plannerTasks: PlannedTask[],
-  explicitTasks: PlannedTask[] | undefined
-) => {
-  if (!explicitTasks || explicitTasks.length === 0) return plannerTasks;
-
-  const plannerTaskByType = new Map<TaskType, PlannedTask>();
-  for (const task of plannerTasks) {
-    if (!plannerTaskByType.has(task.type)) {
-      plannerTaskByType.set(task.type, task);
-    }
-  }
-
-  const mergedTasks: PlannedTask[] = [];
-  const seenTypes = new Set<TaskType>();
-
-  for (const explicitTask of explicitTasks) {
-    const mergedTask = plannerTaskByType.get(explicitTask.type) ?? explicitTask;
-    mergedTasks.push(mergedTask);
-    seenTypes.add(mergedTask.type);
-  }
-
-  for (const plannerTask of plannerTasks) {
-    if (seenTypes.has(plannerTask.type)) continue;
-    mergedTasks.push(plannerTask);
-    seenTypes.add(plannerTask.type);
-  }
-
-  return mergedTasks;
-};
 
   const isInsightQuery = (query: string) => {
     const normalized = query.trim().toLowerCase();
@@ -1898,21 +1877,19 @@ const mergePlanTasksWithExplicitTypes = (
           };
         });
         const hydratedTasks = hydrateTasksForDisplay(updatedTasks);
-          const missingList = Array.isArray(response.missing)
-            ? response.missing
-                .map((item: string) => normalizeFollowUpQuestion(item))
-                .filter(Boolean)
-            : [];
-          const normalizedMissing = missingList.filter(
-          (item: string) =>
-            questionsToResolve.includes(item) &&
-            !answerMap.has(normalizeFollowUpQuestion(item))
-        );
-        const unanswered = questionsToResolve.filter(
-          q => !answerMap.has(normalizeFollowUpQuestion(q))
-        );
         const combinedMissing = Array.from(
-          new Set([...normalizedMissing, ...unanswered])
+          new Set(
+            hydratedTasks.flatMap(task => {
+              if (task.type === 'calendar') {
+                return getCalendarFollowUps(task);
+              }
+              const remainingQuestions =
+                pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
+              return remainingQuestions.filter(
+                question => !answerMap.has(normalizeFollowUpQuestion(question))
+              );
+            })
+          )
         );
         const normalizedCombinedMissing = normalizeQuestionList(combinedMissing);
         if (combinedMissing.length > 0) {
@@ -2026,28 +2003,27 @@ const mergePlanTasksWithExplicitTypes = (
         }
         const fastPlan = buildFastPlan(values.query, pendingAttachments);
         const contextForPlanner = buildRecentContextForPlanner();
+        const plannerResponse = getResultData(
+          (await planTasksAction(
+            queryWithAttachments,
+            contextForPlanner
+          )) as Result<PlannerPayload>,
+          handleAiError
+        );
         const plan =
-          getResultData(
-            (await planTasksAction(
-              queryWithAttachments,
-              contextForPlanner
-            )) as Result<PlannerPayload>,
-            handleAiError
-          ) ??
-          fastPlan ?? {
-              tasks: [],
-              summary:
-              "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
-        };
+          plannerResponse && Array.isArray(plannerResponse.tasks) && plannerResponse.tasks.length > 0
+            ? plannerResponse
+            : fastPlan ?? {
+                tasks: [],
+                summary:
+                  "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
+              };
         const normalizedPlan = {
           ...plan,
-          tasks: mergePlanTasksWithExplicitTypes(
-            (plan.tasks ?? []).map(task => ({
-              ...task,
-              status: (task as PlannedTask).status ?? 'pending',
-            })),
-            fastPlan?.tasks
-          ),
+          tasks: (plan.tasks ?? []).map(task => ({
+            ...task,
+            status: (task as PlannedTask).status ?? 'pending',
+          })),
         };
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = canManageRoles
@@ -2218,7 +2194,7 @@ const mergePlanTasksWithExplicitTypes = (
     }
 
     const chunks = trimmedReply
-      .split(/\n+|;\s+/)
+      .split(/\n+|;\s+|,\s+/)
       .map(chunk => chunk.replace(/^\s*(?:[-*]|\d+[\).:-]?)\s*/, '').trim())
       .filter(Boolean);
 
@@ -2600,6 +2576,43 @@ const mergePlanTasksWithExplicitTypes = (
     return (reminderMatch?.[1] ?? normalized).replace(/[.?!]+$/, '').trim();
   };
 
+  const extractEventDate = (value: string) =>
+    value.match(/\btomorrow\b|\btonight\b|\bnext\s+\w+\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b/i)?.[0] ?? '';
+
+  const extractEventTime = (value: string) =>
+    value.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\bnoon\b|\bmidnight\b/i)?.[0] ?? '';
+
+  const extractEventLocation = (value: string) =>
+    value.match(/\bat\s+([^,.!?]+(?:school|center|hall|room|gym|auditorium|cafeteria|library|park)?)\b/i)?.[1]?.trim() ?? '';
+
+  const extractEventTopic = (value: string) => {
+    const normalized = value.trim();
+    const explicitMatch =
+      normalized.match(/\bit'?s\s+(?:a|an)\s+([^,.!?]+)/i) ??
+      normalized.match(/\bit is\s+(?:a|an)\s+([^,.!?]+)/i) ??
+      normalized.match(/\bcalled\s+([^,.!?]+)/i) ??
+      normalized.match(/\bnamed\s+([^,.!?]+)/i);
+    if (explicitMatch?.[1]) return explicitMatch[1].trim();
+    const reminderTopic = extractReminderTopic(normalized);
+    return reminderTopic
+      .replace(/\b(?:tomorrow|tonight|at\s+\d{1,2}(?::\d{2})?\s?(?:am|pm)|at\s+[^,.!?]+)\b/gi, '')
+      .replace(/\b(?:come to|join|attend)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const getCalendarFollowUps = (task: PlannedTask) => {
+    const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+    if (!combined) {
+      return ['What is the event date?', 'What time is the event?', 'What is the event about?'];
+    }
+    const missing: string[] = [];
+    if (!extractEventDate(combined)) missing.push('What is the event date?');
+    if (!extractEventTime(combined)) missing.push('What time is the event?');
+    if (!extractEventTopic(combined)) missing.push('What is the event about?');
+    return missing;
+  };
+
   function deriveAnnouncementTitle(draftText: string, promptText?: string) {
     const source = [draftText, promptText ?? ''].filter(Boolean).join(' ').trim().toLowerCase();
     const topicMatchers: Array<[RegExp, string]> = [
@@ -2647,9 +2660,17 @@ const mergePlanTasksWithExplicitTypes = (
 
     switch (task.type) {
       case 'announcement': {
-        const announcement = `${startCase(topic)}. Please take care of this as soon as you can.`;
+        const eventTopic = extractEventTopic(combined) || topic;
+        const eventDate = extractEventDate(combined);
+        const eventTime = extractEventTime(combined);
+        const eventLocation = extractEventLocation(combined);
+        const details = [eventDate, eventTime, eventLocation].filter(Boolean).join(', ');
+        const announcementBase = eventTopic ? `${startCase(eventTopic)}` : `${startCase(topic)}`;
+        const announcement = details
+          ? `Reminder: ${announcementBase} is ${details}.`
+          : `Reminder: ${announcementBase}.`;
         return {
-          title: startCase(topic).slice(0, 80) || 'Announcement',
+          title: deriveAnnouncementTitle(announcement, task.prompt),
           announcement,
         };
       }
@@ -2662,18 +2683,20 @@ const mergePlanTasksWithExplicitTypes = (
         };
       }
       case 'calendar': {
-        const dateMatch = combined.match(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b|\btomorrow\b|\btonight\b|\bnext\s+\w+\b/i);
-        const timeMatch = combined.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\bnoon\b|\bmidnight\b/i);
-        const title = startCase(cleanedIntent || 'Event').slice(0, 80) || 'Event';
+        const dateText = extractEventDate(combined);
+        const timeText = extractEventTime(combined);
+        const topicText = extractEventTopic(combined);
+        const locationText = extractEventLocation(combined);
+        const title = startCase(topicText || cleanedIntent || 'Event').slice(0, 80) || 'Event';
         const parsedDate = new Date(
-          `${dateMatch?.[0] ?? new Date().toLocaleDateString()} ${timeMatch?.[0] ?? ''}`.trim()
+          `${dateText || new Date().toLocaleDateString()} ${timeText || ''}`.trim()
         );
         return {
           title,
           date: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
-          location: '',
-          description: combined,
-          hasTime: Boolean(timeMatch),
+          location: locationText,
+          description: topicText ? `${startCase(topicText)}` : combined,
+          hasTime: Boolean(timeText),
         };
       }
       case 'transaction': {

@@ -1930,10 +1930,12 @@ const mergePlanTasksWithExplicitTypes = (
             autoscrollDisabledForMessageRef.current.delete(followUpMessage.id);
           } else {
             const planId = pendingPlan.planId;
-            const resolvedTasks = hydratedTasks.map(task => ({
-              ...task,
-              followUpQuestions: undefined,
-            }));
+            const resolvedTasks = hydratedTasks.map(task =>
+              ensureTaskHasLocalDraft({
+                ...task,
+                followUpQuestions: undefined,
+              })
+            );
             const resolvedSummary = "All set - here's the draft.";
             setMessages(prev => [
               ...prev,
@@ -1954,10 +1956,12 @@ const mergePlanTasksWithExplicitTypes = (
           }
         } else {
           const planId = pendingPlan.planId;
-          const resolvedTasks = hydratedTasks.map(task => ({
-            ...task,
-            followUpQuestions: undefined,
-          }));
+          const resolvedTasks = hydratedTasks.map(task =>
+            ensureTaskHasLocalDraft({
+              ...task,
+              followUpQuestions: undefined,
+            })
+          );
           const resolvedSummary = "All set - here's the draft.";
           setMessages(prev => [
             ...prev,
@@ -2666,31 +2670,33 @@ const mergePlanTasksWithExplicitTypes = (
     }
   };
 
+  const ensureTaskHasLocalDraft = (task: PlannedTask): PlannedTask => {
+    const baseTask: PlannedTask = {
+      ...task,
+      draftSource:
+        typeof task.draft === 'string' && task.draft.trim().length > 0
+          ? task.draft
+          : task.draftSource,
+      autoDraftRequested: true,
+    };
+    if (typeof baseTask.draft === 'string' && baseTask.draft.trim().length > 0) {
+      return baseTask;
+    }
+    const localDraftResult = buildLocalDraftResult(baseTask);
+    if (!localDraftResult) {
+      return baseTask;
+    }
+    const draftText = formatDraft(baseTask.type, localDraftResult);
+    return {
+      ...baseTask,
+      draft: draftText,
+      draftSource: draftText,
+      draftResult: localDraftResult,
+    };
+  };
+
   const hydrateTasksForDisplay = (tasks: PlannedTask[]) =>
-    tasks.map(task => {
-      const baseTask: PlannedTask = {
-        ...task,
-        draftSource:
-          typeof task.draft === 'string' && task.draft.trim().length > 0
-            ? task.draft
-            : task.draftSource,
-        autoDraftRequested: true,
-      };
-      if (typeof baseTask.draft === 'string' && baseTask.draft.trim().length > 0) {
-        return baseTask;
-      }
-      const localDraftResult = buildLocalDraftResult(baseTask);
-      if (!localDraftResult) {
-        return baseTask;
-      }
-      const draftText = formatDraft(baseTask.type, localDraftResult);
-      return {
-        ...baseTask,
-        draft: draftText,
-        draftSource: draftText,
-        draftResult: localDraftResult,
-      };
-    });
+    tasks.map(task => ensureTaskHasLocalDraft(task));
 
 
   const toAppRoute = (path: string) => {

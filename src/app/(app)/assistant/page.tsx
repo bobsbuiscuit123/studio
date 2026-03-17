@@ -2201,7 +2201,12 @@ const buildFastPlan = (
     return `Tell me ${lower} before I draft it.`;
   };
 
-  const normalizeRecipient = (value: string) => value.trim().toLowerCase();
+  const normalizeRecipient = (value: string) =>
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/["'.!,?()[\]{}]/g, '')
+      .replace(/\s+/g, ' ');
 
   const getConversationId = (email1: string, email2: string) =>
     [email1, email2].sort().join('_');
@@ -2439,12 +2444,43 @@ const buildFastPlan = (
     const groupList = Array.isArray(groupChats.data) ? groupChats.data : [];
     const currentUserEmail = normalizeRecipient(user?.email ?? '');
 
-    const findMember = () =>
-      memberList.find(
-        member =>
-          normalizeRecipient(member.email) === normalized ||
-          normalizeRecipient(member.name) === normalized
+    const findMember = () => {
+      const exactMatch = memberList.find(member => {
+        const normalizedEmail = normalizeRecipient(member.email);
+        const normalizedName = normalizeRecipient(member.name);
+        return normalizedEmail === normalized || normalizedName === normalized;
+      });
+      if (exactMatch) return exactMatch;
+
+      const tokenizedRecipient = normalized.split(' ').filter(Boolean);
+      if (tokenizedRecipient.length === 0) return null;
+
+      const fuzzyMatches = memberList.filter(member => {
+        const normalizedName = normalizeRecipient(member.name);
+        const nameTokens = normalizedName.split(' ').filter(Boolean);
+        const normalizedEmail = normalizeRecipient(member.email);
+        const emailBase = normalizedEmail.split('@')[0] ?? '';
+
+        if (normalizedName.includes(normalized) || normalized.includes(normalizedName)) {
+          return true;
+        }
+
+        if (emailBase === normalized || emailBase.includes(normalized)) {
+          return true;
+        }
+
+        return tokenizedRecipient.every(token =>
+          nameTokens.some(nameToken => nameToken.startsWith(token)) ||
+          emailBase.split(/[._-]/).some(part => part.startsWith(token))
+        );
+      });
+
+      if (fuzzyMatches.length === 0) return null;
+      return (
+        fuzzyMatches.find(member => normalizeRecipient(member.email) !== currentUserEmail) ??
+        fuzzyMatches[0]
       );
+    };
     const findMemberByRoleAlias = () => {
       const roleAliasMap: Record<string, Array<'Admin' | 'Officer' | 'Member'>> = {
         admin: ['Admin'],

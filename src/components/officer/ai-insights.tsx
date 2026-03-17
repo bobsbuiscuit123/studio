@@ -84,6 +84,8 @@ type InsightResolutionResult = {
   missingInfo?: string;
 };
 
+const INSIGHT_ACTION_TIMEOUT_MS = 15_000;
+
 type AiInsightsStoredState = {
   customRequests: CustomInsightRequest[];
   hiddenInsights: Record<string, HiddenInsight[]>;
@@ -730,6 +732,38 @@ export default function AIInsights({
     return null;
   };
 
+  const resolveLocalInsightRequest = (prompt: string): InsightResolutionResult | null => {
+    const normalized = prompt.toLowerCase();
+    const transactionList = mode === 'member' ? [] : transactions.data ?? [];
+
+    if (
+      normalized.includes('balance') ||
+      normalized.includes('money i have') ||
+      normalized.includes('money we have') ||
+      normalized.includes('current amount') ||
+      normalized.includes('how much money')
+    ) {
+      const balance = transactionList.reduce(
+        (sum, item) => sum + Number(item.amount ?? 0),
+        0
+      );
+      const formattedBalance = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 2,
+      }).format(balance);
+      return {
+        status: 'ok',
+        text: `Current balance is ${formattedBalance}.`,
+        actionLabel: 'Review',
+        actionHref: '/finances',
+        contextText: `Current balance is ${formattedBalance}. Help me review the finances.`,
+      };
+    }
+
+    return null;
+  };
+
   const handleAddInsight = async () => {
     const trimmed = newInsightText.trim();
     if (!trimmed || isResolvingInsight) return;
@@ -779,12 +813,29 @@ export default function AIInsights({
         return;
       }
 
-      const resolvedResult = await resolveInsightRequestAction(trimmed, insightsContext);
+      const localResolved = resolveLocalInsightRequest(trimmed);
+      const resolvedResult = localResolved
+        ? ({ ok: true, data: localResolved } as const)
+        : await Promise.race([
+            resolveInsightRequestAction(trimmed, insightsContext),
+            new Promise<{ ok: false; error: { message: string } }>(resolve =>
+              setTimeout(
+                () =>
+                  resolve({
+                    ok: false,
+                    error: { message: 'AI took too long to respond. Please try again.' },
+                  }),
+                INSIGHT_ACTION_TIMEOUT_MS
+              )
+            ),
+          ]);
       if (!resolvedResult.ok) {
         setInsightError(resolvedResult.error.message);
         return;
       }
-      notifyOrgAiUsageChanged(undefined, 1);
+      if (!localResolved) {
+        notifyOrgAiUsageChanged(undefined, 1);
+      }
       const resolved = resolvedResult.data as InsightResolutionResult;
       const status = resolved?.status ?? 'ok';
       if (status === 'invalid') {

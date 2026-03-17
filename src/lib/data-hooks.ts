@@ -126,6 +126,28 @@ async function loadGroupState(
   }
 }
 
+async function fetchFreshGroupState(
+  supabase: ReturnType<typeof createSupabaseBrowserClient>,
+  orgId: string,
+  groupId: string
+) {
+  const { data: row, error } = await supabase
+    .from('group_state')
+    .select('data')
+    .eq('group_id', groupId)
+    .eq('org_id', orgId)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  if (!row?.data) {
+    return groupStateCache.get(getGroupStateCacheKey(orgId, groupId)) ?? getDefaultClubData();
+  }
+  const normalized = normalizeClubData(row.data as ClubData);
+  groupStateCache.set(getGroupStateCacheKey(orgId, groupId), normalized);
+  return normalized;
+}
+
 function useClubDataStore() {
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
@@ -194,6 +216,45 @@ function useClubDataStore() {
             setLoading(false);
         };
         load();
+    }, [clubId, orgId, supabase, useDemo]);
+
+    useEffect(() => {
+        if (useDemo || !supabase || !clubId || !orgId || typeof window === 'undefined') {
+            return;
+        }
+
+        let cancelled = false;
+        const refreshFromBackend = async () => {
+            if (document.visibilityState !== 'visible') return;
+            try {
+                const nextData = await fetchFreshGroupState(supabase, orgId, clubId);
+                if (!cancelled) {
+                    setData(prev => {
+                        if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
+                            return prev;
+                        }
+                        return nextData;
+                    });
+                }
+            } catch (error) {
+                console.error(`Error refreshing data for group ${clubId}`, error);
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            void refreshFromBackend();
+        };
+
+        window.addEventListener('visibilitychange', handleVisibilityChange);
+        const intervalId = window.setInterval(() => {
+            void refreshFromBackend();
+        }, 5000);
+
+        return () => {
+            cancelled = true;
+            window.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.clearInterval(intervalId);
+        };
     }, [clubId, orgId, supabase, useDemo]);
 
     const updateClubData = useCallback(

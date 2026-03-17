@@ -8,6 +8,76 @@ import { headers } from 'next/headers';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
 
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+const uniqueStrings = (values: unknown[]) =>
+  Array.from(
+    new Set(
+      values
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map(value => value.trim())
+    )
+  );
+
+const mergeEvents = (currentEvents: unknown, nextEvents: unknown) => {
+  const currentList = Array.isArray(currentEvents) ? currentEvents : [];
+  const nextList = Array.isArray(nextEvents) ? nextEvents : [];
+  const currentById = new Map<string, Record<string, any>>();
+
+  currentList.forEach(event => {
+    if (!event || typeof event !== 'object') return;
+    const eventId = typeof (event as { id?: unknown }).id === 'string' ? (event as { id: string }).id : '';
+    if (!eventId) return;
+    currentById.set(eventId, event as Record<string, any>);
+  });
+
+  return nextList.map(event => {
+    if (!event || typeof event !== 'object') return event;
+    const nextEvent = event as Record<string, any>;
+    const eventId = typeof nextEvent.id === 'string' ? nextEvent.id : '';
+    if (!eventId) return event;
+
+    const currentEvent = currentById.get(eventId);
+    if (!currentEvent) return event;
+
+    const currentViewed = uniqueStrings(Array.isArray(currentEvent.viewedBy) ? currentEvent.viewedBy : []);
+    const nextViewed = uniqueStrings(Array.isArray(nextEvent.viewedBy) ? nextEvent.viewedBy : []);
+    const currentAttendees = uniqueStrings(Array.isArray(currentEvent.attendees) ? currentEvent.attendees : []);
+    const nextAttendees = uniqueStrings(Array.isArray(nextEvent.attendees) ? nextEvent.attendees : []);
+
+    const currentRsvps = currentEvent.rsvps && typeof currentEvent.rsvps === 'object' ? currentEvent.rsvps : {};
+    const nextRsvps = nextEvent.rsvps && typeof nextEvent.rsvps === 'object' ? nextEvent.rsvps : {};
+
+    const mergedYes = uniqueStrings([
+      ...(Array.isArray(currentRsvps.yes) ? currentRsvps.yes : []),
+      ...(Array.isArray(nextRsvps.yes) ? nextRsvps.yes : []),
+    ]).map(normalizeEmail);
+    const mergedNo = uniqueStrings([
+      ...(Array.isArray(currentRsvps.no) ? currentRsvps.no : []),
+      ...(Array.isArray(nextRsvps.no) ? nextRsvps.no : []),
+    ])
+      .map(normalizeEmail)
+      .filter(email => !mergedYes.includes(email));
+    const mergedMaybe = uniqueStrings([
+      ...(Array.isArray(currentRsvps.maybe) ? currentRsvps.maybe : []),
+      ...(Array.isArray(nextRsvps.maybe) ? nextRsvps.maybe : []),
+    ])
+      .map(normalizeEmail)
+      .filter(email => !mergedYes.includes(email) && !mergedNo.includes(email));
+
+    return {
+      ...nextEvent,
+      viewedBy: uniqueStrings([...currentViewed, ...nextViewed]),
+      attendees: uniqueStrings([...currentAttendees, ...nextAttendees]),
+      rsvps: {
+        yes: mergedYes,
+        no: mergedNo,
+        maybe: mergedMaybe,
+      },
+    };
+  });
+};
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =
@@ -99,6 +169,10 @@ export async function POST(request: Request) {
 
   const currentData = (existingState?.data ?? {}) as Record<string, any>;
   const nextData = parsed.data.data as Record<string, any>;
+  const mergedData = {
+    ...nextData,
+    events: mergeEvents(currentData.events, nextData.events),
+  };
   const groupRole = normalizeGroupRole(membership.role);
   const currentMembers = JSON.stringify(Array.isArray(currentData.members) ? currentData.members : []);
   const nextMembers = JSON.stringify(Array.isArray(nextData.members) ? nextData.members : []);
@@ -126,7 +200,7 @@ export async function POST(request: Request) {
       {
         org_id: parsed.data.orgId,
         group_id: parsed.data.groupId,
-        data: parsed.data.data,
+        data: mergedData,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'group_id' }

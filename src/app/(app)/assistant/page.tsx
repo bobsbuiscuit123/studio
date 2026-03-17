@@ -3135,7 +3135,7 @@ const mergePlanTasksWithExplicitTypes = (
 
 
 
-    const extractEmailFields = (
+  const extractEmailFields = (
 
       result: any,
 
@@ -3193,6 +3193,141 @@ const mergePlanTasksWithExplicitTypes = (
 
     };
 
+    const parseLabeledDraft = (draftText: string) => {
+      const lines = draftText.split(/\r?\n/);
+      const values: Record<string, string> = {};
+      let currentLabel: string | null = null;
+      const detailLines: string[] = [];
+
+      for (const rawLine of lines) {
+        const line = rawLine.trimEnd();
+        const match = line.match(/^([A-Za-z ]+):\s*(.*)$/);
+        if (match) {
+          currentLabel = match[1].trim().toLowerCase();
+          values[currentLabel] = (match[2] ?? '').trim();
+          continue;
+        }
+        if (currentLabel && values[currentLabel] !== undefined && values[currentLabel].length === 0 && line.trim()) {
+          values[currentLabel] = line.trim();
+          continue;
+        }
+        if (currentLabel === 'details') {
+          detailLines.push(line);
+        }
+      }
+
+      if (detailLines.length > 0) {
+        values.details = detailLines.join('\n').trim();
+      }
+
+      return values;
+    };
+
+    const parseDraftToResult = (task: PlannedTask, draftText: string): any | null => {
+      const draft = draftText.trim();
+      if (!draft) return null;
+
+      switch (task.type) {
+        case 'announcement':
+          return {
+            title: task.prompt.trim().slice(0, 80) || 'Announcement',
+            announcement: draft,
+          };
+        case 'email': {
+          const emailFields = extractEmailFields(null, draft);
+          return emailFields ? emailFields : null;
+        }
+        case 'messages': {
+          const localMessageDraft =
+            buildLocalMessageDraft({ ...task, draft }) ??
+            (task.draftResult ? task.draftResult : null);
+          if (!localMessageDraft) return null;
+          return {
+            recipient: localMessageDraft.recipient,
+            recipientType: localMessageDraft.recipientType,
+            text: draft,
+          };
+        }
+        case 'gallery':
+          return { description: draft };
+        case 'social': {
+          const values = parseLabeledDraft(draft);
+          const title = values.title || task.prompt.trim().slice(0, 80) || 'Post';
+          const postText = values.post || draft;
+          const imageCaption = values['image caption'] || '';
+          return {
+            title,
+            postText,
+            imageCaption: imageCaption || undefined,
+          };
+        }
+        case 'transaction': {
+          const values = parseLabeledDraft(draft);
+          const description = values.description || task.prompt.trim();
+          const amountText = values.amount || '';
+          const numericAmount = Number(amountText.replace(/[^0-9.-]/g, ''));
+          return {
+            description,
+            amount: Number.isFinite(numericAmount) ? numericAmount : amountText,
+            date: values.date || new Date().toISOString(),
+            status: values.status || 'completed',
+          };
+        }
+        case 'calendar': {
+          const values = parseLabeledDraft(draft);
+          const title = values.title || task.prompt.trim().slice(0, 80) || 'Event';
+          const dateText = values.date || '';
+          const timeText = values.time || '';
+          const combinedDate = [dateText, timeText && timeText.toLowerCase() !== 'na' ? timeText : '']
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+          const parsedDate = combinedDate ? new Date(combinedDate) : new Date(dateText);
+          return {
+            title,
+            date:
+              !Number.isNaN(parsedDate.getTime()) && (dateText || timeText)
+                ? parsedDate.toISOString()
+                : new Date().toISOString(),
+            location: values.location && values.location.toLowerCase() !== 'na' ? values.location : '',
+            description: values.details || '',
+            hasTime: Boolean(timeText && timeText.toLowerCase() !== 'na'),
+          };
+        }
+        case 'form': {
+          const lines = draft.split(/\r?\n/);
+          const titleLine = lines.find(line => /^Title:\s*/i.test(line));
+          const descriptionLine = lines.find(line => /^Description:\s*/i.test(line));
+          const questionLines = lines.filter(line => /^\d+\.\s+/.test(line.trim()));
+          const questions = questionLines.map((line: string) => {
+            const text = line.trim().replace(/^\d+\.\s+/, '');
+            const promptMatch = text.match(/^(.*?)(?:\s+\(([^)]+)\))?(?:\s+\[([^\]]+)\])?$/);
+            const prompt = (promptMatch?.[1] ?? text).trim();
+            const kind = (promptMatch?.[2] ?? 'shortText').trim();
+            const options = (promptMatch?.[3] ?? '')
+              .split(',')
+              .map(item => item.trim())
+              .filter(Boolean);
+            return {
+              prompt,
+              kind,
+              required: true,
+              options: options.length > 0 ? options : undefined,
+            };
+          });
+          return {
+            title: titleLine?.replace(/^Title:\s*/i, '').trim() || task.prompt.trim().slice(0, 80) || 'Form',
+            description: descriptionLine?.replace(/^Description:\s*/i, '').trim() || '',
+            questions,
+          };
+        }
+        case 'other':
+          return { message: draft };
+        default:
+          return null;
+      }
+    };
+
 
 
       try {
@@ -3200,26 +3335,18 @@ const mergePlanTasksWithExplicitTypes = (
           task.draftResult &&
           (!task.draft || task.draft === task.draftSource);
         let resultData = shouldUseDraftResult ? task.draftResult : null;
-        if (!shouldUseDraftResult) {
-          const result = await runTaskAction(task.type, finalPrompt);
-          resultData =
-            getResultData(result, message =>
-              toast({
-                title: 'AI unavailable',
-                description: message,
-                variant: 'destructive',
-              })
-            ) ?? null;
+        if (!resultData && finalDraft) {
+          resultData = parseDraftToResult(task, finalDraft);
         }
         if (!resultData) {
           updatePlanTask(planId, task.id, t => ({
             ...t,
             status: 'error',
-            error: aiFallbackMessage,
+            error: 'Could not send this draft as-is. Refresh the draft or edit it into a supported format.',
           }));
           toast({
             title: 'Task failed',
-            description: aiFallbackMessage,
+            description: 'Could not send this draft as-is. Refresh the draft or edit it into a supported format.',
             variant: 'destructive',
           });
           return;

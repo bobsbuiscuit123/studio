@@ -45,14 +45,6 @@ if (!(globalThis as typeof globalThis & { __pendingAiIdempotentRequests?: Map<st
     pendingIdempotentRequests;
 }
 
-const buildAssistantContent = (query: string, context?: string | null) => {
-  const trimmedContext =
-    context && context.length > 3000 ? context.slice(-3000) : context;
-  return trimmedContext
-    ? `App context:\n${trimmedContext}\n\nUser: ${query}`
-    : query;
-};
-
 const schema = z.object({
   orgId: z.string().uuid().optional(),
   feature: z.enum(['chat', 'insights', 'whats_new']),
@@ -304,7 +296,8 @@ export async function POST(request: Request) {
             break;
           case 'assistant':
             response = await runAssistant({
-              query: buildAssistantContent(payload.query, payload.context),
+              query: String(payload.query ?? ''),
+              context: typeof payload.context === 'string' ? payload.context : undefined,
             });
             break;
           case 'announcement':
@@ -426,7 +419,11 @@ export async function POST(request: Request) {
         response = await resolveInsightRequest(payload as any);
       } else {
         response = await runAssistant({
-          query: buildAssistantContent((payload as any)?.prompt ?? '', (payload as any)?.context),
+          query: String((payload as any)?.prompt ?? ''),
+          context:
+            typeof (payload as any)?.context === 'string'
+              ? (payload as any).context
+              : undefined,
         });
       }
     } catch (error) {

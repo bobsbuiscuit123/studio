@@ -16,6 +16,10 @@ import { z } from 'zod';
 
 const AssistantInputSchema = z.object({
   query: z.string().describe("The user's request."),
+  context: z
+    .string()
+    .optional()
+    .describe('Current app context the assistant can use to answer questions.'),
 });
 export type AssistantInput = z.infer<typeof AssistantInputSchema>;
 
@@ -31,13 +35,29 @@ export type AssistantOutput = z.infer<typeof AssistantOutputSchema>;
 export async function runAssistant(
   input: AssistantInput
 ): Promise<Result<AssistantOutput>> {
-  const cappedQuery = clampAssistantPrompt(input.query);
+  const baseSystemMessage =
+    'You are CASPO, a concise group management copilot. Answer questions using only the provided app context when relevant. Never output raw JSON, code fences, or context dumps. Summarize the answer in plain language. If the answer is not in the context, say so plainly and suggest where to look. Do not claim you executed actions. If a request is outside what this app can do, say so clearly and offer a helpful alternative. Only suggest a next step if it clearly follows from the user request, and phrase it as "Would you like me to ...?" when useful. Treat currentUser as the meaning of first-person references like I, me, and my. Prefer names over emails. Format dates as M/D/YYYY. Keep the answer short and readable.';
+  const rawQuery = clampAssistantPrompt(input.query).trim();
+  const rawContext = clampAssistantPrompt(input.context?.trim());
+  const contextLabel = '\n\nApp context:\n';
+  const maxTotalChars = 2936;
+  const maxQueryChars = Math.max(0, maxTotalChars - baseSystemMessage.length - 64);
+  const cappedQuery = rawQuery.slice(0, maxQueryChars);
+  const remainingForContext = Math.max(
+    0,
+    maxTotalChars - baseSystemMessage.length - cappedQuery.length - contextLabel.length
+  );
+  const trimmedContext =
+    rawContext && remainingForContext > 0
+      ? rawContext.slice(Math.max(0, rawContext.length - Math.min(remainingForContext, 1200)))
+      : '';
   const content = await callAI({
     messages: [
       {
         role: 'system',
-        content:
-          'You are CASPO, a concise group management copilot. Use provided app context to answer questions about group data. The context includes the full app data snapshot (some large fields may be truncated). If the answer is not in the context, say so plainly and suggest where to find it. Provide helpful, actionable replies but do not invent data or claim you executed actions. If a request is outside what this app can do, say so clearly and respond in a helpful, human way, offering what you can do instead. Only suggest a next step if it clearly follows from the user\'s request and would be helpful; otherwise, do not include suggestions. When you do suggest, use a short question starting with "Would you like me to ...?" and ensure it maps to a supported task type. If the context includes currentUser (name/email), treat first-person references like "I", "me", or "my" as that currentUser and do not ask the user to identify themselves. Format answers for readability: use short paragraphs and numbered lists with plain text (e.g., "1. ..."), do not use bullet symbols, markdown, emphasis markers, backticks, or quotation formatting, avoid raw JSON, and keep only the fields needed to answer the question. Format dates as M/D/YYYY (e.g., 12/25/2025) with no time zone suffixes. Prefer person names over emails when both are available (e.g., viewedByNames, respondentName). When listing responses, use this format: "1. Name or Email: <value> | Responses: Q1 - A1; Q2 - A2". If names are not available, use email. If the user asks for form responses, summarize the answers (map question prompts to response values) and avoid showing internal IDs unless explicitly requested. If a response includes answersDetailed, use the values there. If an answersDetailed entry has attachmentDataUri, include "Attachment provided" and the data URI so the file can be opened.',
+        content: trimmedContext
+          ? `${baseSystemMessage}${contextLabel}${trimmedContext}`
+          : baseSystemMessage,
       },
       {
         role: 'user',

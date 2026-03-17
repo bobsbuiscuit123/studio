@@ -1056,6 +1056,37 @@ const buildFastPlan = (
     };
   };
 
+const mergePlanTasksWithExplicitTypes = (
+  plannerTasks: PlannedTask[],
+  explicitTasks: PlannedTask[] | undefined
+) => {
+  if (!explicitTasks || explicitTasks.length === 0) return plannerTasks;
+
+  const plannerTaskByType = new Map<TaskType, PlannedTask>();
+  for (const task of plannerTasks) {
+    if (!plannerTaskByType.has(task.type)) {
+      plannerTaskByType.set(task.type, task);
+    }
+  }
+
+  const mergedTasks: PlannedTask[] = [];
+  const seenTypes = new Set<TaskType>();
+
+  for (const explicitTask of explicitTasks) {
+    const mergedTask = plannerTaskByType.get(explicitTask.type) ?? explicitTask;
+    mergedTasks.push(mergedTask);
+    seenTypes.add(mergedTask.type);
+  }
+
+  for (const plannerTask of plannerTasks) {
+    if (seenTypes.has(plannerTask.type)) continue;
+    mergedTasks.push(plannerTask);
+    seenTypes.add(plannerTask.type);
+  }
+
+  return mergedTasks;
+};
+
   const isInsightQuery = (query: string) => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return false;
@@ -2006,10 +2037,13 @@ const buildFastPlan = (
             };
         const normalizedPlan = {
           ...plan,
-          tasks: (plan.tasks ?? []).map(task => ({
-            ...task,
-            status: (task as PlannedTask).status ?? 'pending',
-          })),
+          tasks: mergePlanTasksWithExplicitTypes(
+            (plan.tasks ?? []).map(task => ({
+              ...task,
+              status: (task as PlannedTask).status ?? 'pending',
+            })),
+            fastPlan?.tasks
+          ),
         };
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = canManageRoles
@@ -2040,7 +2074,8 @@ const buildFastPlan = (
             ...task,
             status: 'pending' as const,
             clarification: '',
-            draft: '',
+            draft: task.draft ?? '',
+            draftSource: task.draftSource ?? task.draft,
             draftError: undefined,
             isDrafting: false,
             autoDraftRequested: true,

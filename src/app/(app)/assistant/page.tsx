@@ -1130,6 +1130,32 @@ const buildFastPlan = (
     return true;
   };
 
+  const isExistingDataLookupQuery = (query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return false;
+    const isQuestionLike =
+      normalized.endsWith('?') ||
+      /^(did|do|does|is|are|can|could|would|will|how|what|which|who|when|where|show|list|tell me)\b/.test(
+        normalized
+      );
+    if (!isQuestionLike) return false;
+    const hasExecutionIntent =
+      /\b(create|post|send|draft|add|schedule|make|generate|upload|publish|announce|compose|write|record|log)\b/.test(
+        normalized
+      );
+    if (hasExecutionIntent) return false;
+    const mentionsExistingRecord =
+      /\b(last|latest|recent|my|this|that|current|previous|past)\b/.test(normalized) &&
+      /\b(announcement|message|email|event|calendar|form|transaction|finance|payment|expense|attendance|rsvp|point|points|gallery|photo|image)\b/.test(
+        normalized
+      );
+    const asksStatusOrView =
+      /\b(view|views|viewed|read|seen|status|count|total|how many|who|which|opened|open|responded|response|responses|submission|submissions|attended|attendance|rsvp|paid|balance)\b/.test(
+        normalized
+      );
+    return mentionsExistingRecord && asksStatusOrView;
+  };
+
   const buildAppContextForAssistant = () => {
     const maxStringLength = 1200;
     const maxDepth = 7;
@@ -1855,7 +1881,8 @@ const buildFastPlan = (
     setSendingId(null);
     stickToBottomRef.current = true;
     try {
-      const treatAsInsight = isInsightQuery(values.query);
+      const treatAsInsight =
+        isInsightQuery(values.query) || isExistingDataLookupQuery(values.query);
       if (pendingPlan && !treatAsInsight) {
         const questionsToResolve = normalizeQuestionList(pendingPlan.questions);
         const response = resolveFollowUpAnswersLocally(questionsToResolve, values.query);

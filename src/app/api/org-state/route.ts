@@ -78,6 +78,25 @@ const mergeEvents = (currentEvents: unknown, nextEvents: unknown) => {
   });
 };
 
+const stripCollaborativeEventFields = (events: unknown) => {
+  if (!Array.isArray(events)) return [];
+
+  return events.map(event => {
+    if (!event || typeof event !== 'object') return event;
+
+    const {
+      viewedBy: _viewedBy,
+      attendees: _attendees,
+      rsvps: _rsvps,
+      read: _read,
+      lastViewedAttendees: _lastViewedAttendees,
+      ...rest
+    } = event as Record<string, unknown>;
+
+    return rest;
+  });
+};
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =
@@ -183,11 +202,13 @@ export async function POST(request: Request) {
     );
   }
 
-  const contentKeys = ['announcements', 'events'];
-  const contentChanged = contentKeys.some(
-    (key) => JSON.stringify(currentData[key] ?? null) !== JSON.stringify(nextData[key] ?? null)
-  );
-  if (contentChanged && !canEditGroupContent(groupRole)) {
+  const announcementsChanged =
+    JSON.stringify(currentData.announcements ?? null) !== JSON.stringify(nextData.announcements ?? null);
+  const eventContentChanged =
+    JSON.stringify(stripCollaborativeEventFields(currentData.events)) !==
+    JSON.stringify(stripCollaborativeEventFields(nextData.events));
+
+  if ((announcementsChanged || eventContentChanged) && !canEditGroupContent(groupRole)) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Only group admins or officers can change announcements or events.', source: 'app' }),
       { status: 403, headers: getRateLimitHeaders(limiter) }

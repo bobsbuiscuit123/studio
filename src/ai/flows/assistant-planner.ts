@@ -74,6 +74,7 @@ Use the task types like this:
 - other: unsupported request only
 Rules:
 - Preserve any exact wording the user gave inside the prompt.
+- For announcements, the core message is enough. Do not ask for date, time, location, or event details unless the user explicitly asked to include them.
 - Reminder requests can be announcement, email, messages, or multiple if the user asked for multiple channels.
 - If the user explicitly asks for multiple channels, return multiple tasks.
 - Do not create a calendar task just because the user mentioned an event. Only create calendar when they explicitly ask to create, add, schedule, or put something on the calendar.

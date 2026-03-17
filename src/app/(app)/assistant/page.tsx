@@ -2020,15 +2020,19 @@ const buildFastPlan = (
                 summary:
                   "I can create task boxes for announcements, emails, messages, calendar events, forms, gallery uploads, and transactions. Ask for one of those directly.",
               };
+        const sanitizedTasks = sanitizePlannedTasksForExecution(
+          values.query,
+          (plan.tasks ?? []).map(task => ({
+            ...task,
+            status: (task as PlannedTask).status ?? 'pending',
+          }))
+        );
+        const forcedPlan = shouldForceAnnouncementOnly(values.query)
+          ? forceAnnouncementOnlyPlan(values.query, sanitizedTasks, plan.summary)
+          : null;
         const normalizedPlan = {
-          ...plan,
-          tasks: sanitizePlannedTasksForExecution(
-            values.query,
-            (plan.tasks ?? []).map(task => ({
-              ...task,
-              status: (task as PlannedTask).status ?? 'pending',
-            }))
-          ),
+          ...(forcedPlan ?? plan),
+          tasks: forcedPlan?.tasks ?? sanitizedTasks,
         };
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = canManageRoles
@@ -2581,6 +2585,19 @@ const buildFastPlan = (
     return (reminderMatch?.[1] ?? normalized).replace(/[.?!]+$/, '').trim();
   };
 
+  const buildAnnouncementBodyFromIntent = (value: string) => {
+    const normalized = value.trim().replace(/[.?!]+$/, '');
+    const reminderTarget =
+      normalized.match(/\bremind(?:ing)?\s+(everyone|everybody|members|all)\s+to\s+(.+)$/i) ??
+      normalized.match(/\bremind(?:ing)?\s+(.+)$/i);
+    const extracted = (reminderTarget?.[2] ?? reminderTarget?.[1] ?? extractReminderTopic(normalized)).trim();
+    if (!extracted) {
+      return 'Reminder: Please check the latest update.';
+    }
+    const lowered = extracted.charAt(0).toLowerCase() + extracted.slice(1);
+    return `Reminder: ${lowered.charAt(0).toUpperCase() + lowered.slice(1)}.`;
+  };
+
   const extractEventDate = (value: string) =>
     value.match(/\btomorrow\b|\btonight\b|\bnext\s+\w+\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b/i)?.[0] ?? '';
 
@@ -2654,6 +2671,64 @@ const buildFastPlan = (
     /\b(calendar|schedule|add (?:an )?event|create (?:an )?event|put (?:it|this) on (?:the )?calendar)\b/i.test(
       value
     );
+
+  const hasExplicitNonAnnouncementTaskIntent = (value: string) =>
+    /\b(email|message|text|dm|chat|form|survey|gallery|photo|image|upload|transaction|expense|payment|charge)\b/i.test(
+      value
+    ) || explicitCalendarIntentInText(value);
+
+  const shouldForceAnnouncementOnly = (value: string) =>
+    /\b(remind|reminder|announcement|announce|tell everyone|notify everyone)\b/i.test(value) &&
+    !hasExplicitNonAnnouncementTaskIntent(value);
+
+  const forceAnnouncementOnlyPlan = (
+    query: string,
+    tasks: PlannedTask[],
+    summary: string
+  ) => {
+    const existingAnnouncement = tasks.find(task => task.type === 'announcement');
+    const forcedDraft = buildAnnouncementBodyFromIntent(query);
+    const forcedTitle = deriveAnnouncementTitle(forcedDraft, query);
+    const announcementTask: PlannedTask = existingAnnouncement
+      ? {
+          ...existingAnnouncement,
+          prompt: existingAnnouncement.prompt?.trim() || query,
+          title: existingAnnouncement.title?.trim() || forcedTitle,
+          draft: existingAnnouncement.draft?.trim() || forcedDraft,
+          draftSource: existingAnnouncement.draftSource?.trim() || forcedDraft,
+          draftResult:
+            existingAnnouncement.draftResult && typeof existingAnnouncement.draftResult === 'object'
+              ? {
+                  ...existingAnnouncement.draftResult,
+                  title: existingAnnouncement.title?.trim() || forcedTitle,
+                  announcement: existingAnnouncement.draft?.trim() || forcedDraft,
+                }
+              : {
+                  title: existingAnnouncement.title?.trim() || forcedTitle,
+                  announcement: existingAnnouncement.draft?.trim() || forcedDraft,
+                },
+          followUpQuestions: undefined,
+          status: existingAnnouncement.status ?? 'pending',
+        }
+      : {
+          id: `forced-announcement-${Date.now()}`,
+          type: 'announcement',
+          prompt: query,
+          title: forcedTitle,
+          draft: forcedDraft,
+          draftSource: forcedDraft,
+          draftResult: {
+            title: forcedTitle,
+            announcement: forcedDraft,
+          },
+          status: 'pending',
+          followUpQuestions: undefined,
+        };
+    return {
+      summary,
+      tasks: [announcementTask],
+    };
+  };
 
   const sanitizePlannedTasksForExecution = (query: string, tasks: PlannedTask[]) => {
     const lower = query.trim().toLowerCase();
@@ -2750,15 +2825,7 @@ const buildFastPlan = (
 
     switch (task.type) {
       case 'announcement': {
-        const eventTopic = extractEventTopic(combined) || topic;
-        const eventDate = extractEventDate(combined);
-        const eventTime = extractEventTime(combined);
-        const eventLocation = extractEventLocation(combined);
-        const details = [eventDate, eventTime, eventLocation].filter(Boolean).join(', ');
-        const announcementBase = eventTopic ? `${startCase(eventTopic)}` : `${startCase(topic)}`;
-        const announcement = details
-          ? `Reminder: ${announcementBase} is ${details}.`
-          : `Reminder: ${announcementBase}.`;
+        const announcement = buildAnnouncementBodyFromIntent(combined);
         return {
           title: deriveAnnouncementTitle(announcement, task.prompt),
           announcement,

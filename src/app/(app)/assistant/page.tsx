@@ -1865,7 +1865,7 @@ const buildFastPlan = (
         }));
         const updatedTasks = tasksWithAttachments.map(task => {
           const questionList =
-            pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
+            pendingPlan.taskQuestionMap[task.id] ?? (getMandatoryFollowUps(task) ?? []);
           if (questionList.length === 0) return task;
           const answersForTask = questionList
             .map(question => answerMap.get(normalizeFollowUpQuestion(question)))
@@ -1885,11 +1885,8 @@ const buildFastPlan = (
         const combinedMissing = Array.from(
           new Set(
             hydratedTasks.flatMap(task => {
-              if (task.type === 'calendar') {
-                return getCalendarFollowUps(task);
-              }
               const remainingQuestions =
-                pendingPlan.taskQuestionMap[task.id] ?? (task.followUpQuestions ?? []);
+                pendingPlan.taskQuestionMap[task.id] ?? (getMandatoryFollowUps(task) ?? []);
               return remainingQuestions.filter(
                 question => !answerMap.has(normalizeFollowUpQuestion(question))
               );
@@ -2260,7 +2257,7 @@ const buildFastPlan = (
     const taskQuestionMap: Record<string, string[]> = {};
 
     tasks.forEach(task => {
-      const taskQuestions = normalizeQuestionList(task.followUpQuestions ?? []);
+      const taskQuestions = normalizeQuestionList(getMandatoryFollowUps(task) ?? []);
       if (taskQuestions.length === 0) return;
       taskQuestionMap[task.id] = taskQuestions;
       taskQuestions.forEach(question => {
@@ -2621,6 +2618,38 @@ const buildFastPlan = (
     return missing;
   };
 
+  const getMandatoryFollowUps = (task: PlannedTask) => {
+    if (task.type === 'announcement') return undefined;
+    if (task.type === 'email') return undefined;
+    if (task.type === 'messages') {
+      const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+      const needsRecipient = !buildLocalMessageDraft({ ...task, prompt: combined || task.prompt });
+      return needsRecipient ? ['Who should receive the message?'] : undefined;
+    }
+    if (task.type === 'calendar') {
+      const missing = getCalendarFollowUps(task);
+      return missing.length > 0 ? missing : undefined;
+    }
+    if (task.type === 'form') {
+      return /\bquestion\b|\bquestions\b|\?/.test(
+        [task.prompt, task.clarification].filter(Boolean).join(' ').toLowerCase()
+      )
+        ? undefined
+        : ['Please list the questions you want in the form and any answer choices for multiple-choice questions.'];
+    }
+    if (task.type === 'gallery') {
+      return Array.isArray(task.attachments) && task.attachments.length > 0
+        ? undefined
+        : ['Please attach at least one image.'];
+    }
+    if (task.type === 'transaction') {
+      return /\$?\d+(?:\.\d{2})?\b/.test([task.prompt, task.clarification].filter(Boolean).join(' '))
+        ? undefined
+        : ['What is the amount?'];
+    }
+    return task.followUpQuestions;
+  };
+
   const explicitCalendarIntentInText = (value: string) =>
     /\b(calendar|schedule|add (?:an )?event|create (?:an )?event|put (?:it|this) on (?:the )?calendar)\b/i.test(
       value
@@ -2643,27 +2672,31 @@ const buildFastPlan = (
       if (task.type === 'announcement') {
         return {
           ...task,
-          followUpQuestions: undefined,
+          followUpQuestions: getMandatoryFollowUps(task),
         };
       }
       if (task.type === 'email') {
         return {
           ...task,
-          followUpQuestions: undefined,
+          followUpQuestions: getMandatoryFollowUps(task),
         };
       }
       if (task.type === 'messages') {
-        const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
-        const needsRecipient = !buildLocalMessageDraft({ ...task, prompt: combined || task.prompt });
         return {
           ...task,
-          followUpQuestions: needsRecipient ? ['Who should receive the message?'] : undefined,
+          followUpQuestions: getMandatoryFollowUps(task),
         };
       }
       if (task.type === 'calendar') {
         return {
           ...task,
-          followUpQuestions: getCalendarFollowUps(task),
+          followUpQuestions: getMandatoryFollowUps(task),
+        };
+      }
+      if (task.type === 'form' || task.type === 'gallery' || task.type === 'transaction') {
+        return {
+          ...task,
+          followUpQuestions: getMandatoryFollowUps(task),
         };
       }
       return task;

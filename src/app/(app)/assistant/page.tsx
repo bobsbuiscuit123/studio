@@ -106,6 +106,21 @@ type FollowUpResolution = {
   missing: string[];
 };
 
+const supportedAssistantTaskTypes: TaskType[] = [
+  'announcement',
+  'form',
+  'calendar',
+  'email',
+  'messages',
+  'gallery',
+  'transaction',
+  'other',
+];
+
+const isSupportedAssistantTaskType = (value: unknown): value is TaskType =>
+  typeof value === 'string' &&
+  supportedAssistantTaskTypes.includes(value as TaskType);
+
 type AssistantReplyPayload = {
   response: string;
 };
@@ -256,9 +271,10 @@ const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
 
 const sanitizePlannedTask = (value: unknown): PlannedTask | null => {
   if (!isObjectRecord(value) || typeof value.id !== 'string') return null;
+  if (!isSupportedAssistantTaskType(value.type)) return null;
   return {
     id: value.id,
-    type: typeof value.type === 'string' ? (value.type as TaskType) : 'other',
+    type: value.type,
     prompt: typeof value.prompt === 'string' ? value.prompt : '',
     followUpQuestions: Array.isArray(value.followUpQuestions)
       ? value.followUpQuestions.filter((item): item is string => typeof item === 'string')

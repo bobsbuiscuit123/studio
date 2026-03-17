@@ -1876,7 +1876,12 @@ const buildFastPlan = (
             clarification: mergeClarifications(task.clarification, answersForTask),
           };
         });
-        const hydratedTasks = hydrateTasksForDisplay(updatedTasks);
+        const hydratedTasks = hydrateTasksForDisplay(
+          sanitizePlannedTasksForExecution(
+            [pendingPlan.summary, values.query].filter(Boolean).join(' '),
+            updatedTasks
+          )
+        );
         const combinedMissing = Array.from(
           new Set(
             hydratedTasks.flatMap(task => {
@@ -2020,10 +2025,13 @@ const buildFastPlan = (
               };
         const normalizedPlan = {
           ...plan,
-          tasks: (plan.tasks ?? []).map(task => ({
-            ...task,
-            status: (task as PlannedTask).status ?? 'pending',
-          })),
+          tasks: sanitizePlannedTasksForExecution(
+            values.query,
+            (plan.tasks ?? []).map(task => ({
+              ...task,
+              status: (task as PlannedTask).status ?? 'pending',
+            }))
+          ),
         };
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = canManageRoles
@@ -2611,6 +2619,55 @@ const buildFastPlan = (
     if (!extractEventTime(combined)) missing.push('What time is the event?');
     if (!extractEventTopic(combined)) missing.push('What is the event about?');
     return missing;
+  };
+
+  const explicitCalendarIntentInText = (value: string) =>
+    /\b(calendar|schedule|add (?:an )?event|create (?:an )?event|put (?:it|this) on (?:the )?calendar)\b/i.test(
+      value
+    );
+
+  const sanitizePlannedTasksForExecution = (query: string, tasks: PlannedTask[]) => {
+    const lower = query.trim().toLowerCase();
+    const hasExplicitCalendarIntent = explicitCalendarIntentInText(lower);
+    const hasAnnouncementLikeIntent =
+      /\b(remind|announcement|announce|tell everyone|notify everyone)\b/.test(lower);
+
+    const filteredTasks = tasks.filter(task => {
+      if (task.type !== 'calendar') return true;
+      if (hasExplicitCalendarIntent) return true;
+      if (hasAnnouncementLikeIntent) return false;
+      return false;
+    });
+
+    return filteredTasks.map(task => {
+      if (task.type === 'announcement') {
+        return {
+          ...task,
+          followUpQuestions: undefined,
+        };
+      }
+      if (task.type === 'email') {
+        return {
+          ...task,
+          followUpQuestions: undefined,
+        };
+      }
+      if (task.type === 'messages') {
+        const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+        const needsRecipient = !buildLocalMessageDraft({ ...task, prompt: combined || task.prompt });
+        return {
+          ...task,
+          followUpQuestions: needsRecipient ? ['Who should receive the message?'] : undefined,
+        };
+      }
+      if (task.type === 'calendar') {
+        return {
+          ...task,
+          followUpQuestions: getCalendarFollowUps(task),
+        };
+      }
+      return task;
+    });
   };
 
   function deriveAnnouncementTitle(draftText: string, promptText?: string) {

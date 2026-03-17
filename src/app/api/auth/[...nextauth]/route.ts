@@ -10,6 +10,24 @@ const handler = NextAuth({
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
+  callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+
+      try {
+        const target = new URL(url);
+        if (target.origin === baseUrl) {
+          return url;
+        }
+      } catch {
+        return baseUrl;
+      }
+
+      return baseUrl;
+    },
+  },
 });
 
 export { handler as GET, handler as POST };

@@ -2217,9 +2217,12 @@ const buildFastPlan = (
         const rawTasks = allowedTaskTypes
           ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
           : normalizedPlan.tasks;
+        const hasExplicitCalendarIntent = explicitCalendarIntentInText(values.query);
+        const hasCalendarTask = rawTasks.some(task => task.type === 'calendar');
         const recoveredTasks =
-          rawTasks.length === 0 && explicitCalendarIntentInText(values.query)
+          hasExplicitCalendarIntent && !hasCalendarTask
             ? ([
+                ...rawTasks.filter(task => task.type !== 'other'),
                 {
                   id: `recovered-calendar-${Date.now()}`,
                   type: 'calendar' as const,

@@ -113,6 +113,7 @@ Examples:
 - "remind everyone to come to our event" -> announcement only
 - "announce and email everyone about dues" -> announcement + email
 - "put our halloween social on the calendar for tomorrow at 5pm at Dulles High School" -> calendar
+- "add a calendar event for pumpkin carving contest this saturday" -> calendar
 - "did any members view my last announcement" -> lookup only
 - "check who didnt view my recent form and send an announcement to only them reminding them to fill it out" -> lookup + announcement task with recipientLookupId
 Drafts:

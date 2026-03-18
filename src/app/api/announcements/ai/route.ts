@@ -60,6 +60,46 @@ export async function POST(request: Request) {
         }),
       });
       const json = await response.json().catch(() => null);
+      if (
+        json &&
+        typeof json === 'object' &&
+        'success' in json &&
+        json.success === true &&
+        'data' in json &&
+        json.data &&
+        typeof json.data === 'object' &&
+        'ok' in json.data &&
+        json.data.ok === true &&
+        'data' in json.data
+      ) {
+        return NextResponse.json(
+          {
+            ok: true,
+            data: json.data.data,
+          },
+          {
+            status: response.status,
+            headers: getRateLimitHeaders(limiter),
+          }
+        );
+      }
+      if (
+        json &&
+        typeof json === 'object' &&
+        'success' in json &&
+        json.success === true &&
+        'data' in json &&
+        json.data &&
+        typeof json.data === 'object' &&
+        'ok' in json.data &&
+        json.data.ok === false &&
+        'error' in json.data
+      ) {
+        return NextResponse.json(json.data, {
+          status: response.status,
+          headers: getRateLimitHeaders(limiter),
+        });
+      }
       return NextResponse.json(
         json ??
           err({

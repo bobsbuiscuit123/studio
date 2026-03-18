@@ -9,6 +9,17 @@ import { z } from 'zod';
 
 const AI_CONSUME_TIMEOUT_MS = 20_000;
 
+const resolveInternalApiUrl = async (pathname: string) => {
+  const headerList = await headers();
+  const host = headerList.get('x-forwarded-host') || headerList.get('host') || 'localhost:3000';
+  const forwardedProto = headerList.get('x-forwarded-proto');
+  const protocol =
+    host.includes('localhost') || host.startsWith('127.0.0.1')
+      ? 'http'
+      : forwardedProto || 'https';
+  return `${protocol}://${host}${pathname}`;
+};
+
 const getSelectedOrgId = async () => {
   const cookieStore = await cookies();
   return cookieStore.get('selectedOrgId')?.value ?? null;
@@ -40,13 +51,19 @@ const callAiConsume = async <T>(
   payload: unknown
 ): Promise<Result<T>> => {
   const orgId = await getSelectedOrgId();
+  const url = await resolveInternalApiUrl('/api/ai/consume');
+  const headerList = await headers();
+  const cookieHeader = headerList.get('cookie') ?? '';
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_CONSUME_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch('/api/ai/consume', {
+    response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cookieHeader ? { cookie: cookieHeader } : {}),
+      },
       body: JSON.stringify({ orgId, feature, action, payload }),
       cache: 'no-store',
       signal: controller.signal,

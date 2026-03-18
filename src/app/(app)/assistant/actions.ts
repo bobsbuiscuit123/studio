@@ -5,8 +5,7 @@ import { runAssistant } from '@/ai/flows/assistant';
 import { MAX_ASSISTANT_PROMPT_CHARS, clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { headers, cookies } from 'next/headers';
+import { headers } from 'next/headers';
 import { z } from 'zod';
 
 const AI_CONSUME_TIMEOUT_MS = 20_000;
@@ -20,11 +19,6 @@ const resolveInternalApiUrl = async (pathname: string) => {
       ? 'http'
       : forwardedProto || 'https';
   return `${protocol}://${host}${pathname}`;
-};
-
-const getSelectedOrgId = async () => {
-  const cookieStore = await cookies();
-  return cookieStore.get('selectedOrgId')?.value ?? null;
 };
 
 export type AssistantHistoryItem = {
@@ -52,7 +46,6 @@ const callAiConsume = async <T>(
   action: string,
   payload: unknown
 ): Promise<Result<T>> => {
-  const orgId = await getSelectedOrgId();
   const url = await resolveInternalApiUrl('/api/ai/consume');
   const headerList = await headers();
   const cookieHeader = headerList.get('cookie') ?? '';
@@ -66,7 +59,7 @@ const callAiConsume = async <T>(
         'Content-Type': 'application/json',
         ...(cookieHeader ? { cookie: cookieHeader } : {}),
       },
-      body: JSON.stringify({ orgId, feature, action, payload }),
+      body: JSON.stringify({ feature, action, payload }),
       cache: 'no-store',
       signal: controller.signal,
     });
@@ -161,35 +154,12 @@ export async function runAssistantAction(
           }))
       : undefined;
     console.log('EXTRACTED MESSAGE:', normalizedQuery);
-    const cookieStore = await cookies();
-    const orgId = await getSelectedOrgId();
-    const groupId =
-      cookieStore.get('selectedGroupId')?.value ||
-      cookieStore.get('selectedOrgId')?.value ||
-      orgId;
-    if (!orgId) {
-      return err({
-        code: 'VALIDATION',
-        message: 'Missing organization.',
-        source: 'app',
-      });
-    }
-    const supabase = await createSupabaseServerClient();
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) {
-      return err({
-        code: 'VALIDATION',
-        message: 'Unauthorized.',
-        source: 'app',
-      });
-    }
     return runAssistant({
       query: normalizedQuery,
       history: trimmedHistory,
-      orgId,
-      groupId: groupId ?? null,
-      userId,
+      orgId: '00000000-0000-0000-0000-000000000000',
+      groupId: null,
+      userId: '00000000-0000-0000-0000-000000000000',
     });
   });
 }

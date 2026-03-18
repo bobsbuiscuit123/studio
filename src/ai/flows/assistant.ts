@@ -1,50 +1,7 @@
 'use server';
 
-import { callAI } from '@/ai/genkit';
-import {
-  assistantToolList,
-  executeAssistantActions,
-  loadAssistantContext,
-} from '@/ai/assistant-tools';
-import { clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
-import { sanitizeAiText } from '@/lib/ai-safety';
 import { err, ok, type Result } from '@/lib/result';
 import { z } from 'zod';
-
-const GEMINI_SYSTEM_PROMPT = `You are an AI assistant inside a school/group management app.
-
-You can perform actions using tools.
-
-You must:
-
-* Understand user intent
-* Break into steps if needed
-* Use tools to execute tasks
-* Chain multiple actions when required
-* Only ask follow-up questions if absolutely necessary
-
-Return JSON ONLY:
-
-{
-"reply": string,
-"actions": [
-{
-"tool": string,
-"input": object
-}
-],
-"needs_followup": boolean,
-"followup_question": string | null
-}
-
-Rules:
-
-* Use tools for ALL real data or actions
-* NEVER hallucinate data
-* Chain actions when needed
-* Keep responses concise
-* If missing required fields, ask follow-up instead of guessing
-  `;
 
 const AssistantHistoryMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
@@ -55,20 +12,8 @@ const AssistantInputSchema = z.object({
   query: z.string().min(1),
   history: z.array(AssistantHistoryMessageSchema).optional(),
   orgId: z.string().uuid(),
-  groupId: z.string().uuid(),
+  groupId: z.string(),
   userId: z.string().uuid(),
-});
-
-const AssistantActionSchema = z.object({
-  tool: z.string().min(1),
-  input: z.record(z.unknown()),
-});
-
-const AssistantPlanSchema = z.object({
-  reply: z.string(),
-  actions: z.array(AssistantActionSchema),
-  needs_followup: z.boolean(),
-  followup_question: z.string().nullable(),
 });
 
 export type AssistantInput = z.infer<typeof AssistantInputSchema>;
@@ -86,22 +31,6 @@ export type AssistantOutput = {
   }>;
 };
 
-const toCompactHistory = (
-  history: Array<{ role: 'user' | 'assistant'; content: string }> | undefined
-) =>
-  (history ?? [])
-    .slice(-3)
-    .map(message => `${message.role}: ${message.content.replace(/\s+/g, ' ').trim()}`)
-    .join('\n');
-
-const buildToolBlock = () =>
-  assistantToolList
-    .map(tool => {
-      const inputKeys = Object.keys(tool.input);
-      return `${tool.name}(${inputKeys.join(',')}) - ${tool.description}`;
-    })
-    .join('\n');
-
 export async function runAssistant(input: AssistantInput): Promise<Result<AssistantOutput>> {
   const parsed = AssistantInputSchema.safeParse(input);
   if (!parsed.success) {
@@ -113,170 +42,10 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
     });
   }
 
-  const contextResult = await loadAssistantContext({
-    orgId: parsed.data.orgId,
-    groupId: parsed.data.groupId,
-    userId: parsed.data.userId,
-  });
-  if (!contextResult.ok) return contextResult;
-
-  const context = contextResult.data;
-  const query = clampAssistantPrompt(parsed.data.query).trim();
-  if (!query) {
-    return err({
-      code: 'VALIDATION',
-      message: 'Message cannot be empty.',
-      source: 'app',
-    });
-  }
-  const history = toCompactHistory(parsed.data.history);
-  const memberNames = context.members
-    .slice(0, 12)
-    .map(member => `${member.name} <${member.email}>`)
-    .join(', ');
-  const developerPrompt = clampAssistantPrompt(
-    [
-      `Current user: ${context.userName} <${context.userEmail}>`,
-      `Available tools:\n${buildToolBlock()}`,
-      `Variables to chain between actions: $LAST_ANNOUNCEMENT, $VIEWERS, $NOT_VIEWED_USERS, $EVENT, $EVENT_ID, $ATTENDEES, $ABSENT_USERS.`,
-      `Group members: ${memberNames}`,
-      history ? `Recent chat:\n${history}` : '',
-      'If the user asks about a specific day like saturday, use find_event first.',
-      'If the user asks who missed an event, use find_event then get_event_attendance then any write tool.',
-      'If the user asks to remind people who did not view the last announcement, use get_last_announcement_views then send_message with recipients set to $NOT_VIEWED_USERS.',
-    ]
-      .filter(Boolean)
-      .join('\n\n')
-  );
-  const cappedDeveloperPrompt = clampAssistantPrompt(developerPrompt);
-
-  console.log('MESSAGE SENT TO GEMINI:', query);
-
-  let responseText = '';
-  try {
-    const rawResult = await callAI({
-      responseFormat: 'json_object',
-      messages: [
-        { role: 'system', content: clampAssistantPrompt(GEMINI_SYSTEM_PROMPT) },
-        { role: 'developer', content: cappedDeveloperPrompt },
-        { role: 'user', content: query },
-      ],
-    });
-
-    if (!rawResult.ok) {
-      console.error('GEMINI ERROR:', rawResult.error);
-      return rawResult as Result<AssistantOutput>;
-    }
-
-    responseText = String(rawResult.data ?? '').trim();
-    console.log('RAW GEMINI RESPONSE:', responseText);
-  } catch (error) {
-    console.error('GEMINI ERROR:', error);
-    return err({
-      code: 'AI_PROVIDER_ERROR',
-      message: error instanceof Error ? error.message : 'AI request failed',
-      source: 'ai',
-      retryable: true,
-    });
-  }
-
-  let parsedResponse: unknown;
-  try {
-    parsedResponse = JSON.parse(responseText);
-  } catch (error) {
-    console.error('GEMINI ERROR:', error);
-    console.log('RAW GEMINI RESPONSE:', responseText);
-    return err({
-      code: 'AI_BAD_RESPONSE',
-      message: 'AI returned invalid JSON.',
-      detail: responseText,
-      source: 'ai',
-      retryable: true,
-    });
-  }
-
-  const parsedPlan = AssistantPlanSchema.safeParse(parsedResponse);
-  if (!parsedPlan.success) {
-    console.error('GEMINI ERROR:', parsedPlan.error);
-    console.log('PARSED RESPONSE:', parsedResponse);
-    return err({
-      code: 'AI_SCHEMA_INVALID',
-      message: 'AI response validation failed.',
-      detail: parsedPlan.error.message,
-      source: 'ai',
-      retryable: true,
-    });
-  }
-
-  const plan = parsedPlan.data;
-  console.log('PARSED RESPONSE:', plan);
-  if (plan.needs_followup) {
-    const followupReply = sanitizeAiText(plan.reply);
-    const followupQuestion = plan.followup_question ? sanitizeAiText(plan.followup_question) : null;
-    if (!followupReply && !followupQuestion) {
-      return err({
-        code: 'AI_BAD_RESPONSE',
-        message: 'AI returned an empty follow-up response.',
-        source: 'ai',
-      });
-    }
-    return ok({
-      reply: followupReply || followupQuestion || '',
-      needsFollowup: true,
-      followupQuestion,
-      actions: [],
-    });
-  }
-
-  if (plan.actions.length === 0) {
-    const reply = sanitizeAiText(plan.reply);
-    if (!reply) {
-      return err({
-        code: 'AI_BAD_RESPONSE',
-        message: 'AI returned an empty reply.',
-        source: 'ai',
-      });
-    }
-    return ok({
-      reply,
-      needsFollowup: false,
-      followupQuestion: null,
-      actions: [],
-    });
-  }
-
-  const executionResult = await executeAssistantActions(context, plan.actions);
-  if (!executionResult.ok) {
-    return executionResult as Result<AssistantOutput>;
-  }
-
-  const finalReply = sanitizeAiText(executionResult.data.reply || plan.reply);
-  if (!finalReply) {
-    return err({
-      code: 'AI_BAD_RESPONSE',
-      message: 'AI returned an empty reply.',
-      source: 'ai',
-    });
-  }
-
   return ok({
-    reply: finalReply,
+    reply: 'TEST SUCCESS',
     needsFollowup: false,
     followupQuestion: null,
-    actions: executionResult.data.results.map(item =>
-      item.status === 'completed'
-        ? {
-            tool: item.tool,
-            input: item.input as Record<string, unknown>,
-            status: item.status,
-            output: item.output,
-          }
-        : {
-            tool: item.tool,
-            input: item.input as Record<string, unknown>,
-            status: item.status,
-            error: item.error,
-          }
-    ),
+    actions: [],
   });
 }

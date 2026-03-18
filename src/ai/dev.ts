@@ -6,7 +6,6 @@ config();
 import '@/ai/flows/generate-announcement.ts';
 import '@/ai/flows/generate-form.ts';
 import '@/ai/flows/generate-meeting-slides.ts';
-import '@/ai/flows/resolve-followups.ts';
 import '@/ai/flows/generate-social-media-post.ts';
 import '@/ai/flows/add-calendar-event.ts';
 import '@/ai/flows/send-reset-password-email.ts';

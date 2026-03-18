@@ -4,12 +4,9 @@ import { headers, cookies } from 'next/headers';
 import { err } from '@/lib/result';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { planAssistantTasks } from '@/ai/flows/assistant-planner';
 import { generateClubAnnouncement } from '@/ai/flows/generate-announcement';
 import { generateClubForm } from '@/ai/flows/generate-form';
-import { resolveFollowUpAnswers } from '@/ai/flows/resolve-followups';
 import { runAssistant } from '@/ai/flows/assistant';
-import { routeAssistantQuestion } from '@/ai/flows/assistant-question-router';
 import { generateMessage } from '@/ai/flows/generate-message';
 import { generateGalleryDescription } from '@/ai/flows/generate-gallery-description';
 import { addCalendarEvent } from '@/ai/flows/add-calendar-event';
@@ -93,9 +90,16 @@ export async function POST(request: Request) {
 
   const cookieStore = await cookies();
   const orgId = parsed.data.orgId || cookieStore.get('selectedOrgId')?.value;
+  const groupId = cookieStore.get('selectedGroupId')?.value;
   if (!orgId) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Missing organization.', source: 'app' }),
+      { status: 400 }
+    );
+  }
+  if (!groupId) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Missing group.', source: 'app' }),
       { status: 400 }
     );
   }
@@ -289,22 +293,22 @@ export async function POST(request: Request) {
       let response: unknown;
       try {
         switch (action) {
-          case 'plan_tasks':
-            response = await planAssistantTasks(payload);
-            break;
-          case 'followups':
-            response = await resolveFollowUpAnswers(payload);
-            break;
           case 'assistant':
             response = await runAssistant({
               query: String(payload.query ?? ''),
-              context: typeof payload.context === 'string' ? payload.context : undefined,
-            });
-            break;
-          case 'assistant_question':
-            response = await routeAssistantQuestion({
-              query: String(payload.query ?? ''),
-              context: typeof payload.context === 'string' ? payload.context : undefined,
+              history: Array.isArray(payload.history)
+                ? payload.history.filter(
+                    (item: unknown): item is { role: 'user' | 'assistant'; content: string } =>
+                      Boolean(item) &&
+                      typeof item === 'object' &&
+                      ((item as { role?: unknown }).role === 'user' ||
+                        (item as { role?: unknown }).role === 'assistant') &&
+                      typeof (item as { content?: unknown }).content === 'string'
+                  )
+                : undefined,
+              orgId,
+              groupId,
+              userId,
             });
             break;
           case 'announcement':
@@ -427,10 +431,10 @@ export async function POST(request: Request) {
       } else {
         response = await runAssistant({
           query: String((payload as any)?.prompt ?? ''),
-          context:
-            typeof (payload as any)?.context === 'string'
-              ? (payload as any).context
-              : undefined,
+          history: undefined,
+          orgId,
+          groupId,
+          userId,
         });
       }
     } catch (error) {

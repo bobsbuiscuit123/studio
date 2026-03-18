@@ -2,7 +2,7 @@
 
 import { runWithAiAction } from '@/ai/ai-action-context';
 import { MAX_ASSISTANT_PROMPT_CHARS, clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
-import { err, ok, type Result } from '@/lib/result';
+import { err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { headers, cookies } from 'next/headers';
 import { z } from 'zod';
@@ -20,6 +20,26 @@ const resolveOrigin = async () => {
 const getSelectedOrgId = async () => {
   const cookieStore = await cookies();
   return cookieStore.get('selectedOrgId')?.value ?? null;
+};
+
+export type AssistantHistoryItem = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type AssistantActionResult = {
+  tool: string;
+  input: Record<string, unknown>;
+  status: 'completed' | 'failed';
+  output?: unknown;
+  error?: string;
+};
+
+export type AssistantResponse = {
+  reply: string;
+  needsFollowup: boolean;
+  followupQuestion: string | null;
+  actions: AssistantActionResult[];
 };
 
 const callAiConsume = async <T>(
@@ -70,80 +90,10 @@ const callAiConsume = async <T>(
   return json as Result<T>;
 };
 
-export async function planTasksAction(query: string, context?: string) {
-  return runWithAiAction('planTasksAction', async () => {
-    const headerList = await headers();
-    const ip =
-      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      headerList.get('x-real-ip') ||
-      'unknown';
-    const limiter = rateLimit(`ai-plan:${ip}`, 30, 60_000);
-    if (!limiter.allowed) {
-      return err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: 'Too many requests. Please slow down.',
-        source: 'network',
-      });
-    }
-    const parsed = z.string().min(2).safeParse(query);
-    if (!parsed.success) {
-      return err({
-        code: 'VALIDATION',
-        message: parsed.error.errors[0]?.message ?? 'Invalid query.',
-        source: 'app',
-      });
-    }
-    const trimmedContext = clampAssistantPrompt(
-      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
-        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
-        : context
-    );
-    return callAiConsume('chat', 'plan_tasks', {
-      query: clampAssistantPrompt(query),
-      context: trimmedContext,
-    });
-  });
-}
-
-export async function resolveFollowUpAnswersAction(
-  questions: string[],
-  reply: string
+export async function runAssistantAction(
+  query: string,
+  history?: AssistantHistoryItem[]
 ) {
-  return runWithAiAction('resolveFollowUpAnswersAction', async () => {
-    const headerList = await headers();
-    const ip =
-      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      headerList.get('x-real-ip') ||
-      'unknown';
-    const limiter = rateLimit(`ai-followups:${ip}`, 30, 60_000);
-    if (!limiter.allowed) {
-      return err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: 'Too many requests. Please slow down.',
-        source: 'network',
-      });
-    }
-    const parsed = z
-      .object({
-        questions: z.array(z.string().min(1)).min(1),
-        reply: z.string().min(1),
-      })
-      .safeParse({ questions, reply });
-    if (!parsed.success) {
-      return err({
-        code: 'VALIDATION',
-        message: 'Invalid follow-up response.',
-        source: 'app',
-      });
-    }
-    return callAiConsume('chat', 'followups', {
-      questions,
-      reply: clampAssistantPrompt(reply),
-    });
-  });
-}
-
-export async function runAssistantAction(query: string, context?: string) {
   return runWithAiAction('runAssistantAction', async () => {
     const headerList = await headers();
     const ip =
@@ -166,49 +116,17 @@ export async function runAssistantAction(query: string, context?: string) {
         source: 'app',
       });
     }
-    const trimmedContext = clampAssistantPrompt(
-      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
-        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
-        : context
-    );
-    return callAiConsume('chat', 'assistant', {
+    const trimmedHistory = Array.isArray(history)
+      ? history
+          .slice(-3)
+          .map(item => ({
+            role: item.role,
+            content: clampAssistantPrompt(item.content).slice(-MAX_ASSISTANT_PROMPT_CHARS),
+          }))
+      : undefined;
+    return callAiConsume<AssistantResponse>('chat', 'assistant', {
       query: clampAssistantPrompt(query),
-      context: trimmedContext,
-    });
-  });
-}
-
-export async function routeAssistantQuestionAction(query: string, context?: string) {
-  return runWithAiAction('routeAssistantQuestionAction', async () => {
-    const headerList = await headers();
-    const ip =
-      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      headerList.get('x-real-ip') ||
-      'unknown';
-    const limiter = rateLimit(`ai-question-router:${ip}`, 40, 60_000);
-    if (!limiter.allowed) {
-      return err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: 'Too many requests. Please slow down.',
-        source: 'network',
-      });
-    }
-    const parsed = z.string().min(1).safeParse(query);
-    if (!parsed.success) {
-      return err({
-        code: 'VALIDATION',
-        message: parsed.error.errors[0]?.message ?? 'Invalid query.',
-        source: 'app',
-      });
-    }
-    const trimmedContext = clampAssistantPrompt(
-      context && context.length > MAX_ASSISTANT_PROMPT_CHARS
-        ? context.slice(-MAX_ASSISTANT_PROMPT_CHARS)
-        : context
-    );
-    return callAiConsume('chat', 'assistant_question', {
-      query: clampAssistantPrompt(query),
-      context: trimmedContext,
+      history: trimmedHistory,
     });
   });
 }
@@ -362,76 +280,6 @@ export async function resolveMissedActivityAction(summary: string) {
     return callAiConsume('chat', 'missed_activity', {
       summary: clampAssistantPrompt(summary),
     });
-  });
-}
-type TaskType =
-  | 'announcement'
-  | 'form'
-  | 'calendar'
-  | 'email'
-  | 'messages'
-  | 'gallery'
-  | 'transaction'
-  | 'other';
-
-export async function runTaskAction(
-  type: TaskType,
-  prompt: string
-): Promise<Result<unknown>> {
-  return runWithAiAction('runTaskAction', async () => {
-    const headerList = await headers();
-    const ip =
-      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      headerList.get('x-real-ip') ||
-      'unknown';
-    const limiter = rateLimit(`ai-task:${ip}`, 25, 60_000);
-    if (!limiter.allowed) {
-      return err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: 'Too many requests. Please slow down.',
-        source: 'network',
-      });
-    }
-    const parsed = z
-      .object({
-        type: z.string().min(1),
-        prompt: z.string().min(2),
-      })
-      .safeParse({ type, prompt });
-    if (!parsed.success) {
-      return err({
-        code: 'VALIDATION',
-        message: 'Invalid task request.',
-        source: 'app',
-      });
-    }
-    switch (type) {
-      case 'announcement':
-        return callAiConsume('chat', 'announcement', { prompt: clampAssistantPrompt(prompt) });
-      case 'form':
-        return callAiConsume('chat', 'form', { prompt: clampAssistantPrompt(prompt) });
-      case 'calendar':
-        return callAiConsume('chat', 'calendar', { prompt: clampAssistantPrompt(prompt) });
-      case 'email':
-        return callAiConsume('chat', 'email', { prompt: clampAssistantPrompt(prompt) });
-      case 'messages':
-        return callAiConsume('chat', 'messages', { prompt: clampAssistantPrompt(prompt) });
-      case 'gallery':
-        return callAiConsume('chat', 'gallery', { prompt: clampAssistantPrompt(prompt) });
-      case 'transaction':
-        return callAiConsume('chat', 'transaction', { prompt: clampAssistantPrompt(prompt) });
-      case 'other':
-        return ok({
-          message:
-            "Sorry - I can't do that in this app yet. I can help with announcements, forms, calendar events, emails, messages, gallery uploads, and transactions.",
-        });
-      default:
-        return err({
-          code: 'VALIDATION',
-          message: 'Task type not supported.',
-          source: 'app',
-        });
-    }
   });
 }
 

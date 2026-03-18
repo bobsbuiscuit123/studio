@@ -122,6 +122,13 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
 
   const context = contextResult.data;
   const query = clampAssistantPrompt(parsed.data.query).trim();
+  if (!query) {
+    return err({
+      code: 'VALIDATION',
+      message: 'Message cannot be empty.',
+      source: 'app',
+    });
+  }
   const history = toCompactHistory(parsed.data.history);
   const memberNames = context.members
     .slice(0, 12)
@@ -142,6 +149,8 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
       .join('\n\n')
   );
 
+  console.log('MESSAGE SENT TO GEMINI:', query);
+
   const planResult = await callAI<z.infer<typeof AssistantPlanSchema>>({
     responseFormat: 'json_object',
     outputSchema: AssistantPlanSchema,
@@ -156,17 +165,34 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
 
   const plan = planResult.data;
   if (plan.needs_followup) {
+    const followupReply = sanitizeAiText(plan.reply);
+    const followupQuestion = plan.followup_question ? sanitizeAiText(plan.followup_question) : null;
+    if (!followupReply && !followupQuestion) {
+      return err({
+        code: 'AI_BAD_RESPONSE',
+        message: 'AI returned an empty follow-up response.',
+        source: 'ai',
+      });
+    }
     return ok({
-      reply: sanitizeAiText(plan.reply || plan.followup_question || 'I need one more detail.'),
+      reply: followupReply || followupQuestion || '',
       needsFollowup: true,
-      followupQuestion: plan.followup_question,
+      followupQuestion,
       actions: [],
     });
   }
 
   if (plan.actions.length === 0) {
+    const reply = sanitizeAiText(plan.reply);
+    if (!reply) {
+      return err({
+        code: 'AI_BAD_RESPONSE',
+        message: 'AI returned an empty reply.',
+        source: 'ai',
+      });
+    }
     return ok({
-      reply: sanitizeAiText(plan.reply),
+      reply,
       needsFollowup: false,
       followupQuestion: null,
       actions: [],
@@ -178,8 +204,17 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
     return executionResult as Result<AssistantOutput>;
   }
 
+  const finalReply = sanitizeAiText(executionResult.data.reply || plan.reply);
+  if (!finalReply) {
+    return err({
+      code: 'AI_BAD_RESPONSE',
+      message: 'AI returned an empty reply.',
+      source: 'ai',
+    });
+  }
+
   return ok({
-    reply: sanitizeAiText(executionResult.data.reply || plan.reply),
+    reply: finalReply,
     needsFollowup: false,
     followupQuestion: null,
     actions: executionResult.data.results.map(item =>

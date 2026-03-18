@@ -116,6 +116,14 @@ export async function runAssistantAction(
         source: 'app',
       });
     }
+    const normalizedQuery = clampAssistantPrompt(query).trim();
+    if (!normalizedQuery) {
+      return err({
+        code: 'VALIDATION',
+        message: 'Message cannot be empty.',
+        source: 'app',
+      });
+    }
     const trimmedHistory = Array.isArray(history)
       ? history
           .slice(-3)
@@ -124,8 +132,10 @@ export async function runAssistantAction(
             content: clampAssistantPrompt(item.content).slice(-MAX_ASSISTANT_PROMPT_CHARS),
           }))
       : undefined;
+    console.log('EXTRACTED MESSAGE:', normalizedQuery);
     return callAiConsume<AssistantResponse>('chat', 'assistant', {
-      query: clampAssistantPrompt(query),
+      message: normalizedQuery,
+      query: normalizedQuery,
       history: trimmedHistory,
     });
   });

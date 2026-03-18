@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
+  console.log('REQUEST BODY:', body);
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -290,12 +291,32 @@ export async function POST(request: Request) {
       }
 
       const payload = parsed.data.payload as any;
+      const extractedMessage =
+        typeof payload?.message === 'string'
+          ? payload.message
+          : typeof payload?.query === 'string'
+            ? payload.query
+            : typeof payload?.prompt === 'string'
+              ? payload.prompt
+              : '';
+      const normalizedMessage = String(extractedMessage ?? '').trim();
+      console.log('EXTRACTED MESSAGE:', normalizedMessage);
       let response: unknown;
       try {
         switch (action) {
           case 'assistant':
+            if (!normalizedMessage) {
+              return {
+                body: err({
+                  code: 'VALIDATION',
+                  message: 'Message cannot be empty.',
+                  source: 'app',
+                }),
+                status: 400,
+              };
+            }
             response = await runAssistant({
-              query: String(payload.query ?? ''),
+              query: normalizedMessage,
               history: Array.isArray(payload.history)
                 ? payload.history.filter(
                     (item: unknown): item is { role: 'user' | 'assistant'; content: string } =>
@@ -429,8 +450,28 @@ export async function POST(request: Request) {
       if (feature === 'insights') {
         response = await resolveInsightRequest(payload as any);
       } else {
+        const extractedMessage =
+          typeof (payload as any)?.message === 'string'
+            ? (payload as any).message
+            : typeof (payload as any)?.query === 'string'
+              ? (payload as any).query
+              : typeof (payload as any)?.prompt === 'string'
+                ? (payload as any).prompt
+                : '';
+        const normalizedMessage = String(extractedMessage ?? '').trim();
+        console.log('EXTRACTED MESSAGE:', normalizedMessage);
+        if (!normalizedMessage) {
+          return {
+            body: err({
+              code: 'VALIDATION',
+              message: 'Message cannot be empty.',
+              source: 'app',
+            }),
+            status: 400,
+          };
+        }
         response = await runAssistant({
-          query: String((payload as any)?.prompt ?? ''),
+          query: normalizedMessage,
           history: undefined,
           orgId,
           groupId,

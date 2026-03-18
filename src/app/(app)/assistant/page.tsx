@@ -943,9 +943,11 @@ function AssistantPageInner() {
   const buildRecentContextForPlanner = () => {
     const roleLine = roleLoading
       ? 'User role is still loading. Do not restrict task types based on role yet.'
-      : canEditContent
-        ? 'User role: officer/admin. All task types allowed.'
-        : 'User role: member. Allowed tasks: messages and gallery only. Use chat responses for other requests.';
+      : `Current user role: ${canManageRoles ? 'Admin' : canEditContent ? 'Officer' : 'Member'}.
+Permissions:
+- Admin: can create/edit announcements, calendar events, forms, gallery items, messages, and finance entries; can view administrative analytics; can manage roles.
+- Officer: can create/edit announcements, calendar events, forms, gallery items, messages, and finance entries; can view administrative analytics; cannot manage roles.
+- Member: can use messages and gallery submission features only. Do not create announcements, calendar events, forms, or finance entries for members.`;
     const recentMessages = messages.slice(-RECENT_MESSAGES_LIMIT);
     const messageLines = recentMessages
       .map(msg => {
@@ -2225,16 +2227,11 @@ const buildFastPlan = (
             }
           : normalizedPlan;
         const planId = `plan-${Date.now()}`;
-        const allowedTaskTypes = roleLoading || canEditContent
-          ? null
-          : new Set<TaskType>(['messages', 'gallery']);
-        const rawTasks = allowedTaskTypes
-          ? effectivePlan.tasks.filter(task => allowedTaskTypes.has(task.type))
-          : effectivePlan.tasks;
+        const rawTasks = effectivePlan.tasks;
         const hasExplicitCalendarIntent = explicitCalendarIntentInText(values.query);
         const hasCalendarTask = rawTasks.some(task => task.type === 'calendar');
         const recoveredTasks =
-          (roleLoading || canEditContent) && hasExplicitCalendarIntent && !hasCalendarTask
+          hasExplicitCalendarIntent && !hasCalendarTask
             ? ([
                 ...rawTasks.filter(task => task.type !== 'other'),
                 {
@@ -2245,6 +2242,7 @@ const buildFastPlan = (
                 },
               ] satisfies PlannedTask[])
             : rawTasks;
+        const shouldUseLocalFollowUpRules = Boolean(fallbackFastPlan);
         const tasksWithLookupResults = recoveredTasks.map(task => {
           const lookupRecipients =
             task.recipientLookupId && lookupResolutions.has(task.recipientLookupId)
@@ -2259,32 +2257,11 @@ const buildFastPlan = (
           };
           return {
             ...taskWithRecipients,
-            followUpQuestions: getMandatoryFollowUps(taskWithRecipients),
+            followUpQuestions: shouldUseLocalFollowUpRules
+              ? getMandatoryFollowUps(taskWithRecipients)
+              : taskWithRecipients.followUpQuestions,
           };
         });
-        if (!roleLoading && !canEditContent && recoveredTasks.length === 0) {
-          const assistantMessage: ChatMessage = {
-            id: `assistant-${Date.now()}`,
-            sender: 'assistant',
-            text:
-              plan.reply?.trim() ||
-              Array.from(lookupResolutions.values())
-                .map(item => item.reply)
-                .find((value): value is string => Boolean(value?.trim())) ||
-              effectivePlan.summary ||
-              aiFallbackMessage,
-            startedAt: Date.now(),
-          };
-          setMessages(prev => [...prev, userMessage, assistantMessage]);
-          activeAutoscrollMessageIdRef.current = assistantMessage.id;
-          autoscrollDisabledForMessageRef.current.delete(assistantMessage.id);
-          setPendingPlan(null);
-          if (pendingAttachments.length > 0) {
-            setPendingAttachments([]);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-          }
-          return;
-        }
         const plannedTasks = hydrateTasksForDisplay(
           tasksWithLookupResults.map(task => ({
             ...task,
@@ -2852,7 +2829,7 @@ const buildFastPlan = (
   };
 
   const extractEventDate = (value: string) =>
-    value.match(/\btomorrow\b|\btonight\b|\bnext\s+\w+\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b/i)?.[0] ?? '';
+    value.match(/\btomorrow\b|\btonight\b|\bthis\s+(?:mon|tue|wed|thu|thur|fri|sat|sun)\w*\b|\bnext\s+\w+\b|\b(?:mon|tue|wed|thu|thur|fri|sat|sun)\w*\b|\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\w*\s+\d{1,2}(?:,\s*\d{4})?\b/i)?.[0] ?? '';
 
   const extractEventTime = (value: string) =>
     value.match(/\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b|\bnoon\b|\bmidnight\b/i)?.[0] ?? '';
@@ -3342,6 +3319,28 @@ const buildFastPlan = (
 
   const runTask = async (planId: string, task: PlannedTask) => {
     setSendingId(task.id);
+
+    const requiresContentEditPermission =
+      task.type === 'announcement' ||
+      task.type === 'calendar' ||
+      task.type === 'form' ||
+      task.type === 'transaction' ||
+      task.type === 'email';
+
+    if (!roleLoading && !canEditContent && requiresContentEditPermission) {
+      updatePlanTask(planId, task.id, t => ({
+        ...t,
+        status: 'error',
+        error: 'Your role cannot send this type of task.',
+      }));
+      toast({
+        title: 'Permission required',
+        description: 'Your role cannot send this type of task.',
+        variant: 'destructive',
+      });
+      setSendingId(null);
+      return;
+    }
 
     if (task.type === 'other') {
       updatePlanTask(planId, task.id, t => ({

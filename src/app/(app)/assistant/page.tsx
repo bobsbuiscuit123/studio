@@ -688,7 +688,7 @@ function AssistantPageInner() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const { user } = useCurrentUser();
-  const { canManageRoles } = useCurrentUserRole();
+  const { canEditContent, canManageRoles } = useCurrentUserRole();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -941,7 +941,7 @@ function AssistantPageInner() {
   };
 
   const buildRecentContextForPlanner = () => {
-    const roleLine = canManageRoles
+    const roleLine = canEditContent
       ? 'User role: officer/admin. All task types allowed.'
       : 'User role: member. Allowed tasks: messages and gallery only. Use chat responses for other requests.';
     const recentMessages = messages.slice(-RECENT_MESSAGES_LIMIT);
@@ -1217,7 +1217,7 @@ const buildFastPlan = (
         /\b(last|latest|recent|my)\b/.test(normalized));
 
     if (isAnnouncementLookup) {
-      if (!canManageRoles) {
+      if (!canEditContent) {
         return { reply: "You don't have access to announcement view data." };
       }
 
@@ -1283,7 +1283,7 @@ const buildFastPlan = (
     }
 
     if (lookup?.kind === 'form_non_viewers') {
-      if (!canManageRoles) {
+      if (!canEditContent) {
         return { reply: "You don't have access to form view data." };
       }
       const formList = Array.isArray(forms.data) ? forms.data : [];
@@ -1374,7 +1374,7 @@ const buildFastPlan = (
           date: item.date,
           attachments: item.attachments,
           linkedFormId: item.linkedFormId,
-          ...(canManageRoles
+          ...(canEditContent
             ? {
                 viewedByNames: Array.isArray(item.viewedBy)
                   ? item.viewedBy.map(resolveMemberName)
@@ -1399,7 +1399,7 @@ const buildFastPlan = (
             description: form.description,
             questions: form.questions,
             createdAt: form.createdAt,
-            ...(canManageRoles
+            ...(canEditContent
               ? {
                   viewedByNames: Array.isArray(form.viewedBy)
                     ? form.viewedBy.map(resolveMemberName)
@@ -1435,12 +1435,12 @@ const buildFastPlan = (
           hasTime: event.hasTime,
           points: event.points,
           rsvpRequired: event.rsvpRequired,
-          ...(canManageRoles ? { viewedBy: event.viewedBy, rsvps: event.rsvps } : {}),
+          ...(canEditContent ? { viewedBy: event.viewedBy, rsvps: event.rsvps } : {}),
         }))
       : [];
 
     const snapshot = {
-      capabilities: canManageRoles
+      capabilities: canEditContent
         ? {
             role: 'officer/admin',
             allowedTasks: [
@@ -1462,7 +1462,7 @@ const buildFastPlan = (
       announcements: announcementsSnapshot,
       forms: formsSnapshot,
       events: eventsSnapshot,
-      transactions: canManageRoles ? transactions.data ?? [] : [],
+      transactions: canEditContent ? transactions.data ?? [] : [],
       galleryImages: galleryImages.data ?? [],
       groupChats: groupChats.data ?? [],
       messages: messagesData.data ?? {},
@@ -2211,7 +2211,7 @@ const buildFastPlan = (
           })),
         };
         const planId = `plan-${Date.now()}`;
-        const allowedTaskTypes = canManageRoles
+        const allowedTaskTypes = canEditContent
           ? null
           : new Set<TaskType>(['messages', 'gallery']);
         const rawTasks = allowedTaskTypes
@@ -2220,7 +2220,7 @@ const buildFastPlan = (
         const hasExplicitCalendarIntent = explicitCalendarIntentInText(values.query);
         const hasCalendarTask = rawTasks.some(task => task.type === 'calendar');
         const recoveredTasks =
-          canManageRoles && hasExplicitCalendarIntent && !hasCalendarTask
+          canEditContent && hasExplicitCalendarIntent && !hasCalendarTask
             ? ([
                 ...rawTasks.filter(task => task.type !== 'other'),
                 {
@@ -2248,7 +2248,7 @@ const buildFastPlan = (
             followUpQuestions: getMandatoryFollowUps(taskWithRecipients),
           };
         });
-        if (!canManageRoles && recoveredTasks.length === 0) {
+        if (!canEditContent && recoveredTasks.length === 0) {
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',

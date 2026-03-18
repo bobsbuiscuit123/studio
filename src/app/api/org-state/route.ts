@@ -31,6 +31,56 @@ const uniqueStrings = (values: unknown[]) =>
     )
   );
 
+const mergeAnnouncements = (
+  currentAnnouncements: unknown,
+  nextAnnouncements: unknown,
+  actorEmail?: string | null
+) => {
+  const currentList = Array.isArray(currentAnnouncements) ? currentAnnouncements : [];
+  const nextList = Array.isArray(nextAnnouncements) ? nextAnnouncements : [];
+  const currentById = new Map<string, Record<string, any>>();
+  const normalizedActorEmail = actorEmail ? normalizeEmail(actorEmail) : '';
+
+  currentList.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const idValue = (item as { id?: unknown }).id;
+    const announcementId =
+      typeof idValue === 'string' || typeof idValue === 'number' ? String(idValue) : '';
+    if (!announcementId) return;
+    currentById.set(announcementId, item as Record<string, any>);
+  });
+
+  return nextList.map(item => {
+    if (!item || typeof item !== 'object') return item;
+    const nextAnnouncement = item as Record<string, any>;
+    const idValue = nextAnnouncement.id;
+    const announcementId =
+      typeof idValue === 'string' || typeof idValue === 'number' ? String(idValue) : '';
+    if (!announcementId) return item;
+
+    const currentAnnouncement = currentById.get(announcementId);
+    if (!currentAnnouncement) return item;
+
+    const currentViewed = uniqueStrings(
+      Array.isArray(currentAnnouncement.viewedBy) ? currentAnnouncement.viewedBy : []
+    ).map(normalizeEmail);
+    const nextViewed = uniqueStrings(
+      Array.isArray(nextAnnouncement.viewedBy) ? nextAnnouncement.viewedBy : []
+    ).map(normalizeEmail);
+
+    const mergedViewed = uniqueStrings([...currentViewed, ...nextViewed]).map(normalizeEmail);
+    if (normalizedActorEmail && !mergedViewed.includes(normalizedActorEmail)) {
+      mergedViewed.push(normalizedActorEmail);
+    }
+
+    return {
+      ...nextAnnouncement,
+      viewedBy: mergedViewed,
+      read: Boolean(nextAnnouncement.read) || Boolean(currentAnnouncement.read) || Boolean(normalizedActorEmail),
+    };
+  });
+};
+
 const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: string | null) => {
   const currentList = Array.isArray(currentEvents) ? currentEvents : [];
   const nextList = Array.isArray(nextEvents) ? nextEvents : [];
@@ -130,6 +180,22 @@ const stripCollaborativeEventFields = (events: unknown) => {
   });
 };
 
+const stripCollaborativeAnnouncementFields = (announcements: unknown) => {
+  if (!Array.isArray(announcements)) return [];
+
+  return announcements.map(item => {
+    if (!item || typeof item !== 'object') return item;
+
+    const {
+      viewedBy: _viewedBy,
+      read: _read,
+      ...rest
+    } = item as Record<string, unknown>;
+
+    return rest;
+  });
+};
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =
@@ -223,6 +289,7 @@ export async function POST(request: Request) {
   const nextData = parsed.data.data as Record<string, any>;
   const mergedData = {
     ...nextData,
+    announcements: mergeAnnouncements(currentData.announcements, nextData.announcements, userData.user.email),
     events: mergeEvents(currentData.events, nextData.events, userData.user.email),
   };
   const groupRole = normalizeGroupRole(membership.role);
@@ -236,7 +303,8 @@ export async function POST(request: Request) {
   }
 
   const announcementsChanged =
-    stableSerialize(currentData.announcements ?? null) !== stableSerialize(nextData.announcements ?? null);
+    stableSerialize(stripCollaborativeAnnouncementFields(currentData.announcements)) !==
+    stableSerialize(stripCollaborativeAnnouncementFields(nextData.announcements));
   const eventContentChanged =
     stableSerialize(stripCollaborativeEventFields(currentData.events)) !==
     stableSerialize(stripCollaborativeEventFields(nextData.events));

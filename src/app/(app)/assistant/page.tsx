@@ -1,15 +1,5 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Send } from 'lucide-react';
-
-/*
-Previous assistant implementation preserved for later restore:
-
-'use client';
-
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Loader2, Send, User as UserIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -282,42 +272,6 @@ export default function AssistantPage() {
               )}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-*/
-
-export default function AssistantPage() {
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Assistant</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="flex h-[60vh] items-center justify-center rounded-xl border bg-muted/20 px-6 text-center">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-tight">Unavailable right now</h2>
-                <p className="mt-3 text-sm text-muted-foreground">Coming soon.</p>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <Input
-                value=""
-                readOnly
-                disabled
-                placeholder="Assistant is unavailable right now."
-                autoComplete="off"
-              />
-              <Button type="button" disabled>
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>

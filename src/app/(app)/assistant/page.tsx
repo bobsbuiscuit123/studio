@@ -132,37 +132,52 @@ export default function AssistantPage() {
   };
 
   const onSubmit = form.handleSubmit(async values => {
+    console.log('SUBMIT CLICKED');
     if (isRunning) return;
-    const query = values.query.trim();
-    if (!query) return;
+    const inputValue = values.query.trim();
+    console.log('USER INPUT:', inputValue);
+    if (!inputValue) return;
 
     const nextHistory = [
       ...messages,
       {
         id: `user-${Date.now()}`,
         role: 'user' as const,
-        content: query,
+        content: inputValue,
       },
     ];
 
     form.reset();
     setIsRunning(true);
     await appendMessages(nextHistory);
+    try {
+      console.log('START REQUEST');
+      console.log('CALLING runAssistantAction');
+      const result = await runAssistantAction(inputValue, toHistoryPayload(messages));
+      console.log('RESULT:', result);
+      console.log('SUCCESS:', result);
+      setIsRunning(false);
 
-    const result = await runAssistantAction(query, toHistoryPayload(messages));
-    setIsRunning(false);
+      if (!result.ok) {
+        toast({
+          title: 'Assistant error',
+          description: result.error.message,
+          variant: 'destructive',
+        });
+        return;
+      }
 
-    if (!result.ok) {
+      notifyOrgAiUsageChanged(undefined, 1);
+      await handleAssistantResponse(nextHistory, result.data);
+    } catch (err) {
+      setIsRunning(false);
+      console.error('FRONTEND ERROR:', err);
       toast({
         title: 'Assistant error',
-        description: result.error.message,
+        description: 'Request failed before reaching the server.',
         variant: 'destructive',
       });
-      return;
     }
-
-    notifyOrgAiUsageChanged(undefined, 1);
-    await handleAssistantResponse(nextHistory, result.data);
   });
 
   return (
@@ -244,7 +259,12 @@ export default function AssistantPage() {
               disabled={isRunning}
               autoComplete="off"
             />
-            <Button type="submit" disabled={isRunning} className={aiSparkle}>
+            <Button
+              type="submit"
+              onClick={() => console.log('SUBMIT CLICKED')}
+              disabled={isRunning}
+              className={aiSparkle}
+            >
               {isRunning ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (

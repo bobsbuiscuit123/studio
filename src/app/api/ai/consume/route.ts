@@ -81,13 +81,17 @@ export async function POST(request: Request) {
 
     const headerList = await headers();
     const cookieStore = await cookies();
+    const payload = parsed.data.payload as Record<string, unknown> | undefined;
     const orgId = parsed.data.orgId || cookieStore.get('selectedOrgId')?.value;
-    const groupId = cookieStore.get('selectedGroupId')?.value;
+    const groupId =
+      cookieStore.get('selectedGroupId')?.value ||
+      (typeof payload?.groupId === 'string' ? payload.groupId : undefined) ||
+      orgId;
     if (!orgId) {
       return errorResponse(new Error('Missing organization.'), 500);
     }
     if (!groupId) {
-      return errorResponse(new Error('Missing group.'), 500);
+      console.warn('No groupId found, continuing without it');
     }
 
     const supabase = await createSupabaseServerClient();
@@ -106,7 +110,6 @@ export async function POST(request: Request) {
     }
 
     const admin = createSupabaseAdmin();
-    const payload = parsed.data.payload as Record<string, unknown> | undefined;
     const feature = parsed.data.feature;
     const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);
 
@@ -144,54 +147,54 @@ export async function POST(request: Request) {
                 )
               : undefined,
             orgId,
-            groupId,
+            groupId: groupId || orgId,
             userId,
           });
           break;
         case 'announcement':
-          result = await generateClubAnnouncement(payload);
+          result = await generateClubAnnouncement(payload as any);
           break;
         case 'form':
-          result = await generateClubForm(payload);
+          result = await generateClubForm(payload as any);
           break;
         case 'calendar':
-          result = await addCalendarEvent(payload);
+          result = await addCalendarEvent(payload as any);
           break;
         case 'email':
-          result = await generateEmail(payload);
+          result = await generateEmail(payload as any);
           break;
         case 'messages':
-          result = await generateMessage(payload);
+          result = await generateMessage(payload as any);
           break;
         case 'gallery':
-          result = await generateGalleryDescription(payload);
+          result = await generateGalleryDescription(payload as any);
           break;
         case 'transaction':
-          result = await addTransaction(payload);
+          result = await addTransaction(payload as any);
           break;
         case 'social':
-          result = await generateSocialMediaPost(payload);
+          result = await generateSocialMediaPost(payload as any);
           break;
         case 'slides':
-          result = await generateMeetingSlides(payload);
+          result = await generateMeetingSlides(payload as any);
           break;
         case 'announcement_recipients':
-          result = await resolveAnnouncementRecipients(payload);
+          result = await resolveAnnouncementRecipients(payload as any);
           break;
         case 'metric':
-          result = await resolveMetricValue(payload);
+          result = await resolveMetricValue(payload as any);
           break;
         case 'graph':
-          result = await resolveGraphRequest(payload);
+          result = await resolveGraphRequest(payload as any);
           break;
         case 'missed_activity':
-          result = await resolveMissedActivity(payload);
+          result = await resolveMissedActivity(payload as any);
           break;
         default:
           return errorResponse(new Error('Unknown AI action.'), 500);
       }
     } else if (feature === 'insights') {
-      result = await resolveInsightRequest(payload);
+      result = await resolveInsightRequest(payload as any);
     } else {
       if (!message) {
         return errorResponse(new Error('AI returned null'), 500);
@@ -200,7 +203,7 @@ export async function POST(request: Request) {
         query: message,
         history: undefined,
         orgId,
-        groupId,
+        groupId: groupId || orgId,
         userId,
       });
     }

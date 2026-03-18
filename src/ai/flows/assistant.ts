@@ -12,7 +12,7 @@ const AssistantInputSchema = z.object({
   query: z.string().min(1),
   history: z.array(AssistantHistoryMessageSchema).optional(),
   orgId: z.string().uuid(),
-  groupId: z.string(),
+  groupId: z.string().nullable(),
   userId: z.string().uuid(),
 });
 

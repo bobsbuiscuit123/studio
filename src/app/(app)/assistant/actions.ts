@@ -9,14 +9,6 @@ import { z } from 'zod';
 
 const AI_CONSUME_TIMEOUT_MS = 20_000;
 
-const resolveOrigin = async () => {
-  const headerList = await headers();
-  return (
-    headerList.get('origin') ||
-    `${headerList.get('x-forwarded-proto') || 'http'}://${headerList.get('x-forwarded-host') || 'localhost:3000'}`
-  );
-};
-
 const getSelectedOrgId = async () => {
   const cookieStore = await cookies();
   return cookieStore.get('selectedOrgId')?.value ?? null;
@@ -47,17 +39,14 @@ const callAiConsume = async <T>(
   action: string,
   payload: unknown
 ): Promise<Result<T>> => {
-  const origin = await resolveOrigin();
-  const headerList = await headers();
-  const cookieHeader = headerList.get('cookie') ?? '';
   const orgId = await getSelectedOrgId();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), AI_CONSUME_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch(`${origin}/api/ai/consume`, {
+    response = await fetch('/api/ai/consume', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', cookie: cookieHeader },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orgId, feature, action, payload }),
       cache: 'no-store',
       signal: controller.signal,
@@ -80,14 +69,34 @@ const callAiConsume = async <T>(
     clearTimeout(timeout);
   }
   const json = await response.json().catch(() => null);
-  if (!json || typeof json !== 'object' || !('ok' in json)) {
+  if (!json || typeof json !== 'object') {
     return err({
       code: 'NETWORK_HTTP_ERROR',
       message: 'Invalid server response.',
       source: 'network',
     });
   }
-  return json as Result<T>;
+  if ('ok' in json) {
+    return json as Result<T>;
+  }
+  if ('success' in json && json.success === true) {
+    return { ok: true, data: (json as { data: T }).data };
+  }
+  if ('error' in json && (json as { error?: unknown }).error) {
+    return err({
+      code: 'NETWORK_HTTP_ERROR',
+      message:
+        typeof (json as { message?: unknown }).message === 'string'
+          ? (json as { message: string }).message
+          : 'Request failed.',
+      source: 'network',
+    });
+  }
+  return err({
+    code: 'NETWORK_HTTP_ERROR',
+    message: 'Invalid server response.',
+    source: 'network',
+  });
 };
 
 export async function runAssistantAction(

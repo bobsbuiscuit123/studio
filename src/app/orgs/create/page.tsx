@@ -25,7 +25,7 @@ export default function OrgCreatePage() {
   const [maxUserLimit, setMaxUserLimit] = useState(25);
   const [dailyCreditPerUser, setDailyCreditPerUser] = useState(40);
   const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [createdOrg, setCreatedOrg] = useState<{ orgId: string; joinCode: string } | null>(null);
 
   const pricing = useMemo(
@@ -34,6 +34,7 @@ export default function OrgCreatePage() {
   );
 
   const normalizedJoinCode = createJoinCode.trim().toUpperCase();
+  const checkoutJoinCodePreview = normalizedJoinCode || 'AUTO-GENERATED';
 
   const handleCreateOrg = async () => {
     if (!orgName.trim()) {
@@ -129,23 +130,38 @@ export default function OrgCreatePage() {
         {createdOrg ? (
           <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
             <CardHeader>
+              <CardTitle className="text-2xl">Organization Created</CardTitle>
+              <CardDescription>Your organization is ready. Share this join code with members so they can join.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
+                <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
+              </div>
+              <p className="text-sm text-slate-600">You can now continue into the workspace and finish the rest of your setup there.</p>
+            </CardContent>
+            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
+              <Button variant="outline" onClick={handleCopyJoinCode}>
+                Copy join code
+              </Button>
+              <Button className="flex-1" onClick={handleContinue}>
+                Continue to workspace
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : step === 3 ? (
+          <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
+            <CardHeader>
               <CardTitle className="text-2xl">Checkout</CardTitle>
-              <CardDescription>Review your saved plan and continue. You can set up IAP later.</CardDescription>
+              <CardDescription>Review your saved plan before purchase.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="space-y-5">
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-                  <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
-                  <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <h3 className="text-base font-semibold text-slate-900">Set up billing later</h3>
-                  <div className="mt-4 space-y-3 text-sm text-slate-600">
-                    <p>Your organization is already created and ready to use.</p>
-                    <p>Invite members with the join code above.</p>
-                    <p>You can come back later to connect in-app purchases without blocking access today.</p>
-                  </div>
-                </div>
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code Preview</p>
+                <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{checkoutJoinCodePreview}</p>
+                <p className="mt-3 text-xs text-slate-500">
+                  {normalizedJoinCode ? 'Your custom join code will be used after purchase.' : 'A join code will be generated after purchase.'}
+                </p>
               </div>
               <Card className="border border-slate-200 bg-slate-50/80 shadow-sm">
                 <CardHeader className="pb-3">
@@ -181,11 +197,11 @@ export default function OrgCreatePage() {
               </Card>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <Button variant="outline" onClick={handleCopyJoinCode}>
-                Copy join code
+              <Button variant="outline" onClick={() => setStep(2)}>
+                Back
               </Button>
-              <Button className="flex-1" onClick={handleContinue}>
-                Set up IAP later
+              <Button className="flex-1" onClick={handleCreateOrg} disabled={createSubmitting}>
+                {createSubmitting ? 'Creating organization...' : 'Buy'}
               </Button>
             </CardFooter>
           </Card>
@@ -331,8 +347,8 @@ export default function OrgCreatePage() {
                   {step === 1 ? 'Next: Plan preferences' : 'Back to details'}
                 </Button>
                 {step === 2 && (
-                  <Button onClick={handleCreateOrg} disabled={createSubmitting} className="flex-1">
-                    {createSubmitting ? 'Creating organization...' : 'Create organization'}
+                  <Button onClick={() => setStep(3)} className="flex-1">
+                    Continue to checkout
                   </Button>
                 )}
               </div>

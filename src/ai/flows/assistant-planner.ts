@@ -110,6 +110,7 @@ Rules:
 - For calendar extraction:
   - "for pumpkin carving contest" means topic/title = "pumpkin carving contest"
   - "this saturday" counts as the date
+  - relative dates like "today", "tomorrow", "this saturday", and "next monday" count as already-provided dates
   - if both are present, ask no follow-up
 - For announcements, do NOT ask for date/time/location/event details unless the user explicitly asks to include them.
 - Do NOT create calendar just because the user mentioned an event. Calendar only when they explicitly ask to create/add/schedule/put on calendar.

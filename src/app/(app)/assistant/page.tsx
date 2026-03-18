@@ -941,6 +941,8 @@ function AssistantPageInner() {
   };
 
   const buildRecentContextForPlanner = () => {
+    const nowLocal = new Date();
+    const currentDateLine = `Current local date: ${nowLocal.toLocaleDateString('en-US')} (${nowLocal.toLocaleDateString('en-US', { weekday: 'long' })}). Resolve relative dates like "this Saturday" using this local date.`;
     const roleLine = roleLoading
       ? 'User role is still loading. Do not restrict task types based on role yet.'
       : `Current user role: ${canManageRoles ? 'Admin' : canEditContent ? 'Officer' : 'Member'}.
@@ -976,6 +978,7 @@ Permissions:
         : [];
 
     const blocks = [
+      currentDateLine,
       roleLine,
       messageLines.join('\n'),
       recentFormLines.join('\n'),

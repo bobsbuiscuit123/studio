@@ -1,9 +1,11 @@
 'use server';
 
 import { runWithAiAction } from '@/ai/ai-action-context';
+import { runAssistant } from '@/ai/flows/assistant';
 import { MAX_ASSISTANT_PROMPT_CHARS, clampAssistantPrompt } from '@/ai/flows/assistant-prompt-limit';
 import { err, type Result } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { headers, cookies } from 'next/headers';
 import { z } from 'zod';
 
@@ -159,10 +161,35 @@ export async function runAssistantAction(
           }))
       : undefined;
     console.log('EXTRACTED MESSAGE:', normalizedQuery);
-    return callAiConsume<AssistantResponse>('chat', 'assistant', {
-      message: normalizedQuery,
+    const cookieStore = await cookies();
+    const orgId = await getSelectedOrgId();
+    const groupId =
+      cookieStore.get('selectedGroupId')?.value ||
+      cookieStore.get('selectedOrgId')?.value ||
+      orgId;
+    if (!orgId) {
+      return err({
+        code: 'VALIDATION',
+        message: 'Missing organization.',
+        source: 'app',
+      });
+    }
+    const supabase = await createSupabaseServerClient();
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      return err({
+        code: 'VALIDATION',
+        message: 'Unauthorized.',
+        source: 'app',
+      });
+    }
+    return runAssistant({
       query: normalizedQuery,
       history: trimmedHistory,
+      orgId,
+      groupId: groupId ?? null,
+      userId,
     });
   });
 }

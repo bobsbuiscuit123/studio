@@ -2262,7 +2262,7 @@ const buildFastPlan = (
             ...taskWithRecipients,
             followUpQuestions: shouldUseLocalFollowUpRules
               ? getMandatoryFollowUps(taskWithRecipients)
-              : removeRedundantFollowUps(taskWithRecipients),
+              : removeRedundantFollowUps(taskWithRecipients, values.query),
           };
         });
         const plannedTasks = hydrateTasksForDisplay(
@@ -2901,10 +2901,13 @@ const buildFastPlan = (
     return task.followUpQuestions;
   };
 
-  const removeRedundantFollowUps = (task: PlannedTask) => {
+  const removeRedundantFollowUps = (task: PlannedTask, sourceText?: string) => {
     const questions = Array.isArray(task.followUpQuestions) ? task.followUpQuestions : [];
     if (questions.length === 0) return task.followUpQuestions;
-    const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+    const combined = [sourceText?.trim(), task.prompt?.trim(), task.clarification?.trim()]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
     if (!combined) return task.followUpQuestions;
 
     if (task.type === 'calendar') {

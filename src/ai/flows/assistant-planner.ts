@@ -92,7 +92,7 @@ Capabilities + required fields:
 - announcement: create reminder/update for members; core message alone is enough
 - email: create email; core message alone is enough
 - messages: DM/group message; recipient required
-- calendar: create event; topic/title + date + time required
+- calendar: create event; topic/title + date required. Time optional. Location optional.
 - form: create form; actual questions required
 - gallery: add gallery images; at least one image required
 - transaction: finance entry; amount required
@@ -100,6 +100,7 @@ Capabilities + required fields:
 Rules:
 - Preserve exact wording when useful.
 - Ask follow-ups only for truly required missing fields. If the task can already be done in-app, ask none.
+- For calendar tasks, only ask for missing required fields: topic/title and date. Do not ask for time or location unless the user explicitly wants to include them.
 - For announcements, do NOT ask for date/time/location/event details unless the user explicitly asks to include them.
 - Do NOT create calendar just because the user mentioned an event. Calendar only when they explicitly ask to create/add/schedule/put on calendar.
 - If user asks a question about existing app data, prefer lookups or reply, not task boxes.

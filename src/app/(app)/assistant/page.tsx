@@ -1085,7 +1085,6 @@ const buildFastPlan = (
 
       if (type === 'calendar') {
         if (!hasDate) followUpQuestions.push('What is the event date?');
-        if (!hasTime) followUpQuestions.push('What time is the event?');
         if (!/\b(it'?s|it is|called|named)\b/.test(lower) && !/\bhalloween social\b/.test(lower)) {
           followUpQuestions.push('What is the event about?');
         }
@@ -2848,11 +2847,10 @@ const buildFastPlan = (
   const getCalendarFollowUps = (task: PlannedTask) => {
     const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
     if (!combined) {
-      return ['What is the event date?', 'What time is the event?', 'What is the event about?'];
+      return ['What is the event date?', 'What is the event about?'];
     }
     const missing: string[] = [];
     if (!extractEventDate(combined)) missing.push('What is the event date?');
-    if (!extractEventTime(combined)) missing.push('What time is the event?');
     if (!extractEventTopic(combined)) missing.push('What is the event about?');
     return missing;
   };

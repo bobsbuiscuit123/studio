@@ -2835,6 +2835,8 @@ const buildFastPlan = (
   const extractEventTopic = (value: string) => {
     const normalized = value.trim();
     const explicitMatch =
+      normalized.match(/\b(?:calendar|event)\s+for\s+([^,.!?]+?)(?:\s+(?:on|this|next|tomorrow|tonight|at|in)\b|$)/i) ??
+      normalized.match(/\b(?:calendar|event)\s+about\s+([^,.!?]+?)(?:\s+(?:on|this|next|tomorrow|tonight|at|in)\b|$)/i) ??
       normalized.match(/\bit'?s\s+(?:a|an)\s+([^,.!?]+)/i) ??
       normalized.match(/\bit is\s+(?:a|an)\s+([^,.!?]+)/i) ??
       normalized.match(/\bcalled\s+([^,.!?]+)/i) ??

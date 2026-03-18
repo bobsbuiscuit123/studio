@@ -2840,6 +2840,95 @@ const buildFastPlan = (
   const extractEventLocation = (value: string) =>
     value.match(/\bat\s+([^,.!?]+(?:school|center|hall|room|gym|auditorium|cafeteria|library|park)?)\b/i)?.[1]?.trim() ?? '';
 
+  const resolveEventDateToIso = (dateText?: string, timeText?: string) => {
+    const rawDate = String(dateText ?? '').trim().toLowerCase();
+    const rawTime = String(timeText ?? '').trim();
+    const now = new Date();
+    const base = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0);
+    const weekdayMap: Record<string, number> = {
+      sunday: 0,
+      sun: 0,
+      monday: 1,
+      mon: 1,
+      tuesday: 2,
+      tue: 2,
+      tues: 2,
+      wednesday: 3,
+      wed: 3,
+      thursday: 4,
+      thu: 4,
+      thur: 4,
+      thurs: 4,
+      friday: 5,
+      fri: 5,
+      saturday: 6,
+      sat: 6,
+    };
+
+    const applyTime = (target: Date) => {
+      if (!rawTime) return target;
+      const lowerTime = rawTime.toLowerCase();
+      if (lowerTime === 'noon') {
+        target.setHours(12, 0, 0, 0);
+        return target;
+      }
+      if (lowerTime === 'midnight') {
+        target.setHours(0, 0, 0, 0);
+        return target;
+      }
+      const match = lowerTime.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
+      if (!match) return target;
+      let hour = Number(match[1] ?? 0);
+      const minute = Number(match[2] ?? 0);
+      const meridiem = match[3];
+      if (meridiem === 'pm' && hour < 12) hour += 12;
+      if (meridiem === 'am' && hour === 12) hour = 0;
+      target.setHours(hour, minute, 0, 0);
+      return target;
+    };
+
+    const resolveWeekday = (targetWeekday: number, mode: 'this' | 'next' | 'plain') => {
+      const currentWeekday = base.getDay();
+      let daysAhead = (targetWeekday - currentWeekday + 7) % 7;
+      if (mode === 'next') {
+        daysAhead = daysAhead === 0 ? 7 : daysAhead + 7;
+      } else if (mode === 'plain' && daysAhead === 0) {
+        daysAhead = 7;
+      }
+      const target = new Date(base);
+      target.setDate(base.getDate() + daysAhead);
+      return applyTime(target);
+    };
+
+    if (!rawDate) {
+      return applyTime(new Date(base)).toISOString();
+    }
+    if (rawDate === 'today') return applyTime(new Date(base)).toISOString();
+    if (rawDate === 'tonight' || rawDate === 'tomorrow' || rawDate === 'tomorow') {
+      const target = new Date(base);
+      target.setDate(base.getDate() + 1);
+      return applyTime(target).toISOString();
+    }
+
+    const thisMatch = rawDate.match(/^this\s+(\w+)$/);
+    if (thisMatch?.[1] && weekdayMap[thisMatch[1]] !== undefined) {
+      return resolveWeekday(weekdayMap[thisMatch[1]], 'this').toISOString();
+    }
+    const nextMatch = rawDate.match(/^next\s+(\w+)$/);
+    if (nextMatch?.[1] && weekdayMap[nextMatch[1]] !== undefined) {
+      return resolveWeekday(weekdayMap[nextMatch[1]], 'next').toISOString();
+    }
+    if (weekdayMap[rawDate] !== undefined) {
+      return resolveWeekday(weekdayMap[rawDate], 'plain').toISOString();
+    }
+
+    const parsed = new Date([rawDate, rawTime].filter(Boolean).join(' ').trim());
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+    return applyTime(new Date(base)).toISOString();
+  };
+
   const extractEventTopic = (value: string) => {
     const normalized = value.trim();
     const explicitMatch =
@@ -3117,12 +3206,9 @@ const buildFastPlan = (
         const topicText = extractEventTopic(combined);
         const locationText = extractEventLocation(combined);
         const title = startCase(topicText || cleanedIntent || 'Event').slice(0, 80) || 'Event';
-        const parsedDate = new Date(
-          `${dateText || new Date().toLocaleDateString()} ${timeText || ''}`.trim()
-        );
         return {
           title,
-          date: Number.isNaN(parsedDate.getTime()) ? new Date().toISOString() : parsedDate.toISOString(),
+          date: resolveEventDateToIso(dateText, timeText),
           location: locationText,
           description: topicText ? `${startCase(topicText)}` : combined,
           hasTime: Boolean(timeText),
@@ -3846,17 +3932,12 @@ const buildFastPlan = (
             values.title || deriveShortFieldFromDraft(draft, task.prompt, 'Event', 80);
           const dateText = values.date || '';
           const timeText = values.time || '';
-          const combinedDate = [dateText, timeText && timeText.toLowerCase() !== 'na' ? timeText : '']
-            .filter(Boolean)
-            .join(' ')
-            .trim();
-          const parsedDate = combinedDate ? new Date(combinedDate) : new Date(dateText);
           return {
             title,
-            date:
-              !Number.isNaN(parsedDate.getTime()) && (dateText || timeText)
-                ? parsedDate.toISOString()
-                : new Date().toISOString(),
+            date: resolveEventDateToIso(
+              dateText,
+              timeText && timeText.toLowerCase() !== 'na' ? timeText : ''
+            ),
             location: values.location && values.location.toLowerCase() !== 'na' ? values.location : '',
             description: values.details || '',
             hasTime: Boolean(timeText && timeText.toLowerCase() !== 'na'),

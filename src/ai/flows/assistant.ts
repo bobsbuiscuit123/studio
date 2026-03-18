@@ -148,22 +148,68 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
       .filter(Boolean)
       .join('\n\n')
   );
+  const cappedDeveloperPrompt = clampAssistantPrompt(developerPrompt);
 
   console.log('MESSAGE SENT TO GEMINI:', query);
 
-  const planResult = await callAI<z.infer<typeof AssistantPlanSchema>>({
-    responseFormat: 'json_object',
-    outputSchema: AssistantPlanSchema,
-    messages: [
-      { role: 'system', content: GEMINI_SYSTEM_PROMPT },
-      { role: 'developer', content: developerPrompt },
-      { role: 'user', content: query },
-    ],
-  });
+  let responseText = '';
+  try {
+    const rawResult = await callAI({
+      responseFormat: 'json_object',
+      messages: [
+        { role: 'system', content: clampAssistantPrompt(GEMINI_SYSTEM_PROMPT) },
+        { role: 'developer', content: cappedDeveloperPrompt },
+        { role: 'user', content: query },
+      ],
+    });
 
-  if (!planResult.ok) return planResult as Result<AssistantOutput>;
+    if (!rawResult.ok) {
+      console.error('GEMINI ERROR:', rawResult.error);
+      return rawResult as Result<AssistantOutput>;
+    }
 
-  const plan = planResult.data;
+    responseText = String(rawResult.data ?? '').trim();
+    console.log('RAW GEMINI RESPONSE:', responseText);
+  } catch (error) {
+    console.error('GEMINI ERROR:', error);
+    return err({
+      code: 'AI_PROVIDER_ERROR',
+      message: error instanceof Error ? error.message : 'AI request failed',
+      source: 'ai',
+      retryable: true,
+    });
+  }
+
+  let parsedResponse: unknown;
+  try {
+    parsedResponse = JSON.parse(responseText);
+  } catch (error) {
+    console.error('GEMINI ERROR:', error);
+    console.log('RAW GEMINI RESPONSE:', responseText);
+    return err({
+      code: 'AI_BAD_RESPONSE',
+      message: 'AI returned invalid JSON.',
+      detail: responseText,
+      source: 'ai',
+      retryable: true,
+    });
+  }
+
+  const parsedPlan = AssistantPlanSchema.safeParse(parsedResponse);
+  if (!parsedPlan.success) {
+    console.error('GEMINI ERROR:', parsedPlan.error);
+    console.log('PARSED RESPONSE:', parsedResponse);
+    return err({
+      code: 'AI_SCHEMA_INVALID',
+      message: 'AI response validation failed.',
+      detail: parsedPlan.error.message,
+      source: 'ai',
+      retryable: true,
+    });
+  }
+
+  const plan = parsedPlan.data;
+  console.log('PARSED RESPONSE:', plan);
   if (plan.needs_followup) {
     const followupReply = sanitizeAiText(plan.reply);
     const followupQuestion = plan.followup_question ? sanitizeAiText(plan.followup_question) : null;

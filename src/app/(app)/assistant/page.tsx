@@ -2220,7 +2220,7 @@ const buildFastPlan = (
         const hasExplicitCalendarIntent = explicitCalendarIntentInText(values.query);
         const hasCalendarTask = rawTasks.some(task => task.type === 'calendar');
         const recoveredTasks =
-          hasExplicitCalendarIntent && !hasCalendarTask
+          canManageRoles && hasExplicitCalendarIntent && !hasCalendarTask
             ? ([
                 ...rawTasks.filter(task => task.type !== 'other'),
                 {
@@ -2248,7 +2248,7 @@ const buildFastPlan = (
             followUpQuestions: getMandatoryFollowUps(taskWithRecipients),
           };
         });
-        if (!canManageRoles && rawTasks.length === 0) {
+        if (!canManageRoles && recoveredTasks.length === 0) {
           const assistantMessage: ChatMessage = {
             id: `assistant-${Date.now()}`,
             sender: 'assistant',

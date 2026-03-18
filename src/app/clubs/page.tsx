@@ -544,14 +544,14 @@ export default function ClubsPage() {
         <Button variant="outline" onClick={() => setIsProfileOpen(true)}>
           <User className="mr-2" /> Profile
         </Button>
-        {orgStatus?.role?.toLowerCase() === "owner" ? (
-          <Button variant="outline" onClick={() => setIsDeleteOrgOpen(true)}>
-            <Trash2 className="mr-2" /> Delete Organization
-          </Button>
-        ) : null}
         <Button variant="outline" onClick={handleLogout}>
           <LogIn className="mr-2" /> Log Out
         </Button>
+        {orgStatus?.role?.toLowerCase() === "owner" ? (
+          <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)}>
+            <Trash2 className="mr-2" /> Delete Organization
+          </Button>
+        ) : null}
       </div>
       <AlertDialog open={isDeleteOrgOpen} onOpenChange={setIsDeleteOrgOpen}>
         <AlertDialogContent>

@@ -2222,12 +2222,16 @@ const buildFastPlan = (
             task.recipientLookupId && lookupResolutions.has(task.recipientLookupId)
               ? lookupResolutions.get(task.recipientLookupId)?.recipients
               : undefined;
-          return {
+          const taskWithRecipients = {
             ...task,
             recipients:
               Array.isArray(lookupRecipients) && lookupRecipients.length > 0
                 ? lookupRecipients
                 : task.recipients,
+          };
+          return {
+            ...taskWithRecipients,
+            followUpQuestions: getMandatoryFollowUps(taskWithRecipients),
           };
         });
         if (!canManageRoles && rawTasks.length === 0) {

@@ -1,5 +1,12 @@
 'use client';
 
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
+/*
+Previous assistant implementation preserved for later restore:
+
+'use client';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Loader2, Send, User as UserIcon } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -272,6 +279,27 @@ export default function AssistantPage() {
               )}
             </Button>
           </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+*/
+
+export default function AssistantPage() {
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Assistant</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-xl border border-dashed bg-muted/30 px-6 py-12 text-center">
+            <h2 className="text-2xl font-semibold tracking-tight">Not available right now</h2>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Coming soon.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

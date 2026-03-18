@@ -2259,7 +2259,7 @@ const buildFastPlan = (
             ...taskWithRecipients,
             followUpQuestions: shouldUseLocalFollowUpRules
               ? getMandatoryFollowUps(taskWithRecipients)
-              : taskWithRecipients.followUpQuestions,
+              : removeRedundantFollowUps(taskWithRecipients),
           };
         });
         const plannedTasks = hydrateTasksForDisplay(
@@ -2895,6 +2895,34 @@ const buildFastPlan = (
         ? undefined
         : ['What is the amount?'];
     }
+    return task.followUpQuestions;
+  };
+
+  const removeRedundantFollowUps = (task: PlannedTask) => {
+    const questions = Array.isArray(task.followUpQuestions) ? task.followUpQuestions : [];
+    if (questions.length === 0) return task.followUpQuestions;
+    const combined = [task.prompt?.trim(), task.clarification?.trim()].filter(Boolean).join(' ').trim();
+    if (!combined) return task.followUpQuestions;
+
+    if (task.type === 'calendar') {
+      return questions.filter(question => {
+        const normalized = question.toLowerCase();
+        if (normalized.includes('date') || normalized.includes('day')) {
+          return !extractEventDate(combined);
+        }
+        if (normalized.includes('time')) {
+          return !extractEventTime(combined);
+        }
+        if (normalized.includes('location') || normalized.includes('where')) {
+          return !extractEventLocation(combined);
+        }
+        if (normalized.includes('event about') || normalized.includes('title') || normalized.includes('called')) {
+          return !extractEventTopic(combined);
+        }
+        return true;
+      });
+    }
+
     return task.followUpQuestions;
   };
 

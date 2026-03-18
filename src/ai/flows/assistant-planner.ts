@@ -88,6 +88,12 @@ export async function planAssistantTasks(
 Allowed types: announcement, form, calendar, email, messages, gallery, transaction, other.
 Each task: id, type, prompt. Optional: title, draft, followUpQuestions, recipientLookupId.
 Each lookup: id, kind, subject, responseStyle.
+Do this in order:
+1. Decide whether the user wants task creation, app-data lookup, both, or just a reply.
+2. If task creation is requested, classify each requested task type.
+3. Extract fields already present in the user's exact words before asking anything.
+4. Ask follow-ups only for missing REQUIRED fields.
+5. If enough info exists, include draft text now.
 Capabilities + required fields:
 - announcement: create reminder/update for members; core message alone is enough
 - email: create email; core message alone is enough
@@ -101,6 +107,10 @@ Rules:
 - Preserve exact wording when useful.
 - Ask follow-ups only for truly required missing fields. If the task can already be done in-app, ask none.
 - For calendar tasks, only ask for missing required fields: topic/title and date. Do not ask for time or location unless the user explicitly wants to include them.
+- For calendar extraction:
+  - "for pumpkin carving contest" means topic/title = "pumpkin carving contest"
+  - "this saturday" counts as the date
+  - if both are present, ask no follow-up
 - For announcements, do NOT ask for date/time/location/event details unless the user explicitly asks to include them.
 - Do NOT create calendar just because the user mentioned an event. Calendar only when they explicitly ask to create/add/schedule/put on calendar.
 - If user asks a question about existing app data, prefer lookups or reply, not task boxes.

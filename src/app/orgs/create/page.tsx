@@ -13,6 +13,7 @@ import { Logo } from '@/components/icons';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
 
 const JOIN_CODE_PATTERN = /^[A-Z0-9]{4,10}$/;
+const MAX_USER_LIMIT_MAX = 10_000;
 
 export default function OrgCreatePage() {
   const router = useRouter();
@@ -118,7 +119,6 @@ export default function OrgCreatePage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
-              <p className="text-sm text-slate-600">Two steps. Save your plan now, connect IAP later.</p>
             </div>
           </div>
           <Button variant="outline" onClick={() => router.push('/orgs')}>
@@ -129,24 +129,63 @@ export default function OrgCreatePage() {
         {createdOrg ? (
           <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
             <CardHeader>
-              <CardTitle className="text-2xl">Organization Created</CardTitle>
-              <CardDescription>Share this join code with members so they can join your organization.</CardDescription>
+              <CardTitle className="text-2xl">Checkout</CardTitle>
+              <CardDescription>Review your saved plan and continue. You can set up IAP later.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-                <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
-                <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
+            <CardContent className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="space-y-5">
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                  <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
+                  <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <h3 className="text-base font-semibold text-slate-900">Set up billing later</h3>
+                  <div className="mt-4 space-y-3 text-sm text-slate-600">
+                    <p>Your organization is already created and ready to use.</p>
+                    <p>Invite members with the join code above.</p>
+                    <p>You can come back later to connect in-app purchases without blocking access today.</p>
+                  </div>
+                </div>
               </div>
-              <p className="text-sm text-slate-600">
-                Organization Created 🎉
-              </p>
+              <Card className="border border-slate-200 bg-slate-50/80 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Plan summary</CardTitle>
+                  <CardDescription>This is your saved starting point for future IAP setup.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm text-slate-600">
+                  <div className="flex items-center justify-between">
+                    <span>Max users</span>
+                    <span>{maxUserLimit.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Daily AI credit per user</span>
+                    <span>{dailyCreditPerUser}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Static cost</span>
+                    <span>${pricing.staticCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Variable cost</span>
+                    <span>${pricing.variableCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Multiplier</span>
+                    <span>{pricing.multiplier.toFixed(2)}x</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-900">
+                    <span>Total per month</span>
+                    <span>${pricing.retailPrice.toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
             </CardContent>
-            <CardFooter className="flex gap-3">
+            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
               <Button variant="outline" onClick={handleCopyJoinCode}>
                 Copy join code
               </Button>
               <Button className="flex-1" onClick={handleContinue}>
-                Continue to workspace
+                Set up IAP later
               </Button>
             </CardFooter>
           </Card>
@@ -154,14 +193,13 @@ export default function OrgCreatePage() {
           <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Organization setup</CardTitle>
-              <CardDescription>Choose limits now. In-app purchases can be enabled later.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-3">
-                <div className={`h-9 w-9 rounded-full ${step === 1 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'} flex items-center justify-center text-sm font-semibold`}>1</div>
+                <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 1 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
                 <div className="text-sm font-medium">Organization details</div>
                 <div className="h-px flex-1 bg-slate-200" />
-                <div className={`h-9 w-9 rounded-full ${step === 2 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'} flex items-center justify-center text-sm font-semibold`}>2</div>
+                <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 2 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
                 <div className="text-sm font-medium">Plan preferences</div>
               </div>
 
@@ -195,9 +233,7 @@ export default function OrgCreatePage() {
                         placeholder="ABC123"
                         maxLength={10}
                       />
-                      <p className="text-xs text-slate-500">
-                        Leave blank to auto-generate a join code.
-                      </p>
+                      <p className="text-xs text-slate-500">Leave blank to auto-generate a join code.</p>
                       {normalizedJoinCode && !JOIN_CODE_PATTERN.test(normalizedJoinCode) ? (
                         <p className="text-xs text-rose-600">
                           Custom join codes must be 4-10 uppercase letters or numbers.
@@ -220,26 +256,31 @@ export default function OrgCreatePage() {
                   <div className="space-y-6">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <Label>Max users</Label>
+                        <Label>Max users (you can change later)</Label>
                         <Input
                           type="number"
                           value={maxUserLimit}
                           min={1}
-                          onChange={(e) => setMaxUserLimit(Number(e.target.value))}
+                          max={MAX_USER_LIMIT_MAX}
+                          onChange={(e) => {
+                            const nextValue = Number(e.target.value);
+                            if (!Number.isFinite(nextValue)) return;
+                            setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(1, nextValue)));
+                          }}
                           className="w-24 text-right"
                         />
                       </div>
                       <Slider
                         value={[maxUserLimit]}
                         min={1}
-                        max={500}
+                        max={MAX_USER_LIMIT_MAX}
                         step={1}
                         onValueChange={(values) => setMaxUserLimit(values[0])}
                       />
                     </div>
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <Label>Daily credits per user</Label>
+                        <Label>Daily AI credit per user</Label>
                         <Input
                           type="number"
                           value={dailyCreditPerUser}
@@ -286,25 +327,15 @@ export default function OrgCreatePage() {
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3">
               <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep(step === 1 ? 2 : 1)}
-                >
+                <Button variant="outline" onClick={() => setStep(step === 1 ? 2 : 1)}>
                   {step === 1 ? 'Next: Plan preferences' : 'Back to details'}
                 </Button>
                 {step === 2 && (
-                  <Button
-                    onClick={handleCreateOrg}
-                    disabled={createSubmitting}
-                    className="flex-1"
-                  >
+                  <Button onClick={handleCreateOrg} disabled={createSubmitting} className="flex-1">
                     {createSubmitting ? 'Creating organization...' : 'Create organization'}
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
-                Billing is stored as an IAP-ready placeholder for now. You can connect real purchases later.
-              </p>
             </CardFooter>
           </Card>
         )}

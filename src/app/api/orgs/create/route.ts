@@ -138,21 +138,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: stateError } = await admin
-    .from('org_state')
-    .insert({ org_id: org.id, data: {} });
-  if (stateError) {
-    await rollbackOrg();
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: stateError.message,
-        source: 'network',
-      }),
-      { status: 500, headers: getRateLimitHeaders(limiter) }
-    );
-  }
-
   const { error: planError } = await admin
     .from('org_billing_plans')
     .insert({

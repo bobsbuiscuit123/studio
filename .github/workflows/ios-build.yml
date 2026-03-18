@@ -20,16 +20,10 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: |
-          pwd
-          ls
-          npm ci
+        run: npm ci
 
       - name: Sync Capacitor
-        run: |
-          pwd
-          ls node_modules/@capacitor
-          ./node_modules/.bin/cap sync ios
+        run: ./node_modules/.bin/cap sync ios
 
       - name: Build iOS
         run: |
@@ -39,4 +33,26 @@ jobs:
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package .ipa
+        run: |
+          cd ios/App
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" -print -quit)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found in build output"
+            exit 1
+          fi
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+          cd build/ipa
+          zip -r ../CASPO.ipa Payload
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app
+          path: ios/App/build/CASPO.ipa
+          if-no-files-found: error

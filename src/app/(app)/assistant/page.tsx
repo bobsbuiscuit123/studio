@@ -2217,7 +2217,18 @@ const buildFastPlan = (
         const rawTasks = allowedTaskTypes
           ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
           : normalizedPlan.tasks;
-        const tasksWithLookupResults = rawTasks.map(task => {
+        const recoveredTasks =
+          rawTasks.length === 0 && explicitCalendarIntentInText(values.query)
+            ? ([
+                {
+                  id: `recovered-calendar-${Date.now()}`,
+                  type: 'calendar' as const,
+                  prompt: values.query,
+                  status: 'pending' as const,
+                },
+              ] satisfies PlannedTask[])
+            : rawTasks;
+        const tasksWithLookupResults = recoveredTasks.map(task => {
           const lookupRecipients =
             task.recipientLookupId && lookupResolutions.has(task.recipientLookupId)
               ? lookupResolutions.get(task.recipientLookupId)?.recipients

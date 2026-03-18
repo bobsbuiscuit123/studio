@@ -643,6 +643,10 @@ export type OrgAiQuotaStatus = {
     dailyCreditPerUser: number;
     activeUsers: number;
     creditsUsedToday: number;
+    createdAt: string | null;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+    serviceEndsAt: string | null;
 };
 
 export const notifyOrgAiUsageChanged = (

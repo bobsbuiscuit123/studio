@@ -42,7 +42,7 @@ export async function GET(
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: plan }, { data: sub }, { count }, { data: usage }] = await Promise.all([
+  const [{ data: plan }, { data: sub }, { count }, { data: usage }, { data: org }] = await Promise.all([
     admin
       .from('org_billing_plans')
       .select('max_user_limit, daily_credit_per_user')
@@ -50,7 +50,7 @@ export async function GET(
       .maybeSingle(),
     admin
       .from('org_subscriptions')
-      .select('status, cancel_at_period_end')
+      .select('status, cancel_at_period_end, current_period_start, current_period_end, created_at')
       .eq('org_id', parsed.data)
       .maybeSingle(),
     admin
@@ -64,7 +64,24 @@ export async function GET(
       .eq('user_id', userId)
       .eq('usage_date', getRequestDayKey(request))
       .maybeSingle(),
+    admin
+      .from('orgs')
+      .select('created_at')
+      .eq('id', parsed.data)
+      .maybeSingle(),
   ]);
+
+  const orgCreatedAt = org?.created_at ?? sub?.created_at ?? null;
+  const currentPeriodStart = sub?.current_period_start ?? orgCreatedAt;
+  const currentPeriodEnd =
+    sub?.current_period_end ??
+    (currentPeriodStart
+      ? (() => {
+          const next = new Date(currentPeriodStart);
+          next.setMonth(next.getMonth() + 1);
+          return next.toISOString();
+        })()
+      : null);
 
   return NextResponse.json({
     ok: true,
@@ -77,6 +94,10 @@ export async function GET(
       dailyCreditPerUser: plan?.daily_credit_per_user ?? 0,
       activeUsers: count ?? 0,
       creditsUsedToday: usage?.credits_used ?? 0,
+      createdAt: orgCreatedAt,
+      currentPeriodStart,
+      currentPeriodEnd,
+      serviceEndsAt: Boolean(sub?.cancel_at_period_end) ? currentPeriodEnd : null,
     },
   });
 }

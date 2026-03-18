@@ -85,7 +85,11 @@ export async function POST(request: Request) {
   }
 
   const pricing = computeOrgPricing(parsed.data.maxUserLimit, parsed.data.dailyCreditPerUser);
-  const now = new Date().toISOString();
+  const nowDate = new Date();
+  const periodEndDate = new Date(nowDate);
+  periodEndDate.setMonth(periodEndDate.getMonth() + 1);
+  const now = nowDate.toISOString();
+  const periodEnd = periodEndDate.toISOString();
   const orgInsert: {
     name: string;
     category: string | null;
@@ -169,7 +173,7 @@ export async function POST(request: Request) {
       payment_provider: 'iap',
       status: 'active',
       current_period_start: now,
-      current_period_end: null,
+      current_period_end: periodEnd,
       cancel_at_period_end: false,
     });
   if (subscriptionError) {

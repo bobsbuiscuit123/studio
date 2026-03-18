@@ -3,10 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Copy, LogIn, Pencil, PlusCircle, User, UserPlus } from "lucide-react";
+import { ArrowRight, Copy, LogIn, Pencil, PlusCircle, Trash2, User, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -14,7 +24,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId, clearSelectedOrgId, getSelectedOrgId, setSelectedGroupId } from "@/lib/selection";
 import { safeFetchJson } from "@/lib/network";
 import { faker } from "@faker-js/faker";
-import { useCurrentUser } from "@/lib/data-hooks";
+import { useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
@@ -50,8 +60,47 @@ export default function ClubsPage() {
   const [editGroupLogo, setEditGroupLogo] = useState<string | null>(null);
   const createGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const editGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDeleteOrgOpen, setIsDeleteOrgOpen] = useState(false);
+  const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
+  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+
+  const formatDate = (value?: string | null) =>
+    value
+      ? new Intl.DateTimeFormat(undefined, {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }).format(new Date(value))
+      : "Unknown";
+
+  const handleScheduleOrgDeletion = async () => {
+    if (!selectedOrgId) return;
+    setDeleteOrgSubmitting(true);
+    const response = await safeFetchJson<{ ok: boolean; data?: { serviceEndsAt: string } }>(
+      `/api/orgs/${selectedOrgId}/cancel`,
+      {
+        method: "POST",
+      }
+    );
+    if (!response.ok || !response.data?.ok || !response.data.data?.serviceEndsAt) {
+      toast({
+        title: "Delete failed",
+        description: response.ok ? "Unable to schedule organization deletion." : response.error.message,
+        variant: "destructive",
+      });
+      setDeleteOrgSubmitting(false);
+      return;
+    }
+    await refreshOrgStatus({ silent: true });
+    setDeleteOrgSubmitting(false);
+    setIsDeleteOrgOpen(false);
+    toast({
+      title: "Deletion scheduled",
+      description: `Organization access will end after ${formatDate(response.data.data.serviceEndsAt)}.`,
+    });
+  };
 
   useEffect(() => {
     if (!selectedOrgId) {
@@ -495,10 +544,49 @@ export default function ClubsPage() {
         <Button variant="outline" onClick={() => setIsProfileOpen(true)}>
           <User className="mr-2" /> Profile
         </Button>
+        {orgStatus?.role?.toLowerCase() === "owner" ? (
+          <Button variant="outline" onClick={() => setIsDeleteOrgOpen(true)}>
+            <Trash2 className="mr-2" /> Delete Organization
+          </Button>
+        ) : null}
         <Button variant="outline" onClick={handleLogout}>
           <LogIn className="mr-2" /> Log Out
         </Button>
       </div>
+      <AlertDialog open={isDeleteOrgOpen} onOpenChange={setIsDeleteOrgOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete organization?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your subscription will end and services will no longer be available after{" "}
+              {formatDate(orgStatus?.serviceEndsAt ?? orgStatus?.currentPeriodEnd)}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 text-sm text-slate-600">
+            <p>Organization created: {formatDate(orgStatus?.createdAt)}</p>
+            <p>Current paid period started: {formatDate(orgStatus?.currentPeriodStart ?? orgStatus?.createdAt)}</p>
+            <p>Access remains active until the end of the paid month, even if you delete in the middle of the month.</p>
+            {orgStatus?.cancelAtPeriodEnd ? (
+              <p className="font-medium text-amber-700">
+                This organization is already scheduled to end after {formatDate(orgStatus?.serviceEndsAt ?? orgStatus?.currentPeriodEnd)}.
+              </p>
+            ) : null}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteOrgSubmitting}>Keep organization</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleScheduleOrgDeletion();
+              }}
+              disabled={deleteOrgSubmitting || orgStatus?.cancelAtPeriodEnd}
+            >
+              {deleteOrgSubmitting ? "Scheduling..." : orgStatus?.cancelAtPeriodEnd ? "Already scheduled" : "Delete organization"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ProfileDialog
         isOpen={isProfileOpen}
         onOpenChange={setIsProfileOpen}

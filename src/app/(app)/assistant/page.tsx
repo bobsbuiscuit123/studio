@@ -2212,13 +2212,25 @@ const buildFastPlan = (
             status: (task as PlannedTask).status ?? 'pending',
           })),
         };
+        const fallbackFastPlan =
+          normalizedPlan.tasks.length === 0 && (plan.lookups?.length ?? 0) === 0
+            ? buildFastPlan(values.query, pendingAttachments)
+            : null;
+        const effectivePlan = fallbackFastPlan
+          ? {
+              ...normalizedPlan,
+              tasks: fallbackFastPlan.tasks,
+              summary: fallbackFastPlan.summary,
+              reply: undefined,
+            }
+          : normalizedPlan;
         const planId = `plan-${Date.now()}`;
         const allowedTaskTypes = roleLoading || canEditContent
           ? null
           : new Set<TaskType>(['messages', 'gallery']);
         const rawTasks = allowedTaskTypes
-          ? normalizedPlan.tasks.filter(task => allowedTaskTypes.has(task.type))
-          : normalizedPlan.tasks;
+          ? effectivePlan.tasks.filter(task => allowedTaskTypes.has(task.type))
+          : effectivePlan.tasks;
         const hasExplicitCalendarIntent = explicitCalendarIntentInText(values.query);
         const hasCalendarTask = rawTasks.some(task => task.type === 'calendar');
         const recoveredTasks =
@@ -2259,7 +2271,7 @@ const buildFastPlan = (
               Array.from(lookupResolutions.values())
                 .map(item => item.reply)
                 .find((value): value is string => Boolean(value?.trim())) ||
-              normalizedPlan.summary ||
+              effectivePlan.summary ||
               aiFallbackMessage,
             startedAt: Date.now(),
           };
@@ -2293,8 +2305,8 @@ const buildFastPlan = (
             .map(item => item.reply)
             .find((value): value is string => Boolean(value?.trim())) ?? '';
         const safeSummary = hasRunnableTask
-          ? normalizedPlan.summary
-          : plan.reply?.trim() ||
+          ? effectivePlan.summary
+          : effectivePlan.reply?.trim() ||
             lookupReply ||
             fallbackPrompt ||
             `Sorry - I can't do that in ${appBrandName} yet. Try asking for an announcement, a form, a calendar event, an email, a message, a gallery upload, or a transaction.`;

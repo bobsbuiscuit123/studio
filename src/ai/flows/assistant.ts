@@ -1,6 +1,10 @@
 'use server';
 
 import { callAI } from '@/ai/genkit';
+import {
+  MAX_ASSISTANT_PROMPT_CHARS,
+  clampAssistantPrompt,
+} from '@/ai/flows/assistant-prompt-limit';
 import { err, ok, type Result } from '@/lib/result';
 import { z } from 'zod';
 
@@ -78,6 +82,8 @@ export type AssistantOutput = {
   }>;
 };
 
+const TOOL_DEFINITIONS: Array<{ name: string; description: string; input: Record<string, string> }> = [];
+
 const formatHistory = (
   history: Array<{ role: 'user' | 'assistant'; content: string }> | undefined
 ) =>
@@ -85,6 +91,25 @@ const formatHistory = (
     .slice(-3)
     .map(item => `${item.role}: ${item.content}`)
     .join('\n');
+
+const buildDeveloperPrompt = (historyBlock: string, toolDefinitionsText: string) =>
+  [
+    historyBlock ? `Recent conversation:\n${historyBlock}` : '',
+    toolDefinitionsText ? `Tool definitions:\n${toolDefinitionsText}` : 'Tool definitions:\nNone yet.',
+    'Return JSON only.',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+const buildFinalPrompt = ({
+  systemPrompt,
+  developerPrompt,
+  query,
+}: {
+  systemPrompt: string;
+  developerPrompt: string;
+  query: string;
+}) => [systemPrompt, developerPrompt, query].join('\n\n');
 
 export async function runAssistant(input: AssistantInput): Promise<Result<AssistantOutput>> {
   const validatedInput = AssistantInputSchema.safeParse(input);
@@ -100,60 +125,121 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
   const { query, orgId, groupId, userId, history } = validatedInput.data;
   console.log('ASSISTANT START', { query, orgId, groupId, userId });
 
-  const historyBlock = formatHistory(history);
+  let queryText = clampAssistantPrompt(query);
+  let historyBlock = clampAssistantPrompt(formatHistory(history));
   const variables: Record<string, unknown> = {};
+  let toolDefinitionsText = TOOL_DEFINITIONS.map(tool => {
+    const inputKeys = Object.entries(tool.input)
+      .map(([key, value]) => `${key}:${value}`)
+      .join(', ');
+    return `${tool.name} - ${tool.description}${inputKeys ? ` | input: ${inputKeys}` : ''}`;
+  }).join('\n');
+  let systemPrompt = ASSISTANT_SYSTEM_PROMPT;
+  let developerPrompt = buildDeveloperPrompt(historyBlock, toolDefinitionsText);
+  let finalPrompt = buildFinalPrompt({
+    systemPrompt,
+    developerPrompt,
+    query: queryText,
+  });
+
+  if (finalPrompt.length > MAX_ASSISTANT_PROMPT_CHARS) {
+    const overflow = finalPrompt.length - MAX_ASSISTANT_PROMPT_CHARS;
+    historyBlock = historyBlock.slice(Math.min(overflow, historyBlock.length));
+    developerPrompt = buildDeveloperPrompt(historyBlock, toolDefinitionsText);
+    finalPrompt = buildFinalPrompt({
+      systemPrompt,
+      developerPrompt,
+      query: queryText,
+    });
+  }
+
+  if (finalPrompt.length > MAX_ASSISTANT_PROMPT_CHARS) {
+    const overflow = finalPrompt.length - MAX_ASSISTANT_PROMPT_CHARS;
+    toolDefinitionsText = toolDefinitionsText.slice(Math.min(overflow, toolDefinitionsText.length));
+    developerPrompt = buildDeveloperPrompt(historyBlock, toolDefinitionsText);
+    finalPrompt = buildFinalPrompt({
+      systemPrompt,
+      developerPrompt,
+      query: queryText,
+    });
+  }
+
+  if (finalPrompt.length > MAX_ASSISTANT_PROMPT_CHARS) {
+    queryText = queryText.slice(0, Math.max(0, queryText.length - (finalPrompt.length - MAX_ASSISTANT_PROMPT_CHARS)));
+    finalPrompt = buildFinalPrompt({
+      systemPrompt,
+      developerPrompt,
+      query: queryText,
+    });
+  }
+
+  if (finalPrompt.length > MAX_ASSISTANT_PROMPT_CHARS) {
+    systemPrompt = systemPrompt.slice(0, Math.max(0, systemPrompt.length - (finalPrompt.length - MAX_ASSISTANT_PROMPT_CHARS)));
+    finalPrompt = buildFinalPrompt({
+      systemPrompt,
+      developerPrompt,
+      query: queryText,
+    });
+  }
+
+  console.log('GEMINI SYSTEM PROMPT:', systemPrompt);
+  console.log('GEMINI USER QUERY:', queryText);
+  console.log('GEMINI HISTORY:', historyBlock);
+  console.log('GEMINI TOOL DEFINITIONS:', toolDefinitionsText || 'None');
+  console.log('FINAL PROMPT CHARS:', finalPrompt.length);
 
   let rawText = '';
   try {
+    let geminiResult: Awaited<ReturnType<typeof callAI>> | null = null;
     try {
-      const geminiResult = await callAI({
+      geminiResult = await callAI({
         responseFormat: 'json_object',
         messages: [
-          { role: 'system', content: ASSISTANT_SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           {
             role: 'developer',
-            content: historyBlock
-              ? `Recent conversation:\n${historyBlock}\n\nReturn JSON only.`
-              : 'Return JSON only.',
+            content: developerPrompt,
           },
-          { role: 'user', content: query },
+          { role: 'user', content: queryText },
         ],
       });
 
       if (!geminiResult.ok) {
-        throw new Error(`Gemini call failed: ${geminiResult.error.message}`);
+        console.error('GEMINI CALL ERROR RESPONSE:', geminiResult);
+        throw new Error(`Gemini call failed: ${geminiResult.error.message || 'Unknown Gemini error'}`);
       }
 
       rawText = geminiResult.data;
       console.log('RAW GEMINI RESPONSE:', rawText);
     } catch (error) {
+      console.error('GEMINI CALL ERROR:', error);
+      console.error(
+        'GEMINI CALL ERROR MESSAGE:',
+        error && typeof error === 'object' && 'message' in error
+          ? (error as { message?: unknown }).message
+          : undefined
+      );
+      console.error(
+        'GEMINI CALL ERROR STACK:',
+        error && typeof error === 'object' && 'stack' in error
+          ? (error as { stack?: unknown }).stack
+          : undefined
+      );
+      if (geminiResult) {
+        console.error('GEMINI CALL PARTIAL RESPONSE:', geminiResult);
+      }
       throw new Error(
-        error instanceof Error ? error.message : 'Gemini call failed'
+        `Gemini call failed: ${
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message?: unknown }).message || 'Unknown Gemini error')
+            : 'Unknown Gemini error'
+        }`
       );
     }
 
-    let parsedJson: unknown;
-    try {
-      parsedJson = JSON.parse(rawText);
-      console.log('PARSED GEMINI JSON:', parsedJson);
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? `Gemini JSON parse failed: ${error.message}`
-          : 'Gemini JSON parse failed'
-      );
-    }
-
-    let parsed: z.infer<typeof ParsedAssistantResponseSchema>;
-    try {
-      parsed = ParsedAssistantResponseSchema.parse(parsedJson);
-    } catch (error) {
-      throw new Error(
-        error instanceof Error
-          ? `Gemini JSON parse failed: ${error.message}`
-          : 'Gemini JSON parse failed'
-      );
-    }
+    const parsedJson = JSON.parse(rawText);
+    console.log('PARSED GEMINI JSON:', parsedJson);
+    const parsed = ParsedAssistantResponseSchema.parse(parsedJson);
 
     const actions = parsed.actions ?? [];
     console.log('ACTIONS BEFORE EXECUTION:', actions);

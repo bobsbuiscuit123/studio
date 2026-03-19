@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
+import { AppMobileTabBar } from '@/components/app-mobile-tab-bar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DemoDataProvider } from '@/lib/demo/DemoDataProvider';
@@ -60,9 +61,10 @@ export default function DemoAppLayout({
     <DemoDataProvider initialSession={session}>
       <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <AppSidebar />
-        <div className="relative flex min-w-0 flex-col">
+        <div className="relative flex min-w-0 flex-col overflow-hidden">
           <AppHeader />
-          <main className="safe-bottom-space flex min-w-0 flex-1 flex-col gap-4 overflow-x-clip p-3 sm:p-4 lg:gap-6 lg:p-6">{children}</main>
+          <main className="safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6">{children}</main>
+          <AppMobileTabBar />
         </div>
       </div>
     </DemoDataProvider>

@@ -771,7 +771,7 @@ export default function Dashboard() {
   if (isAuthLoading) {
     return (
       <div className="flex flex-col gap-4 md:gap-8">
-        <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
           <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
           <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="h-3 w-20 mt-1" /></CardContent></Card>
           <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
@@ -817,7 +817,7 @@ export default function Dashboard() {
   if (isDataLoading) {
     return (
        <div className="flex flex-col gap-4 md:gap-8">
-      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
         <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
         <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="h-3 w-20 mt-1" /></CardContent></Card>
         <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
@@ -974,8 +974,8 @@ export default function Dashboard() {
         userId={user?.email}
         mode={canEditContent ? "officer" : "member"}
       />
-      <div className="grid gap-4 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-        <Card>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+        <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Upcoming events</CardTitle>
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -985,7 +985,7 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground">Events on the calendar.</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total members</CardTitle>
             <UsersRound className="h-4 w-4 text-muted-foreground" />
@@ -995,7 +995,7 @@ export default function Dashboard() {
             <p className="text-xs text-muted-foreground">The heart of your club.</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Upcoming event</CardTitle>
             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -1003,7 +1003,7 @@ export default function Dashboard() {
           <CardContent>
              {upcomingEvent ? (
               <>
-                <div className="text-2xl font-bold truncate">{upcomingEvent.title}</div>
+                <div className="text-lg font-bold leading-tight sm:text-2xl">{upcomingEvent.title}</div>
                 <p className="text-xs text-muted-foreground">
                   {upcomingEvent.date.toLocaleDateString()}
                 </p>
@@ -1013,7 +1013,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Recent activity</CardTitle>
             {React.createElement(activityIcon, { className: "h-4 w-4 text-muted-foreground" })}
@@ -1021,7 +1021,7 @@ export default function Dashboard() {
           <CardContent>
             {mostRecentActivity ? (
                  <Link href={mostRecentActivity.link}>
-                    <div className="text-2xl font-bold hover:underline truncate" title={mostRecentActivity.title}>
+                    <div className="text-lg font-bold leading-tight hover:underline sm:text-2xl" title={mostRecentActivity.title}>
                         {mostRecentActivity.title}
                     </div>
                     <p className="text-xs text-muted-foreground capitalize">
@@ -1040,7 +1040,7 @@ export default function Dashboard() {
         </Card>
       </div>
       <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+        <Card className="mobile-panel xl:col-span-2">
           <CardHeader className="flex flex-row items-center">
             <div className="grid gap-2">
               <CardTitle>New Members</CardTitle>
@@ -1057,50 +1057,69 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
              {members.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Member</TableHead>
-                  <TableHead>Role</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              <div className="space-y-3 md:hidden">
                 {members.slice(0, 5).map((member) => (
-                  <TableRow key={member.email}>
-                    <TableCell>
-                      <div className="font-medium">{member.name}</div>
-                      <div className="hidden text-sm text-muted-foreground md:inline">
-                        {member.email}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{member.role}</Badge>
-                    </TableCell>
-                  </TableRow>
+                  <div key={member.email} className="rounded-2xl border border-border/70 bg-background/70 p-4">
+                    <div className="font-medium leading-tight">{member.name}</div>
+                    <div className="mt-1 break-all text-xs text-muted-foreground">
+                      {member.email}
+                    </div>
+                    <Badge variant="outline" className="mt-3">
+                      {member.role}
+                    </Badge>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Role</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {members.slice(0, 5).map((member) => (
+                      <TableRow key={member.email}>
+                        <TableCell>
+                          <div className="font-medium">{member.name}</div>
+                          <div className="hidden text-sm text-muted-foreground md:inline">
+                            {member.email}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{member.role}</Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
             ) : (
                <div className="text-center py-8 text-muted-foreground">No members yet.</div>
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card className="mobile-panel">
           <CardHeader>
             <CardTitle>Upcoming Events</CardTitle>
             <CardDescription>
               Don't miss out on these upcoming events.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-8">
+          <CardContent className="grid gap-4">
             {events.slice(0, 3).map((event, index) => (
-              <div key={index} className="flex items-center gap-4">
-                <CalendarDays className="h-8 w-8 text-muted-foreground" />
-                <div className="grid gap-1">
-                  <p className="text-sm font-medium leading-none">
+              <div key={index} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+                  <CalendarDays className="h-5 w-5" />
+                </div>
+                <div className="grid min-w-0 gap-1">
+                  <p className="text-sm font-medium leading-snug">
                     {event.title}
                   </p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-xs text-muted-foreground sm:text-sm">
                     {event.date.toLocaleString()}
                   </p>
                 </div>

@@ -283,10 +283,10 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
+    <header className="sticky top-0 z-30 flex min-h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-background/95 px-4 py-2 backdrop-blur lg:h-[60px] lg:px-6">
        <Sheet open={isNavOpen} onOpenChange={setIsNavOpen}>
         <SheetTrigger asChild>
-          <Button size="icon" variant="outline" className="sm:hidden">
+          <Button size="icon" variant="outline" className="h-11 w-11 rounded-2xl sm:hidden">
             <Menu className="h-5 w-5" />
             <span className="sr-only">Toggle Menu</span>
           </Button>
@@ -315,13 +315,13 @@ export function AppHeader() {
         </SheetContent>
       </Sheet>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
          <h1 className="min-w-0 text-lg font-semibold leading-tight md:text-2xl">
             <span className="block sm:inline">{title}</span>
-            {orgName && <span className="mt-1 block truncate text-sm font-normal text-muted-foreground sm:mt-0 sm:ml-1 sm:inline">- {orgName}</span>}
+            {orgName && <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground sm:mt-0 sm:ml-1 sm:inline sm:text-sm">- {orgName}</span>}
             {clubName && (
-              <span className="mt-1 inline-flex min-w-0 items-center text-sm font-normal text-muted-foreground sm:mt-0">
+              <span className="mt-0.5 inline-flex min-w-0 items-center text-xs font-normal text-muted-foreground sm:mt-0 sm:text-sm">
                 <span className="hidden sm:inline"> / </span>
                 <span className="truncate">{clubName}</span>
                 {hasGroupContext ? (
@@ -350,13 +350,13 @@ export function AppHeader() {
           {/* Members no longer have AI features, so hide the quota badge for them.
           {!useDemo && getSelectedOrgId() ? <OrgAiQuotaBadge compact /> : null}
           */}
-          {!useDemo && getSelectedOrgId() && canEditContent ? <OrgAiQuotaBadge compact /> : null}
+          {!useDemo && getSelectedOrgId() && canEditContent ? <div className="hidden sm:block"><OrgAiQuotaBadge compact /></div> : null}
         </div>
        </div>
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
+          <Button variant="outline" size="icon" className="h-11 w-11 overflow-hidden rounded-2xl active:scale-95">
              {isMounted && user ? (
                 <Avatar>
                   <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>

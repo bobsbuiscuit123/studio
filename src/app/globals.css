@@ -111,6 +111,7 @@ body {
   padding-right: var(--safe-area-right);
   padding-bottom: var(--safe-area-bottom);
   padding-left: var(--safe-area-left);
+  scroll-behavior: smooth;
 }
 
 main,
@@ -126,7 +127,17 @@ main,
 }
 
 .safe-bottom-space {
-  padding-bottom: max(1rem, var(--safe-area-bottom));
+  padding-bottom: max(5.5rem, calc(var(--safe-area-bottom) + 4.5rem));
+}
+
+@media (min-width: 768px) {
+  .safe-bottom-space {
+    padding-bottom: max(1rem, var(--safe-area-bottom));
+  }
+}
+
+.mobile-panel {
+  @apply w-full rounded-2xl border bg-card shadow-sm;
 }
 
 @layer components {

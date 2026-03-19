@@ -34,7 +34,7 @@ type NotificationMap = {
   attendance: boolean;
 }
 
-const allNavItems = [
+export const allNavItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/announcements', icon: Megaphone, label: 'Announcements', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'announcements' as NotificationKey },
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'messages' as NotificationKey },
@@ -48,6 +48,8 @@ const allNavItems = [
   { href: '/email', icon: Mail, label: 'Email', roles: ['Admin', 'Officer'], notificationKey: null },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['Admin'], notificationKey: null },
 ];
+
+export const mobilePrimaryNavItems = ['/dashboard', '/calendar', '/messages', '/announcements', '/assistant'] as const;
 
 export function AppSidebarNav({
   role,

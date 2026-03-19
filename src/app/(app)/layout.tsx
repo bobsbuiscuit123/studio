@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
+import { AppMobileTabBar } from "@/components/app-mobile-tab-bar";
 import { ImportLocalData } from "@/components/import-local-data";
 import { OfflineCallout } from "@/components/network-status";
 import { NotificationsProvider } from "@/components/notifications-provider";
@@ -35,15 +36,18 @@ export default function AppLayout({
         <div className="print:hidden">
           <AppSidebar />
         </div>
-        <div className="relative flex min-w-0 flex-col">
+        <div className="relative flex min-w-0 flex-col overflow-hidden">
           <div className="print:hidden">
             <AppHeader />
           </div>
           <ImportLocalData />
-          <main className="safe-bottom-space flex min-w-0 flex-1 flex-col gap-4 overflow-x-clip p-3 sm:p-4 lg:gap-6 lg:p-6 print:p-0">
+          <main className="safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6 print:p-0">
             <OfflineCallout />
             <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
           </main>
+          <div className="print:hidden">
+            <AppMobileTabBar />
+          </div>
         </div>
       </div>
     </NotificationsProvider>

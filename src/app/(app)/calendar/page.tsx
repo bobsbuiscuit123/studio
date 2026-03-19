@@ -380,10 +380,10 @@ export default function CalendarPage() {
   
   return (
     <>
-    <div className="grid gap-8 md:grid-cols-3">
+    <div className="grid gap-4 md:gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
       <div className="md:col-span-2">
-        <Card>
-          <CardContent className="p-0">
+        <Card className="mobile-panel overflow-hidden">
+          <CardContent className="overflow-x-auto p-0">
             {!isClient ? (
               <Skeleton className="w-full aspect-[1.2/1]" />
             ) : (
@@ -391,15 +391,15 @@ export default function CalendarPage() {
               mode="single"
               selected={date}
               onSelect={setDate}
-              className="p-0"
+              className="min-w-[19rem] p-2 sm:min-w-0 sm:p-3"
               classNames={{
-                months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
+                months: "flex flex-col space-y-4",
                 month: "space-y-4 w-full",
                 table: "w-full border-collapse space-y-1",
-                head_cell: "w-full text-muted-foreground rounded-md font-normal text-[0.8rem]",
-                row: "flex w-full mt-2",
-                cell: "h-16 w-full text-center text-sm p-1 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                day: "h-full w-full p-1 font-normal aria-selected:opacity-100",
+                head_cell: "w-full text-muted-foreground rounded-md px-0.5 font-normal text-[0.72rem] sm:text-[0.8rem]",
+                row: "mt-1.5 flex w-full sm:mt-2",
+                cell: "h-14 w-full text-center text-xs p-0.5 align-top relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-xl last:[&:has([aria-selected])]:rounded-r-xl focus-within:relative focus-within:z-20 sm:h-16 sm:text-sm sm:p-1",
+                day: "h-full w-full rounded-xl p-1 font-normal aria-selected:opacity-100",
               }}
               components={{
                 DayContent: ({ date }) => {
@@ -411,12 +411,12 @@ export default function CalendarPage() {
                       event.date.getFullYear() === date.getFullYear()
                   );
                   return (
-                    <div className="flex flex-col h-full items-start justify-start">
-                      <p>{date.getDate()}</p>
+                    <div className="flex h-full flex-col items-start justify-start gap-1 overflow-hidden">
+                      <p className="text-xs font-medium sm:text-sm">{date.getDate()}</p>
                       {dayEvents.map((event, i) => (
                         <div
                             key={i} 
-                            className="cursor-pointer text-xs bg-primary/20 text-primary-foreground rounded-sm px-1 w-full truncate text-left hover:bg-primary/40"
+                            className="w-full cursor-pointer truncate rounded-lg bg-primary/15 px-1.5 py-0.5 text-[10px] text-left text-primary-foreground transition-colors hover:bg-primary/25"
                             onClick={() => { markEventViewed(event.id); setSelectedEvent(event); }}
                         >
                           {event.title}
@@ -431,10 +431,10 @@ export default function CalendarPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="space-y-4 flex flex-col">
+      <div className="flex flex-col space-y-4">
         {canEditContent && (
-            <Card>
-            <CardHeader className="flex items-center justify-between">
+            <Card className="mobile-panel">
+            <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
                   <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
                   <CardDescription>Enter details manually, or let AI draft them.</CardDescription>
@@ -442,7 +442,7 @@ export default function CalendarPage() {
                 <Button
                   type="button"
                   variant={showAi ? "default" : "ghost"}
-                  className={showAi ? '' : aiSparkle}
+                  className={`w-full sm:w-auto ${showAi ? '' : aiSparkle}`}
                   onClick={() => setShowAi(v => !v)}
                 >
                   {showAi ? 'Make manually' : <><Sparkles className="h-4 w-4 mr-1" /> Make with AI</>}
@@ -565,24 +565,23 @@ export default function CalendarPage() {
             </CardContent>
             </Card>
         )}
-        <Card className="flex-1 flex flex-col">
+        <Card className="mobile-panel flex flex-1 flex-col">
           <CardHeader>
             <CardTitle>Upcoming Events</CardTitle>
             <CardDescription>
               Here's what's happening soon.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 overflow-hidden">
-             <ScrollArea className="h-full">
+          <CardContent className="flex-1">
              {loading ? <p>Loading...</p> : 
                 safeEvents.length > 0 ? (
-                  <Accordion type="single" collapsible className="w-full">
+                  <Accordion type="single" collapsible className="w-full space-y-3">
                     {[...safeEvents].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event) => (
-                      <AccordionItem value={`item-${event.id}`} key={event.id}>
-                        <div className="flex justify-between items-center w-full py-4">
-                            <AccordionTrigger className="flex-grow p-0" onClick={() => markEventViewed(event.id)}>
-                                <div className="text-left">
-                                <p className="font-semibold">{event.title}</p>
+                      <AccordionItem value={`item-${event.id}`} key={event.id} className="overflow-hidden rounded-2xl border border-border/70 bg-background/70 px-4">
+                        <div className="flex w-full items-start justify-between gap-3 py-4">
+                            <AccordionTrigger className="min-w-0 flex-grow p-0" onClick={() => markEventViewed(event.id)}>
+                                <div className="min-w-0 text-left">
+                                <p className="font-semibold leading-snug">{event.title}</p>
                                 <p className="text-sm text-muted-foreground font-normal">
                                     {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </p>
@@ -595,7 +594,7 @@ export default function CalendarPage() {
                             )}
                         </div>
                         <AccordionContent>
-                          <div className="space-y-3 pl-2">
+                          <div className="space-y-3 pb-4">
                              <p className="text-sm">
                                 <strong>Time: </strong> 
                                 {formatEventTime(event)}
@@ -688,7 +687,6 @@ export default function CalendarPage() {
                  <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
               )
             }
-            </ScrollArea>
           </CardContent>
         </Card>
       </div>

@@ -84,18 +84,18 @@ export default function AttendancePage() {
 
 
   if (eventsLoading || userLoading || membersLoading) {
-    return <div className="flex h-full flex-col"><Loader2 className="animate-spin" /></div>
+    return <div className="flex min-h-0 flex-1 flex-col justify-start"><Loader2 className="animate-spin" /></div>
   }
 
   if (canEditContent) {
     // Admin/officer view
     return (
-      <div className="flex h-full flex-col gap-3">
-        <div className="header shrink-0">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
+        <div className="shrink-0">
           <h1 className="text-3xl font-bold">Event Attendance</h1>
           <p className="text-muted-foreground">Manage check-in codes and view attendance records for club events.</p>
         </div>
-        <div className="content flex-1 flex flex-col justify-start">
+        <div className="min-h-0 flex-1">
         <Card>
           <CardHeader>
             <CardTitle>All Events</CardTitle>
@@ -161,8 +161,12 @@ export default function AttendancePage() {
 
   // Member View
   return (
-    <div className="flex h-full flex-col gap-3">
-        <div className="content flex-1 flex flex-col justify-start">
+    <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
+        <div className="shrink-0 space-y-1">
+            <h1 className="text-2xl font-semibold">Attendance</h1>
+            <p className="text-sm text-muted-foreground">Check in to events and review the attendance you have logged.</p>
+        </div>
+        <div className="min-h-0 flex-1">
     <div className="grid gap-3 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
             <Card>

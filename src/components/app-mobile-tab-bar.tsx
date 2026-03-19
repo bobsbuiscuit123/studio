@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCurrentUserRole } from "@/lib/data-hooks";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
+import type { NotificationKey } from "@/lib/data-hooks";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
@@ -26,6 +27,37 @@ const mobileNavOrder = [
   "/finances",
 ] as const;
 
+type NavPage = {
+  left: NavSlot;
+  leftCenter: NavSlot;
+  rightCenter: NavSlot;
+  right: NavSlot;
+};
+
+type MobileNavItem = {
+  href: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  notificationKey?: NotificationKey | null;
+};
+
+type NavSlot =
+  | {
+      type: "item";
+      href: string;
+      label: string;
+      icon: ComponentType<{ className?: string }>;
+      notificationKey?: NotificationKey | null;
+    }
+  | {
+      type: "control";
+      direction: "back" | "next";
+      label: string;
+    }
+  | {
+      type: "empty";
+    };
+
 export function AppMobileTabBar() {
   const pathname = usePathname();
   const { role } = useCurrentUserRole();
@@ -40,9 +72,15 @@ export function AppMobileTabBar() {
   const [isInputActive, setIsInputActive] = useState(false);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
-  const orderedItems = mobileNavOrder
+  const orderedItems: MobileNavItem[] = mobileNavOrder
     .map(href => allowedItems.find(item => item.href === href))
-    .filter((item): item is (typeof allowedItems)[number] => Boolean(item));
+    .filter((item): item is (typeof allowedItems)[number] => Boolean(item))
+    .map(item => ({
+      href: item.href,
+      label: item.label,
+      icon: item.icon,
+      notificationKey: item.notificationKey as NotificationKey | null | undefined,
+    }));
   const assistantItem = allowedItems.find(item => item.href === assistantHref);
 
   const buildHref = (href: string) =>
@@ -57,8 +95,8 @@ export function AppMobileTabBar() {
       : pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  const pages = useMemo(() => paginateTabs(orderedItems), [orderedItems]);
-  const currentPage = pages[page] ?? { items: [], hasPrev: false, hasNext: false };
+  const pages = useMemo(() => buildPages(orderedItems), [orderedItems]);
+  const currentPage = pages[page] ?? pages[0];
 
   useEffect(() => {
     if (page > pages.length - 1) {
@@ -91,139 +129,112 @@ export function AppMobileTabBar() {
     };
   }, [isMessagesRoute]);
 
-  if ((orderedItems.length === 0 && !assistantItem) || (isMessagesRoute && isInputActive)) {
+  if ((!currentPage && !assistantItem) || (isMessagesRoute && isInputActive)) {
     return null;
   }
 
   return (
-    <>
-      <nav className="bottom-nav md:hidden">
-        <div className="nav-inner mx-auto max-w-screen-md">
-          {currentPage.hasPrev ? (
-            <button
-              type="button"
-              onClick={() => setPage(current => Math.max(0, current - 1))}
-              className="tab nav-arrow text-muted-foreground"
-            >
-              <ChevronLeft className="h-6 w-6" />
-              <span className="text-xs">Back</span>
-            </button>
-          ) : (
-            <div className="tab nav-arrow opacity-0" aria-hidden="true">
-              <ChevronLeft className="h-6 w-6" />
-              <span className="text-xs">Back</span>
-            </div>
-          )}
+    <nav className="bottom-nav md:hidden">
+      <div className="nav-inner mx-auto max-w-screen-md">
+        <MobileNavSlot
+          slot={currentPage.left}
+          buildHref={buildHref}
+          isItemActive={isItemActive}
+          unread={unread}
+          onMarkViewed={markTabViewed}
+          onBack={() => setPage(current => Math.max(0, current - 1))}
+          onNext={() => setPage(current => Math.min(pages.length - 1, current + 1))}
+        />
+        <MobileNavSlot
+          slot={currentPage.leftCenter}
+          buildHref={buildHref}
+          isItemActive={isItemActive}
+          unread={unread}
+          onMarkViewed={markTabViewed}
+          onBack={() => setPage(current => Math.max(0, current - 1))}
+          onNext={() => setPage(current => Math.min(pages.length - 1, current + 1))}
+        />
 
-          <MobileTabLink
-            href={buildHref(currentPage.items[0]?.href ?? "")}
-            icon={currentPage.items[0]?.icon}
-            label={currentPage.items[0]?.label ?? ""}
-            active={Boolean(currentPage.items[0] && isItemActive(currentPage.items[0].href))}
-            hasNotification={Boolean(
-              currentPage.items[0]?.notificationKey &&
-                unread[currentPage.items[0].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.items[0].href)
-            )}
-            onClick={() => currentPage.items[0]?.notificationKey && markTabViewed(currentPage.items[0].notificationKey)}
-          />
+        {assistantItem ? (
+          <Link
+            href={buildHref(assistantItem.href)}
+            onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+            className="ai-button z-[1001]"
+            aria-label={assistantItem.label}
+          >
+            <assistantItem.icon className="h-6 w-6 text-white" />
+          </Link>
+        ) : (
+          <div className="tab opacity-0" aria-hidden="true" />
+        )}
 
-          <MobileTabLink
-            href={buildHref(currentPage.items[1]?.href ?? "")}
-            icon={currentPage.items[1]?.icon}
-            label={currentPage.items[1]?.label ?? ""}
-            active={Boolean(currentPage.items[1] && isItemActive(currentPage.items[1].href))}
-            hasNotification={Boolean(
-              currentPage.items[1]?.notificationKey &&
-                unread[currentPage.items[1].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.items[1].href)
-            )}
-            onClick={() => currentPage.items[1]?.notificationKey && markTabViewed(currentPage.items[1].notificationKey)}
-          />
-
-          {assistantItem ? (
-            <Link
-              href={buildHref(assistantItem.href)}
-              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
-              className="ai-button z-[1001]"
-              aria-label={assistantItem.label}
-            >
-              <assistantItem.icon className="h-6 w-6 text-white" />
-            </Link>
-          ) : null}
-
-          <MobileTabLink
-            href={buildHref(currentPage.items[2]?.href ?? "")}
-            icon={currentPage.items[2]?.icon}
-            label={currentPage.items[2]?.label ?? ""}
-            active={Boolean(currentPage.items[2] && isItemActive(currentPage.items[2].href))}
-            hasNotification={Boolean(
-              currentPage.items[2]?.notificationKey &&
-                unread[currentPage.items[2].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.items[2].href)
-            )}
-            onClick={() => currentPage.items[2]?.notificationKey && markTabViewed(currentPage.items[2].notificationKey)}
-          />
-
-          <MobileTabLink
-            href={buildHref(currentPage.items[3]?.href ?? "")}
-            icon={currentPage.items[3]?.icon}
-            label={currentPage.items[3]?.label ?? ""}
-            active={Boolean(currentPage.items[3] && isItemActive(currentPage.items[3].href))}
-            hasNotification={Boolean(
-              currentPage.items[3]?.notificationKey &&
-                unread[currentPage.items[3].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.items[3].href)
-            )}
-            onClick={() => currentPage.items[3]?.notificationKey && markTabViewed(currentPage.items[3].notificationKey)}
-          />
-
-          {currentPage.hasNext ? (
-            <button
-              type="button"
-              onClick={() => setPage(current => Math.min(pages.length - 1, current + 1))}
-              className="tab nav-arrow text-muted-foreground"
-            >
-              <ChevronRight className="h-6 w-6" />
-              <span className="text-xs">More</span>
-            </button>
-          ) : (
-            <div className="tab nav-arrow opacity-0" aria-hidden="true">
-              <ChevronRight className="h-6 w-6" />
-              <span className="text-xs">More</span>
-            </div>
-          )}
-        </div>
-      </nav>
-    </>
+        <MobileNavSlot
+          slot={currentPage.rightCenter}
+          buildHref={buildHref}
+          isItemActive={isItemActive}
+          unread={unread}
+          onMarkViewed={markTabViewed}
+          onBack={() => setPage(current => Math.max(0, current - 1))}
+          onNext={() => setPage(current => Math.min(pages.length - 1, current + 1))}
+        />
+        <MobileNavSlot
+          slot={currentPage.right}
+          buildHref={buildHref}
+          isItemActive={isItemActive}
+          unread={unread}
+          onMarkViewed={markTabViewed}
+          onBack={() => setPage(current => Math.max(0, current - 1))}
+          onNext={() => setPage(current => Math.min(pages.length - 1, current + 1))}
+        />
+      </div>
+    </nav>
   );
 }
 
-function MobileTabLink({
-  href,
-  icon,
-  label,
-  active,
-  hasNotification,
-  onClick,
+function MobileNavSlot({
+  slot,
+  buildHref,
+  isItemActive,
+  unread,
+  onMarkViewed,
+  onBack,
+  onNext,
 }: {
-  href: string;
-  icon?: ComponentType<{ className?: string }>;
-  label: string;
-  active: boolean;
-  hasNotification: boolean;
-  onClick?: () => void;
+  slot: NavSlot;
+  buildHref: (href: string) => string;
+  isItemActive: (href: string) => boolean;
+  unread: Record<string, boolean>;
+  onMarkViewed: (key: NotificationKey) => void;
+  onBack: () => void;
+  onNext: () => void;
 }) {
-  if (!href || !icon || !label) {
+  if (slot.type === "empty") {
     return <div className="tab opacity-0" aria-hidden="true" />;
   }
 
-  const Icon = icon;
+  if (slot.type === "control") {
+    const Icon = slot.direction === "back" ? ChevronLeft : ChevronRight;
+    return (
+      <button type="button" onClick={slot.direction === "back" ? onBack : onNext} className="tab text-muted-foreground">
+        <Icon className="h-6 w-6" />
+        <span className="tab-label">{slot.label}</span>
+      </button>
+    );
+  }
+
+  const href = buildHref(slot.href);
+  const active = isItemActive(slot.href);
+  const hasNotification = Boolean(
+    slot.notificationKey &&
+      unread[slot.notificationKey] &&
+      !active
+  );
+  const Icon = slot.icon;
 
   return (
     <Link
       href={href}
-      onClick={onClick}
+      onClick={() => slot.notificationKey && onMarkViewed(slot.notificationKey)}
       className={cn(
         "tab rounded-2xl text-xs font-medium transition-all active:scale-95",
         active ? "bg-primary/15 text-primary" : "text-muted-foreground"
@@ -235,25 +246,58 @@ function MobileTabLink({
           <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
         ) : null}
       </div>
-      <span className="truncate">{label}</span>
+      <span className="tab-label">{slot.label}</span>
     </Link>
   );
 }
 
-function paginateTabs<T>(items: T[]) {
-  const pages: Array<{ items: T[]; hasPrev: boolean; hasNext: boolean }> = [];
-  let index = 0;
+function buildPages(items: MobileNavItem[]): NavPage[] {
+  const pages: NavPage[] = [];
+  const firstSet = items.slice(0, 4);
+  const remaining = items.slice(4);
 
-  while (index < items.length) {
-    const pageItems = items.slice(index, index + 4);
-    index += 4;
-    const hasNext = index < items.length;
+  if (firstSet.length > 0) {
     pages.push({
-      items: pageItems,
-      hasPrev: pages.length > 0,
-      hasNext,
+      left: toItemSlot(firstSet[0]),
+      leftCenter: toItemSlot(firstSet[1]),
+      rightCenter: toItemSlot(firstSet[2]),
+      right: remaining.length > 0 ? { type: "control", direction: "next", label: "More" } : toItemSlot(firstSet[3]),
     });
   }
 
-  return pages;
+  for (let index = 0; index < remaining.length; index += 3) {
+    const chunk = remaining.slice(index, index + 3);
+    const hasNext = index + 3 < remaining.length;
+    pages.push({
+      left: { type: "control", direction: "back", label: "Back" },
+      leftCenter: toItemSlot(chunk[0]),
+      rightCenter: toItemSlot(chunk[1]),
+      right: hasNext ? { type: "control", direction: "next", label: "More" } : toItemSlot(chunk[2]),
+    });
+  }
+
+  return pages.length > 0
+    ? pages
+    : [
+        {
+          left: { type: "empty" },
+          leftCenter: { type: "empty" },
+          rightCenter: { type: "empty" },
+          right: { type: "empty" },
+        },
+      ];
+}
+
+function toItemSlot(item: MobileNavItem | undefined): NavSlot {
+  if (!item) {
+    return { type: "empty" };
+  }
+
+  return {
+    type: "item",
+    href: item.href,
+    label: item.label,
+    icon: item.icon,
+    notificationKey: item.notificationKey,
+  };
 }

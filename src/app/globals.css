@@ -222,6 +222,13 @@ main,
   background: transparent;
 }
 
+[role="dialog"]::-webkit-scrollbar,
+[data-radix-dialog-content]::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .bottom-nav {
   position: fixed;
   bottom: 0;
@@ -291,6 +298,50 @@ main,
   justify-content: center;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   transform: translateY(-20px);
+}
+
+.assistant-bubble {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 170px;
+  max-width: min(240px, calc(100vw - 2rem));
+  border-radius: 18px;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
+  padding: 12px 14px;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  white-space: normal;
+  z-index: 1002;
+  animation: assistant-bubble-in 180ms ease-out;
+}
+
+.assistant-bubble-tail {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  background: hsl(var(--card));
+  border-right: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+  transform: translateX(-50%) rotate(45deg);
+}
+
+@keyframes assistant-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
 }
 
 @layer components {

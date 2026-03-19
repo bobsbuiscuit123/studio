@@ -13,6 +13,7 @@ import type { NotificationKey } from "@/lib/data-hooks";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
+const assistantComingSoonMessage = "Caspo AI Agent coming soon..";
 const mobileNavOrder = [
   "/dashboard",
   "/announcements",
@@ -43,6 +44,8 @@ export function AppMobileTabBar() {
     pathname.startsWith("/demo/app/messages/");
   const [navPage, setNavPage] = useState(0);
   const [isInputActive, setIsInputActive] = useState(false);
+  const [showAssistantBubble, setShowAssistantBubble] = useState(false);
+  const [typedAssistantMessage, setTypedAssistantMessage] = useState("");
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
   const orderedItems: MobileNavItem[] = mobileNavOrder
@@ -103,6 +106,24 @@ export function AppMobileTabBar() {
     };
   }, [isMessagesRoute]);
 
+  useEffect(() => {
+    if (!showAssistantBubble) {
+      setTypedAssistantMessage("");
+      return;
+    }
+
+    let index = 0;
+    const interval = window.setInterval(() => {
+      index += 1;
+      setTypedAssistantMessage(assistantComingSoonMessage.slice(0, index));
+      if (index >= assistantComingSoonMessage.length) {
+        window.clearInterval(interval);
+      }
+    }, 35);
+
+    return () => window.clearInterval(interval);
+  }, [showAssistantBubble]);
+
   if ((navSets.length === 0 && !assistantItem) || (isMessagesRoute && isInputActive)) {
     return null;
   }
@@ -150,14 +171,38 @@ export function AppMobileTabBar() {
         </div>
 
         {assistantItem ? (
-          <Link
-            href={buildHref(assistantItem.href)}
-            onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
-            className="ai-button z-[1001]"
-            aria-label={assistantItem.label}
-          >
-            <assistantItem.icon className="h-6 w-6 text-white" />
-          </Link>
+          <div className="relative flex items-center justify-center">
+            {showAssistantBubble ? (
+              <div className="assistant-bubble" role="status" aria-live="polite">
+                <span>{typedAssistantMessage}</span>
+                <span className="assistant-bubble-tail" aria-hidden="true" />
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAssistantBubble(current => !current);
+                if (assistantItem.notificationKey) {
+                  markTabViewed(assistantItem.notificationKey);
+                }
+              }}
+              className="ai-button z-[1001]"
+              aria-label={`${assistantItem.label} coming soon`}
+              aria-expanded={showAssistantBubble}
+            >
+              <assistantItem.icon className="h-6 w-6 text-white" />
+            </button>
+            {/*
+            <Link
+              href={buildHref(assistantItem.href)}
+              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+              className="ai-button z-[1001]"
+              aria-label={assistantItem.label}
+            >
+              <assistantItem.icon className="h-6 w-6 text-white" />
+            </Link>
+            */}
+          </div>
         ) : (
           <div className="tab opacity-0" aria-hidden="true" />
         )}

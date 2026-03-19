@@ -38,21 +38,25 @@ export default function DemoAppLayout({
 
   if (!DEMO_MODE_ENABLED) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="viewport-page">
+        <div className="viewport-scroll flex items-center justify-center p-4">
         <Card className="w-full max-w-lg">
           <CardHeader>
             <CardTitle>Demo mode not enabled</CardTitle>
             <CardDescription>Set NEXT_PUBLIC_DEMO_MODE=true and reload.</CardDescription>
           </CardHeader>
         </Card>
+        </div>
       </div>
     );
   }
 
   if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">
-        Loading demo session...
+      <div className="viewport-page">
+        <div className="viewport-scroll flex items-center justify-center text-sm text-muted-foreground">
+          Loading demo session...
+        </div>
       </div>
     );
   }

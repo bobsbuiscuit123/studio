@@ -155,6 +155,8 @@ main,
 
 .main-container::-webkit-scrollbar {
   display: none;
+  width: 0;
+  height: 0;
 }
 
 .safe-bottom-space {
@@ -175,6 +177,27 @@ main,
   overflow: hidden;
 }
 
+.viewport-page {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.viewport-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.viewport-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 .messages-screen {
   height: 100%;
   overflow: hidden;
@@ -188,6 +211,15 @@ main,
 
 .messages-content::-webkit-scrollbar {
   display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
 }
 
 .bottom-nav {

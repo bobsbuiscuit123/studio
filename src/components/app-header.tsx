@@ -195,6 +195,7 @@ export function AppHeader() {
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
+  const showQuotaBadge = role === 'Admin' || role === 'Officer';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
 
   const loadTransferCandidates = async () => {
@@ -353,7 +354,7 @@ export function AppHeader() {
           ) : null}
         </div>
 
-        {!useDemo && getSelectedOrgId() && canEditContent ? (
+        {!useDemo && getSelectedOrgId() && canEditContent && showQuotaBadge ? (
           <div className="hidden shrink-0 sm:block">
             <OrgAiQuotaBadge compact />
           </div>

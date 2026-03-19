@@ -33,37 +33,41 @@ export default function DemoRolePage() {
 
   if (!DEMO_MODE_ENABLED) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="viewport-page">
+        <div className="viewport-scroll flex items-center justify-center p-4">
         <Card className="w-full max-w-lg">
           <CardHeader>
             <CardTitle>Demo mode not enabled</CardTitle>
             <CardDescription>Set NEXT_PUBLIC_DEMO_MODE=true and reload.</CardDescription>
           </CardHeader>
         </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle>CASPO Demo</CardTitle>
-          <CardDescription>Choose a role to start a local mock session.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
-          {ROLE_OPTIONS.map(role => (
-            <Button
-              key={role}
-              size="lg"
-              onClick={() => startDemo(role)}
-              disabled={loadingRole !== null}
-            >
-              {loadingRole === role ? 'Starting demo...' : role}
-            </Button>
-          ))}
-        </CardContent>
-      </Card>
+    <div className="viewport-page">
+      <div className="viewport-scroll flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg">
+          <CardHeader>
+            <CardTitle>CASPO Demo</CardTitle>
+            <CardDescription>Choose a role to start a local mock session.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            {ROLE_OPTIONS.map(role => (
+              <Button
+                key={role}
+                size="lg"
+                onClick={() => startDemo(role)}
+                disabled={loadingRole !== null}
+              >
+                {loadingRole === role ? 'Starting demo...' : role}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

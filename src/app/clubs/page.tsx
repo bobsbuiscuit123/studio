@@ -27,7 +27,6 @@ import { faker } from "@faker-js/faker";
 import { useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
-import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 
 type Group = {
@@ -61,6 +60,7 @@ export default function ClubsPage() {
   const createGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const editGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const [isDeleteOrgOpen, setIsDeleteOrgOpen] = useState(false);
+  const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
@@ -396,8 +396,8 @@ export default function ClubsPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 pb-6 pt-3">
+    <div className="viewport-page bg-background">
+      <div className="viewport-scroll mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 pb-6 pt-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -422,7 +422,6 @@ export default function ClubsPage() {
 
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-medium">Your Groups</h2>
-          <OrgAiQuotaBadge orgId={selectedOrgId} />
         </div>
 
         <div className="space-y-3">
@@ -507,6 +506,15 @@ export default function ClubsPage() {
               </DialogContent>
             </Dialog>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" onClick={() => setIsProfileOpen(true)} className="w-full">
+              <User className="mr-2" /> Profile
+            </Button>
+            <Button variant="destructive" onClick={() => setIsLogoutOpen(true)} className="w-full">
+              <LogIn className="mr-2" /> Log Out
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -557,15 +565,6 @@ export default function ClubsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Button variant="outline" onClick={() => setIsProfileOpen(true)} className="w-full">
-            <User className="mr-2" /> Profile
-          </Button>
-          <Button variant="outline" onClick={handleLogout} className="w-full">
-            <LogIn className="mr-2" /> Log Out
-          </Button>
-        </div>
-
         {isOrgOwner ? (
           <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
             <Trash2 className="mr-2" /> Delete Organization
@@ -602,6 +601,28 @@ export default function ClubsPage() {
               disabled={deleteOrgSubmitting || orgStatus?.cancelAtPeriodEnd || !isOrgOwner}
             >
               {deleteOrgSubmitting ? "Scheduling..." : orgStatus?.cancelAtPeriodEnd ? "Already scheduled" : "Delete organization"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={isLogoutOpen} onOpenChange={setIsLogoutOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Log out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will be signed out of your account and returned to the login screen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                void handleLogout();
+              }}
+            >
+              Log Out
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

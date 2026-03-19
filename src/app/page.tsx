@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -112,12 +113,20 @@ function AppleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
 function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
     const [providerLoading, setProviderLoading] = useState<'google' | 'apple' | null>(null);
     const { toast } = useToast();
+    const router = useRouter();
 
-    const handleOAuth = async (provider: 'google' | 'apple') => {
-        setProviderLoading(provider);
+    type NativeAppleAuthorizeResult = {
+      identityToken?: string;
+      response?: {
+        identityToken?: string | null;
+      };
+    };
+
+    const handleGoogleOAuth = async () => {
+        setProviderLoading('google');
         const redirectTo = getOAuthRedirectTo();
         const { data, error } = await supabase.auth.signInWithOAuth({
-            provider,
+            provider: 'google',
             options: {
               ...(redirectTo ? { redirectTo } : {}),
               skipBrowserRedirect: true,
@@ -129,10 +138,40 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
             return;
         }
         if (data?.url) {
-            window.location.href = data.url;
+            window.open(data.url, "_blank");
             return;
         }
         setProviderLoading(null);
+    };
+
+    const signInWithApple = async () => {
+        setProviderLoading('apple');
+
+        try {
+            const result = await SignInWithApple.authorize({
+              scopes: 'email name',
+            } as unknown as Parameters<typeof SignInWithApple.authorize>[0]) as NativeAppleAuthorizeResult;
+            const identityToken = result.identityToken ?? result.response?.identityToken;
+
+            if (!identityToken) {
+              throw new Error('No identity token returned from Apple');
+            }
+
+            const { error } = await supabase.auth.signInWithIdToken({
+              provider: 'apple',
+              token: identityToken,
+            });
+
+            if (error) {
+              throw error;
+            }
+
+            router.push('/dashboard');
+        } catch (err) {
+            console.error('Apple login error:', err);
+        } finally {
+            setProviderLoading(null);
+        }
     };
 
     return (
@@ -141,7 +180,7 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => handleOAuth('google')}
+                onClick={handleGoogleOAuth}
                 disabled={providerLoading !== null}
             >
                 <GoogleLogoIcon /> Continue with Google
@@ -150,7 +189,7 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => handleOAuth('apple')}
+                onClick={signInWithApple}
                 disabled={providerLoading !== null}
             >
                 <AppleLogoIcon /> Continue with Apple

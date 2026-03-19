@@ -752,6 +752,7 @@ export default function AIInsights({
     const userEmail = user?.email?.toLowerCase() ?? '';
     const directMessages = Object.values(messages.data ?? {}).flat();
     const groupMessages = (groupChats.data ?? []).flatMap(chat => chat.messages ?? []);
+    const eventList = events.data ?? [];
 
     if (
       normalized.includes('message') ||
@@ -816,6 +817,49 @@ export default function AIInsights({
         actionLabel: 'Review',
         actionHref: '/finances',
         contextText: `Current balance is ${formattedBalance}. Help me review the finances.`,
+      };
+    }
+
+    if (
+      normalized.includes('rsvp') ||
+      (normalized.includes('event') &&
+        (normalized.includes('recent') || normalized.includes('latest') || normalized.includes('most recent')))
+    ) {
+      if (eventList.length === 0) {
+        return {
+          status: 'ok',
+          text: 'No events yet to check RSVPs.',
+          actionLabel: 'Review',
+          actionHref: '/calendar',
+          contextText: 'There are no events yet. Help me create or review upcoming events.',
+        };
+      }
+
+      const sortedEvents = [...eventList].sort((left, right) => {
+        const leftTime = left.date instanceof Date ? left.date.getTime() : new Date(left.date).getTime();
+        const rightTime =
+          right.date instanceof Date ? right.date.getTime() : new Date(right.date).getTime();
+        return rightTime - leftTime;
+      });
+      const recentEvent = sortedEvents[0];
+      const yesCount = recentEvent.rsvps?.yes?.length ?? 0;
+      const noCount = recentEvent.rsvps?.no?.length ?? 0;
+      const maybeCount = recentEvent.rsvps?.maybe?.length ?? 0;
+      const totalCount = yesCount + noCount + maybeCount;
+      const eventTitle = recentEvent.title?.trim() || 'Most recent event';
+
+      return {
+        status: 'ok',
+        text:
+          totalCount > 0
+            ? `${eventTitle} has ${totalCount} RSVP${totalCount === 1 ? '' : 's'} (${yesCount} yes, ${noCount} no, ${maybeCount} maybe).`
+            : `${eventTitle} has no RSVPs yet.`,
+        actionLabel: 'Review',
+        actionHref: '/calendar',
+        contextText:
+          totalCount > 0
+            ? `${eventTitle} has ${totalCount} RSVPs. Help me review attendance and follow up with members.`
+            : `${eventTitle} has no RSVPs yet. Help me improve responses for this event.`,
       };
     }
 

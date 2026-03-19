@@ -33,9 +33,9 @@ export function PrivacyPolicyContent() {
   return (
     <>
       <p className="font-semibold">Privacy Policy for CASPO</p>
-      <p>Effective Date: [Insert Date]</p>
+      <p>Effective Date: 3/19/2026</p>
       <p>
-        CASPO (“we”, “our”, or “us”) operates a mobile and web application designed to help users manage clubs, groups, and communications.
+        CASPO operates a mobile and web application designed to help users manage clubs, groups, and communications.
       </p>
       <p>This Privacy Policy explains how we collect, use, and protect your information.</p>
 
@@ -87,7 +87,7 @@ export function PrivacyPolicyContent() {
         <p>- Access your data</p>
         <p>- Request deletion of your account</p>
         <p>- Update your information</p>
-        <p>To request this, contact: [Your Email]</p>
+        <p>To request this, contact: clubhubai@gmail.com</p>
       </div>
 
       <div className="space-y-2">
@@ -110,7 +110,7 @@ export function PrivacyPolicyContent() {
       <div className="space-y-2">
         <p className="font-semibold">9. Contact</p>
         <p>If you have questions, contact us at:</p>
-        <p>[Your Email]</p>
+        <p>clubhubai@gmail.com</p>
       </div>
 
       <p>By using CASPO, you agree to this Privacy Policy.</p>
@@ -122,7 +122,7 @@ export function TermsContent() {
   return (
     <>
       <p className="font-semibold">Terms and Conditions for CASPO</p>
-      <p>Effective Date: [Insert Date]</p>
+      <p>Effective Date: 3/19/2026</p>
       <p>By using CASPO, you agree to these Terms and Conditions.</p>
 
       <div className="space-y-2">
@@ -191,7 +191,7 @@ export function TermsContent() {
       <div className="space-y-2">
         <p className="font-semibold">10. Contact</p>
         <p>For questions, contact:</p>
-        <p>[Your Email]</p>
+        <p>clubhubai@gmail.com</p>
       </div>
 
       <p>By using CASPO, you agree to these Terms.</p>

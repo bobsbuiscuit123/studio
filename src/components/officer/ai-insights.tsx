@@ -26,6 +26,7 @@ import {
   useMembers,
   useMessages,
   notifyOrgAiUsageChanged,
+  usePointEntries,
   useTransactions,
 } from '@/lib/data-hooks';
 import { resolveInsightRequestAction } from '@/app/(app)/assistant/actions';
@@ -329,6 +330,7 @@ export default function AIInsights({
   const forms = useForms();
   const messages = useMessages();
   const groupChats = useGroupChats();
+  const pointEntries = usePointEntries();
   const { user } = useCurrentUser();
   const [editMode, setEditMode] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
@@ -484,7 +486,8 @@ export default function AIInsights({
     members.loading ||
     forms.loading ||
     messages.loading ||
-    groupChats.loading;
+    groupChats.loading ||
+    pointEntries.loading;
 
   const insights = useMemo(() => {
     if (mode === 'member') {
@@ -571,6 +574,13 @@ export default function AIInsights({
         createdAt: item.createdAt,
         responseCount: item.responses?.length ?? 0,
       })),
+      points: (pointEntries.data ?? []).slice(0, 24).map(item => ({
+        id: item.id,
+        memberEmail: item.memberEmail,
+        points: item.points,
+        reason: item.reason,
+        date: item.date,
+      })),
       messages: {
         directCount: directMessages.length,
         unreadDirect,
@@ -595,6 +605,7 @@ export default function AIInsights({
     groupChats.data,
     members.data,
     messages.data,
+    pointEntries.data,
     transactions.data,
     user,
     mode,
@@ -742,6 +753,9 @@ export default function AIInsights({
     ) {
       return '/finances';
     }
+    if (normalized.includes('point') || normalized.includes('points')) {
+      return '/points';
+    }
     if (normalized.includes('member')) return '/members';
     return null;
   };
@@ -750,9 +764,273 @@ export default function AIInsights({
     const normalized = prompt.toLowerCase();
     const transactionList = mode === 'member' ? [] : transactions.data ?? [];
     const userEmail = user?.email?.toLowerCase() ?? '';
+    const announcementList = announcements.data ?? [];
+    const memberList = members.data ?? [];
+    const formList = forms.data ?? [];
     const directMessages = Object.values(messages.data ?? {}).flat();
     const groupMessages = (groupChats.data ?? []).flatMap(chat => chat.messages ?? []);
     const eventList = events.data ?? [];
+    const pointEntryList = pointEntries.data ?? [];
+    const promptTokens = Array.from(
+      new Set(normalized.split(/[^a-z0-9]+/).filter(token => token.length > 1))
+    );
+    const hasPhrase = (...phrases: string[]) => phrases.some(phrase => normalized.includes(phrase));
+    const tokenScore = (keywords: string[]) =>
+      keywords.reduce((score, keyword) => score + (promptTokens.includes(keyword) ? 1 : 0), 0);
+    const memberNameByEmail = new Map(
+      memberList.map(member => [member.email?.toLowerCase?.() ?? '', member.name ?? member.email])
+    );
+    const resolveMemberName = (email?: string | null) => {
+      const normalizedEmail = email?.toLowerCase?.() ?? '';
+      return memberNameByEmail.get(normalizedEmail) ?? email ?? 'Unknown member';
+    };
+
+    const candidates: { score: number; resolve: () => InsightResolutionResult }[] = [];
+
+    const messageScore =
+      tokenScore(['message', 'messages', 'dm', 'chat', 'reply', 'unread']) +
+      (hasPhrase('unread messages', 'unread message') ? 3 : 0);
+    if (messageScore > 0) {
+      candidates.push({
+        score: messageScore,
+        resolve: () => {
+          if (!userEmail) {
+            return {
+              status: 'ok',
+              text: 'Not enough data yet.',
+            };
+          }
+
+          const unreadDirect = directMessages.filter(
+            msg =>
+              msg.sender?.toLowerCase?.() !== userEmail &&
+              !(msg.readBy ?? []).some(email => email.toLowerCase() === userEmail)
+          ).length;
+          const unreadGroup = groupMessages.filter(
+            msg =>
+              msg.sender?.toLowerCase?.() !== userEmail &&
+              !(msg.readBy ?? []).some(email => email.toLowerCase() === userEmail)
+          ).length;
+          const unreadTotal = unreadDirect + unreadGroup;
+
+          return {
+            status: 'ok',
+            text:
+              unreadTotal > 0
+                ? `You have ${unreadTotal} unread message${unreadTotal === 1 ? '' : 's'}.`
+                : 'You are all caught up on messages.',
+            actionLabel: 'Review',
+            actionHref: '/messages',
+            contextText:
+              unreadTotal > 0
+                ? `You have ${unreadTotal} unread messages. Help me reply to them.`
+                : 'I am all caught up on messages. Help me stay on top of replies.',
+          };
+        },
+      });
+    }
+
+    const announcementScore =
+      tokenScore(['announcement', 'announcements', 'unread']) +
+      (hasPhrase('unread announcements', 'unread announcement') ? 3 : 0);
+    if (announcementScore > 0) {
+      candidates.push({
+        score: announcementScore,
+        resolve: () => {
+          const unreadAnnouncements = userEmail
+            ? announcementList.filter(
+                item =>
+                  !(item.viewedBy ?? []).some(
+                    email => email.toLowerCase() === userEmail
+                  )
+              ).length
+            : 0;
+          return {
+            status: 'ok',
+            text:
+              unreadAnnouncements > 0
+                ? `You have ${unreadAnnouncements} unread announcement${
+                    unreadAnnouncements === 1 ? '' : 's'
+                  }.`
+                : 'You are all caught up on announcements.',
+            actionLabel: 'Review',
+            actionHref: '/announcements',
+            contextText:
+              unreadAnnouncements > 0
+                ? `You have ${unreadAnnouncements} unread announcements. Help me review them.`
+                : 'I am all caught up on announcements. Help me stay informed.',
+          };
+        },
+      });
+    }
+
+    const balanceScore =
+      tokenScore(['balance', 'money', 'finance', 'finances', 'expense', 'expenses']) +
+      (hasPhrase('how much money', 'current balance', 'money we have', 'money i have') ? 3 : 0);
+    if (balanceScore > 0 && mode !== 'member') {
+      candidates.push({
+        score: balanceScore,
+        resolve: () => {
+          const balance = transactionList.reduce(
+            (sum, item) => sum + Number(item.amount ?? 0),
+            0
+          );
+          const formattedBalance = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 2,
+          }).format(balance);
+          return {
+            status: 'ok',
+            text: `Current balance is ${formattedBalance}.`,
+            actionLabel: 'Review',
+            actionHref: '/finances',
+            contextText: `Current balance is ${formattedBalance}. Help me review the finances.`,
+          };
+        },
+      });
+    }
+
+    const rsvpScore =
+      tokenScore(['rsvp', 'rsvps', 'event', 'events', 'recent', 'latest']) +
+      (hasPhrase("most recent event", 'latest event', 'recent event') ? 3 : 0);
+    if (rsvpScore > 0) {
+      candidates.push({
+        score: rsvpScore,
+        resolve: () => {
+          if (eventList.length === 0) {
+            return {
+              status: 'ok',
+              text: 'No events yet to check RSVPs.',
+              actionLabel: 'Review',
+              actionHref: '/calendar',
+              contextText: 'There are no events yet. Help me create or review upcoming events.',
+            };
+          }
+
+          const sortedEvents = [...eventList].sort((left, right) => {
+            const leftTime =
+              left.date instanceof Date ? left.date.getTime() : new Date(left.date).getTime();
+            const rightTime =
+              right.date instanceof Date ? right.date.getTime() : new Date(right.date).getTime();
+            return rightTime - leftTime;
+          });
+          const recentEvent = sortedEvents[0];
+          const yesCount = recentEvent.rsvps?.yes?.length ?? 0;
+          const noCount = recentEvent.rsvps?.no?.length ?? 0;
+          const maybeCount = recentEvent.rsvps?.maybe?.length ?? 0;
+          const totalCount = yesCount + noCount + maybeCount;
+          const eventTitle = recentEvent.title?.trim() || 'Most recent event';
+
+          return {
+            status: 'ok',
+            text:
+              totalCount > 0
+                ? `${eventTitle} has ${totalCount} RSVP${totalCount === 1 ? '' : 's'} (${yesCount} yes, ${noCount} no, ${maybeCount} maybe).`
+                : `${eventTitle} has no RSVPs yet.`,
+            actionLabel: 'Review',
+            actionHref: '/calendar',
+            contextText:
+              totalCount > 0
+                ? `${eventTitle} has ${totalCount} RSVPs. Help me review attendance and follow up with members.`
+                : `${eventTitle} has no RSVPs yet. Help me improve responses for this event.`,
+          };
+        },
+      });
+    }
+
+    const pointsScore =
+      tokenScore(['point', 'points', 'highest', 'top', 'leader', 'person', 'member']) +
+      (hasPhrase('highest points', 'most points', 'top points', 'points leader') ? 4 : 0);
+    if (pointsScore > 0) {
+      candidates.push({
+        score: pointsScore,
+        resolve: () => {
+          const totals = pointEntryList.reduce<Record<string, number>>((acc, entry) => {
+            const key = entry.memberEmail?.toLowerCase?.() ?? '';
+            if (!key) return acc;
+            acc[key] = (acc[key] ?? 0) + Number(entry.points ?? 0);
+            return acc;
+          }, {});
+          const leader = Object.entries(totals).sort((left, right) => right[1] - left[1])[0];
+
+          if (!leader) {
+            return {
+              status: 'ok',
+              text: 'No points have been recorded yet.',
+              actionLabel: 'Review',
+              actionHref: '/points',
+              contextText: 'No points have been recorded yet. Help me review the points system.',
+            };
+          }
+
+          const [leaderEmail, totalPoints] = leader;
+          const leaderName = resolveMemberName(leaderEmail);
+          return {
+            status: 'ok',
+            text: `${leaderName} has the highest points total with ${totalPoints} point${
+              totalPoints === 1 ? '' : 's'
+            }.`,
+            actionLabel: 'Review',
+            actionHref: '/points',
+            contextText: `${leaderName} has the highest points total with ${totalPoints} points. Help me review the leaderboard.`,
+          };
+        },
+      });
+    }
+
+    const formsScore =
+      tokenScore(['form', 'forms', 'response', 'responses', 'pending']) +
+      (hasPhrase('pending forms', 'missing responses', 'form responses') ? 3 : 0);
+    if (formsScore > 0) {
+      candidates.push({
+        score: formsScore,
+        resolve: () => {
+          if (mode === 'member' && userEmail) {
+            const pendingForms = formList.filter(form => {
+              const responses = form.responses ?? [];
+              return !responses.some(
+                response => response.respondentEmail?.toLowerCase?.() === userEmail
+              );
+            }).length;
+            return {
+              status: 'ok',
+              text:
+                pendingForms > 0
+                  ? `You have ${pendingForms} pending form${pendingForms === 1 ? '' : 's'}.`
+                  : 'You are all caught up on forms.',
+              actionLabel: 'Review',
+              actionHref: '/forms',
+              contextText:
+                pendingForms > 0
+                  ? `You have ${pendingForms} pending forms. Help me complete them.`
+                  : 'I am all caught up on forms. Help me stay on top of future responses.',
+            };
+          }
+          const mostResponses = [...formList]
+            .map(form => ({ form, count: form.responses?.length ?? 0 }))
+            .sort((left, right) => right.count - left.count)[0];
+          return {
+            status: 'ok',
+            text: mostResponses
+              ? `${mostResponses.form.title} has the most responses with ${mostResponses.count}.`
+              : 'No forms have been created yet.',
+            actionLabel: 'Review',
+            actionHref: '/forms',
+            contextText: mostResponses
+              ? `${mostResponses.form.title} has the most responses. Help me review form performance.`
+              : 'No forms exist yet. Help me create or review forms.',
+          };
+        },
+      });
+    }
+
+    if (candidates.length > 0) {
+      const bestMatch = [...candidates].sort((left, right) => right.score - left.score)[0];
+      if (bestMatch.score >= 2) {
+        return bestMatch.resolve();
+      }
+    }
 
     if (
       normalized.includes('message') ||
@@ -792,74 +1070,6 @@ export default function AIInsights({
           unreadTotal > 0
             ? `You have ${unreadTotal} unread messages. Help me reply to them.`
             : 'I am all caught up on messages. Help me stay on top of replies.',
-      };
-    }
-
-    if (
-      normalized.includes('balance') ||
-      normalized.includes('money i have') ||
-      normalized.includes('money we have') ||
-      normalized.includes('current amount') ||
-      normalized.includes('how much money')
-    ) {
-      const balance = transactionList.reduce(
-        (sum, item) => sum + Number(item.amount ?? 0),
-        0
-      );
-      const formattedBalance = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 2,
-      }).format(balance);
-      return {
-        status: 'ok',
-        text: `Current balance is ${formattedBalance}.`,
-        actionLabel: 'Review',
-        actionHref: '/finances',
-        contextText: `Current balance is ${formattedBalance}. Help me review the finances.`,
-      };
-    }
-
-    if (
-      normalized.includes('rsvp') ||
-      (normalized.includes('event') &&
-        (normalized.includes('recent') || normalized.includes('latest') || normalized.includes('most recent')))
-    ) {
-      if (eventList.length === 0) {
-        return {
-          status: 'ok',
-          text: 'No events yet to check RSVPs.',
-          actionLabel: 'Review',
-          actionHref: '/calendar',
-          contextText: 'There are no events yet. Help me create or review upcoming events.',
-        };
-      }
-
-      const sortedEvents = [...eventList].sort((left, right) => {
-        const leftTime = left.date instanceof Date ? left.date.getTime() : new Date(left.date).getTime();
-        const rightTime =
-          right.date instanceof Date ? right.date.getTime() : new Date(right.date).getTime();
-        return rightTime - leftTime;
-      });
-      const recentEvent = sortedEvents[0];
-      const yesCount = recentEvent.rsvps?.yes?.length ?? 0;
-      const noCount = recentEvent.rsvps?.no?.length ?? 0;
-      const maybeCount = recentEvent.rsvps?.maybe?.length ?? 0;
-      const totalCount = yesCount + noCount + maybeCount;
-      const eventTitle = recentEvent.title?.trim() || 'Most recent event';
-
-      return {
-        status: 'ok',
-        text:
-          totalCount > 0
-            ? `${eventTitle} has ${totalCount} RSVP${totalCount === 1 ? '' : 's'} (${yesCount} yes, ${noCount} no, ${maybeCount} maybe).`
-            : `${eventTitle} has no RSVPs yet.`,
-        actionLabel: 'Review',
-        actionHref: '/calendar',
-        contextText:
-          totalCount > 0
-            ? `${eventTitle} has ${totalCount} RSVPs. Help me review attendance and follow up with members.`
-            : `${eventTitle} has no RSVPs yet. Help me improve responses for this event.`,
       };
     }
 
@@ -1046,6 +1256,27 @@ export default function AIInsights({
       finance: [],
     };
     customRequests.forEach(request => {
+      const localResolved = resolveLocalInsightRequest(request.prompt);
+      if (localResolved?.status === 'ok') {
+        const localText =
+          typeof localResolved.text === 'string' ? localResolved.text.trim() : '';
+        if (localText) {
+          if (!next[request.listKey]) {
+            next[request.listKey] = [];
+          }
+          next[request.listKey].push({
+            id: request.id,
+            text: localText,
+            actionLabel: localResolved.actionLabel,
+            actionHref: localResolved.actionHref ?? undefined,
+            contextText: localResolved.contextText,
+            createdAt: Date.now(),
+            source: 'custom' as const,
+          });
+          return;
+        }
+      }
+
       const parsed = requestCache[request.id];
       if (!parsed) return;
       if (parsed.contextVersion !== contextVersion) return;

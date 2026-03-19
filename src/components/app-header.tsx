@@ -88,6 +88,7 @@ const pageTitles: { [key: string]: string } = {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [clubName, setClubName] = useState("");
   const [orgName, setOrgName] = useState("");
   const demoCtx = useOptionalDemoCtx();
@@ -283,7 +284,7 @@ export function AppHeader() {
   return (
     <>
     <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
-       <Sheet>
+       <Sheet open={isNavOpen} onOpenChange={setIsNavOpen}>
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="sm:hidden">
             <Menu className="h-5 w-5" />
@@ -307,6 +308,7 @@ export function AppHeader() {
                 role={role || ''} 
                 notifications={unread}
                 onLinkClick={(key) => markTabViewed(key)}
+                onNavigate={() => setIsNavOpen(false)}
               />
             </nav>
           </div>
@@ -314,13 +316,14 @@ export function AppHeader() {
       </Sheet>
 
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-         <h1 className="min-w-0 text-lg font-semibold md:text-2xl">
-            {title}
-            {orgName && <span className="truncate text-sm font-normal text-muted-foreground"> - {orgName}</span>}
+        <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+         <h1 className="min-w-0 text-lg font-semibold leading-tight md:text-2xl">
+            <span className="block sm:inline">{title}</span>
+            {orgName && <span className="mt-1 block truncate text-sm font-normal text-muted-foreground sm:mt-0 sm:ml-1 sm:inline">- {orgName}</span>}
             {clubName && (
-              <span className="inline-flex min-w-0 items-center text-sm font-normal text-muted-foreground">
-                {" / "}{clubName}
+              <span className="mt-1 inline-flex min-w-0 items-center text-sm font-normal text-muted-foreground sm:mt-0">
+                <span className="hidden sm:inline"> / </span>
+                <span className="truncate">{clubName}</span>
                 {hasGroupContext ? (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>

@@ -62,7 +62,7 @@ export default function DemoAppLayout({
         <AppSidebar />
         <div className="relative flex min-w-0 flex-col">
           <AppHeader />
-          <main className="safe-bottom-space flex min-w-0 flex-1 flex-col gap-4 overflow-x-clip p-4 lg:gap-6 lg:p-6">{children}</main>
+          <main className="safe-bottom-space flex min-w-0 flex-1 flex-col gap-4 overflow-x-clip p-3 sm:p-4 lg:gap-6 lg:p-6">{children}</main>
         </div>
       </div>
     </DemoDataProvider>

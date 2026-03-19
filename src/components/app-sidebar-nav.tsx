@@ -49,7 +49,17 @@ const allNavItems = [
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['Admin'], notificationKey: null },
 ];
 
-export function AppSidebarNav({ role, notifications, onLinkClick }: { role: string; notifications: NotificationMap, onLinkClick: (key: NotificationKey) => void }) {
+export function AppSidebarNav({
+  role,
+  notifications,
+  onLinkClick,
+  onNavigate,
+}: {
+  role: string;
+  notifications: NotificationMap;
+  onLinkClick: (key: NotificationKey) => void;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
   const lastAutoClearedRef = useRef<string | null>(null);
@@ -118,8 +128,9 @@ export function AppSidebarNav({ role, notifications, onLinkClick }: { role: stri
           <Link
             key={item.href}
             href={href}
+            onClick={onNavigate}
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary',
+              'flex items-center gap-3 rounded-xl px-3 py-3 text-base text-muted-foreground transition-all hover:text-primary sm:rounded-lg sm:py-2 sm:text-sm',
               item.label === 'Assistant' &&
                 'bg-gradient-to-r from-emerald-100 via-emerald-50 to-emerald-50 text-emerald-800 hover:text-emerald-900 shadow-[0_0_10px_rgba(16,185,129,0.25)]',
               isActive &&

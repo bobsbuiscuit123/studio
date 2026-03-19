@@ -84,17 +84,18 @@ export default function AttendancePage() {
 
 
   if (eventsLoading || userLoading || membersLoading) {
-    return <Loader2 className="animate-spin" />
+    return <div className="flex h-full flex-col"><Loader2 className="animate-spin" /></div>
   }
 
   if (canEditContent) {
     // Admin/officer view
     return (
-      <div className="space-y-6">
-        <div>
+      <div className="flex h-full flex-col gap-3">
+        <div className="header shrink-0">
           <h1 className="text-3xl font-bold">Event Attendance</h1>
           <p className="text-muted-foreground">Manage check-in codes and view attendance records for club events.</p>
         </div>
+        <div className="content flex-1 flex flex-col justify-start">
         <Card>
           <CardHeader>
             <CardTitle>All Events</CardTitle>
@@ -153,13 +154,16 @@ export default function AttendancePage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
     );
   }
 
   // Member View
   return (
-    <div className="grid md:grid-cols-3 gap-8">
+    <div className="flex h-full flex-col gap-3">
+        <div className="content flex-1 flex flex-col justify-start">
+    <div className="grid gap-3 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">
             <Card>
                 <CardHeader>
@@ -220,6 +224,8 @@ export default function AttendancePage() {
                 </CardContent>
             </Card>
         </div>
+    </div>
+    </div>
     </div>
   );
 }

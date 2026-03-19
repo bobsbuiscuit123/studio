@@ -200,8 +200,8 @@ function FormsPageInner() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <header className="flex items-center justify-between">
+    <div className="flex h-full flex-col gap-3">
+      <header className="header shrink-0 flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <ClipboardList className="h-6 w-6" /> Forms
@@ -210,7 +210,8 @@ function FormsPageInner() {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="content flex-1 flex flex-col justify-start">
+      <div className="grid gap-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">
             <CardHeader>
@@ -561,6 +562,7 @@ function FormsPageInner() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -121,16 +121,16 @@ export function MessagesListScreen() {
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex h-full flex-col px-4"><div className="pt-4 text-sm text-muted-foreground">Loading messages...</div></div>;
+    return <div className="flex h-full flex-col px-4"><div className="text-sm text-muted-foreground">Loading messages...</div></div>;
   }
 
   if (!user) {
-    return <div className="flex h-full flex-col px-4"><div className="pt-4 text-sm text-muted-foreground">Please log in to see messages.</div></div>;
+    return <div className="flex h-full flex-col px-4"><div className="text-sm text-muted-foreground">Please log in to see messages.</div></div>;
   }
 
   return (
-    <div className="main-container flex h-full flex-col px-4">
-      <div className="header relative shrink-0 space-y-3 pb-4 pt-1">
+    <div className="flex h-full flex-col">
+      <div className="header relative shrink-0 space-y-3 pb-3">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
@@ -200,7 +200,7 @@ export function MessagesListScreen() {
 
       <div className="messages-content flex flex-1 flex-col items-stretch justify-start overflow-y-auto pb-4">
         {filteredConversations.length === 0 ? (
-          <div className="pt-6 text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             No conversations yet
           </div>
         ) : (
@@ -344,16 +344,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex h-full flex-col px-4"><div className="pt-4 text-sm text-muted-foreground">Loading conversation...</div></div>;
+    return <div className="flex h-full flex-col px-4"><div className="text-sm text-muted-foreground">Loading conversation...</div></div>;
   }
 
   if (!user) {
-    return <div className="flex h-full flex-col px-4"><div className="pt-4 text-sm text-muted-foreground">Please log in to see messages.</div></div>;
+    return <div className="flex h-full flex-col px-4"><div className="text-sm text-muted-foreground">Please log in to see messages.</div></div>;
   }
 
   if (!conversation) {
     return (
-      <div className="flex h-full flex-col gap-4 px-4 pt-4 text-left">
+      <div className="flex h-full flex-col gap-4 px-4 text-left">
         <p className="text-sm text-muted-foreground">Conversation not found</p>
         <Button asChild variant="outline" className="w-fit">
           <Link href="/messages">Back to Messages</Link>
@@ -366,8 +366,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div className="main-container flex h-full flex-col px-4">
-      <div className="header flex shrink-0 items-center gap-3 border-b bg-background pb-3 pt-1">
+    <div className="flex h-full flex-col">
+      <div className="header flex shrink-0 items-center gap-3 border-b bg-background pb-3">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />
           <span className="sr-only">Back to conversations</span>
@@ -385,7 +385,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
       <div className="messages-content flex flex-1 flex-col items-stretch justify-start overflow-y-auto py-4">
         {activeMessages.length === 0 ? (
-          <div className="pt-6 text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             No conversations yet
           </div>
         ) : (

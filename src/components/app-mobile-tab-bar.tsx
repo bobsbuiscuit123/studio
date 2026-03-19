@@ -64,76 +64,90 @@ export function AppMobileTabBar() {
     <>
       <nav className="bottom-nav md:hidden">
         <div className="nav-inner mx-auto max-w-screen-md">
-          <div className="left-tabs">
-            {page === 1 ? (
-              <button
-                type="button"
-                onClick={() => setPage(0)}
-                className="flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-muted-foreground transition-all active:scale-95"
-              >
-                <ChevronLeft className="h-5 w-5" />
-                <span>Back</span>
-              </button>
-            ) : null}
-            {currentPageItems.left.map(item => (
-              <MobileTabLink
-                key={item.href}
-                href={buildHref(item.href)}
-                icon={item.icon}
-                label={item.label}
-                active={isItemActive(item.href)}
-                hasNotification={Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) && !isItemActive(item.href)}
-                onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
-              />
-            ))}
-          </div>
+          {page === 1 ? (
+            <button
+              type="button"
+              onClick={() => setPage(0)}
+              className="tab text-muted-foreground"
+            >
+              <ChevronLeft className="h-6 w-6" />
+              <span className="text-xs">Back</span>
+            </button>
+          ) : (
+            <MobileTabLink
+              href={buildHref(currentPageItems.left[0]?.href ?? "")}
+              icon={currentPageItems.left[0]?.icon}
+              label={currentPageItems.left[0]?.label ?? ""}
+              active={Boolean(currentPageItems.left[0] && isItemActive(currentPageItems.left[0].href))}
+              hasNotification={Boolean(
+                currentPageItems.left[0]?.notificationKey &&
+                  unread[currentPageItems.left[0].notificationKey as keyof typeof unread] &&
+                  !isItemActive(currentPageItems.left[0].href)
+              )}
+              onClick={() => currentPageItems.left[0]?.notificationKey && markTabViewed(currentPageItems.left[0].notificationKey)}
+            />
+          )}
+
+          <MobileTabLink
+            href={buildHref(currentPageItems.left[1]?.href ?? "")}
+            icon={currentPageItems.left[1]?.icon}
+            label={currentPageItems.left[1]?.label ?? ""}
+            active={Boolean(currentPageItems.left[1] && isItemActive(currentPageItems.left[1].href))}
+            hasNotification={Boolean(
+              currentPageItems.left[1]?.notificationKey &&
+                unread[currentPageItems.left[1].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPageItems.left[1].href)
+            )}
+            onClick={() => currentPageItems.left[1]?.notificationKey && markTabViewed(currentPageItems.left[1].notificationKey)}
+          />
 
           {assistantItem ? (
-            <div className="ai-button-wrapper">
-              <Link
-                href={buildHref(assistantItem.href)}
-                onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
-                className="ai-button z-[1001]"
-                aria-label={assistantItem.label}
-              >
-                <assistantItem.icon className="h-6 w-6 text-white" />
-              </Link>
-            </div>
+            <Link
+              href={buildHref(assistantItem.href)}
+              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+              className="ai-button z-[1001]"
+              aria-label={assistantItem.label}
+            >
+              <assistantItem.icon className="h-6 w-6 text-white" />
+            </Link>
           ) : null}
 
-          <div className="right-tabs">
-            {currentPageItems.right.map(item => (
-              <MobileTabLink
-                key={item.href}
-                href={buildHref(item.href)}
-                icon={item.icon}
-                label={item.label}
-                active={isItemActive(item.href)}
-                hasNotification={Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) && !isItemActive(item.href)}
-                onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
-              />
-            ))}
-            {page === 0 && secondaryItems.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setPage(1)}
-                className="flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-muted-foreground transition-all active:scale-95"
-              >
-                <ChevronRight className="h-5 w-5" />
-                <span>More</span>
-              </button>
-            ) : null}
-            {page === 1 && currentPageItems.right.length === 0 ? (
-                <button
-                  type="button"
-                  disabled
-                  className="flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium text-transparent"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                  <span>More</span>
-                </button>
-            ) : null}
-          </div>
+          <MobileTabLink
+            href={buildHref(currentPageItems.right[0]?.href ?? "")}
+            icon={currentPageItems.right[0]?.icon}
+            label={currentPageItems.right[0]?.label ?? ""}
+            active={Boolean(currentPageItems.right[0] && isItemActive(currentPageItems.right[0].href))}
+            hasNotification={Boolean(
+              currentPageItems.right[0]?.notificationKey &&
+                unread[currentPageItems.right[0].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPageItems.right[0].href)
+            )}
+            onClick={() => currentPageItems.right[0]?.notificationKey && markTabViewed(currentPageItems.right[0].notificationKey)}
+          />
+
+          {page === 0 && secondaryItems.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setPage(1)}
+              className="tab text-muted-foreground"
+            >
+              <ChevronRight className="h-6 w-6" />
+              <span className="text-xs">More</span>
+            </button>
+          ) : (
+            <MobileTabLink
+              href={buildHref(currentPageItems.right[1]?.href ?? "")}
+              icon={currentPageItems.right[1]?.icon}
+              label={currentPageItems.right[1]?.label ?? ""}
+              active={Boolean(currentPageItems.right[1] && isItemActive(currentPageItems.right[1].href))}
+              hasNotification={Boolean(
+                currentPageItems.right[1]?.notificationKey &&
+                  unread[currentPageItems.right[1].notificationKey as keyof typeof unread] &&
+                  !isItemActive(currentPageItems.right[1].href)
+              )}
+              onClick={() => currentPageItems.right[1]?.notificationKey && markTabViewed(currentPageItems.right[1].notificationKey)}
+            />
+          )}
         </div>
       </nav>
     </>
@@ -142,30 +156,36 @@ export function AppMobileTabBar() {
 
 function MobileTabLink({
   href,
-  icon: Icon,
+  icon,
   label,
   active,
   hasNotification,
   onClick,
 }: {
   href: string;
-  icon: ComponentType<{ className?: string }>;
+  icon?: ComponentType<{ className?: string }>;
   label: string;
   active: boolean;
   hasNotification: boolean;
   onClick?: () => void;
 }) {
+  if (!href || !icon || !label) {
+    return <div className="tab opacity-0" aria-hidden="true" />;
+  }
+
+  const Icon = icon;
+
   return (
     <Link
       href={href}
       onClick={onClick}
       className={cn(
-        "flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-all active:scale-95",
+        "tab rounded-2xl text-xs font-medium transition-all active:scale-95",
         active ? "bg-primary/15 text-primary" : "text-muted-foreground"
       )}
     >
       <div className="relative">
-        <Icon className="h-5 w-5" />
+        <Icon className="h-6 w-6" />
         {hasNotification ? (
           <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
         ) : null}

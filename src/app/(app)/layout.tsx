@@ -20,6 +20,11 @@ export default function AppLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const isMessagesRoute =
+    pathname === "/messages" ||
+    pathname.startsWith("/messages/") ||
+    pathname === "/demo/app/messages" ||
+    pathname.startsWith("/demo/app/messages/");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -41,7 +46,13 @@ export default function AppLayout({
             <AppHeader />
           </div>
           <ImportLocalData />
-          <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6 print:p-0">
+          <main
+            className={`main-container mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col overflow-x-clip print:p-0 ${
+              isMessagesRoute
+                ? "messages-route-shell gap-0 px-0 py-0"
+                : "safe-bottom-space gap-4 px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6"
+            }`}
+          >
             <OfflineCallout />
             <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
           </main>

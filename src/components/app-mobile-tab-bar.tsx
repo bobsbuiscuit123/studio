@@ -31,7 +31,13 @@ export function AppMobileTabBar() {
   const { role } = useCurrentUserRole();
   const { unread, markTabViewed } = useNotificationsContext();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
+  const isMessagesRoute =
+    pathname === "/messages" ||
+    pathname.startsWith("/messages/") ||
+    pathname === "/demo/app/messages" ||
+    pathname.startsWith("/demo/app/messages/");
   const [page, setPage] = useState(0);
+  const [isInputActive, setIsInputActive] = useState(false);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
   const orderedItems = mobileNavOrder
@@ -60,7 +66,32 @@ export function AppMobileTabBar() {
     }
   }, [page, pages.length]);
 
-  if (orderedItems.length === 0 && !assistantItem) {
+  useEffect(() => {
+    if (!isMessagesRoute) {
+      setIsInputActive(false);
+      return;
+    }
+
+    const updateInputState = () => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      const isEditable =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        activeElement?.isContentEditable === true;
+      setIsInputActive(Boolean(isEditable));
+    };
+
+    updateInputState();
+    document.addEventListener("focusin", updateInputState);
+    document.addEventListener("focusout", updateInputState);
+
+    return () => {
+      document.removeEventListener("focusin", updateInputState);
+      document.removeEventListener("focusout", updateInputState);
+    };
+  }, [isMessagesRoute]);
+
+  if ((orderedItems.length === 0 && !assistantItem) || (isMessagesRoute && isInputActive)) {
     return null;
   }
 
@@ -72,13 +103,16 @@ export function AppMobileTabBar() {
             <button
               type="button"
               onClick={() => setPage(current => Math.max(0, current - 1))}
-              className="tab text-muted-foreground"
+              className="tab nav-arrow text-muted-foreground"
             >
               <ChevronLeft className="h-6 w-6" />
               <span className="text-xs">Back</span>
             </button>
           ) : (
-            <div className="tab opacity-0" aria-hidden="true" />
+            <div className="tab nav-arrow opacity-0" aria-hidden="true">
+              <ChevronLeft className="h-6 w-6" />
+              <span className="text-xs">Back</span>
+            </div>
           )}
 
           <MobileTabLink
@@ -148,13 +182,16 @@ export function AppMobileTabBar() {
             <button
               type="button"
               onClick={() => setPage(current => Math.min(pages.length - 1, current + 1))}
-              className="tab text-muted-foreground"
+              className="tab nav-arrow text-muted-foreground"
             >
               <ChevronRight className="h-6 w-6" />
               <span className="text-xs">More</span>
             </button>
           ) : (
-            <div className="tab opacity-0" aria-hidden="true" />
+            <div className="tab nav-arrow opacity-0" aria-hidden="true">
+              <ChevronRight className="h-6 w-6" />
+              <span className="text-xs">More</span>
+            </div>
           )}
         </div>
       </nav>

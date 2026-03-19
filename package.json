@@ -17,9 +17,12 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@capacitor/camera": "^8.0.2",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.2.0",
+    "@capacitor/share": "^8.0.1",
     "@faker-js/faker": "^8.4.1",
     "@genkit-ai/ai": "^1.15.0",
     "@genkit-ai/googleai": "^1.15.0",

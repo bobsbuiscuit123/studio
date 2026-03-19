@@ -3,6 +3,10 @@
 
 import { useState, useRef } from "react";
 import Image from "next/image";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -34,8 +38,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { resizeImage } from "@/lib/image-resizer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const MAX_GALLERY_IMAGES = 20;
+const isNativeApp = Capacitor.isNativePlatform();
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
@@ -71,6 +82,38 @@ export default function GalleryPage() {
       setPreviewImages(prev => [...prev, ...newPreviews]);
     }
   };
+
+  const addImages = (newFiles: File[], newPreviews: string[]) => {
+    const currentFiles = form.getValues("images") || [];
+    form.setValue("images", [...currentFiles, ...newFiles], { shouldValidate: true });
+    setPreviewImages(prev => [...prev, ...newPreviews]);
+  };
+
+  const handleNativeImagePick = async (source: CameraSource) => {
+    try {
+      const photo = await Camera.getPhoto({
+        quality: 85,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source,
+      });
+
+      if (!photo.dataUrl) {
+        return;
+      }
+
+      const fileName = `gallery-${Date.now()}.${photo.format || "jpeg"}`;
+      const file = dataUrlToFile(photo.dataUrl, fileName);
+      addImages([file], [photo.dataUrl]);
+    } catch (error) {
+      console.error("Native image picker failed", error);
+      toast({
+        title: "Couldn't open camera",
+        description: "Please try again or choose an image from your library.",
+        variant: "destructive",
+      });
+    }
+  };
   
   const removePreviewImage = (index: number) => {
     const updatedFiles = [...(form.getValues("images") || [])];
@@ -78,7 +121,7 @@ export default function GalleryPage() {
     form.setValue("images", updatedFiles);
 
     const updatedPreviews = [...previewImages];
-    URL.revokeObjectURL(updatedPreviews[index]); // Clean up object URL
+    revokePreviewUrl(updatedPreviews[index]);
     updatedPreviews.splice(index, 1);
     setPreviewImages(updatedPreviews);
   };
@@ -134,7 +177,7 @@ export default function GalleryPage() {
         });
 
         form.reset();
-        previewImages.forEach(url => URL.revokeObjectURL(url));
+        previewImages.forEach(revokePreviewUrl);
         setPreviewImages([]);
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
@@ -167,7 +210,36 @@ export default function GalleryPage() {
     setImages(updatedImages);
   };
   
-  const handleDownload = (imageSrc: string, imageName: string) => {
+  const handleDownload = async (imageSrc: string, imageName: string) => {
+    if (isNativeApp) {
+      try {
+        const { base64Data, mimeType } = await imageSourceToBase64(imageSrc);
+        const extension = mimeTypeToExtension(mimeType);
+        const path = `gallery/${Date.now()}-${imageName.replace(/\.[^.]+$/, "")}.${extension}`;
+        const file = await Filesystem.writeFile({
+          path,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+
+        await Share.share({
+          title: imageName,
+          text: "Save or share this gallery image",
+          url: file.uri,
+          dialogTitle: "Save or share image",
+        });
+      } catch (error) {
+        console.error("Native image download failed", error);
+        toast({
+          title: "Couldn't open save options",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
     const link = document.createElement("a");
     link.href = imageSrc;
     link.download = imageName;
@@ -223,10 +295,32 @@ export default function GalleryPage() {
              <div className="space-y-2">
                 <label>Image Files</label>
                 <div>
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    <Upload className="mr-2" />
-                    Choose Images
-                    </Button>
+                    {isNativeApp ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button type="button" variant="outline">
+                            <Upload className="mr-2" />
+                            Add Images
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                          <DropdownMenuItem onClick={() => handleNativeImagePick(CameraSource.Photos)}>
+                            Photo Library
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleNativeImagePick(CameraSource.Camera)}>
+                            Take Photo
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                            Choose Files
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : (
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="mr-2" />
+                        Choose Images
+                      </Button>
+                    )}
                     <Input
                     type="file"
                     className="hidden"
@@ -382,4 +476,59 @@ export default function GalleryPage() {
   );
 }
 
-    
+function revokePreviewUrl(url?: string) {
+  if (url?.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string) {
+  const [meta, content = ""] = dataUrl.split(",");
+  const mimeMatch = meta.match(/data:(.*?);base64/);
+  const mimeType = mimeMatch?.[1] || "image/jpeg";
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mimeType });
+}
+
+async function imageSourceToBase64(imageSrc: string) {
+  if (imageSrc.startsWith("data:")) {
+    const [meta, base64Data = ""] = imageSrc.split(",");
+    const mimeType = meta.match(/data:(.*?);base64/)?.[1] || "image/jpeg";
+    return { base64Data, mimeType };
+  }
+
+  const response = await fetch(imageSrc);
+  const blob = await response.blob();
+  const dataUrl = await blobToDataUrl(blob);
+  const [meta, base64Data = ""] = dataUrl.split(",");
+  const mimeType = meta.match(/data:(.*?);base64/)?.[1] || blob.type || "image/jpeg";
+  return { base64Data, mimeType };
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Failed to convert blob to data URL."));
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error("Failed to read blob."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function mimeTypeToExtension(mimeType: string) {
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  if (mimeType.includes("heic")) return "heic";
+  return "jpg";
+}

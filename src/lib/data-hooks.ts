@@ -346,6 +346,7 @@ export function useMembers() {
   const { clubId, orgId, data, loading, updateClubData } = useClubDataStore();
   const demoCtx = useOptionalDemoCtx();
   const useDemo = shouldUseDemoData(Boolean(demoCtx));
+  const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
   const [membersData, setMembersData] = useState<Member[]>(() => {
     const defaults = getDefaultClubData();
     return data?.members ?? defaults.members;
@@ -387,8 +388,39 @@ export function useMembers() {
       }
 
       const nextMembers: Member[] = response.data.data.members;
+      const memberEmails = nextMembers
+        .map(member => member.email)
+        .filter((email): email is string => Boolean(email));
 
-      setMembersData(nextMembers);
+      let nextMembersWithProfiles = nextMembers;
+
+      if (supabase && memberEmails.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('email, display_name, avatar_url')
+          .in('email', memberEmails);
+
+        if (profilesError) {
+          console.error(`Error loading member profiles for ${clubId}`, profilesError);
+        } else if (profiles) {
+          const profileByEmail = new Map(
+            profiles
+              .filter(profile => profile.email)
+              .map(profile => [profile.email as string, profile])
+          );
+
+          nextMembersWithProfiles = nextMembers.map(member => {
+            const profile = profileByEmail.get(member.email);
+            return {
+              ...member,
+              name: profile?.display_name || member.name,
+              avatar: profile?.avatar_url || member.avatar,
+            };
+          });
+        }
+      }
+
+      setMembersData(nextMembersWithProfiles);
       setMembersLoading(false);
     };
 
@@ -396,7 +428,7 @@ export function useMembers() {
     return () => {
       active = false;
     };
-  }, [clubId, data?.members, loading, orgId, useDemo]);
+  }, [clubId, data?.members, loading, orgId, supabase, useDemo]);
 
   const updateData = useCallback(
     (newData: Member[] | ((prevData: Member[]) => Member[])) => {

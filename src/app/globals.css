@@ -185,13 +185,13 @@ main,
   justify-content: space-between;
   align-items: center;
   height: 100%;
-  padding: 0 24px;
+  padding: 0 16px;
 }
 
 .left-tabs,
 .right-tabs {
   display: flex;
-  gap: 28px;
+  gap: 18px;
 }
 
 .left-tabs {

@@ -445,8 +445,6 @@ export default function CalendarPage() {
 
                   {calendarDays.map(day => {
                     const dayEvents = safeEvents.filter(event => isSameDay(event.date, day));
-                    const visibleEvents = dayEvents.slice(0, 2);
-                    const extraCount = dayEvents.length - visibleEvents.length;
                     const isSelected = date ? isSameDay(day, date) : false;
                     const isCurrentMonth = isSameMonth(day, currentMonth);
 
@@ -462,24 +460,9 @@ export default function CalendarPage() {
                         )}
                       >
                         <span className="text-xs font-medium sm:text-sm">{format(day, "d")}</span>
-                        <div className="w-full space-y-1 overflow-hidden">
-                          {visibleEvents.map(event => (
-                            <div
-                              key={event.id}
-                              className="max-w-full overflow-hidden truncate rounded-md bg-primary/15 px-1 py-0.5 text-[10px] text-primary sm:text-xs"
-                              onClick={eventClick => {
-                                eventClick.stopPropagation();
-                                markEventViewed(event.id);
-                                setSelectedEvent(event);
-                              }}
-                            >
-                              {event.title}
-                            </div>
-                          ))}
-                          {extraCount > 0 ? (
-                            <div className="max-w-full truncate text-[10px] font-medium text-muted-foreground sm:text-xs">
-                              +{extraCount}
-                            </div>
+                        <div className="mt-auto flex w-full justify-center">
+                          {dayEvents.length > 0 ? (
+                            <div className="h-1 w-3/5 rounded bg-green-500" />
                           ) : null}
                         </div>
                       </button>

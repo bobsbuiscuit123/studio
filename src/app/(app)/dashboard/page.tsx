@@ -82,6 +82,7 @@ type MissedActivityCache = {
 type DashboardStoredState = {
   missedLastSeenAt: number;
   missedLastShownDay: string | null;
+  shownMissedActivityKeys: string[];
   missedSnapshot: MissedActivitySnapshot;
   missedSummaryCache: MissedActivityCache | null;
 };
@@ -89,6 +90,7 @@ type DashboardStoredState = {
 const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
   missedLastSeenAt: 0,
   missedLastShownDay: null,
+  shownMissedActivityKeys: [],
   missedSnapshot: {
     members: [],
     events: [],
@@ -131,6 +133,8 @@ const typewriterText = ({
 };
 
 const normalizeEmail = (email?: string | null) => (email ?? "").toLowerCase();
+const createActivityKey = (item: Pick<ActivityItem, "type" | "title" | "link" | "actor">) =>
+  [item.type, item.title, item.link, item.actor ?? ""].join("|");
 
 const toDate = (value?: string | Date | null) => {
   if (!value) return null;
@@ -170,7 +174,6 @@ export default function Dashboard() {
   const [missedDismissed, setMissedDismissed] = React.useState(false);
   const [missedTypingStart, setMissedTypingStart] = React.useState(0);
   const [missedNow, setMissedNow] = React.useState(() => Date.now());
-  const todayDayKey = getUtcDayKey();
   const { data: dashboardState, updateData: updateDashboardState } =
     useGroupUserStateSection<DashboardStoredState>("dashboard", DEFAULT_DASHBOARD_STATE);
 
@@ -199,7 +202,7 @@ export default function Dashboard() {
   
   useEffect(() => {
     setMissedDismissed(false);
-  }, [clubId, todayDayKey, user?.email]);
+  }, [clubId, user?.email]);
 
   const dismissMissed = React.useCallback(() => {
     setMissedOpen(false);
@@ -550,13 +553,9 @@ export default function Dashboard() {
     if (missedDismissed) {
       return;
     }
-    if (dashboardState.missedLastShownDay === todayDayKey) {
-      return;
-    }
-
-    const lastSeen = dashboardState.missedLastSeenAt ?? 0;
     const userEmail = normalizeEmail(user.email);
     const snapshot = dashboardState.missedSnapshot ?? DEFAULT_DASHBOARD_STATE.missedSnapshot;
+    const shownActivityKeys = new Set(dashboardState.shownMissedActivityKeys ?? []);
 
     const deltaActivities: ActivityItem[] = [];
     const currentMemberEmails = members.map(member =>
@@ -667,14 +666,16 @@ export default function Dashboard() {
     const allActivities = [...recentActivities, ...deltaActivities].sort(
       (a, b) => b.date.getTime() - a.date.getTime()
     );
-    const unseen = allActivities.filter(item => item.date.getTime() > lastSeen);
+    const unseen = allActivities.filter(item => !shownActivityKeys.has(createActivityKey(item)));
+    const unseenForPopup = unseen.slice(0, 6);
+    const unseenPopupKeys = unseenForPopup.map(item => createActivityKey(item));
 
     const missedContextVersion = stableSerialize({
-      unseen: unseen.slice(0, 12).map(item => ({
+      unseen: unseenForPopup.map(item => ({
         type: item.type,
         title: item.title,
-        at: item.date.toISOString(),
         link: item.link,
+        actor: item.actor,
       })),
       upcoming: upcomingWeekEvents.slice(0, 5).map(event => ({
         id: event.id,
@@ -693,8 +694,8 @@ export default function Dashboard() {
           : {
               contextVersion: missedContextVersion,
               title: "What you missed",
-              bullets: unseen.slice(0, 6).map(item => `${item.title} (${item.date.toLocaleDateString()})`),
-              actions: Array.from(new Set(unseen.map(item => item.link)))
+              bullets: unseenForPopup.map(item => `${item.title} (${item.date.toLocaleDateString()})`),
+              actions: Array.from(new Set(unseenForPopup.map(item => item.link)))
                 .slice(0, 3)
                 .map(link => ({
                   href: link,
@@ -708,18 +709,19 @@ export default function Dashboard() {
       setMissedOpen(true);
       setMissedLoading(false);
 
-      if (cachedSummary?.contextVersion !== missedContextVersion) {
-        void updateDashboardState(prev => ({
-          ...prev,
-          missedSummaryCache: nextSummary,
-          missedSnapshot: {
-            members: currentMemberEmails,
-            events: currentEventIds,
-            rsvps: nextRsvps,
-            attendees: nextAttendees,
-          },
-        }));
-      }
+      void updateDashboardState(prev => ({
+        ...prev,
+        missedSummaryCache: nextSummary,
+        shownMissedActivityKeys: Array.from(
+          new Set([...(prev.shownMissedActivityKeys ?? []), ...unseenPopupKeys])
+        ).slice(-200),
+        missedSnapshot: {
+          members: currentMemberEmails,
+          events: currentEventIds,
+          rsvps: nextRsvps,
+          attendees: nextAttendees,
+        },
+      }));
     } else {
       void updateDashboardState(prev => ({
         ...prev,
@@ -734,7 +736,7 @@ export default function Dashboard() {
   }, [
     announcementsLoading,
     clubId,
-    dashboardState.missedLastShownDay,
+    dashboardState.shownMissedActivityKeys,
     dashboardState.missedSnapshot,
     dashboardState.missedSummaryCache,
     events,
@@ -751,7 +753,6 @@ export default function Dashboard() {
     roleLoading,
     socialPostsLoading,
     todoItems,
-    todayDayKey,
     transactionsLoading,
     upcomingWeekEvents,
     updateDashboardState,

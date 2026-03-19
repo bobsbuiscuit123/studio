@@ -282,7 +282,7 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="flex h-14 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6 shrink-0">
+    <header className="flex h-14 shrink-0 items-center gap-4 border-b bg-background px-4 lg:h-[60px] lg:px-6">
        <Sheet>
         <SheetTrigger asChild>
           <Button size="icon" variant="outline" className="sm:hidden">
@@ -313,13 +313,13 @@ export function AppHeader() {
         </SheetContent>
       </Sheet>
 
-      <div className="w-full flex-1">
-        <div className="flex flex-wrap items-center gap-3">
-         <h1 className="text-lg font-semibold md:text-2xl">
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+         <h1 className="min-w-0 text-lg font-semibold md:text-2xl">
             {title}
-            {orgName && <span className="text-sm text-muted-foreground font-normal"> - {orgName}</span>}
+            {orgName && <span className="truncate text-sm font-normal text-muted-foreground"> - {orgName}</span>}
             {clubName && (
-              <span className="text-sm text-muted-foreground font-normal inline-flex items-center">
+              <span className="inline-flex min-w-0 items-center text-sm font-normal text-muted-foreground">
                 {" / "}{clubName}
                 {hasGroupContext ? (
                   <DropdownMenu>

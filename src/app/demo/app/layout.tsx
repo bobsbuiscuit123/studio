@@ -58,11 +58,11 @@ export default function DemoAppLayout({
 
   return (
     <DemoDataProvider initialSession={session}>
-      <div className="grid min-h-screen w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+      <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <AppSidebar />
-        <div className="flex flex-col relative">
+        <div className="relative flex min-w-0 flex-col">
           <AppHeader />
-          <main className="flex-1 flex flex-col gap-4 p-4 lg:gap-6 lg:p-6">{children}</main>
+          <main className="safe-bottom-space flex min-w-0 flex-1 flex-col gap-4 overflow-x-clip p-4 lg:gap-6 lg:p-6">{children}</main>
         </div>
       </div>
     </DemoDataProvider>

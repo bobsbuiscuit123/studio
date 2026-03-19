@@ -30,6 +30,10 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
   }
  
   .dark {
@@ -66,13 +70,63 @@
   }
   html {
     height: 100%;
+    min-height: 100%;
+    background-color: hsl(var(--background));
     -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overflow-x: hidden;
   }
   body {
     @apply bg-background text-foreground;
-    min-height: 100%;
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100dvh;
     overscroll-behavior-y: none;
+    overflow-x: hidden;
   }
+}
+
+@supports (height: 100dvh) {
+  .min-h-screen {
+    min-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+
+  .h-screen {
+    height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+}
+
+@supports not (height: 100dvh) {
+  .min-h-screen {
+    min-height: calc(100vh - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+
+  .h-screen {
+    height: calc(100vh - var(--safe-area-top) - var(--safe-area-bottom));
+  }
+}
+
+body {
+  padding-top: var(--safe-area-top);
+  padding-right: var(--safe-area-right);
+  padding-bottom: var(--safe-area-bottom);
+  padding-left: var(--safe-area-left);
+}
+
+main,
+[data-radix-scroll-area-viewport],
+.overflow-auto,
+.overflow-y-auto,
+.overflow-y-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-shell {
+  min-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
+}
+
+.safe-bottom-space {
+  padding-bottom: max(1rem, var(--safe-area-bottom));
 }
 
 @layer components {
@@ -114,6 +168,14 @@ h2, h3, h4, h5, h6 {
   select,
   textarea {
     font-size: 16px;
+  }
+
+  html {
+    height: -webkit-fill-available;
+  }
+
+  body {
+    min-height: -webkit-fill-available;
   }
 }
 

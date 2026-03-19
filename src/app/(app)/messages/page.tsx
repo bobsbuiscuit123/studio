@@ -277,7 +277,7 @@ export default function MessagesPage() {
     }
 
   return (
-    <div className="h-[calc(100vh-80px)] flex border rounded-lg bg-card text-card-foreground shadow-sm">
+    <div className="flex min-h-0 flex-1 border rounded-lg bg-card text-card-foreground shadow-sm">
         <aside className="w-1/3 border-r flex flex-col">
             <div className="p-4 border-b">
                 <div className="relative">

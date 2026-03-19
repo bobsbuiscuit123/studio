@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Button } from '@/components/ui/button';
 import {
@@ -75,8 +76,7 @@ function getConfiguredSiteOrigin() {
 }
 
 function getOAuthRedirectTo() {
-  const origin = getConfiguredSiteOrigin();
-  return origin ? `${origin}/auth/callback` : undefined;
+  return getConfiguredSiteOrigin();
 }
 
 function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
@@ -469,6 +469,24 @@ export default function HomePage() {
     if (!isClient) return;
     setSelectedOrgId(localStorage.getItem('selectedOrgId'));
   }, [isClient]);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const listenerPromise = App.addListener('appStateChange', async ({ isActive }) => {
+      if (!isActive) return;
+
+      const { data } = await supabase.auth.getSession();
+      if (!data?.session) return;
+
+      await Browser.close().catch(() => undefined);
+      router.replace('/dashboard');
+    });
+
+    return () => {
+      void listenerPromise.then((listener) => listener.remove());
+    };
+  }, [isClient, router, supabase]);
 
   useEffect(() => {
     const initAuth = async () => {

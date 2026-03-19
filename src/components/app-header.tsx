@@ -18,13 +18,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,14 +26,12 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Menu, LogOut, Home, User, ChevronDown } from "lucide-react";
-import { AppSidebarNav } from "./app-sidebar-nav";
+import { LogOut, Home, User, ChevronDown } from "lucide-react";
 import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
-import { useNotificationsContext } from "@/components/notifications-provider";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
 import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
@@ -88,7 +79,6 @@ const pageTitles: { [key: string]: string } = {
 
 export function AppHeader() {
   const pathname = usePathname();
-  const [isNavOpen, setIsNavOpen] = useState(false);
   const [clubName, setClubName] = useState("");
   const [orgName, setOrgName] = useState("");
   const demoCtx = useOptionalDemoCtx();
@@ -96,10 +86,8 @@ export function AppHeader() {
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
   const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
-  const homeHref = useDemo ? '/demo/app' : '/orgs';
   const { role, canEditContent } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const { unread, markTabViewed } = useNotificationsContext();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
@@ -283,80 +271,65 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="sticky top-0 z-30 flex min-h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-background/95 px-4 py-2 backdrop-blur lg:h-[60px] lg:px-6">
-       <Sheet open={isNavOpen} onOpenChange={setIsNavOpen}>
-        <SheetTrigger asChild>
-          <Button size="icon" variant="outline" className="h-11 w-11 rounded-2xl sm:hidden">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle Menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="flex flex-col p-0">
-           <SheetHeader className="p-6">
-            <SheetTitle className="sr-only">Main Menu</SheetTitle>
-          </SheetHeader>
-          <div className="flex-1 overflow-y-auto">
-            <nav className="grid gap-2 text-lg font-medium px-6">
-              <Link
-                href={homeHref}
-                className="flex items-center gap-2 text-lg font-semibold mb-4"
-              >
-                <Logo className="h-6 w-6" />
-                <span>{appName}</span>
-              </Link>
-              <AppSidebarNav 
-                role={role || ''} 
-                notifications={unread}
-                onLinkClick={(key) => markTabViewed(key)}
-                onNavigate={() => setIsNavOpen(false)}
-              />
-            </nav>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
-         <h1 className="min-w-0 text-lg font-semibold leading-tight md:text-2xl">
-            <span className="block sm:inline">{title}</span>
-            {orgName && <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground sm:mt-0 sm:ml-1 sm:inline sm:text-sm">- {orgName}</span>}
-            {clubName && (
-              <span className="mt-0.5 inline-flex min-w-0 items-center text-xs font-normal text-muted-foreground sm:mt-0 sm:text-sm">
-                <span className="hidden sm:inline"> / </span>
-                <span className="truncate">{clubName}</span>
-                {hasGroupContext ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="ml-1 h-7 w-7">
-                        <ChevronDown className="h-4 w-4" />
-                        <span className="sr-only">Group actions</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      {isAdminRole && (
-                        <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
-                          Delete Group
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={openLeaveAction}>
-                        Leave Group
+    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur">
+      <div className="mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 py-2 md:max-w-none lg:px-6">
+        <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
+          <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">
+            <Logo className="h-6 w-6" />
+            <span>{appName}</span>
+          </Link>
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1">
+              <h1 className="truncate text-lg font-semibold leading-tight md:text-2xl">{title}</h1>
+              {hasGroupContext ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl">
+                      <ChevronDown className="h-4 w-4" />
+                      <span className="sr-only">Group actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {isAdminRole ? (
+                      <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
+                        Delete Group
                       </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : null}
-              </span>
-            )}
-          </h1>
-          {/* Members no longer have AI features, so hide the quota badge for them.
-          {!useDemo && getSelectedOrgId() ? <OrgAiQuotaBadge compact /> : null}
-          */}
-          {!useDemo && getSelectedOrgId() && canEditContent ? <div className="hidden sm:block"><OrgAiQuotaBadge compact /></div> : null}
+                    ) : null}
+                    <DropdownMenuItem onClick={openLeaveAction}>
+                      Leave Group
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+            {(orgName || clubName) ? (
+              <p className="truncate text-sm text-muted-foreground">
+                {[orgName, clubName].filter(Boolean).join(" / ")}
+              </p>
+            ) : null}
+          </div>
         </div>
-       </div>
+
+        <div className="flex h-11 w-11 shrink-0 sm:hidden" />
+
+        <div className="min-w-0 flex-1 text-center sm:hidden">
+          <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+          {(orgName || clubName) ? (
+            <p className="truncate text-[11px] text-muted-foreground">
+              {[orgName, clubName].filter(Boolean).join(" / ")}
+            </p>
+          ) : null}
+        </div>
+
+        {!useDemo && getSelectedOrgId() && canEditContent ? (
+          <div className="hidden shrink-0 sm:block">
+            <OrgAiQuotaBadge compact />
+          </div>
+        ) : null}
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon" className="h-11 w-11 overflow-hidden rounded-2xl active:scale-95">
+          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl active:scale-95">
              {isMounted && user ? (
                 <Avatar>
                   <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
@@ -384,6 +357,7 @@ export function AppHeader() {
           <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      </div>
     </header>
     <ProfileDialog
       isOpen={isProfileOpen}

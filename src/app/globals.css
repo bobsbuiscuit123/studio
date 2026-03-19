@@ -75,14 +75,16 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     overflow-x: hidden;
+    overflow-y: hidden;
   }
   body {
     @apply bg-background text-foreground;
+    height: 100%;
     min-height: 100vh;
     min-height: 100svh;
     min-height: 100dvh;
-    overscroll-behavior-y: none;
-    overflow-x: hidden;
+    overscroll-behavior: none;
+    overflow: hidden;
   }
 }
 
@@ -114,6 +116,12 @@ body {
   scroll-behavior: smooth;
 }
 
+#__next,
+body > div:first-child {
+  height: 100%;
+  overflow: hidden;
+}
+
 main,
 [data-radix-scroll-area-viewport],
 .overflow-auto,
@@ -123,11 +131,26 @@ main,
 }
 
 .app-shell {
+  height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
   min-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
+  overflow: hidden;
+}
+
+.main-container {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.main-container::-webkit-scrollbar {
+  display: none;
 }
 
 .safe-bottom-space {
-  padding-bottom: max(5.5rem, calc(var(--safe-area-bottom) + 4.5rem));
+  padding-bottom: max(90px, calc(var(--safe-area-bottom) + 90px));
 }
 
 @media (min-width: 768px) {
@@ -138,6 +161,37 @@ main,
 
 .mobile-panel {
   @apply w-full rounded-2xl border bg-card shadow-sm;
+}
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: hsl(var(--card) / 0.98);
+  border-top: 1px solid hsl(var(--border));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  backdrop-filter: blur(18px);
+}
+
+.ai-button {
+  position: absolute;
+  left: 50%;
+  top: -20px;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 60px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
 }
 
 @layer components {

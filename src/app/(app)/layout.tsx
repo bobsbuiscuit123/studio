@@ -41,11 +41,11 @@ export default function AppLayout({
             <AppHeader />
           </div>
           <ImportLocalData />
-          <main className="safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6 print:p-0">
+          <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6 print:p-0">
             <OfflineCallout />
             <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
           </main>
-          <div className="print:hidden">
+          <div className="print:hidden md:hidden">
             <AppMobileTabBar />
           </div>
         </div>

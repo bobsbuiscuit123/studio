@@ -1,12 +1,18 @@
 "use client";
 
+import type { ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { MoreHorizontal } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import { useCurrentUserRole } from "@/lib/data-hooks";
 import { useNotificationsContext } from "@/components/notifications-provider";
-import { allNavItems, mobilePrimaryNavItems } from "@/components/app-sidebar-nav";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { allNavItems } from "@/components/app-sidebar-nav";
+import { cn } from "@/lib/utils";
+
+const assistantHref = "/assistant";
+const visibleNavHrefs = ["/dashboard", "/calendar", "/messages"] as const;
 
 export function AppMobileTabBar() {
   const pathname = usePathname();
@@ -14,55 +20,153 @@ export function AppMobileTabBar() {
   const { unread, markTabViewed } = useNotificationsContext();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
 
-  const navItems = allNavItems.filter(
-    item =>
-      mobilePrimaryNavItems.includes(item.href as (typeof mobilePrimaryNavItems)[number]) &&
-      item.roles.includes(role || "Member")
+  const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
+  const visibleItems = allowedItems.filter(item =>
+    visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number])
+  );
+  const assistantItem = allowedItems.find(item => item.href === assistantHref);
+  const overflowItems = allowedItems.filter(
+    item => !visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) && item.href !== assistantHref
   );
 
-  if (navItems.length === 0) {
+  const buildHref = (href: string) =>
+    isDemoApp ? (href === "/dashboard" ? "/demo/app" : `/demo/app${href}`) : href;
+
+  const isItemActive = (href: string) => {
+    const resolvedHref = buildHref(href);
+    return isDemoApp
+      ? href === "/dashboard"
+        ? pathname === "/demo/app" || pathname === "/demo/app/dashboard"
+        : pathname === resolvedHref || pathname.startsWith(`${resolvedHref}/`)
+      : pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  const isMoreActive = overflowItems.some(item => isItemActive(item.href));
+
+  if (visibleItems.length === 0 && !assistantItem) {
     return null;
   }
 
   return (
-    <nav className="sticky bottom-0 z-40 border-t border-border/80 bg-background/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
-      <div className="mx-auto grid max-w-screen-md grid-cols-5 gap-1">
-        {navItems.map(item => {
-          const demoHref =
-            item.href === "/dashboard" ? "/demo/app" : `/demo/app${item.href}`;
-          const href = isDemoApp ? demoHref : item.href;
-          const isActive = isDemoApp
-            ? item.href === "/dashboard"
-              ? pathname === "/demo/app" || pathname === "/demo/app/dashboard"
-              : pathname === href || pathname.startsWith(`${href}/`)
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const hasNotification =
-            Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) &&
-            !isActive;
+    <>
+      <nav className="bottom-nav md:hidden">
+        <div className="relative mx-auto flex h-[70px] max-w-screen-md items-center justify-between px-3">
+          <div className="flex flex-1 items-center justify-start gap-1">
+            {visibleItems.slice(0, 2).map(item => (
+              <MobileTabLink
+                key={item.href}
+                href={buildHref(item.href)}
+                icon={item.icon}
+                label={item.label}
+                active={isItemActive(item.href)}
+                hasNotification={Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) && !isItemActive(item.href)}
+                onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
+              />
+            ))}
+          </div>
 
-          return (
+          {assistantItem ? (
             <Link
-              key={item.href}
-              href={href}
-              onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
-              className={cn(
-                "flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-transform transition-colors active:scale-95",
-                isActive
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-              )}
+              href={buildHref(assistantItem.href)}
+              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+              className="ai-button z-[1001]"
+              aria-label={assistantItem.label}
             >
-              <div className="relative">
-                <item.icon className="h-5 w-5" />
-                {hasNotification ? (
-                  <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
-                ) : null}
-              </div>
-              <span className="truncate">{item.label}</span>
+              <assistantItem.icon className="h-6 w-6 text-white" />
             </Link>
-          );
-        })}
+          ) : null}
+
+          <div className="flex flex-1 items-center justify-end gap-1">
+            {visibleItems.slice(2, 3).map(item => (
+              <MobileTabLink
+                key={item.href}
+                href={buildHref(item.href)}
+                icon={item.icon}
+                label={item.label}
+                active={isItemActive(item.href)}
+                hasNotification={Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) && !isItemActive(item.href)}
+                onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
+              />
+            ))}
+
+            <Sheet>
+              <SheetTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-all active:scale-95",
+                    isMoreActive ? "bg-primary/15 text-primary" : "text-muted-foreground"
+                  )}
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                  <span>More</span>
+                </button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="rounded-t-[2rem] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
+                <SheetHeader className="mb-4">
+                  <SheetTitle>More</SheetTitle>
+                </SheetHeader>
+                <div className="grid grid-cols-2 gap-3">
+                  {overflowItems.map(item => (
+                    <Link
+                      key={item.href}
+                      href={buildHref(item.href)}
+                      onClick={() => item.notificationKey && markTabViewed(item.notificationKey)}
+                      className={cn(
+                        "flex min-h-14 items-center gap-3 rounded-2xl border border-border/70 bg-background px-4 py-3 text-sm font-medium transition-all active:scale-95",
+                        isItemActive(item.href) ? "border-primary/40 bg-primary/10 text-primary" : "text-foreground"
+                      )}
+                    >
+                      <div className="relative">
+                        <item.icon className="h-5 w-5" />
+                        {Boolean(item.notificationKey && unread[item.notificationKey as keyof typeof unread]) && !isItemActive(item.href) ? (
+                          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
+                        ) : null}
+                      </div>
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  ))}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </nav>
+    </>
+  );
+}
+
+function MobileTabLink({
+  href,
+  icon: Icon,
+  label,
+  active,
+  hasNotification,
+  onClick,
+}: {
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  active: boolean;
+  hasNotification: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn(
+        "flex min-h-11 w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium transition-all active:scale-95",
+        active ? "bg-primary/15 text-primary" : "text-muted-foreground"
+      )}
+    >
+      <div className="relative">
+        <Icon className="h-5 w-5" />
+        {hasNotification ? (
+          <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-primary" />
+        ) : null}
       </div>
-    </nav>
+      <span className="truncate">{label}</span>
+    </Link>
   );
 }

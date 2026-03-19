@@ -63,8 +63,10 @@ export default function DemoAppLayout({
         <AppSidebar />
         <div className="relative flex min-w-0 flex-col overflow-hidden">
           <AppHeader />
-          <main className="safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6">{children}</main>
-          <AppMobileTabBar />
+          <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6">{children}</main>
+          <div className="md:hidden">
+            <AppMobileTabBar />
+          </div>
         </div>
       </div>
     </DemoDataProvider>

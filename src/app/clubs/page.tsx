@@ -65,6 +65,7 @@ export default function ClubsPage() {
 
   const selectedOrgId = getSelectedOrgId();
   const { status: orgStatus, refresh: refreshOrgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+  const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
   const formatDate = (value?: string | null) =>
     value
@@ -76,7 +77,7 @@ export default function ClubsPage() {
       : "Unknown";
 
   const handleScheduleOrgDeletion = async () => {
-    if (!selectedOrgId) return;
+    if (!selectedOrgId || !isOrgOwner) return;
     setDeleteOrgSubmitting(true);
     const response = await safeFetchJson<{ ok: boolean; data?: { serviceEndsAt: string } }>(
       `/api/orgs/${selectedOrgId}/cancel`,
@@ -547,13 +548,13 @@ export default function ClubsPage() {
         <Button variant="outline" onClick={handleLogout}>
           <LogIn className="mr-2" /> Log Out
         </Button>
-        {orgStatus?.role?.toLowerCase() === "owner" ? (
+        {isOrgOwner ? (
           <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)}>
             <Trash2 className="mr-2" /> Delete Organization
           </Button>
         ) : null}
       </div>
-      <AlertDialog open={isDeleteOrgOpen} onOpenChange={setIsDeleteOrgOpen}>
+      <AlertDialog open={isOrgOwner && isDeleteOrgOpen} onOpenChange={setIsDeleteOrgOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete organization?</AlertDialogTitle>
@@ -580,7 +581,7 @@ export default function ClubsPage() {
                 event.preventDefault();
                 void handleScheduleOrgDeletion();
               }}
-              disabled={deleteOrgSubmitting || orgStatus?.cancelAtPeriodEnd}
+              disabled={deleteOrgSubmitting || orgStatus?.cancelAtPeriodEnd || !isOrgOwner}
             >
               {deleteOrgSubmitting ? "Scheduling..." : orgStatus?.cancelAtPeriodEnd ? "Already scheduled" : "Delete organization"}
             </AlertDialogAction>

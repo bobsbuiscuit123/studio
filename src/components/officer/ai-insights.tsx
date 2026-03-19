@@ -684,6 +684,12 @@ export default function AIInsights({
   };
 
   useEffect(() => {
+    if (mode === 'member' && newInsightList === 'finance') {
+      setNewInsightList('action');
+    }
+  }, [mode, newInsightList]);
+
+  useEffect(() => {
     if (customBoxes.length === 0) return;
     setHiddenInsights(prev => {
       const next = { ...prev };
@@ -735,6 +741,50 @@ export default function AIInsights({
   const resolveLocalInsightRequest = (prompt: string): InsightResolutionResult | null => {
     const normalized = prompt.toLowerCase();
     const transactionList = mode === 'member' ? [] : transactions.data ?? [];
+    const userEmail = user?.email?.toLowerCase() ?? '';
+    const directMessages = Object.values(messages.data ?? {}).flat();
+    const groupMessages = (groupChats.data ?? []).flatMap(chat => chat.messages ?? []);
+
+    if (
+      normalized.includes('message') ||
+      normalized.includes('messages') ||
+      normalized.includes('dm') ||
+      normalized.includes('chat') ||
+      normalized.includes('reply')
+    ) {
+      if (!userEmail) {
+        return {
+          status: 'ok',
+          text: 'Not enough data yet.',
+        };
+      }
+
+      const unreadDirect = directMessages.filter(
+        msg =>
+          msg.sender?.toLowerCase?.() !== userEmail &&
+          !(msg.readBy ?? []).some(email => email.toLowerCase() === userEmail)
+      ).length;
+      const unreadGroup = groupMessages.filter(
+        msg =>
+          msg.sender?.toLowerCase?.() !== userEmail &&
+          !(msg.readBy ?? []).some(email => email.toLowerCase() === userEmail)
+      ).length;
+      const unreadTotal = unreadDirect + unreadGroup;
+
+      return {
+        status: 'ok',
+        text:
+          unreadTotal > 0
+            ? `You have ${unreadTotal} unread message${unreadTotal === 1 ? '' : 's'}.`
+            : 'You are all caught up on messages.',
+        actionLabel: 'Review',
+        actionHref: '/messages',
+        contextText:
+          unreadTotal > 0
+            ? `You have ${unreadTotal} unread messages. Help me reply to them.`
+            : 'I am all caught up on messages. Help me stay on top of replies.',
+      };
+    }
 
     if (
       normalized.includes('balance') ||
@@ -1044,7 +1094,9 @@ export default function AIInsights({
               >
                 <option value="action">Action needed</option>
                 <option value="engagement">Engagement warnings</option>
-                <option value="finance">Financial risks</option>
+                {mode !== 'member' ? (
+                  <option value="finance">Financial risks</option>
+                ) : null}
                 {customBoxes.map(box => (
                   <option key={box.id} value={box.id}>
                     {box.title}

@@ -313,7 +313,29 @@ export function AppHeader() {
         <div className="flex h-11 w-11 shrink-0 sm:hidden" />
 
         <div className="min-w-0 flex-1 text-center sm:hidden">
-          <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+          <div className="flex items-center justify-center gap-1">
+            <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+            {hasGroupContext ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-xl">
+                    <ChevronDown className="h-4 w-4" />
+                    <span className="sr-only">Group actions</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  {isAdminRole ? (
+                    <DropdownMenuItem onClick={() => setDeleteOpen(true)}>
+                      Delete Group
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem onClick={openLeaveAction}>
+                    Leave Group
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
           {(orgName || clubName) ? (
             <p className="truncate text-[11px] text-muted-foreground">
               {[orgName, clubName].filter(Boolean).join(" / ")}

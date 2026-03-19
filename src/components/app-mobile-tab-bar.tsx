@@ -50,8 +50,8 @@ export function AppMobileTabBar() {
   return (
     <>
       <nav className="bottom-nav md:hidden">
-        <div className="relative mx-auto flex h-[70px] max-w-screen-md items-center justify-between px-3">
-          <div className="flex flex-1 items-center justify-start gap-1">
+        <div className="nav-inner mx-auto max-w-screen-md">
+          <div className="left-tabs">
             {visibleItems.slice(0, 2).map(item => (
               <MobileTabLink
                 key={item.href}
@@ -66,17 +66,19 @@ export function AppMobileTabBar() {
           </div>
 
           {assistantItem ? (
-            <Link
-              href={buildHref(assistantItem.href)}
-              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
-              className="ai-button z-[1001]"
-              aria-label={assistantItem.label}
-            >
-              <assistantItem.icon className="h-6 w-6 text-white" />
-            </Link>
+            <div className="ai-button-wrapper">
+              <Link
+                href={buildHref(assistantItem.href)}
+                onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+                className="ai-button z-[1001]"
+                aria-label={assistantItem.label}
+              >
+                <assistantItem.icon className="h-6 w-6 text-white" />
+              </Link>
+            </div>
           ) : null}
 
-          <div className="flex flex-1 items-center justify-end gap-1">
+          <div className="right-tabs">
             {visibleItems.slice(2, 3).map(item => (
               <MobileTabLink
                 key={item.href}

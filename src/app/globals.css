@@ -168,7 +168,7 @@ main,
   bottom: 0;
   left: 0;
   right: 0;
-  height: 70px;
+  height: 75px;
   padding-bottom: env(safe-area-inset-bottom);
   background: hsl(var(--card) / 0.98);
   border-top: 1px solid hsl(var(--border));
@@ -179,13 +179,39 @@ main,
   backdrop-filter: blur(18px);
 }
 
-.ai-button {
+.nav-inner {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 100%;
+  padding: 0 24px;
+}
+
+.left-tabs,
+.right-tabs {
+  display: flex;
+  gap: 28px;
+}
+
+.left-tabs {
+  margin-right: 40px;
+}
+
+.right-tabs {
+  margin-left: 40px;
+}
+
+.ai-button-wrapper {
   position: absolute;
   left: 50%;
-  top: -20px;
   transform: translateX(-50%);
-  width: 60px;
-  height: 60px;
+  top: -28px;
+}
+
+.ai-button {
+  width: 64px;
+  height: 64px;
   border-radius: 9999px;
   background: linear-gradient(135deg, #4ade80, #22c55e);
   display: flex;

@@ -6,14 +6,24 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from "date-fns";
+import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Loader2, Pencil, PlusSquare, Award, Sparkles, Check } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, PlusSquare, Award, Sparkles, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -36,9 +46,9 @@ import {
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { safeFetchJson } from "@/lib/network";
+import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -93,6 +103,7 @@ const manualEventSchema = z.object({
 
 export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>(undefined);
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isClient, setIsClient] = useState(false);
   const { data: events, updateData: setEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
@@ -110,7 +121,9 @@ export default function CalendarPage() {
 
   useEffect(() => {
     setIsClient(true);
-    setDate(new Date());
+    const today = new Date();
+    setDate(today);
+    setCurrentMonth(today);
   }, []);
 
   useEffect(() => {
@@ -377,59 +390,140 @@ export default function CalendarPage() {
 
     return url.toString();
   };
+
+  const calendarDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentMonth), { weekStartsOn: 0 });
+    const end = endOfWeek(endOfMonth(currentMonth), { weekStartsOn: 0 });
+    return eachDayOfInterval({ start, end });
+  }, [currentMonth]);
+
+  const upcomingEvents = useMemo(
+    () => [...safeEvents].sort((a, b) => a.date.getTime() - b.date.getTime()),
+    [safeEvents]
+  );
+
+  const selectedDayEvents = useMemo(() => {
+    if (!date) return [];
+    return upcomingEvents.filter(event => isSameDay(event.date, date));
+  }, [date, upcomingEvents]);
+
+  const weekLabels = ["S", "M", "T", "W", "T", "F", "S"];
   
   return (
     <>
     <div className="grid gap-4 md:gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
-      <div className="md:col-span-2">
+      <div className="space-y-4 md:col-span-2">
         <Card className="mobile-panel overflow-hidden">
-          <CardContent className="overflow-x-auto p-0">
+          <CardContent className="p-3 sm:p-4">
             {!isClient ? (
               <Skeleton className="w-full aspect-[1.2/1]" />
             ) : (
-            <Calendar
-              mode="single"
-              selected={date}
-              onSelect={setDate}
-              className="min-w-[19rem] p-2 sm:min-w-0 sm:p-3"
-              classNames={{
-                months: "flex flex-col space-y-4",
-                month: "space-y-4 w-full",
-                table: "w-full border-collapse space-y-1",
-                head_cell: "w-full text-muted-foreground rounded-md px-0.5 font-normal text-[0.72rem] sm:text-[0.8rem]",
-                row: "mt-1.5 flex w-full sm:mt-2",
-                cell: "h-14 w-full text-center text-xs p-0.5 align-top relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-xl last:[&:has([aria-selected])]:rounded-r-xl focus-within:relative focus-within:z-20 sm:h-16 sm:text-sm sm:p-1",
-                day: "h-full w-full rounded-xl p-1 font-normal aria-selected:opacity-100",
-              }}
-              components={{
-                DayContent: ({ date }) => {
-                  if (loading) return <div>...</div>
-                  const dayEvents = safeEvents.filter(
-                    (event) =>
-                      event.date.getDate() === date.getDate() &&
-                      event.date.getMonth() === date.getMonth() &&
-                      event.date.getFullYear() === date.getFullYear()
-                  );
-                  return (
-                    <div className="flex h-full flex-col items-start justify-start gap-1 overflow-hidden">
-                      <p className="text-xs font-medium sm:text-sm">{date.getDate()}</p>
-                      {dayEvents.map((event, i) => (
-                        <div
-                            key={i} 
-                            className="w-full cursor-pointer truncate rounded-lg bg-primary/15 px-1.5 py-0.5 text-[10px] text-left text-primary-foreground transition-colors hover:bg-primary/25"
-                            onClick={() => { markEventViewed(event.id); setSelectedEvent(event); }}
-                        >
-                          {event.title}
-                        </div>
-                      ))}
+              <div className="w-full max-w-full space-y-3 overflow-hidden">
+                <div className="flex items-center justify-between px-1 sm:px-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-xl"
+                    onClick={() => setCurrentMonth(prev => subMonths(prev, 1))}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span className="sr-only">Previous month</span>
+                  </Button>
+                  <div className="truncate text-base font-semibold sm:text-lg">
+                    {format(currentMonth, "MMMM yyyy")}
+                  </div>
+                  <div className="flex h-10 w-10 items-center justify-center" />
+                </div>
+
+                <div className="grid w-full max-w-full grid-cols-7 gap-1 sm:gap-1.5">
+                  {weekLabels.map(label => (
+                    <div key={label} className="flex items-center justify-center py-1 text-[11px] font-medium text-muted-foreground sm:text-xs">
+                      {label}
                     </div>
-                  );
-                },
-              }}
-            />
+                  ))}
+
+                  {calendarDays.map(day => {
+                    const dayEvents = safeEvents.filter(event => isSameDay(event.date, day));
+                    const visibleEvents = dayEvents.slice(0, 2);
+                    const extraCount = dayEvents.length - visibleEvents.length;
+                    const isSelected = date ? isSameDay(day, date) : false;
+                    const isCurrentMonth = isSameMonth(day, currentMonth);
+
+                    return (
+                      <button
+                        key={day.toISOString()}
+                        type="button"
+                        onClick={() => setDate(day)}
+                        className={cn(
+                          "flex aspect-square w-full max-w-full flex-col items-start justify-start gap-1 overflow-hidden rounded-xl border border-transparent p-1.5 text-left transition-colors sm:p-2",
+                          isSelected ? "border-primary/40 bg-primary/10" : "bg-background/70",
+                          !isCurrentMonth && "opacity-35"
+                        )}
+                      >
+                        <span className="text-xs font-medium sm:text-sm">{format(day, "d")}</span>
+                        <div className="w-full space-y-1 overflow-hidden">
+                          {visibleEvents.map(event => (
+                            <div
+                              key={event.id}
+                              className="max-w-full overflow-hidden truncate rounded-md bg-primary/15 px-1 py-0.5 text-[10px] text-primary sm:text-xs"
+                              onClick={eventClick => {
+                                eventClick.stopPropagation();
+                                markEventViewed(event.id);
+                                setSelectedEvent(event);
+                              }}
+                            >
+                              {event.title}
+                            </div>
+                          ))}
+                          {extraCount > 0 ? (
+                            <div className="max-w-full truncate text-[10px] font-medium text-muted-foreground sm:text-xs">
+                              +{extraCount}
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
+
+        {date ? (
+          <Card className="mobile-panel">
+            <CardHeader>
+              <CardTitle>{format(date, "EEEE, MMMM d")}</CardTitle>
+              <CardDescription>Events for the selected day.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {selectedDayEvents.length > 0 ? (
+                selectedDayEvents.map(event => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => {
+                      markEventViewed(event.id);
+                      setSelectedEvent(event);
+                    }}
+                    className="w-full overflow-hidden rounded-xl border border-border/70 bg-background/70 p-4 text-left"
+                  >
+                    <div className="space-y-1 break-words">
+                      <p className="font-semibold leading-snug">{event.title}</p>
+                      <p className="text-sm text-muted-foreground">{formatEventTime(event)}</p>
+                      <p className="text-sm text-muted-foreground">{formatLocation(event.location)}</p>
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
+                  No events scheduled for this day.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
       <div className="flex flex-col space-y-4">
         {canEditContent && (
@@ -574,14 +668,14 @@ export default function CalendarPage() {
           </CardHeader>
           <CardContent className="flex-1">
              {loading ? <p>Loading...</p> : 
-                safeEvents.length > 0 ? (
+                upcomingEvents.length > 0 ? (
                   <Accordion type="single" collapsible className="w-full space-y-3">
-                    {[...safeEvents].sort((a,b) => a.date.getTime() - b.date.getTime()).map((event) => (
-                      <AccordionItem value={`item-${event.id}`} key={event.id} className="overflow-hidden rounded-2xl border border-border/70 bg-background/70 px-4">
+                    {upcomingEvents.map((event) => (
+                      <AccordionItem value={`item-${event.id}`} key={event.id} className="overflow-hidden rounded-xl border border-border/70 bg-background/70 px-4">
                         <div className="flex w-full items-start justify-between gap-3 py-4">
                             <AccordionTrigger className="min-w-0 flex-grow p-0" onClick={() => markEventViewed(event.id)}>
                                 <div className="min-w-0 text-left">
-                                <p className="font-semibold leading-snug">{event.title}</p>
+                                <p className="break-words font-semibold leading-snug">{event.title}</p>
                                 <p className="text-sm text-muted-foreground font-normal">
                                     {event.date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                                 </p>

@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -19,17 +19,20 @@ export function AppMobileTabBar() {
   const { role } = useCurrentUserRole();
   const { unread, markTabViewed } = useNotificationsContext();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
-  const [page, setPage] = useState<0 | 1>(0);
+  const [page, setPage] = useState(0);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
-  const primaryItems = allowedItems.filter(item =>
-    visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number])
-  );
+  const orderedItems = [
+    ...allowedItems.filter(item =>
+      visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) && item.href !== assistantHref
+    ),
+    ...allowedItems.filter(
+      item =>
+        !visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) &&
+        item.href !== assistantHref
+    ),
+  ];
   const assistantItem = allowedItems.find(item => item.href === assistantHref);
-  const overflowItems = allowedItems.filter(
-    item => !visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) && item.href !== assistantHref
-  );
-  const secondaryItems = overflowItems.slice(0, 3);
 
   const buildHref = (href: string) =>
     isDemoApp ? (href === "/dashboard" ? "/demo/app" : `/demo/app${href}`) : href;
@@ -43,20 +46,16 @@ export function AppMobileTabBar() {
       : pathname === href || pathname.startsWith(`${href}/`);
   };
 
-  const currentPageItems = useMemo(() => {
-    if (page === 0) {
-      return {
-        left: primaryItems.slice(0, 2),
-        right: primaryItems.slice(2, 3),
-      };
-    }
-    return {
-      left: secondaryItems.slice(0, 1),
-      right: secondaryItems.slice(1, 3),
-    };
-  }, [page, primaryItems, secondaryItems]);
+  const pages = useMemo(() => paginateTabs(orderedItems), [orderedItems]);
+  const currentPage = pages[page] ?? { left: [], right: [], hasPrev: false, hasNext: false };
 
-  if (primaryItems.length === 0 && !assistantItem) {
+  useEffect(() => {
+    if (page > pages.length - 1) {
+      setPage(Math.max(0, pages.length - 1));
+    }
+  }, [page, pages.length]);
+
+  if (orderedItems.length === 0 && !assistantItem) {
     return null;
   }
 
@@ -64,10 +63,10 @@ export function AppMobileTabBar() {
     <>
       <nav className="bottom-nav md:hidden">
         <div className="nav-inner mx-auto max-w-screen-md">
-          {page === 1 ? (
+          {currentPage.hasPrev ? (
             <button
               type="button"
-              onClick={() => setPage(0)}
+              onClick={() => setPage(current => Math.max(0, current - 1))}
               className="tab text-muted-foreground"
             >
               <ChevronLeft className="h-6 w-6" />
@@ -75,30 +74,30 @@ export function AppMobileTabBar() {
             </button>
           ) : (
             <MobileTabLink
-              href={buildHref(currentPageItems.left[0]?.href ?? "")}
-              icon={currentPageItems.left[0]?.icon}
-              label={currentPageItems.left[0]?.label ?? ""}
-              active={Boolean(currentPageItems.left[0] && isItemActive(currentPageItems.left[0].href))}
+              href={buildHref(currentPage.left[0]?.href ?? "")}
+              icon={currentPage.left[0]?.icon}
+              label={currentPage.left[0]?.label ?? ""}
+              active={Boolean(currentPage.left[0] && isItemActive(currentPage.left[0].href))}
               hasNotification={Boolean(
-                currentPageItems.left[0]?.notificationKey &&
-                  unread[currentPageItems.left[0].notificationKey as keyof typeof unread] &&
-                  !isItemActive(currentPageItems.left[0].href)
+                currentPage.left[0]?.notificationKey &&
+                  unread[currentPage.left[0].notificationKey as keyof typeof unread] &&
+                  !isItemActive(currentPage.left[0].href)
               )}
-              onClick={() => currentPageItems.left[0]?.notificationKey && markTabViewed(currentPageItems.left[0].notificationKey)}
+              onClick={() => currentPage.left[0]?.notificationKey && markTabViewed(currentPage.left[0].notificationKey)}
             />
           )}
 
           <MobileTabLink
-            href={buildHref(currentPageItems.left[1]?.href ?? "")}
-            icon={currentPageItems.left[1]?.icon}
-            label={currentPageItems.left[1]?.label ?? ""}
-            active={Boolean(currentPageItems.left[1] && isItemActive(currentPageItems.left[1].href))}
+            href={buildHref(currentPage.left[1]?.href ?? "")}
+            icon={currentPage.left[1]?.icon}
+            label={currentPage.left[1]?.label ?? ""}
+            active={Boolean(currentPage.left[1] && isItemActive(currentPage.left[1].href))}
             hasNotification={Boolean(
-              currentPageItems.left[1]?.notificationKey &&
-                unread[currentPageItems.left[1].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPageItems.left[1].href)
+              currentPage.left[1]?.notificationKey &&
+                unread[currentPage.left[1].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.left[1].href)
             )}
-            onClick={() => currentPageItems.left[1]?.notificationKey && markTabViewed(currentPageItems.left[1].notificationKey)}
+            onClick={() => currentPage.left[1]?.notificationKey && markTabViewed(currentPage.left[1].notificationKey)}
           />
 
           {assistantItem ? (
@@ -113,22 +112,22 @@ export function AppMobileTabBar() {
           ) : null}
 
           <MobileTabLink
-            href={buildHref(currentPageItems.right[0]?.href ?? "")}
-            icon={currentPageItems.right[0]?.icon}
-            label={currentPageItems.right[0]?.label ?? ""}
-            active={Boolean(currentPageItems.right[0] && isItemActive(currentPageItems.right[0].href))}
+            href={buildHref(currentPage.right[0]?.href ?? "")}
+            icon={currentPage.right[0]?.icon}
+            label={currentPage.right[0]?.label ?? ""}
+            active={Boolean(currentPage.right[0] && isItemActive(currentPage.right[0].href))}
             hasNotification={Boolean(
-              currentPageItems.right[0]?.notificationKey &&
-                unread[currentPageItems.right[0].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPageItems.right[0].href)
+              currentPage.right[0]?.notificationKey &&
+                unread[currentPage.right[0].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.right[0].href)
             )}
-            onClick={() => currentPageItems.right[0]?.notificationKey && markTabViewed(currentPageItems.right[0].notificationKey)}
+            onClick={() => currentPage.right[0]?.notificationKey && markTabViewed(currentPage.right[0].notificationKey)}
           />
 
-          {page === 0 && secondaryItems.length > 0 ? (
+          {currentPage.hasNext ? (
             <button
               type="button"
-              onClick={() => setPage(1)}
+              onClick={() => setPage(current => Math.min(pages.length - 1, current + 1))}
               className="tab text-muted-foreground"
             >
               <ChevronRight className="h-6 w-6" />
@@ -136,16 +135,16 @@ export function AppMobileTabBar() {
             </button>
           ) : (
             <MobileTabLink
-              href={buildHref(currentPageItems.right[1]?.href ?? "")}
-              icon={currentPageItems.right[1]?.icon}
-              label={currentPageItems.right[1]?.label ?? ""}
-              active={Boolean(currentPageItems.right[1] && isItemActive(currentPageItems.right[1].href))}
+              href={buildHref(currentPage.right[1]?.href ?? "")}
+              icon={currentPage.right[1]?.icon}
+              label={currentPage.right[1]?.label ?? ""}
+              active={Boolean(currentPage.right[1] && isItemActive(currentPage.right[1].href))}
               hasNotification={Boolean(
-                currentPageItems.right[1]?.notificationKey &&
-                  unread[currentPageItems.right[1].notificationKey as keyof typeof unread] &&
-                  !isItemActive(currentPageItems.right[1].href)
+                currentPage.right[1]?.notificationKey &&
+                  unread[currentPage.right[1].notificationKey as keyof typeof unread] &&
+                  !isItemActive(currentPage.right[1].href)
               )}
-              onClick={() => currentPageItems.right[1]?.notificationKey && markTabViewed(currentPageItems.right[1].notificationKey)}
+              onClick={() => currentPage.right[1]?.notificationKey && markTabViewed(currentPage.right[1].notificationKey)}
             />
           )}
         </div>
@@ -193,4 +192,33 @@ function MobileTabLink({
       <span className="truncate">{label}</span>
     </Link>
   );
+}
+
+function paginateTabs<T>(items: T[]) {
+  const pages: Array<{ left: T[]; right: T[]; hasPrev: boolean; hasNext: boolean }> = [];
+  let index = 0;
+  let pageIndex = 0;
+
+  while (index < items.length) {
+    const hasPrev = pageIndex > 0;
+    const remaining = items.length - index;
+    const capacity = 4 - (hasPrev ? 1 : 0) - (remaining > 3 ? 1 : 0);
+    const safeCapacity = Math.max(1, capacity);
+    const pageItems = items.slice(index, index + safeCapacity);
+    index += safeCapacity;
+    const hasNext = index < items.length;
+    const slots = hasPrev
+      ? [...pageItems.slice(0, 1), ...pageItems.slice(1, 2), ...pageItems.slice(2)]
+      : [...pageItems];
+
+    pages.push({
+      left: slots.slice(0, 2),
+      right: slots.slice(2, 4),
+      hasPrev,
+      hasNext,
+    });
+    pageIndex += 1;
+  }
+
+  return pages;
 }

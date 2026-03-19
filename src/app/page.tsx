@@ -2,8 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { App } from '@capacitor/app';
-import { Browser } from '@capacitor/browser';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -76,7 +74,8 @@ function getConfiguredSiteOrigin() {
 }
 
 function getOAuthRedirectTo() {
-  return getConfiguredSiteOrigin();
+  const origin = getConfiguredSiteOrigin();
+  return origin ? `${origin}/auth/callback` : undefined;
 }
 
 function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
@@ -117,27 +116,13 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
         const redirectTo = getOAuthRedirectTo();
-        const { data, error } = await supabase.auth.signInWithOAuth({
+        const { error } = await supabase.auth.signInWithOAuth({
             provider,
             options: redirectTo ? { redirectTo } : {},
         });
         if (error) {
             toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
             setProviderLoading(null);
-            return;
-        }
-        if (data?.url) {
-            try {
-                await Browser.open({
-                    url: data.url,
-                });
-            } catch (browserError) {
-                const message =
-                  browserError instanceof Error ? browserError.message : 'Could not open sign-in window.';
-                toast({ title: "OAuth failed", description: message, variant: "destructive" });
-            } finally {
-                setProviderLoading(null);
-            }
             return;
         }
         setProviderLoading(null);
@@ -469,24 +454,6 @@ export default function HomePage() {
     if (!isClient) return;
     setSelectedOrgId(localStorage.getItem('selectedOrgId'));
   }, [isClient]);
-
-  useEffect(() => {
-    if (!isClient) return;
-
-    const listenerPromise = App.addListener('appStateChange', async ({ isActive }) => {
-      if (!isActive) return;
-
-      const { data } = await supabase.auth.getSession();
-      if (!data?.session) return;
-
-      await Browser.close().catch(() => undefined);
-      router.replace('/dashboard');
-    });
-
-    return () => {
-      void listenerPromise.then((listener) => listener.remove());
-    };
-  }, [isClient, router, supabase]);
 
   useEffect(() => {
     const initAuth = async () => {

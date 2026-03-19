@@ -396,28 +396,91 @@ export default function ClubsPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-      <div className="text-center mb-8">
-        <div className="flex justify-center items-center gap-4 mb-4">
-          <Logo className="h-12 w-12 text-primary" />
-          <h1 className="text-5xl font-bold">CASPO</h1>
-        </div>
-        <p className="text-muted-foreground text-lg">Your all-in-one club management platform.</p>
-      </div>
-
-      <div className="w-full max-w-4xl">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-semibold">Your Groups</h2>
-            <OrgAiQuotaBadge orgId={selectedOrgId} />
+    <div className="min-h-screen bg-background">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 pb-6 pt-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Logo className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold leading-tight">CASPO</h1>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleBackToOrgs}>
-              Switch Organizations
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-11 w-11 shrink-0 rounded-2xl"
+            onClick={() => setIsProfileOpen(true)}
+          >
+            <User className="h-5 w-5" />
+            <span className="sr-only">Profile</span>
+          </Button>
+        </div>
+
+        <p className="text-sm text-muted-foreground">Your all-in-one club management platform.</p>
+
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-base font-medium">Your Groups</h2>
+          <OrgAiQuotaBadge orgId={selectedOrgId} />
+        </div>
+
+        <div className="space-y-3">
+          {canShowCreate && (
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full" disabled={createDisabled}>
+                  <PlusCircle className="mr-2" /> Create Group
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Group</DialogTitle>
+                  <DialogDescription>Set up a new group inside this organization.</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3 py-2">
+                  <div className="flex flex-col items-center gap-2">
+                    <Image
+                      src={groupLogo || `https://placehold.co/100x100.png?text=${(groupName || "G").charAt(0)}`}
+                      alt="Group logo preview"
+                      width={96}
+                      height={96}
+                      className="rounded-lg aspect-square object-cover border"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={() => createGroupLogoInputRef.current?.click()}>
+                      Change Picture
+                    </Button>
+                    <Input
+                      ref={createGroupLogoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleCreateGroupLogoChange}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="group-name">Group Name</Label>
+                    <Input id="group-name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="group-description">Description</Label>
+                    <Input id="group-description" value={groupDescription} onChange={(e) => setGroupDescription(e.target.value)} />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button onClick={handleCreateClub}>Create Group</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" onClick={handleBackToOrgs} className="w-full">
+              Switch Org
             </Button>
             <Dialog>
               <DialogTrigger asChild>
-                <Button variant="secondary">
+                <Button variant="secondary" className="w-full">
                   <UserPlus className="mr-2" /> Join Group
                 </Button>
               </DialogTrigger>
@@ -443,53 +506,6 @@ export default function ClubsPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
-            {canShowCreate && (
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button disabled={createDisabled}>
-                    <PlusCircle className="mr-2" /> Create Group
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create Group</DialogTitle>
-                    <DialogDescription>Set up a new group inside this organization.</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-3 py-2">
-                    <div className="flex flex-col items-center gap-2">
-                      <Image
-                        src={groupLogo || `https://placehold.co/100x100.png?text=${(groupName || "G").charAt(0)}`}
-                        alt="Group logo preview"
-                        width={96}
-                        height={96}
-                        className="rounded-lg aspect-square object-cover border"
-                      />
-                      <Button type="button" variant="outline" size="sm" onClick={() => createGroupLogoInputRef.current?.click()}>
-                        Change Picture
-                      </Button>
-                      <Input
-                        ref={createGroupLogoInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleCreateGroupLogoChange}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="group-name">Group Name</Label>
-                      <Input id="group-name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="group-description">Description</Label>
-                      <Input id="group-description" value={groupDescription} onChange={(e) => setGroupDescription(e.target.value)} />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button onClick={handleCreateClub}>Create Group</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
           </div>
         </div>
 
@@ -500,7 +516,7 @@ export default function ClubsPage() {
         ) : groupsWithLogos.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {groupsWithLogos.map((group) => (
-               <Card key={group.id} className="relative">
+               <Card key={group.id} className="relative rounded-2xl shadow-sm">
                  {group.role === "admin" && (
                    <Button
                      type="button"
@@ -513,20 +529,20 @@ export default function ClubsPage() {
                      <span className="sr-only">Edit group</span>
                    </Button>
                  )}
-                 <CardHeader className="flex-row items-center gap-4">
+                 <CardHeader className="flex-row items-center gap-4 p-4">
                    <Image
                      src={group.logo}
-                    alt={`${group.name} logo`}
-                    width={64}
-                    height={64}
-                    className="rounded-lg aspect-square object-cover"
-                  />
-                  <div>
-                    <CardTitle>{group.name}</CardTitle>
-                    <CardDescription>Manage this club</CardDescription>
-                  </div>
-                </CardHeader>
-                <CardFooter>
+                     alt={`${group.name} logo`}
+                     width={56}
+                     height={56}
+                     className="rounded-2xl aspect-square object-cover"
+                   />
+                   <div className="min-w-0">
+                     <CardTitle className="truncate text-base">{group.name}</CardTitle>
+                     <CardDescription className="line-clamp-2 text-sm">Manage this club</CardDescription>
+                   </div>
+                 </CardHeader>
+                <CardFooter className="p-4 pt-0">
                   <Button className="w-full" onClick={() => handleEnterClub(group.id)}>
                     Open Dashboard <ArrowRight className="ml-2" />
                   </Button>
@@ -540,16 +556,18 @@ export default function ClubsPage() {
             <p className="text-muted-foreground">Click "Create Group" or "Join Group" to get started!</p>
           </div>
         )}
-      </div>
-      <div className="mt-8 flex flex-wrap gap-2">
-        <Button variant="outline" onClick={() => setIsProfileOpen(true)}>
-          <User className="mr-2" /> Profile
-        </Button>
-        <Button variant="outline" onClick={handleLogout}>
-          <LogIn className="mr-2" /> Log Out
-        </Button>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Button variant="outline" onClick={() => setIsProfileOpen(true)} className="w-full">
+            <User className="mr-2" /> Profile
+          </Button>
+          <Button variant="outline" onClick={handleLogout} className="w-full">
+            <LogIn className="mr-2" /> Log Out
+          </Button>
+        </div>
+
         {isOrgOwner ? (
-          <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)}>
+          <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
             <Trash2 className="mr-2" /> Delete Organization
           </Button>
         ) : null}

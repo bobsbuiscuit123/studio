@@ -1108,9 +1108,15 @@ export default function AIInsights({
                 placeholder="Add a custom insight"
                 value={newInsightText}
                 onChange={event => setNewInsightText(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key !== 'Enter') return;
+                  event.preventDefault();
+                  void handleAddInsight();
+                }}
                 disabled={isResolvingInsight || isResolvingCustomInsights}
               />
               <Button
+                type="button"
                 size="sm"
                 onClick={handleAddInsight}
                 disabled={isResolvingInsight || isResolvingCustomInsights}
@@ -1131,8 +1137,13 @@ export default function AIInsights({
                   placeholder="New box title"
                   value={newBoxTitle}
                   onChange={event => setNewBoxTitle(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    handleAddBox();
+                  }}
                 />
-                <Button size="sm" onClick={handleAddBox} disabled={!newBoxTitle.trim()}>
+                <Button type="button" size="sm" onClick={handleAddBox} disabled={!newBoxTitle.trim()}>
                   Add box
                 </Button>
               </div>

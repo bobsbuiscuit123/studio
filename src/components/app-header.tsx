@@ -96,7 +96,7 @@ export function AppHeader() {
   const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
   const homeHref = useDemo ? '/demo/app' : '/orgs';
-  const { role } = useCurrentUserRole();
+  const { role, canEditContent } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const { unread, markTabViewed } = useNotificationsContext();
   const router = useRouter();
@@ -344,7 +344,10 @@ export function AppHeader() {
               </span>
             )}
           </h1>
+          {/* Members no longer have AI features, so hide the quota badge for them.
           {!useDemo && getSelectedOrgId() ? <OrgAiQuotaBadge compact /> : null}
+          */}
+          {!useDemo && getSelectedOrgId() && canEditContent ? <OrgAiQuotaBadge compact /> : null}
         </div>
        </div>
       

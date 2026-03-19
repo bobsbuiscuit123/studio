@@ -1343,6 +1343,7 @@ export default function AIInsights({
             Quick signals from recent club activity.
           </p>
         </div>
+        {/* Insight editing is temporarily disabled for all users.
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -1352,8 +1353,10 @@ export default function AIInsights({
             {editMode ? 'Done editing' : 'Edit insights'}
           </Button>
         </div>
+        */}
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Custom insight creation is temporarily disabled for all users.
         {editMode ? (
           <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
             <div className="text-xs font-semibold text-muted-foreground">Add insight</div>
@@ -1449,6 +1452,7 @@ export default function AIInsights({
             ) : null}
           </div>
         ) : null}
+        */}
         <div className={`grid gap-4 ${mode === 'member' ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
           {!hiddenBoxIds.has('action') ? (
             <InsightList

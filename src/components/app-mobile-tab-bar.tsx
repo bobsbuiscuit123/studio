@@ -13,7 +13,7 @@ import type { NotificationKey } from "@/lib/data-hooks";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
-const assistantComingSoonMessage = "Caspo AI Agent coming soon..";
+const assistantComingSoonMessage = "Caspo AI Agent coming soon 🔥..";
 const mobileNavOrder = [
   "/dashboard",
   "/announcements",

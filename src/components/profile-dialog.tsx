@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -25,6 +24,7 @@ import {
 import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
+import { LegalDocumentDialog } from "@/components/legal-document-dialog";
 
 type ProfileDialogProps = {
   isOpen: boolean;
@@ -74,6 +74,7 @@ export function ProfileDialog({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmDeleteFinalOpen, setConfirmDeleteFinalOpen] = useState(false);
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
+  const [legalDialog, setLegalDialog] = useState<"terms" | "privacy" | null>(null);
   const [adminGroups, setAdminGroups] = useState<AdminGroup[]>([]);
   const [deletePlans, setDeletePlans] = useState<Record<string, PlanItem>>({});
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
@@ -254,22 +255,22 @@ export function ProfileDialog({
               <Input id="email" type="email" value={email} readOnly disabled />
             </div>
             <div className="overflow-hidden rounded-xl border">
-              <Link
-                href="/terms"
+              <button
+                type="button"
                 className="flex cursor-pointer items-center justify-between border-b px-4 py-3 text-sm transition-colors active:bg-muted/70"
-                onClick={() => onOpenChange(false)}
+                onClick={() => setLegalDialog("terms")}
               >
                 <span>Terms &amp; Conditions</span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
-              <Link
-                href="/privacy"
+              </button>
+              <button
+                type="button"
                 className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm transition-colors active:bg-muted/70"
-                onClick={() => onOpenChange(false)}
+                onClick={() => setLegalDialog("privacy")}
               >
                 <span>Privacy Policy</span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              </Link>
+              </button>
             </div>
           </div>
           <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:justify-between">
@@ -421,6 +422,16 @@ export function ProfileDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <LegalDocumentDialog
+        open={legalDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLegalDialog(null);
+          }
+        }}
+        type={legalDialog ?? "terms"}
+      />
     </>
   );
 }

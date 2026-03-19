@@ -28,12 +28,12 @@ import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
 import { usePathname, useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
+import { LegalDocumentDialog } from '@/components/legal-document-dialog';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
@@ -138,17 +138,23 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     );
 }
 
-function LegalNotice() {
+function LegalNotice({
+  onOpenTerms,
+  onOpenPrivacy,
+}: {
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
+}) {
     return (
         <p className="mt-3 text-center text-xs text-gray-500">
             By continuing, you agree to our{" "}
-            <Link href="/terms" className="font-medium text-foreground underline underline-offset-2">
+            <button type="button" onClick={onOpenTerms} className="font-medium text-foreground underline underline-offset-2">
                 Terms &amp; Conditions
-            </Link>{" "}
+            </button>{" "}
             and{" "}
-            <Link href="/privacy" className="font-medium text-foreground underline underline-offset-2">
+            <button type="button" onClick={onOpenPrivacy} className="font-medium text-foreground underline underline-offset-2">
                 Privacy Policy
-            </Link>
+            </button>
             .
         </p>
     );
@@ -179,6 +185,7 @@ function SignUpForm({
         defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
     });
     const { toast } = useToast();
+    const [legalDialog, setLegalDialog] = useState<'terms' | 'privacy' | null>(null);
 
     const handleSaveUser = async (values: z.infer<typeof userFormSchema>) => {
         const signupResponse = await safeFetchJson<{ ok: boolean; userId?: string; error?: string }>(
@@ -236,7 +243,7 @@ function SignUpForm({
     return (
         <div className="w-full max-w-md">
             <CardHeader>
-                <CardTitle className="text-3xl">Create your Account</CardTitle>
+                <CardTitle className="text-[1.65rem]">Sign Up</CardTitle>
                 <CardDescription>Get started with CASPO by creating an account.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -265,7 +272,7 @@ function SignUpForm({
                     </div>
                     <Button type="submit" className="w-full">Create Account</Button>
                 </form>
-                <LegalNotice />
+                <LegalNotice onOpenTerms={() => setLegalDialog('terms')} onOpenPrivacy={() => setLegalDialog('privacy')} />
                 </div>
             </CardContent>
              <CardFooter className="justify-center">
@@ -274,6 +281,15 @@ function SignUpForm({
                     <Button variant="link" className="p-0 h-auto" onClick={onSwitchToLogin}>Log In</Button>
                 </p>
             </CardFooter>
+            <LegalDocumentDialog
+              open={legalDialog !== null}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setLegalDialog(null);
+                }
+              }}
+              type={legalDialog ?? 'terms'}
+            />
         </div>
     );
 }
@@ -292,6 +308,7 @@ function LoginForm({
         defaultValues: { email: '', password: '' },
     });
     const [isForgotPassDialogOpen, setIsForgotPassDialogOpen] = useState(false);
+    const [legalDialog, setLegalDialog] = useState<'terms' | 'privacy' | null>(null);
     const { toast } = useToast();
 
      const handleLogin = async (values: z.infer<typeof loginFormSchema>) => {
@@ -328,7 +345,7 @@ function LoginForm({
         <>
          <div className="w-full max-w-md">
              <CardHeader>
-                <CardTitle className="text-3xl">Log In to CASPO</CardTitle>
+                <CardTitle className="text-[1.65rem]">Log In</CardTitle>
                 <CardDescription>Enter your credentials to access your account.</CardDescription>
             </CardHeader>
             <CardContent>
@@ -352,7 +369,7 @@ function LoginForm({
                     </div>
                     <Button type="submit" className="w-full">Log In</Button>
                 </form>
-                <LegalNotice />
+                <LegalNotice onOpenTerms={() => setLegalDialog('terms')} onOpenPrivacy={() => setLegalDialog('privacy')} />
                 </div>
             </CardContent>
             <CardFooter className="justify-center">
@@ -376,6 +393,15 @@ function LoginForm({
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        <LegalDocumentDialog
+          open={legalDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setLegalDialog(null);
+            }
+          }}
+          type={legalDialog ?? 'terms'}
+        />
         </>
     );
 }
@@ -519,12 +545,13 @@ export default function HomePage() {
 
   if (!user) {
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-             <Card className="w-full max-w-md">
-                <CardHeader className="items-center">
-                    <div className="flex justify-center items-center gap-4 mb-2">
+        <div className="viewport-page bg-background">
+             <div className="viewport-scroll flex h-full flex-col items-center justify-center px-4 pb-4 pt-8">
+             <Card className="auth-card-shell w-full max-w-md">
+                <CardHeader className="items-center pt-8">
+                    <div className="mt-5 flex justify-center items-center gap-4 mb-1">
                         <Logo className="h-10 w-10 text-primary" />
-                        <CardTitle className="text-4xl">CASPO</CardTitle>
+                        <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
                     </div>
                 </CardHeader>
 
@@ -536,6 +563,7 @@ export default function HomePage() {
                    )}
                 </div>
             </Card>
+            </div>
         </div>
     );
   }

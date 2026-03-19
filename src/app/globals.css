@@ -243,6 +243,11 @@ main,
   min-width: 36px;
 }
 
+.nav-arrow-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
 .ai-button {
   justify-self: center;
   width: 64px;

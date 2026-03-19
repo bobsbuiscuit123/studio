@@ -114,11 +114,12 @@ export function AppMobileTabBar() {
           <button type="button" onClick={() => setNavPage(current => Math.max(0, current - 1))} className="tab nav-arrow">
             <ChevronLeft className="h-6 w-6" />
           </button>
-        ) : (
-          <div className="tab nav-arrow opacity-0" aria-hidden="true">
+        ) : null}
+        {navPage === 0 ? (
+          <button type="button" disabled className="tab nav-arrow nav-arrow-disabled" aria-label="Previous tabs unavailable">
             <ChevronLeft className="h-6 w-6" />
-          </div>
-        )}
+          </button>
+        ) : null}
 
         <div className="nav-group">
           {leftTabs[0] ? (
@@ -194,9 +195,9 @@ export function AppMobileTabBar() {
             <ChevronRight className="h-6 w-6" />
           </button>
         ) : (
-          <div className="tab nav-arrow opacity-0" aria-hidden="true">
+          <button type="button" disabled className="tab nav-arrow nav-arrow-disabled" aria-label="More tabs unavailable">
             <ChevronRight className="h-6 w-6" />
-          </div>
+          </button>
         )}
       </div>
     </nav>

@@ -665,10 +665,10 @@ export default function Dashboard() {
       nextAttendees[event.id] = currentAttendees;
     });
 
-    const allActivities = [...recentActivities, ...deltaActivities].sort(
-      (a, b) => b.date.getTime() - a.date.getTime()
-    );
-    const unseen = allActivities.filter(item => !shownActivityKeys.has(createActivityKey(item)));
+    const newDeltaActivities = deltaActivities
+      .filter(item => !shownActivityKeys.has(createActivityKey(item)))
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
+    const unseen = newDeltaActivities;
     const unseenForPopup = unseen.slice(0, 6);
     const unseenPopupKeys = unseenForPopup.map(item => createActivityKey(item));
 

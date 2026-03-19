@@ -116,13 +116,20 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
         const redirectTo = getOAuthRedirectTo();
-        const { error } = await supabase.auth.signInWithOAuth({
+        const { data, error } = await supabase.auth.signInWithOAuth({
             provider,
-            options: redirectTo ? { redirectTo } : {},
+            options: {
+              ...(redirectTo ? { redirectTo } : {}),
+              skipBrowserRedirect: true,
+            },
         });
         if (error) {
             toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
             setProviderLoading(null);
+            return;
+        }
+        if (data?.url) {
+            window.location.href = data.url;
             return;
         }
         setProviderLoading(null);

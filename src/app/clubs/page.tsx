@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Copy, LogIn, Pencil, PlusCircle, Trash2, User, UserPlus } from "lucide-react";
+import { ArrowRight, Copy, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -60,7 +60,6 @@ export default function ClubsPage() {
   const createGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const editGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const [isDeleteOrgOpen, setIsDeleteOrgOpen] = useState(false);
-  const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
@@ -413,8 +412,8 @@ export default function ClubsPage() {
             className="h-11 w-11 shrink-0 rounded-2xl"
             onClick={() => setIsProfileOpen(true)}
           >
-            <User className="h-5 w-5" />
-            <span className="sr-only">Profile</span>
+            <Settings className="h-5 w-5" />
+            <span className="sr-only">Settings</span>
           </Button>
         </div>
 
@@ -507,14 +506,6 @@ export default function ClubsPage() {
             </Dialog>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" onClick={() => setIsProfileOpen(true)} className="w-full">
-              <User className="mr-2" /> Profile
-            </Button>
-            <Button variant="destructive" onClick={() => setIsLogoutOpen(true)} className="w-full">
-              <LogIn className="mr-2" /> Log Out
-            </Button>
-          </div>
         </div>
 
         {loading ? (
@@ -605,33 +596,12 @@ export default function ClubsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <AlertDialog open={isLogoutOpen} onOpenChange={setIsLogoutOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Log out?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You will be signed out of your account and returned to the login screen.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void handleLogout();
-              }}
-            >
-              Log Out
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <ProfileDialog
         isOpen={isProfileOpen}
         onOpenChange={setIsProfileOpen}
         user={user}
         onSave={handleSaveProfile}
+        onLogout={handleLogout}
         onDeleted={handleDeleted}
       />
       <Dialog

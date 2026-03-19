@@ -28,6 +28,7 @@ import * as z from 'zod';
 import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
 import { usePathname, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/data-hooks';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
@@ -134,6 +135,22 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
                 <div className="h-px flex-1 bg-border" />
             </div>
         </div>
+    );
+}
+
+function LegalNotice() {
+    return (
+        <p className="mt-3 text-center text-xs text-gray-500">
+            By continuing, you agree to our{" "}
+            <Link href="/terms" className="font-medium text-foreground underline underline-offset-2">
+                Terms &amp; Conditions
+            </Link>{" "}
+            and{" "}
+            <Link href="/privacy" className="font-medium text-foreground underline underline-offset-2">
+                Privacy Policy
+            </Link>
+            .
+        </p>
     );
 }
 
@@ -248,6 +265,7 @@ function SignUpForm({
                     </div>
                     <Button type="submit" className="w-full">Create Account</Button>
                 </form>
+                <LegalNotice />
                 </div>
             </CardContent>
              <CardFooter className="justify-center">
@@ -334,6 +352,7 @@ function LoginForm({
                     </div>
                     <Button type="submit" className="w-full">Log In</Button>
                 </form>
+                <LegalNotice />
                 </div>
             </CardContent>
             <CardFooter className="justify-center">

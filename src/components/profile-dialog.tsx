@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +32,7 @@ type ProfileDialogProps = {
   user: UserType | null;
   onSave: (updatedUser: Partial<UserType>) => Promise<void> | void;
   onDeleted: () => Promise<void> | void;
+  onLogout?: () => Promise<void> | void;
   mode?: 'live' | 'demo';
 };
 
@@ -58,6 +61,7 @@ export function ProfileDialog({
   user,
   onSave,
   onDeleted,
+  onLogout,
   mode = 'live',
 }: ProfileDialogProps) {
   const { toast } = useToast();
@@ -69,6 +73,7 @@ export function ProfileDialog({
   );
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmDeleteFinalOpen, setConfirmDeleteFinalOpen] = useState(false);
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
   const [adminGroups, setAdminGroups] = useState<AdminGroup[]>([]);
   const [deletePlans, setDeletePlans] = useState<Record<string, PlanItem>>({});
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
@@ -164,6 +169,12 @@ export function ProfileDialog({
     }));
   };
 
+  const handleLogoutConfirm = async () => {
+    setConfirmLogoutOpen(false);
+    onOpenChange(false);
+    await onLogout?.();
+  };
+
   const handlePlanSubmit = async () => {
     const plans = adminGroups.map((group) => deletePlans[group.groupId]).filter(Boolean) as PlanItem[];
     const allReady = adminGroups.every((group) => {
@@ -206,9 +217,9 @@ export function ProfileDialog({
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Profile Settings</DialogTitle>
+            <DialogTitle>Settings</DialogTitle>
             <DialogDescription>
-              Update your profile picture, name, and email here.
+              Update your account details and review legal documents here.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -242,14 +253,40 @@ export function ProfileDialog({
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} readOnly disabled />
             </div>
+            <div className="overflow-hidden rounded-xl border">
+              <Link
+                href="/terms"
+                className="flex cursor-pointer items-center justify-between border-b px-4 py-3 text-sm transition-colors active:bg-muted/70"
+                onClick={() => onOpenChange(false)}
+              >
+                <span>Terms &amp; Conditions</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+              <Link
+                href="/privacy"
+                className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm transition-colors active:bg-muted/70"
+                onClick={() => onOpenChange(false)}
+              >
+                <span>Privacy Policy</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            </div>
           </div>
           <DialogFooter className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmDeleteOpen(true)}
-            >
-              Delete Account
-            </Button>
+            <div className="flex w-full flex-col gap-2 sm:w-auto">
+              {onLogout ? (
+                <Button variant="destructive" onClick={() => setConfirmLogoutOpen(true)}>
+                  Log Out
+                </Button>
+              ) : null}
+              <Button
+                variant="destructive"
+                onClick={() => setConfirmDeleteOpen(true)}
+                className="sm:mt-2"
+              >
+                Delete Account
+              </Button>
+            </div>
             <div className="flex gap-2 sm:justify-end">
               <Button variant="ghost" onClick={() => onOpenChange(false)}>
                 Cancel
@@ -277,6 +314,25 @@ export function ProfileDialog({
               setConfirmDeleteFinalOpen(true);
             }}>
               Yes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmLogoutOpen} onOpenChange={setConfirmLogoutOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log out?</DialogTitle>
+            <DialogDescription>
+              You will be signed out of your account and returned to the login screen.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setConfirmLogoutOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleLogoutConfirm}>
+              Log Out
             </Button>
           </DialogFooter>
         </DialogContent>

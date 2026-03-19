@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { LogOut, Home, User, ChevronDown } from "lucide-react";
+import { LogOut, Home, Settings, ChevronDown } from "lucide-react";
 import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
@@ -381,8 +381,8 @@ export function AppHeader() {
           <DropdownMenuLabel>{user?.name || "My Account"} ({role || "No role"})</DropdownMenuLabel>
           <DropdownMenuSeparator />
            <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
-              <User className="mr-2 h-4 w-4" />
-              Profile
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
             </DropdownMenuItem>
            <Link href={useDemo ? '/demo' : '/clubs'}>
              <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Group</DropdownMenuItem>

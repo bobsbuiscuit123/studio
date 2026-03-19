@@ -2,9 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
-import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -53,10 +51,6 @@ const loginFormSchema = z.object({
     password: z.string().min(1, "Password is required."),
 });
 
-const NATIVE_OAUTH_SCHEME = 'com.caspo.app';
-const NATIVE_OAUTH_HOST = 'auth';
-const NATIVE_OAUTH_CALLBACK_PATH = '/callback';
-
 function getConfiguredSiteOrigin() {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
@@ -81,19 +75,8 @@ function getConfiguredSiteOrigin() {
 }
 
 function getOAuthRedirectTo() {
-  if (Capacitor.isNativePlatform()) {
-    return `${NATIVE_OAUTH_SCHEME}://${NATIVE_OAUTH_HOST}${NATIVE_OAUTH_CALLBACK_PATH}`;
-  }
   const origin = getConfiguredSiteOrigin();
   return origin ? `${origin}/auth/callback` : undefined;
-}
-
-function isNativeAuthCallbackUrl(url: URL) {
-  return (
-    url.protocol === `${NATIVE_OAUTH_SCHEME}:` &&
-    url.hostname === NATIVE_OAUTH_HOST &&
-    url.pathname === NATIVE_OAUTH_CALLBACK_PATH
-  );
 }
 
 function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
@@ -134,24 +117,19 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
         const redirectTo = getOAuthRedirectTo();
-        const isNativeOAuth = Capacitor.isNativePlatform();
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider,
-            options: {
-              ...(redirectTo ? { redirectTo } : {}),
-              ...(isNativeOAuth ? { skipBrowserRedirect: true } : {}),
-            },
+            options: redirectTo ? { redirectTo } : {},
         });
         if (error) {
             toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
             setProviderLoading(null);
             return;
         }
-        if (isNativeOAuth && data?.url) {
+        if (data?.url) {
             try {
                 await Browser.open({
                     url: data.url,
-                    presentationStyle: 'popover',
                 });
             } catch (browserError) {
                 const message =
@@ -465,7 +443,6 @@ function LoginForm({
 export default function HomePage() {
   const { user, loading: userLoading, saveUser, clearUser, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
-  const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const didLogNavigationRef = useRef(false);
@@ -492,58 +469,6 @@ export default function HomePage() {
     if (!isClient) return;
     setSelectedOrgId(localStorage.getItem('selectedOrgId'));
   }, [isClient]);
-
-  useEffect(() => {
-    if (!isClient || !Capacitor.isNativePlatform()) return;
-
-    const listenerPromise = App.addListener('appUrlOpen', async ({ url }) => {
-      if (!url) return;
-
-      let parsedUrl: URL;
-      try {
-        parsedUrl = new URL(url);
-      } catch {
-        return;
-      }
-
-      if (!isNativeAuthCallbackUrl(parsedUrl)) {
-        return;
-      }
-
-      const code = parsedUrl.searchParams.get('code');
-      const next = parsedUrl.searchParams.get('next');
-      const redirectPath = next && next.startsWith('/') ? next : '/';
-      const authError =
-        parsedUrl.searchParams.get('error_description') ??
-        parsedUrl.searchParams.get('error');
-
-      try {
-        if (authError) {
-          throw new Error(authError);
-        }
-        if (!code) {
-          throw new Error('Missing OAuth authorization code.');
-        }
-
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-          throw error;
-        }
-
-        await Browser.close();
-        navigateWithFallback(redirectPath);
-      } catch (oauthError) {
-        await Browser.close().catch(() => undefined);
-        const message =
-          oauthError instanceof Error ? oauthError.message : 'Could not complete sign-in.';
-        toast({ title: "OAuth failed", description: message, variant: "destructive" });
-      }
-    });
-
-    return () => {
-      void listenerPromise.then((listener) => listener.remove());
-    };
-  }, [isClient, supabase, toast]);
 
   useEffect(() => {
     const initAuth = async () => {

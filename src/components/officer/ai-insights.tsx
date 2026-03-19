@@ -683,6 +683,14 @@ export default function AIInsights({
     return added.filter(item => !item.id || !hidden.includes(item.id));
   };
 
+  const appendCustomInsight = (listKey: InsightBoxKey, item: InsightItem) => {
+    setCustomInsights(prev => ({
+      ...prev,
+      [listKey]: [item, ...(prev[listKey] ?? [])],
+    }));
+    setExpanded(prev => ({ ...prev, [listKey]: true }));
+  };
+
   useEffect(() => {
     if (mode === 'member' && newInsightList === 'finance') {
       setNewInsightList('action');
@@ -844,21 +852,15 @@ export default function AIInsights({
           ...prev,
           { id: requestId, listKey: newInsightList, prompt: trimmed },
         ]);
-        setCustomInsights(prev => ({
-          ...prev,
-          [newInsightList]: [
-            ...(prev[newInsightList] ?? []),
-            {
-              id: requestId,
-              text: cachedText,
-              actionLabel: finalActionLabel,
-              actionHref: finalActionHref,
-              contextText: cachedPrompt.contextText,
-              createdAt: Date.now(),
-              source: 'custom' as const,
-            },
-          ],
-        }));
+        appendCustomInsight(newInsightList, {
+          id: requestId,
+          text: cachedText,
+          actionLabel: finalActionLabel,
+          actionHref: finalActionHref,
+          contextText: cachedPrompt.contextText,
+          createdAt: Date.now(),
+          source: 'custom' as const,
+        });
         setNewInsightText('');
         return;
       }
@@ -929,21 +931,15 @@ export default function AIInsights({
         ...prev,
         { id: requestId, listKey: newInsightList, prompt: trimmed },
       ]);
-      setCustomInsights(prev => ({
-        ...prev,
-        [newInsightList]: [
-          ...(prev[newInsightList] ?? []),
-          {
-            id: requestId,
-            text: resolvedText,
-            actionLabel: finalActionLabel,
-            actionHref: finalActionHref,
-            contextText: resolved.contextText,
-            createdAt: Date.now(),
-            source: 'custom' as const,
-          },
-        ],
-      }));
+      appendCustomInsight(newInsightList, {
+        id: requestId,
+        text: resolvedText,
+        actionLabel: finalActionLabel,
+        actionHref: finalActionHref,
+        contextText: resolved.contextText,
+        createdAt: Date.now(),
+        source: 'custom' as const,
+      });
       setNewInsightText('');
     } catch (error) {
       setInsightError('Unable to generate an insight right now.');
@@ -1111,6 +1107,7 @@ export default function AIInsights({
                 onKeyDown={event => {
                   if (event.key !== 'Enter') return;
                   event.preventDefault();
+                  event.stopPropagation();
                   void handleAddInsight();
                 }}
                 disabled={isResolvingInsight || isResolvingCustomInsights}
@@ -1140,6 +1137,7 @@ export default function AIInsights({
                   onKeyDown={event => {
                     if (event.key !== 'Enter') return;
                     event.preventDefault();
+                    event.stopPropagation();
                     handleAddBox();
                   }}
                 />

@@ -82,6 +82,7 @@ type MissedActivityCache = {
 type DashboardStoredState = {
   missedLastSeenAt: number;
   missedLastShownDay: string | null;
+  lastMissedContextVersionShown: string | null;
   shownMissedActivityKeys: string[];
   missedSnapshot: MissedActivitySnapshot;
   missedSummaryCache: MissedActivityCache | null;
@@ -90,6 +91,7 @@ type DashboardStoredState = {
 const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
   missedLastSeenAt: 0,
   missedLastShownDay: null,
+  lastMissedContextVersionShown: null,
   shownMissedActivityKeys: [],
   missedSnapshot: {
     members: [],
@@ -685,7 +687,11 @@ export default function Dashboard() {
       todo: todoItems.slice(0, 5),
     });
 
-    if (unseen.length >= 3 && !missedOpen) {
+    if (
+      unseen.length >= 3 &&
+      !missedOpen &&
+      dashboardState.lastMissedContextVersionShown !== missedContextVersion
+    ) {
       setMissedLoading(true);
       const cachedSummary = dashboardState.missedSummaryCache;
       const nextSummary =
@@ -711,6 +717,7 @@ export default function Dashboard() {
 
       void updateDashboardState(prev => ({
         ...prev,
+        lastMissedContextVersionShown: missedContextVersion,
         missedSummaryCache: nextSummary,
         shownMissedActivityKeys: Array.from(
           new Set([...(prev.shownMissedActivityKeys ?? []), ...unseenPopupKeys])
@@ -739,6 +746,7 @@ export default function Dashboard() {
     dashboardState.shownMissedActivityKeys,
     dashboardState.missedSnapshot,
     dashboardState.missedSummaryCache,
+    dashboardState.lastMissedContextVersionShown,
     events,
     eventsLoading,
     members,

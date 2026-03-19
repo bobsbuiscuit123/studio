@@ -71,6 +71,16 @@ type CalendarAiResponse =
         code: string;
       };
     };
+
+type CalendarAiEnvelope = {
+  success?: boolean;
+  data?: CalendarAiResponse;
+  error?: {
+    message?: string;
+    code?: string;
+  };
+  message?: string;
+};
 const manualEventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().optional().or(z.literal("")),
@@ -251,7 +261,7 @@ export default function CalendarPage() {
         typeof crypto !== "undefined" && "randomUUID" in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const response = await safeFetchJson<CalendarAiResponse>('/api/calendar/ai', {
+      const response = await safeFetchJson<CalendarAiEnvelope | CalendarAiResponse>('/api/calendar/ai', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: values.prompt }),
@@ -262,10 +272,25 @@ export default function CalendarPage() {
       if (!response.ok) {
         throw new Error(response.error.message || 'Failed to generate event.');
       }
-      if (!response.data.ok) {
-        throw new Error(response.data.error.message || 'Failed to generate event.');
+      const responseBody = response.data;
+      const payload =
+        responseBody &&
+        typeof responseBody === 'object' &&
+        'success' in responseBody
+          ? responseBody.data
+          : responseBody;
+      if (!payload) {
+        throw new Error('Invalid server response.');
       }
-      const result = response.data.data;
+      if (!('ok' in payload)) {
+        throw new Error('Invalid server response.');
+      }
+      if (!payload.ok) {
+        throw new Error(
+          'error' in payload ? payload.error?.message || 'Failed to generate event.' : 'Failed to generate event.'
+        );
+      }
+      const result = payload.data;
       const hasTime =
         typeof result?.hasTime === 'boolean' ? result.hasTime : true;
       const parsedDate = new Date(result.date);

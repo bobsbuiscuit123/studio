@@ -79,6 +79,11 @@ const pageTitles: { [key: string]: string } = {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const isMessagesRoute =
+    pathname === "/messages" ||
+    pathname.startsWith("/messages/") ||
+    pathname === "/demo/app/messages" ||
+    pathname.startsWith("/demo/app/messages/");
   const [clubName, setClubName] = useState("");
   const [orgName, setOrgName] = useState("");
   const demoCtx = useOptionalDemoCtx();
@@ -271,7 +276,7 @@ export function AppHeader() {
 
   return (
     <>
-    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur">
+    <header className={`sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur ${isMessagesRoute ? "hidden md:block" : ""}`}>
       <div className="mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 py-2 md:max-w-none lg:px-6">
         <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
           <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">

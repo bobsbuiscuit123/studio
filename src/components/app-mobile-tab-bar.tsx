@@ -12,7 +12,19 @@ import { allNavItems } from "@/components/app-sidebar-nav";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
-const visibleNavHrefs = ["/dashboard", "/calendar", "/messages"] as const;
+const mobileNavOrder = [
+  "/dashboard",
+  "/announcements",
+  "/messages",
+  "/calendar",
+  "/forms",
+  "/attendance",
+  "/points",
+  "/gallery",
+  "/members",
+  "/email",
+  "/finances",
+] as const;
 
 export function AppMobileTabBar() {
   const pathname = usePathname();
@@ -22,16 +34,9 @@ export function AppMobileTabBar() {
   const [page, setPage] = useState(0);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
-  const orderedItems = [
-    ...allowedItems.filter(item =>
-      visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) && item.href !== assistantHref
-    ),
-    ...allowedItems.filter(
-      item =>
-        !visibleNavHrefs.includes(item.href as (typeof visibleNavHrefs)[number]) &&
-        item.href !== assistantHref
-    ),
-  ];
+  const orderedItems = mobileNavOrder
+    .map(href => allowedItems.find(item => item.href === href))
+    .filter((item): item is (typeof allowedItems)[number] => Boolean(item));
   const assistantItem = allowedItems.find(item => item.href === assistantHref);
 
   const buildHref = (href: string) =>
@@ -47,7 +52,7 @@ export function AppMobileTabBar() {
   };
 
   const pages = useMemo(() => paginateTabs(orderedItems), [orderedItems]);
-  const currentPage = pages[page] ?? { left: [], right: [], hasPrev: false, hasNext: false };
+  const currentPage = pages[page] ?? { items: [], hasPrev: false, hasNext: false };
 
   useEffect(() => {
     if (page > pages.length - 1) {
@@ -73,31 +78,33 @@ export function AppMobileTabBar() {
               <span className="text-xs">Back</span>
             </button>
           ) : (
-            <MobileTabLink
-              href={buildHref(currentPage.left[0]?.href ?? "")}
-              icon={currentPage.left[0]?.icon}
-              label={currentPage.left[0]?.label ?? ""}
-              active={Boolean(currentPage.left[0] && isItemActive(currentPage.left[0].href))}
-              hasNotification={Boolean(
-                currentPage.left[0]?.notificationKey &&
-                  unread[currentPage.left[0].notificationKey as keyof typeof unread] &&
-                  !isItemActive(currentPage.left[0].href)
-              )}
-              onClick={() => currentPage.left[0]?.notificationKey && markTabViewed(currentPage.left[0].notificationKey)}
-            />
+            <div className="tab opacity-0" aria-hidden="true" />
           )}
 
           <MobileTabLink
-            href={buildHref(currentPage.left[1]?.href ?? "")}
-            icon={currentPage.left[1]?.icon}
-            label={currentPage.left[1]?.label ?? ""}
-            active={Boolean(currentPage.left[1] && isItemActive(currentPage.left[1].href))}
+            href={buildHref(currentPage.items[0]?.href ?? "")}
+            icon={currentPage.items[0]?.icon}
+            label={currentPage.items[0]?.label ?? ""}
+            active={Boolean(currentPage.items[0] && isItemActive(currentPage.items[0].href))}
             hasNotification={Boolean(
-              currentPage.left[1]?.notificationKey &&
-                unread[currentPage.left[1].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.left[1].href)
+              currentPage.items[0]?.notificationKey &&
+                unread[currentPage.items[0].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.items[0].href)
             )}
-            onClick={() => currentPage.left[1]?.notificationKey && markTabViewed(currentPage.left[1].notificationKey)}
+            onClick={() => currentPage.items[0]?.notificationKey && markTabViewed(currentPage.items[0].notificationKey)}
+          />
+
+          <MobileTabLink
+            href={buildHref(currentPage.items[1]?.href ?? "")}
+            icon={currentPage.items[1]?.icon}
+            label={currentPage.items[1]?.label ?? ""}
+            active={Boolean(currentPage.items[1] && isItemActive(currentPage.items[1].href))}
+            hasNotification={Boolean(
+              currentPage.items[1]?.notificationKey &&
+                unread[currentPage.items[1].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.items[1].href)
+            )}
+            onClick={() => currentPage.items[1]?.notificationKey && markTabViewed(currentPage.items[1].notificationKey)}
           />
 
           {assistantItem ? (
@@ -112,16 +119,29 @@ export function AppMobileTabBar() {
           ) : null}
 
           <MobileTabLink
-            href={buildHref(currentPage.right[0]?.href ?? "")}
-            icon={currentPage.right[0]?.icon}
-            label={currentPage.right[0]?.label ?? ""}
-            active={Boolean(currentPage.right[0] && isItemActive(currentPage.right[0].href))}
+            href={buildHref(currentPage.items[2]?.href ?? "")}
+            icon={currentPage.items[2]?.icon}
+            label={currentPage.items[2]?.label ?? ""}
+            active={Boolean(currentPage.items[2] && isItemActive(currentPage.items[2].href))}
             hasNotification={Boolean(
-              currentPage.right[0]?.notificationKey &&
-                unread[currentPage.right[0].notificationKey as keyof typeof unread] &&
-                !isItemActive(currentPage.right[0].href)
+              currentPage.items[2]?.notificationKey &&
+                unread[currentPage.items[2].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.items[2].href)
             )}
-            onClick={() => currentPage.right[0]?.notificationKey && markTabViewed(currentPage.right[0].notificationKey)}
+            onClick={() => currentPage.items[2]?.notificationKey && markTabViewed(currentPage.items[2].notificationKey)}
+          />
+
+          <MobileTabLink
+            href={buildHref(currentPage.items[3]?.href ?? "")}
+            icon={currentPage.items[3]?.icon}
+            label={currentPage.items[3]?.label ?? ""}
+            active={Boolean(currentPage.items[3] && isItemActive(currentPage.items[3].href))}
+            hasNotification={Boolean(
+              currentPage.items[3]?.notificationKey &&
+                unread[currentPage.items[3].notificationKey as keyof typeof unread] &&
+                !isItemActive(currentPage.items[3].href)
+            )}
+            onClick={() => currentPage.items[3]?.notificationKey && markTabViewed(currentPage.items[3].notificationKey)}
           />
 
           {currentPage.hasNext ? (
@@ -134,18 +154,7 @@ export function AppMobileTabBar() {
               <span className="text-xs">More</span>
             </button>
           ) : (
-            <MobileTabLink
-              href={buildHref(currentPage.right[1]?.href ?? "")}
-              icon={currentPage.right[1]?.icon}
-              label={currentPage.right[1]?.label ?? ""}
-              active={Boolean(currentPage.right[1] && isItemActive(currentPage.right[1].href))}
-              hasNotification={Boolean(
-                currentPage.right[1]?.notificationKey &&
-                  unread[currentPage.right[1].notificationKey as keyof typeof unread] &&
-                  !isItemActive(currentPage.right[1].href)
-              )}
-              onClick={() => currentPage.right[1]?.notificationKey && markTabViewed(currentPage.right[1].notificationKey)}
-            />
+            <div className="tab opacity-0" aria-hidden="true" />
           )}
         </div>
       </nav>
@@ -195,29 +204,18 @@ function MobileTabLink({
 }
 
 function paginateTabs<T>(items: T[]) {
-  const pages: Array<{ left: T[]; right: T[]; hasPrev: boolean; hasNext: boolean }> = [];
+  const pages: Array<{ items: T[]; hasPrev: boolean; hasNext: boolean }> = [];
   let index = 0;
-  let pageIndex = 0;
 
   while (index < items.length) {
-    const hasPrev = pageIndex > 0;
-    const remaining = items.length - index;
-    const capacity = 4 - (hasPrev ? 1 : 0) - (remaining > 3 ? 1 : 0);
-    const safeCapacity = Math.max(1, capacity);
-    const pageItems = items.slice(index, index + safeCapacity);
-    index += safeCapacity;
+    const pageItems = items.slice(index, index + 4);
+    index += 4;
     const hasNext = index < items.length;
-    const slots = hasPrev
-      ? [...pageItems.slice(0, 1), ...pageItems.slice(1, 2), ...pageItems.slice(2)]
-      : [...pageItems];
-
     pages.push({
-      left: slots.slice(0, 2),
-      right: slots.slice(2, 4),
-      hasPrev,
+      items: pageItems,
+      hasPrev: pages.length > 0,
       hasNext,
     });
-    pageIndex += 1;
   }
 
   return pages;

@@ -315,7 +315,12 @@ export function AppHeader() {
           </div>
         </div>
 
-        <div className="flex h-11 w-11 shrink-0 sm:hidden" />
+        <Button asChild variant="ghost" size="icon" className="h-11 w-11 shrink-0 rounded-2xl sm:hidden">
+          <Link href={useDemo ? '/demo' : '/clubs'}>
+            <Home className="h-5 w-5" />
+            <span className="sr-only">Back to groups</span>
+          </Link>
+        </Button>
 
         <div className="min-w-0 flex-1 text-center sm:hidden">
           <div className="flex items-center justify-center gap-1">

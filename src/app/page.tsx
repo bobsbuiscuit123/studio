@@ -2,6 +2,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { App } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -50,6 +53,10 @@ const loginFormSchema = z.object({
     password: z.string().min(1, "Password is required."),
 });
 
+const NATIVE_OAUTH_SCHEME = 'com.caspo.app';
+const NATIVE_OAUTH_HOST = 'auth';
+const NATIVE_OAUTH_CALLBACK_PATH = '/callback';
+
 function getConfiguredSiteOrigin() {
   const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
   if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
@@ -74,8 +81,19 @@ function getConfiguredSiteOrigin() {
 }
 
 function getOAuthRedirectTo() {
+  if (Capacitor.isNativePlatform()) {
+    return `${NATIVE_OAUTH_SCHEME}://${NATIVE_OAUTH_HOST}${NATIVE_OAUTH_CALLBACK_PATH}`;
+  }
   const origin = getConfiguredSiteOrigin();
   return origin ? `${origin}/auth/callback` : undefined;
+}
+
+function isNativeAuthCallbackUrl(url: URL) {
+  return (
+    url.protocol === `${NATIVE_OAUTH_SCHEME}:` &&
+    url.hostname === NATIVE_OAUTH_HOST &&
+    url.pathname === NATIVE_OAUTH_CALLBACK_PATH
+  );
 }
 
 function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
@@ -101,6 +119,14 @@ function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) 
   );
 }
 
+function AppleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M16.365 12.54c.014 1.51.77 2.9 2.029 3.67-.8 1.14-1.83 2.27-3.15 2.29-1.27.03-1.68-.75-3.14-.75-1.46 0-1.92.72-3.12.78-1.28.05-2.27-1.28-3.08-2.42C4.24 13.69 3 9.28 4.7 6.33c.85-1.46 2.36-2.38 4-2.41 1.25-.02 2.43.84 3.14.84.71 0 2.05-1.04 3.46-.89.59.02 2.25.24 3.31 1.8-.08.05-1.98 1.15-1.95 3.43ZM14.43 2.6c.67-.8 1.12-1.9 1-3-.97.04-2.15.65-2.84 1.45-.62.71-1.16 1.84-1.01 2.92 1.08.08 2.17-.54 2.85-1.37Z" />
+    </svg>
+  );
+}
+
 function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
     const [providerLoading, setProviderLoading] = useState<'google' | 'apple' | null>(null);
     const { toast } = useToast();
@@ -108,14 +134,35 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     const handleOAuth = async (provider: 'google' | 'apple') => {
         setProviderLoading(provider);
         const redirectTo = getOAuthRedirectTo();
-        const { error } = await supabase.auth.signInWithOAuth({
+        const isNativeOAuth = Capacitor.isNativePlatform();
+        const { data, error } = await supabase.auth.signInWithOAuth({
             provider,
-            options: redirectTo ? { redirectTo } : {},
+            options: {
+              ...(redirectTo ? { redirectTo } : {}),
+              ...(isNativeOAuth ? { skipBrowserRedirect: true } : {}),
+            },
         });
         if (error) {
             toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
             setProviderLoading(null);
+            return;
         }
+        if (isNativeOAuth && data?.url) {
+            try {
+                await Browser.open({
+                    url: data.url,
+                    presentationStyle: 'popover',
+                });
+            } catch (browserError) {
+                const message =
+                  browserError instanceof Error ? browserError.message : 'Could not open sign-in window.';
+                toast({ title: "OAuth failed", description: message, variant: "destructive" });
+            } finally {
+                setProviderLoading(null);
+            }
+            return;
+        }
+        setProviderLoading(null);
     };
 
     return (
@@ -128,6 +175,15 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
                 disabled={providerLoading !== null}
             >
                 <GoogleLogoIcon /> Continue with Google
+            </Button>
+            <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => handleOAuth('apple')}
+                disabled={providerLoading !== null}
+            >
+                <AppleLogoIcon /> Continue with Apple
             </Button>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
                 <div className="h-px flex-1 bg-border" />
@@ -409,6 +465,7 @@ function LoginForm({
 export default function HomePage() {
   const { user, loading: userLoading, saveUser, clearUser, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
+  const { toast } = useToast();
   const router = useRouter();
   const pathname = usePathname();
   const didLogNavigationRef = useRef(false);
@@ -435,6 +492,58 @@ export default function HomePage() {
     if (!isClient) return;
     setSelectedOrgId(localStorage.getItem('selectedOrgId'));
   }, [isClient]);
+
+  useEffect(() => {
+    if (!isClient || !Capacitor.isNativePlatform()) return;
+
+    const listenerPromise = App.addListener('appUrlOpen', async ({ url }) => {
+      if (!url) return;
+
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(url);
+      } catch {
+        return;
+      }
+
+      if (!isNativeAuthCallbackUrl(parsedUrl)) {
+        return;
+      }
+
+      const code = parsedUrl.searchParams.get('code');
+      const next = parsedUrl.searchParams.get('next');
+      const redirectPath = next && next.startsWith('/') ? next : '/';
+      const authError =
+        parsedUrl.searchParams.get('error_description') ??
+        parsedUrl.searchParams.get('error');
+
+      try {
+        if (authError) {
+          throw new Error(authError);
+        }
+        if (!code) {
+          throw new Error('Missing OAuth authorization code.');
+        }
+
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) {
+          throw error;
+        }
+
+        await Browser.close();
+        navigateWithFallback(redirectPath);
+      } catch (oauthError) {
+        await Browser.close().catch(() => undefined);
+        const message =
+          oauthError instanceof Error ? oauthError.message : 'Could not complete sign-in.';
+        toast({ title: "OAuth failed", description: message, variant: "destructive" });
+      }
+    });
+
+    return () => {
+      void listenerPromise.then((listener) => listener.remove());
+    };
+  }, [isClient, supabase, toast]);
 
   useEffect(() => {
     const initAuth = async () => {

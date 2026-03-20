@@ -1,7 +1,6 @@
 
 "use client";
 import { useEffect, useState, useMemo } from "react";
-import { Capacitor } from "@capacitor/core";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,6 +75,7 @@ const pageTitles: { [key: string]: string } = {
   "/email": "Bulk Email",
   "/messages": "Messages",
   "/assistant": "AI Assistant",
+  "/forms": "Forms",
 };
 
 export function AppHeader() {
@@ -201,7 +201,6 @@ export function AppHeader() {
   const showQuotaBadge = orgStatus?.role === 'owner';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
   const mobileTitle = title;
-  const isNativeApp = isMounted && Capacitor.isNativePlatform();
 
   const loadTransferCandidates = async () => {
     if (!supabase || !user?.email) return [];
@@ -283,7 +282,7 @@ export function AppHeader() {
   return (
     <>
     <header className={`sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur ${isMessagesRoute ? "hidden md:block" : ""}`}>
-      <div className={`app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6 ${isNativeApp ? "app-header-inner-native" : ""}`}>
+      <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6">
         <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
           <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">
             <Logo className="h-6 w-6" />

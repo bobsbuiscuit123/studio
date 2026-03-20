@@ -69,11 +69,9 @@ export default function DemoAppLayout({
           <div className="shrink-0">
             <AppHeader />
           </div>
-          <div className="flex flex-1 min-h-0 flex-col">
-            <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0">
-              {children}
-            </main>
-          </div>
+          <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-clip px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0">
+            {children}
+          </main>
           <div className="shrink-0 md:hidden">
             <AppMobileTabBar />
           </div>

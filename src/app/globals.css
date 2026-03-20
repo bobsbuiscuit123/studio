@@ -212,17 +212,13 @@ main,
 }
 
 .app-header-inner {
-  padding-top: max(0.35rem, var(--safe-area-top));
+  padding-top: var(--safe-area-top);
   padding-bottom: 0.4rem;
-}
-
-.app-header-inner-native {
-  padding-top: 0.35rem;
 }
 
 @media (min-width: 640px) {
   .app-header-inner {
-    padding-top: 0.5rem;
+    padding-top: max(0.35rem, var(--safe-area-top));
     padding-bottom: 0.5rem;
   }
 }

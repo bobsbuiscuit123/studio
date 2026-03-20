@@ -5,11 +5,11 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
 import {
-  calculateEstimatedDailyCredits,
+  calculateDailyTokenEstimate,
   calculateEstimatedDaysRemaining,
-  calculateEstimatedMonthlyCredits,
+  calculateMonthlyTokenEstimate,
   getAiAvailability,
-  getCreditHealth,
+  getTokenHealth,
 } from '@/lib/pricing';
 
 export async function GET(
@@ -49,10 +49,10 @@ export async function GET(
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: org }, { count }, { data: usage }, { data: activity }] = await Promise.all([
+  const [{ data: org }, { count }, { data: usage }] = await Promise.all([
     admin
       .from('orgs')
-      .select('name, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
+      .select('name, owner_id, member_cap, daily_ai_limit, created_at, updated_at')
       .eq('id', parsed.data)
       .maybeSingle(),
     admin
@@ -61,29 +61,59 @@ export async function GET(
       .eq('org_id', parsed.data),
     admin
       .from('org_usage_daily')
-      .select('credits_used')
+      .select('request_count')
       .eq('org_id', parsed.data)
       .eq('user_id', userId)
       .eq('usage_date', getRequestDayKey(request))
       .maybeSingle(),
-    membership.role === 'owner'
-      ? admin
-          .from('credit_transactions')
-          .select('id, amount, type, description, metadata, created_at')
-          .eq('organization_id', parsed.data)
-          .order('created_at', { ascending: false })
-          .limit(10)
-      : Promise.resolve({ data: null as null }),
   ]);
 
-  const memberLimit = Number(org?.member_limit ?? 0);
-  const dailyAiLimitPerUser = Number(org?.ai_daily_limit_per_user ?? 0);
-  const creditBalance = Number(org?.credit_balance ?? 0);
-  const estimatedMonthlyCredits = calculateEstimatedMonthlyCredits(memberLimit, dailyAiLimitPerUser);
-  const estimatedDailyCredits = calculateEstimatedDailyCredits(memberLimit, dailyAiLimitPerUser);
-  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(creditBalance, estimatedMonthlyCredits);
-  const aiAvailability = getAiAvailability(creditBalance, estimatedMonthlyCredits);
-  const creditHealth = getCreditHealth(estimatedDaysRemaining);
+  const memberLimit = Number(org?.member_cap ?? 0);
+  const dailyAiLimitPerUser = Number(org?.daily_ai_limit ?? 0);
+  const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
+  const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
+
+  let tokenBalance = 0;
+  let estimatedDaysRemaining = 0;
+  let recentTokenActivity: Array<{
+    id: string;
+    amount: number;
+    type: string;
+    description: string;
+    metadata?: Record<string, unknown> | null;
+    created_at: string;
+  }> = [];
+
+  if (membership.role === 'owner' && org?.owner_id) {
+    const [{ data: ownerProfile }, { data: activity }] = await Promise.all([
+      admin
+        .from('profiles')
+        .select('token_balance')
+        .eq('id', org.owner_id)
+        .maybeSingle(),
+      admin
+        .from('token_transactions')
+        .select('id, amount, type, description, metadata, created_at')
+        .eq('user_id', org.owner_id)
+        .eq('organization_id', parsed.data)
+        .order('created_at', { ascending: false })
+        .limit(10),
+    ]);
+
+    tokenBalance = Number(ownerProfile?.token_balance ?? 0);
+    estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
+    recentTokenActivity = activity ?? [];
+  } else if (org?.owner_id) {
+    const { data: ownerProfile } = await admin
+      .from('profiles')
+      .select('token_balance')
+      .eq('id', org.owner_id)
+      .maybeSingle();
+    tokenBalance = Number(ownerProfile?.token_balance ?? 0);
+  }
+
+  const aiAvailability = getAiAvailability(tokenBalance, estimatedMonthlyTokens);
+  const tokenHealth = getTokenHealth(calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens));
 
   return NextResponse.json({
     ok: true,
@@ -94,18 +124,18 @@ export async function GET(
       memberLimit,
       dailyAiLimitPerUser,
       activeUsers: count ?? 0,
-      requestsUsedToday: usage?.credits_used ?? 0,
+      requestsUsedToday: usage?.request_count ?? 0,
       aiAvailability,
-      estimatedMonthlyCredits,
-      estimatedDailyCredits,
-      creditHealth,
+      estimatedMonthlyTokens,
+      estimatedDailyTokens,
+      tokenHealth,
       createdAt: org?.created_at ?? null,
       updatedAt: org?.updated_at ?? null,
       ...(membership.role === 'owner'
         ? {
-            creditBalance,
+            tokenBalance,
             estimatedDaysRemaining,
-            recentCreditActivity: activity ?? [],
+            recentTokenActivity,
           }
         : {}),
     },

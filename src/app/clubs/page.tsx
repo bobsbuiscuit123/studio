@@ -99,7 +99,7 @@ export default function ClubsPage() {
     clearSelectedGroupId();
     toast({
       title: "Organization deleted",
-      description: "The organization and its credits were removed.",
+      description: "The organization was removed. Your token balance stays on your account.",
     });
     router.push("/orgs");
   };
@@ -561,7 +561,7 @@ export default function ClubsPage() {
         {isOrgOwner ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Button variant="outline" onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)} className="w-full">
-              <Coins className="mr-2" /> Manage Credits
+              <Coins className="mr-2" /> Manage Tokens
             </Button>
             <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
               <Trash2 className="mr-2" /> Delete Organization
@@ -574,12 +574,12 @@ export default function ClubsPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete organization?</AlertDialogTitle>
               <AlertDialogDescription>
-                This removes the organization, its groups, and its credit history for all members.
+                This removes the organization and its groups for all members.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="space-y-3 text-sm text-slate-600">
               <p>Organization created: {formatDate(orgStatus?.createdAt)}</p>
-              <p>Current credit balance: {Number(orgStatus?.creditBalance ?? 0).toLocaleString()} credits.</p>
+              <p>Current owner token balance: {Number(orgStatus?.tokenBalance ?? 0).toLocaleString()} tokens.</p>
               <p>AI will stop for members immediately because the organization will no longer exist.</p>
             </div>
             <AlertDialogFooter>

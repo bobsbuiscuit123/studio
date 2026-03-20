@@ -5,26 +5,20 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
-import { calculateEstimatedMonthlyCredits } from '@/lib/pricing';
 
-const ensureUniqueJoinCode = async (admin: ReturnType<typeof createSupabaseAdmin>, preferred?: string) => {
+const ensureUniqueJoinCode = async (
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  preferred?: string
+) => {
   if (preferred) {
-    const { data } = await admin
-      .from('orgs')
-      .select('id')
-      .eq('join_code', preferred)
-      .maybeSingle();
+    const { data } = await admin.from('orgs').select('id').eq('join_code', preferred).maybeSingle();
     if (data?.id) return null;
     return preferred;
   }
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const generated = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const { data } = await admin
-      .from('orgs')
-      .select('id')
-      .eq('join_code', generated)
-      .maybeSingle();
+    const { data } = await admin.from('orgs').select('id').eq('join_code', generated).maybeSingle();
     if (!data?.id) {
       return generated;
     }
@@ -52,18 +46,37 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const schema = z.object({
-    name: z.string().min(3),
-    category: z.string().optional(),
-    description: z.string().optional(),
-    joinCode: z
-      .string()
-      .trim()
-      .regex(/^[A-Z0-9]{4,10}$/)
-      .optional(),
-    maxUserLimit: z.number().int().min(1),
-    dailyAiLimitPerUser: z.number().int().min(0),
-  });
+  const schema = z
+    .object({
+      name: z.string().min(3),
+      category: z.string().optional(),
+      description: z.string().optional(),
+      joinCode: z
+        .string()
+        .trim()
+        .regex(/^[A-Z0-9]{4,10}$/)
+        .optional(),
+      memberCap: z.number().int().min(0).optional(),
+      dailyAiLimit: z.number().int().min(0).optional(),
+      maxUserLimit: z.number().int().min(0).optional(),
+      dailyAiLimitPerUser: z.number().int().min(0).optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.memberCap == null && value.maxUserLimit == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing member cap.',
+          path: ['memberCap'],
+        });
+      }
+      if (value.dailyAiLimit == null && value.dailyAiLimitPerUser == null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Missing daily AI limit.',
+          path: ['dailyAiLimit'],
+        });
+      }
+    });
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -75,6 +88,9 @@ export async function POST(request: Request) {
       { status: 400, headers: getRateLimitHeaders(limiter) }
     );
   }
+
+  const memberCap = parsed.data.memberCap ?? parsed.data.maxUserLimit ?? 0;
+  const dailyAiLimit = parsed.data.dailyAiLimit ?? parsed.data.dailyAiLimitPerUser ?? 0;
 
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -96,111 +112,46 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: walletProfile } = await admin
-    .from('profiles')
-    .select('credit_balance')
-    .eq('id', userId)
-    .maybeSingle();
-  const walletBalance = Number(walletProfile?.credit_balance ?? 0);
+  const { data: rpcResult, error: createError } = await admin.rpc('create_organization_with_trial', {
+    p_owner_id: userId,
+    p_name: parsed.data.name.trim(),
+    p_category: parsed.data.category?.trim() || null,
+    p_description: parsed.data.description?.trim() || null,
+    p_join_code: reservedJoinCode,
+    p_member_cap: memberCap,
+    p_daily_ai_limit: dailyAiLimit,
+  });
 
-  const orgInsert: {
-    name: string;
-    category: string | null;
-    description: string | null;
-    created_by: string;
-    owner_user_id: string;
-    member_limit: number;
-    ai_daily_limit_per_user: number;
-    credit_balance: number;
-    updated_at: string;
-    join_code?: string;
-  } = {
-    name: parsed.data.name.trim(),
-    category: parsed.data.category?.trim() || null,
-    description: parsed.data.description?.trim() || null,
-    created_by: userId,
-    owner_user_id: userId,
-    member_limit: parsed.data.maxUserLimit,
-    ai_daily_limit_per_user: parsed.data.dailyAiLimitPerUser,
-    credit_balance: walletBalance,
-    updated_at: new Date().toISOString(),
-  };
-  orgInsert.join_code = reservedJoinCode;
-
-  const { data: org, error: orgError } = await admin
-    .from('orgs')
-    .insert(orgInsert)
-    .select('id, join_code, credit_balance')
-    .single();
-
-  if (orgError || !org?.id || !org?.join_code) {
+  if (createError) {
     return NextResponse.json(
       err({
         code: 'NETWORK_HTTP_ERROR',
-        message: orgError?.message || 'Unable to create organization.',
+        message: createError.message,
         source: 'network',
       }),
       { status: 500, headers: getRateLimitHeaders(limiter) }
     );
   }
 
-  const rollbackOrg = async () => {
-    await admin.from('orgs').delete().eq('id', org.id);
-  };
-
-  const { error: membershipError } = await admin
-    .from('memberships')
-    .insert({ org_id: org.id, user_id: userId, role: 'owner' });
-  if (membershipError) {
-    await rollbackOrg();
+  const created = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
+  if (!created?.org_id || !created?.join_code) {
     return NextResponse.json(
       err({
         code: 'NETWORK_HTTP_ERROR',
-        message: membershipError.message,
+        message: 'Unable to create organization.',
         source: 'network',
       }),
       { status: 500, headers: getRateLimitHeaders(limiter) }
     );
   }
-
-  if (walletBalance > 0) {
-    const [{ error: walletResetError }, { error: transactionError }] = await Promise.all([
-      admin.from('profiles').upsert({ id: userId, credit_balance: 0 }, { onConflict: 'id' }),
-      admin.from('credit_transactions').insert({
-        organization_id: org.id,
-        actor_user_id: userId,
-        type: 'adjustment',
-        amount: walletBalance,
-        description: 'Owner wallet credits applied during organization creation',
-        metadata: { source: 'wallet_transfer' },
-      }),
-    ]);
-
-    if (walletResetError || transactionError) {
-      await rollbackOrg();
-      return NextResponse.json(
-        err({
-          code: 'NETWORK_HTTP_ERROR',
-          message: walletResetError?.message || transactionError?.message || 'Unable to create organization.',
-          source: 'network',
-        }),
-        { status: 500, headers: getRateLimitHeaders(limiter) }
-      );
-    }
-  }
-
-  const estimatedMonthlyCredits = calculateEstimatedMonthlyCredits(
-    parsed.data.maxUserLimit,
-    parsed.data.dailyAiLimitPerUser
-  );
 
   return NextResponse.json(
     {
       ok: true,
-      orgId: org.id,
-      joinCode: org.join_code,
-      estimatedMonthlyCredits,
-      creditBalance: Number(org.credit_balance ?? walletBalance),
+      orgId: created.org_id as string,
+      joinCode: created.join_code as string,
+      tokenBalance: Number(created.token_balance ?? 0),
+      trialGranted: Boolean(created.trial_granted),
     },
     { headers: getRateLimitHeaders(limiter) }
   );

@@ -1,29 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calculateCreditCostPerRequest,
-  calculateEstimatedDailyCredits,
+  TRIAL_TOKENS,
+  calculateDailyTokenEstimate,
   calculateEstimatedDaysRemaining,
-  calculateEstimatedMonthlyCredits,
+  calculateMonthlyTokenEstimate,
+  calculateTokenUsageEstimate,
+  calculateTrialDaysCovered,
 } from '@/lib/pricing';
 
-describe('pricing helpers', () => {
-  it('calculates estimated monthly and daily credits from the old retail anchor', () => {
-    const monthlyRetail = 25 * (40 + 2) * 30 * 0.00026 * 1.2;
-    expect(calculateEstimatedMonthlyCredits(25, 40)).toBe(Math.ceil(monthlyRetail / 0.01));
-    expect(calculateEstimatedDailyCredits(25, 40)).toBe(
-      Math.ceil(Math.ceil(monthlyRetail / 0.01) / 30)
-    );
+describe('token billing helpers', () => {
+  it('calculates monthly and daily token estimates', () => {
+    expect(calculateMonthlyTokenEstimate(200, 2)).toBe(12_000);
+    expect(calculateDailyTokenEstimate(200, 2)).toBe(400);
   });
 
-  it('scales per-request burn and clamps it', () => {
-    expect(calculateCreditCostPerRequest(25)).toBe(0.032);
-    expect(calculateCreditCostPerRequest(100)).toBe(0.036);
-    expect(calculateCreditCostPerRequest(500)).toBe(0.06);
-    expect(calculateCreditCostPerRequest(10_000)).toBe(0.12);
+  it('calculates trial coverage in days', () => {
+    expect(calculateTrialDaysCovered(200, 2)).toBe(Math.floor(TRIAL_TOKENS / 400));
+    expect(calculateTrialDaysCovered(0, 2)).toBe(0);
+    expect(calculateTrialDaysCovered(200, 0)).toBe(0);
+  });
+
+  it('builds a combined usage estimate', () => {
+    expect(calculateTokenUsageEstimate(25, 4)).toEqual({
+      memberCap: 25,
+      dailyAiLimitPerUser: 4,
+      estimatedMonthlyTokens: 3000,
+      estimatedDailyTokens: 100,
+      trialTokens: 2500,
+      daysCovered: 25,
+    });
   });
 
   it('estimates days remaining from balance and monthly usage', () => {
-    expect(calculateEstimatedDaysRemaining(0, 300)).toBe(0);
-    expect(calculateEstimatedDaysRemaining(150, 300)).toBe(15);
+    expect(calculateEstimatedDaysRemaining(0, 3000)).toBe(0);
+    expect(calculateEstimatedDaysRemaining(2500, 12_000)).toBe(6);
   });
 });

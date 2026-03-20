@@ -688,12 +688,12 @@ export type OrgAiQuotaStatus = {
     activeUsers: number;
     requestsUsedToday: number;
     aiAvailability: 'available' | 'limited' | 'paused';
-    estimatedMonthlyCredits: number;
-    estimatedDailyCredits: number;
-    creditHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
-    creditBalance?: number;
+    estimatedMonthlyTokens: number;
+    estimatedDailyTokens: number;
+    tokenHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
+    tokenBalance?: number;
     estimatedDaysRemaining?: number;
-    recentCreditActivity?: Array<{
+    recentTokenActivity?: Array<{
         id: string;
         amount: number;
         type: string;

@@ -2,66 +2,94 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, Coins } from 'lucide-react';
+import { Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
-import { calculateCreditUsageEstimate, calculateEstimatedDaysRemaining } from '@/lib/pricing';
+import {
+  TRIAL_TOKENS,
+  calculateEstimatedDaysRemaining,
+  calculateTokenUsageEstimate,
+} from '@/lib/pricing';
 import { Logo } from '@/components/icons';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
-import { CreditPackDialog } from '@/components/orgs/credit-pack-dialog';
+import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
 import { safeFetchJson } from '@/lib/network';
 
 const JOIN_CODE_PATTERN = /^[A-Z0-9]{4,10}$/;
 const MAX_USER_LIMIT_MAX = 10_000;
 
+type TokenWalletResponse = {
+  ok: boolean;
+  data?: {
+    tokenBalance: number;
+    hasUsedTrial: boolean;
+  };
+};
+
+type CreateOrgResponse = {
+  ok: boolean;
+  orgId?: string;
+  joinCode?: string;
+  tokenBalance?: number;
+  trialGranted?: boolean;
+  error?: { message?: string };
+};
+
 export default function OrgCreatePage() {
   const router = useRouter();
   const { toast } = useToast();
+
   const [orgName, setOrgName] = useState('');
   const [orgCategory, setOrgCategory] = useState('');
   const [orgDescription, setOrgDescription] = useState('');
   const [createJoinCode, setCreateJoinCode] = useState('');
   const [maxUserLimit, setMaxUserLimit] = useState(25);
-  const [dailyAiLimitPerUser, setDailyAiLimitPerUser] = useState(40);
-  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [dailyAiLimitPerUser, setDailyAiLimitPerUser] = useState(2);
   const [step, setStep] = useState<1 | 2>(1);
-  const [createdOrg, setCreatedOrg] = useState<{ orgId: string; joinCode: string; creditBalance: number } | null>(null);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
-
-  const estimate = useMemo(
-    () => calculateCreditUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
-    [maxUserLimit, dailyAiLimitPerUser]
-  );
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState(0);
+  const [hasUsedTrial, setHasUsedTrial] = useState(false);
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const [trialDialogOpen, setTrialDialogOpen] = useState(false);
+  const [createdOrg, setCreatedOrg] = useState<{
+    orgId: string;
+    joinCode: string;
+    tokenBalance: number;
+    trialGranted: boolean;
+  } | null>(null);
 
   const normalizedJoinCode = createJoinCode.trim().toUpperCase();
-  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
-    walletBalance,
-    estimate.estimatedMonthlyCredits
+  const estimate = useMemo(
+    () => calculateTokenUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
+    [maxUserLimit, dailyAiLimitPerUser]
   );
-  const lowBalance = estimate.estimatedMonthlyCredits > walletBalance;
+  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
+    tokenBalance,
+    estimate.estimatedMonthlyTokens
+  );
 
   useEffect(() => {
     const loadWallet = async () => {
-      const response = await safeFetchJson<{
-        ok: boolean;
-        data?: { creditBalance: number };
-      }>('/api/credits/wallet', { method: 'GET' });
-      if (response.ok) {
-        setWalletBalance(Number(response.data.data?.creditBalance ?? 0));
+      const response = await safeFetchJson<TokenWalletResponse>('/api/tokens/wallet', { method: 'GET' });
+      if (!response.ok) {
+        return;
       }
+      setTokenBalance(Number(response.data.data?.tokenBalance ?? 0));
+      setHasUsedTrial(Boolean(response.data.data?.hasUsedTrial));
     };
+
     void loadWallet();
   }, []);
 
-  const handleCreateOrg = async () => {
+  const validateForm = () => {
     if (!orgName.trim()) {
       toast({ title: 'Missing name', description: 'Enter an organization name.', variant: 'destructive' });
-      return;
+      return false;
     }
     if (normalizedJoinCode && !JOIN_CODE_PATTERN.test(normalizedJoinCode)) {
       toast({
@@ -69,43 +97,61 @@ export default function OrgCreatePage() {
         description: 'Custom join codes must be 4-10 uppercase letters or numbers.',
         variant: 'destructive',
       });
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const submitCreateOrg = async () => {
+    if (!validateForm()) return;
+
     setCreateSubmitting(true);
-    const response = await safeFetchJson<{
-      ok: boolean;
-      orgId?: string;
-      joinCode?: string;
-      creditBalance?: number;
-      error?: { message?: string };
-    }>('/api/orgs/create', {
+    const response = await safeFetchJson<CreateOrgResponse>('/api/orgs/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: orgName.trim(),
         category: orgCategory.trim(),
         description: orgDescription.trim(),
-        maxUserLimit,
-        dailyAiLimitPerUser,
+        memberCap: maxUserLimit,
+        dailyAiLimit: dailyAiLimitPerUser,
         ...(normalizedJoinCode ? { joinCode: normalizedJoinCode } : {}),
       }),
     });
+
     if (!response.ok || !response.data?.orgId || !response.data?.joinCode) {
       toast({
         title: 'Create failed',
-        description: response.ok ? response.data?.error?.message || 'Unable to create organization.' : response.error.message,
+        description: response.ok
+          ? response.data?.error?.message || 'Unable to create organization.'
+          : response.error.message,
         variant: 'destructive',
       });
       setCreateSubmitting(false);
       return;
     }
+
+    const nextTokenBalance = Number(response.data.tokenBalance ?? tokenBalance);
+    const trialGranted = Boolean(response.data.trialGranted);
     setCreatedOrg({
       orgId: response.data.orgId,
       joinCode: response.data.joinCode,
-      creditBalance: Number(response.data.creditBalance ?? 0),
+      tokenBalance: nextTokenBalance,
+      trialGranted,
     });
-    setWalletBalance(0);
+    setTokenBalance(nextTokenBalance);
+    setHasUsedTrial((current) => current || trialGranted);
+    setTrialDialogOpen(false);
     setCreateSubmitting(false);
+  };
+
+  const handleCreateClick = async () => {
+    if (!validateForm()) return;
+    if (!hasUsedTrial) {
+      setTrialDialogOpen(true);
+      return;
+    }
+    await submitCreateOrg();
   };
 
   const handleContinue = () => {
@@ -137,7 +183,9 @@ export default function OrgCreatePage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
-              <p className="text-sm text-slate-600">Organization setup is free. Credits are only used as members use AI.</p>
+              <p className="text-sm text-slate-600">
+                Organization setup is free. Tokens are only used when members make AI requests.
+              </p>
             </div>
           </div>
           <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/orgs')}>
@@ -149,18 +197,25 @@ export default function OrgCreatePage() {
           <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-2xl">Organization created</CardTitle>
-              <CardDescription>Your organization is ready. Share the join code and add credits any time.</CardDescription>
+              <CardDescription>Your organization is ready. Share the join code and manage tokens any time.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 text-center">
                 <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
                 <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
               </div>
-              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
-                <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
-                  <span>Starting credit balance</span>
-                  <span className="font-semibold text-slate-900">{createdOrg.creditBalance.toLocaleString()} credits</span>
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Current owner balance</span>
+                  <span className="font-semibold text-slate-900">
+                    {createdOrg.tokenBalance.toLocaleString()} tokens
+                  </span>
                 </div>
+                {createdOrg.trialGranted ? (
+                  <p className="mt-3 text-xs text-emerald-700">
+                    Your first organization trial added {TRIAL_TOKENS.toLocaleString()} free AI tokens.
+                  </p>
+                ) : null}
               </div>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
@@ -172,7 +227,7 @@ export default function OrgCreatePage() {
                 className="rounded-2xl"
                 onClick={() => router.push(`/orgs/${createdOrg.orgId}/credits`)}
               >
-                Manage credits
+                View token billing
               </Button>
               <Button className="flex-1 rounded-2xl" onClick={handleContinue}>
                 Continue to workspace
@@ -183,7 +238,7 @@ export default function OrgCreatePage() {
           <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Organization setup</CardTitle>
-              <CardDescription>Configure your member capacity and estimated AI usage.</CardDescription>
+              <CardDescription>Configure member capacity and estimate AI token usage.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-3">
@@ -242,23 +297,23 @@ export default function OrgCreatePage() {
                   <div className="space-y-6">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
-                        <Label>Max users</Label>
+                        <Label>Member cap</Label>
                         <Input
                           type="number"
                           value={maxUserLimit}
-                          min={1}
+                          min={0}
                           max={MAX_USER_LIMIT_MAX}
                           onChange={(e) => {
                             const nextValue = Number(e.target.value);
                             if (!Number.isFinite(nextValue)) return;
-                            setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(1, nextValue)));
+                            setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(0, nextValue)));
                           }}
                           className="w-28 text-right"
                         />
                       </div>
                       <Slider
                         value={[maxUserLimit]}
-                        min={1}
+                        min={0}
                         max={MAX_USER_LIMIT_MAX}
                         step={1}
                         onValueChange={(values) => setMaxUserLimit(values[0])}
@@ -288,50 +343,43 @@ export default function OrgCreatePage() {
 
                   <Card className="rounded-[28px] border border-slate-200 bg-slate-50/90 shadow-sm">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Estimated credit usage</CardTitle>
+                      <CardTitle className="text-base">Estimated token usage</CardTitle>
                       <CardDescription>
-                        Based on your current settings, here’s the estimated monthly AI credit usage for your organization.
+                        Based on your current settings, here’s the estimated AI token usage for this organization.
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4 text-sm text-slate-600">
                       <div className="flex items-center justify-between">
                         <span>Estimated monthly usage</span>
                         <span className="font-semibold text-slate-900">
-                          {estimate.estimatedMonthlyCredits.toLocaleString()} credits
+                          {estimate.estimatedMonthlyTokens.toLocaleString()} tokens
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>Estimated daily usage</span>
                         <span className="font-semibold text-slate-900">
-                          {estimate.estimatedDailyCredits.toLocaleString()} credits/day
+                          {estimate.estimatedDailyTokens.toLocaleString()} tokens/day
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span>Current owner balance</span>
-                        <span className="font-semibold text-slate-900">{walletBalance.toLocaleString()} credits</span>
+                        <span>Your current balance</span>
+                        <span className="font-semibold text-slate-900">{tokenBalance.toLocaleString()} tokens</span>
                       </div>
-                      {walletBalance > 0 ? (
+                      {tokenBalance > 0 ? (
                         <div className="flex items-center justify-between">
                           <span>Estimated days remaining</span>
                           <span className="font-semibold text-slate-900">{estimatedDaysRemaining} days</span>
                         </div>
                       ) : null}
-                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
-                        Organizations are free to create. Credits are only used as members use AI.
-                      </div>
-                      {lowBalance ? (
-                        <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                          <div className="flex items-start gap-2">
-                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                            <div>
-                              <p className="font-medium">Your current balance may not fully support this configuration.</p>
-                              <p className="mt-1 text-amber-800">
-                                You can create the organization now and add credits anytime.
-                              </p>
-                            </div>
-                          </div>
+                      {!hasUsedTrial ? (
+                        <div className="flex items-center justify-between">
+                          <span>First organization trial</span>
+                          <span className="font-semibold text-slate-900">{TRIAL_TOKENS.toLocaleString()} tokens</span>
                         </div>
                       ) : null}
+                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
+                        Tokens are only used as members make AI requests. Creating the organization is free.
+                      </div>
                     </CardContent>
                   </Card>
                 </div>
@@ -349,16 +397,12 @@ export default function OrgCreatePage() {
               )}
               {step === 2 ? (
                 <>
-                  <Button
-                    variant="outline"
-                    className="rounded-2xl"
-                    onClick={() => setCreditDialogOpen(true)}
-                  >
+                  <Button variant="outline" className="rounded-2xl" onClick={() => setTokenDialogOpen(true)}>
                     <Coins className="mr-2 h-4 w-4" />
-                    Add credits
+                    Buy Tokens
                   </Button>
-                  <Button className="flex-1 rounded-2xl" onClick={handleCreateOrg} disabled={createSubmitting}>
-                    {createSubmitting ? 'Creating organization...' : 'Create organization'}
+                  <Button className="flex-1 rounded-2xl" onClick={() => void handleCreateClick()} disabled={createSubmitting}>
+                    {createSubmitting ? 'Creating organization...' : 'Create Organization'}
                   </Button>
                 </>
               ) : null}
@@ -367,12 +411,56 @@ export default function OrgCreatePage() {
         )}
       </div>
 
-      <CreditPackDialog
-        open={creditDialogOpen}
-        onOpenChange={setCreditDialogOpen}
-        title="Add credits before launch"
-        description="Credits you add now will be applied to this organization when it is created."
-        onPurchased={(nextBalance) => setWalletBalance(nextBalance)}
+      <Dialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen}>
+        <DialogContent className="rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Free Trial Activated</DialogTitle>
+            <DialogDescription>
+              You get {TRIAL_TOKENS.toLocaleString()} free AI tokens for your first organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm text-slate-600">
+            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+              <span>Estimated monthly usage</span>
+              <span className="font-semibold text-slate-900">
+                {estimate.estimatedMonthlyTokens.toLocaleString()} tokens
+              </span>
+            </div>
+            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+              <span>Your free tokens</span>
+              <span className="font-semibold text-slate-900">{TRIAL_TOKENS.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+              <span>Your free tokens will last approximately</span>
+              <span className="font-semibold text-slate-900">{estimate.daysCovered} days</span>
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
+              Your current balance: {tokenBalance.toLocaleString()} tokens
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              className="rounded-2xl"
+              onClick={() => {
+                setTrialDialogOpen(false);
+                setTokenDialogOpen(true);
+              }}
+            >
+              Buy Tokens
+            </Button>
+            <Button className="rounded-2xl" onClick={() => void submitCreateOrg()} disabled={createSubmitting}>
+              {createSubmitting ? 'Creating organization...' : 'Create Organization'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TokenPackageDialog
+        open={tokenDialogOpen}
+        onOpenChange={setTokenDialogOpen}
+        title="Buy tokens"
+        description="Fixed Apple token packages will appear here. Checkout is placeholder-only in this build."
       />
     </div>
   );

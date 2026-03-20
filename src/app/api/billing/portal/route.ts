@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     err({
       code: 'VALIDATION',
-      message: 'External billing portals are not used. Add fixed credit packs from the organization credits screen.',
+      message: 'External billing portals are not used. Token packages are handled in-app.',
       source: 'app',
     }),
     { status: 501 }

@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const joinCode = parsed.data.joinCode.toUpperCase();
     const { data: orgRow } = await admin
       .from('orgs')
-      .select('id, member_limit')
+      .select('id, member_cap')
       .eq('join_code', joinCode)
       .maybeSingle();
     if (!orgRow?.id) {
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const maxUserLimit = Number(orgRow.member_limit ?? 0);
+    const maxUserLimit = Number(orgRow.member_cap ?? 0);
     const { count } = await admin
       .from('memberships')
       .select('user_id', { count: 'exact', head: true })

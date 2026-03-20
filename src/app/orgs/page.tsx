@@ -28,10 +28,10 @@ type OrgStatus = {
   activeUsers: number;
   requestsUsedToday: number;
   aiAvailability: 'available' | 'limited' | 'paused';
-  estimatedMonthlyCredits: number;
-  estimatedDailyCredits: number;
-  creditHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
-  creditBalance?: number;
+  estimatedMonthlyTokens: number;
+  estimatedDailyTokens: number;
+  tokenHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
+  tokenBalance?: number;
   estimatedDaysRemaining?: number;
 };
 
@@ -43,7 +43,7 @@ const availabilityLabel = (availability: OrgStatus['aiAvailability']) => {
   return 'AI available';
 };
 
-const healthVariant = (health: OrgStatus['creditHealth']) => {
+const healthVariant = (health: OrgStatus['tokenHealth']) => {
   if (health === 'healthy') return 'default' as const;
   if (health === 'depleted') return 'destructive' as const;
   return 'secondary' as const;
@@ -136,7 +136,7 @@ export default function OrgsPage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Your Organizations</h1>
-              <p className="text-sm text-slate-600">Create organizations for free and manage AI credits as usage grows.</p>
+              <p className="text-sm text-slate-600">Create organizations for free and manage owner tokens as usage grows.</p>
             </div>
           </div>
           <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
@@ -166,7 +166,7 @@ export default function OrgsPage() {
               <CardDescription>Already invited? Enter a join code to get started.</CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-slate-600">
-              Join instantly and collaborate without seeing billing or credit balances.
+              Join instantly and collaborate without seeing billing or token balances.
             </CardContent>
             <CardFooter>
               <Button variant="outline" onClick={() => router.push('/orgs/join')} className="w-full rounded-2xl">
@@ -179,7 +179,7 @@ export default function OrgsPage() {
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold">Your organizations</h2>
-            <p className="text-sm text-slate-600">Open a workspace, check AI availability, or manage credits if you own it.</p>
+            <p className="text-sm text-slate-600">Open a workspace, check AI availability, or manage tokens if you own it.</p>
           </div>
 
           {loading ? (
@@ -214,7 +214,7 @@ export default function OrgsPage() {
                           <CardDescription className="flex flex-wrap items-center gap-2 pt-1">
                             <Badge variant="secondary">{roleLabel(org.role)}</Badge>
                             {status ? (
-                              <Badge variant={healthVariant(status.creditHealth)}>
+                              <Badge variant={healthVariant(status.tokenHealth)}>
                                 {availabilityLabel(status.aiAvailability)}
                               </Badge>
                             ) : null}
@@ -233,7 +233,7 @@ export default function OrgsPage() {
                         <div className="flex items-center justify-between">
                           <span>Estimated monthly usage</span>
                           <span className="font-semibold text-slate-900">
-                            {(status?.estimatedMonthlyCredits ?? 0).toLocaleString()} credits
+                            {(status?.estimatedMonthlyTokens ?? 0).toLocaleString()} tokens
                           </span>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
@@ -246,7 +246,7 @@ export default function OrgsPage() {
                         <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-4 py-3">
                           <div className="flex items-center gap-2 font-medium text-emerald-900">
                             <Coins className="h-4 w-4" />
-                            {(status?.creditBalance ?? 0).toLocaleString()} credits remaining
+                            {(status?.tokenBalance ?? 0).toLocaleString()} tokens remaining
                           </div>
                           <p className="mt-1 text-xs text-emerald-800">
                             {status?.estimatedDaysRemaining ?? 0} estimated days remaining at current usage.
@@ -277,7 +277,7 @@ export default function OrgsPage() {
                           onClick={() => router.push(`/orgs/${org.id}/credits`)}
                         >
                           <Sparkles className="mr-2 h-4 w-4" />
-                          Credits
+                          Tokens
                         </Button>
                       ) : null}
                     </CardFooter>

@@ -197,7 +197,7 @@ export default function AssistantPage() {
           <CardTitle>Assistant</CardTitle>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[60vh] pr-4">
+          <ScrollArea className="h-[60dvh] pr-4">
             <div className="space-y-4">
               {loading ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

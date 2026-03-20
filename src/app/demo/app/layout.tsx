@@ -63,7 +63,7 @@ export default function DemoAppLayout({
 
   return (
     <DemoDataProvider initialSession={session}>
-      <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+      <div className="app-root app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <AppSidebar />
         <div className="app-shell-main relative min-h-0 min-w-0">
           <AppHeader />

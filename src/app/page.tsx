@@ -594,7 +594,7 @@ export default function HomePage() {
   
   if (!isClient || userLoading) {
     return (
-        <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center">
             <Logo className="h-16 w-16 animate-pulse text-primary" />
         </div>
     );
@@ -602,7 +602,7 @@ export default function HomePage() {
 
   if (isDemoMode) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Redirecting to demo...</p>
       </div>
     );
@@ -634,7 +634,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center">
+    <div className="min-h-[100dvh] bg-background flex items-center justify-center">
       <p className="text-muted-foreground">Redirecting to organizations...</p>
     </div>
   );

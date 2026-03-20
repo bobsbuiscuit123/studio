@@ -18,7 +18,7 @@ export function AppSidebar() {
 
   return (
     <div className="hidden border-r bg-muted/40 md:block">
-      <div className="flex h-full max-h-screen flex-col gap-2">
+      <div className="flex h-full max-h-[100dvh] flex-col gap-2">
         <div className="flex h-14 shrink-0 items-center border-b px-4 lg:h-[60px] lg:px-6">
           <Link href={homeHref} className="flex items-center gap-2 font-semibold">
             <Logo className="h-6 w-6" />

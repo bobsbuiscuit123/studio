@@ -37,7 +37,7 @@ export default function AppLayout({
 
   return (
     <NotificationsProvider>
-      <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
+      <div className="app-root app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
         <div className="print:hidden">
           <AppSidebar />
         </div>

@@ -16,7 +16,7 @@ export default function Error({
   }, [error]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-6 text-center">
       <h1 className="text-2xl font-semibold">Something went wrong</h1>
       <p className="text-sm text-muted-foreground">
         Please try again. If the issue persists, restart the app.

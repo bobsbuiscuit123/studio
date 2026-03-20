@@ -87,7 +87,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
+    <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="items-center">
           <div className="flex justify-center items-center gap-4 mb-2">

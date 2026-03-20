@@ -132,7 +132,7 @@ export default function MindMapPage() {
           </CardContent>
         </Card>
       </div>
-      <div className="md:col-span-2 h-[75vh] rounded-lg border bg-card">
+      <div className="md:col-span-2 h-[75dvh] rounded-lg border bg-card">
         <ReactFlow
           nodes={nodes}
           edges={edges}

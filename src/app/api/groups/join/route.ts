@@ -47,7 +47,8 @@ export async function POST(request: Request) {
       { status: 401, headers: getRateLimitHeaders(limiter) }
     );
   }
-  const { data: membership } = await supabase
+  const admin = createSupabaseAdmin();
+  const { data: membership } = await admin
     .from('memberships')
     .select('role')
     .eq('org_id', parsed.data.orgId)
@@ -59,8 +60,6 @@ export async function POST(request: Request) {
       { status: 403, headers: getRateLimitHeaders(limiter) }
     );
   }
-
-  const admin = createSupabaseAdmin();
   const { data: groupRow, error: groupError } = await admin
     .from('groups')
     .select('id')

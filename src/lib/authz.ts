@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err, ok, type Result } from '@/lib/result';
 
 export const requireUser = async () => {
@@ -28,7 +29,8 @@ export const requireOrgRole = async (
       source: 'app',
     });
   }
-  const { data, error } = await supabase
+  const admin = createSupabaseAdmin();
+  const { data, error } = await admin
     .from('memberships')
     .select('role')
     .eq('org_id', orgId)

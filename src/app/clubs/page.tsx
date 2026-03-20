@@ -115,22 +115,20 @@ export default function ClubsPage() {
         router.replace("/login");
         return;
       }
-      const { data: orgMembership, error: orgMembershipError } = await supabase
-        .from("memberships")
-        .select("org_id")
-        .eq("org_id", selectedOrgId)
-        .eq("user_id", authUser.user.id)
-        .maybeSingle();
-      if (orgMembershipError) {
+      const orgStatusResult = await safeFetchJson<{ ok: true; data: { orgId: string } }>(
+        `/api/orgs/${selectedOrgId}/status`,
+        { method: "GET" }
+      );
+      if (!orgStatusResult.ok) {
         toast({
           title: "Organization lookup failed",
-          description: orgMembershipError.message,
+          description: orgStatusResult.error.message,
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
-      if (!orgMembership) {
+      if (!orgStatusResult.data?.data?.orgId) {
         clearSelectedGroupId();
         clearSelectedOrgId();
         toast({

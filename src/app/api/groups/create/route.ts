@@ -70,7 +70,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: membership } = await supabase
+  const admin = createSupabaseAdmin();
+  const { data: membership } = await admin
     .from('memberships')
     .select('role')
     .eq('org_id', parsed.data.orgId)
@@ -83,7 +84,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const admin = createSupabaseAdmin();
   const { data, error } = await admin
     .from('groups')
     .insert({

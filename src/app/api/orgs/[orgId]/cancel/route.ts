@@ -27,7 +27,8 @@ export async function POST(
     );
   }
 
-  const { data: membership } = await supabase
+  const admin = createSupabaseAdmin();
+  const { data: membership } = await admin
     .from('memberships')
     .select('role')
     .eq('org_id', parsed.data)
@@ -40,7 +41,6 @@ export async function POST(
     );
   }
 
-  const admin = createSupabaseAdmin();
   const { error: deleteError } = await admin.from('orgs').delete().eq('id', parsed.data);
   if (deleteError) {
     return NextResponse.json(

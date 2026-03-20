@@ -183,7 +183,7 @@ export default function OrgCreditsPage() {
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
         title="Buy tokens"
-        description="Fixed Apple token packages will appear here. Checkout is placeholder-only in this build."
+        description="Choose a token package, then confirm your purchase on the next step."
       />
     </div>
   );

@@ -482,7 +482,7 @@ export default function SocialPage() {
           </div>
         ) : (
              <Card className="md:col-span-2">
-              <CardContent className="py-10">
+              <CardContent className="pt-6">
                 <p className="tab-empty-state text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>

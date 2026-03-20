@@ -845,7 +845,7 @@ function AnnouncementsPageInner() {
               })
           ) : (
             <Card>
-              <CardContent className="py-10">
+              <CardContent className="pt-6">
                 <div className="tab-empty-state">
                   <p className="text-muted-foreground">No announcements yet.</p>
                   {canEditContent ? (

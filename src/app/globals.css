@@ -305,9 +305,9 @@ main,
 }
 
 .tab-empty-state {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
+  display: block;
+  margin: 0;
+  padding-top: 0;
   text-align: center;
 }
 

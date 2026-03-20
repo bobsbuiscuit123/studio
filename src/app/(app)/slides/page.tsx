@@ -219,7 +219,7 @@ export default function SlidesPage() {
               </h1>
             </div>
             <div className="tab-page-content">
-            <Card className="mt-6 p-8 text-center">
+            <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
                 <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>
@@ -342,8 +342,8 @@ export default function SlidesPage() {
               </CardHeader>
               <CardContent className="min-h-[500px] flex-grow">
                 {isLoading && (
-                  <div className="tab-empty-state flex items-start justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <div className="tab-empty-state text-muted-foreground">
+                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 )}
                 {activePresentation && activePresentation.slides.length > 0 ? (

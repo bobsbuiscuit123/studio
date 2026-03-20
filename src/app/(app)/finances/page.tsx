@@ -146,7 +146,7 @@ export default function FinancesPage() {
               </h1>
             </div>
             <div className="tab-page-content">
-            <Card className="mt-6 p-8 text-center">
+            <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
                 <CardDescription>This page is only available to group admins.</CardDescription>
             </Card>
@@ -254,7 +254,7 @@ export default function FinancesPage() {
                     </TableBody>
                 </Table>
                 ) : (
-                    <div className="tab-empty-state py-10 text-muted-foreground">
+                    <div className="tab-empty-state text-muted-foreground">
                         <p>No transactions yet. Add one to get started!</p>
                     </div>
                 )

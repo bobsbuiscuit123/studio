@@ -155,7 +155,7 @@ function EmailPageInner() {
               </h1>
             </div>
             <div className="tab-page-content">
-            <Card className="mt-6 p-8 text-center">
+            <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
                 <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>

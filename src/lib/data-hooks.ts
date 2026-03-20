@@ -47,6 +47,19 @@ const stableSerialize = (value: unknown): string => {
     return JSON.stringify(value);
 };
 
+const normalizeActivityActor = (value?: string | null) =>
+    String(value ?? '').trim().toLowerCase();
+
+const getActivityTimestamp = (value?: string | Date | null) => {
+    if (!value) return 0;
+    const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const viewedByCurrentUser = (viewedBy: string[] | undefined, userEmail: string) =>
+    Array.isArray(viewedBy) &&
+    viewedBy.some(email => normalizeActivityActor(email) === userEmail);
+
 const getTabViewStorageKey = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) =>
     `${TAB_VIEW_KEY}:${userEmail}:${orgId}:${groupId}:${key}`;
 
@@ -837,19 +850,19 @@ export function useNotifications() {
         });
     }, [selectedGroupId, selectedOrgId, user?.email]);
 
-    const unread = useMemo(() => {
+    const activityByKey = useMemo<Record<NotificationKey, number>>(() => {
         if (loading || !user) {
             return {
-            announcements: false,
-            social: false,
-            messages: false,
-            calendar: false,
-            gallery: false,
-            forms: false,
-            attendance: false,
-        };
+                announcements: 0,
+                social: 0,
+                messages: 0,
+                calendar: 0,
+                gallery: 0,
+                forms: 0,
+                attendance: 0,
+            };
         }
-        
+
         const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
         const safeSocialPosts = Array.isArray(socialPosts) ? socialPosts : [];
         const safeEvents = Array.isArray(events) ? events : [];
@@ -857,71 +870,118 @@ export function useNotifications() {
         const safeGroupChats = Array.isArray(groupChats) ? groupChats : [];
         const safeAllMessages = allMessages && typeof allMessages === 'object' ? allMessages : {};
         const safeForms = Array.isArray(forms) ? forms : [];
-
+        const currentUserEmail = normalizeActivityActor(user.email);
+        const currentUserName = normalizeActivityActor(user.name);
+        const isCurrentUserActor = (actor?: string | null) => {
+            const normalizedActor = normalizeActivityActor(actor);
+            if (!normalizedActor) return false;
+            return normalizedActor === currentUserEmail || normalizedActor === currentUserName;
+        };
 
         const latestAnnouncementTimestamp = safeAnnouncements.reduce((latest: number, announcement: Announcement) => {
-            const timestamp = new Date(announcement.date).getTime();
-            return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+            if (isCurrentUserActor(announcement.author) || viewedByCurrentUser(announcement.viewedBy, currentUserEmail)) {
+                return latest;
+            }
+            return Math.max(latest, getActivityTimestamp(announcement.date));
         }, 0);
         const latestSocialTimestamp = safeSocialPosts.reduce((latest: number, post: SocialPost) => {
-            const timestamp = new Date(post.date).getTime();
-            return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+            if (isCurrentUserActor(post.author)) {
+                return latest;
+            }
+            return Math.max(latest, getActivityTimestamp(post.date));
         }, 0);
-        
         const latestDmTimestamp = Object.values(safeAllMessages)
             .flat()
-            .filter((m: Message) => m.sender !== user.email)
+            .filter((m: Message) => normalizeActivityActor(m.sender) !== currentUserEmail)
             .reduce((latest, message) => {
-                const timestamp = new Date(message.timestamp).getTime();
-                return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+                if (message.readBy.some(email => normalizeActivityActor(email) === currentUserEmail)) {
+                    return latest;
+                }
+                return Math.max(latest, getActivityTimestamp(message.timestamp));
             }, 0);
         const latestGroupTimestamp = safeGroupChats.reduce((latestChatTimestamp: number, chat: GroupChat) => {
             const chatLatest = chat.messages
-                .filter(message => message.sender !== user.email)
+                .filter(message => normalizeActivityActor(message.sender) !== currentUserEmail)
                 .reduce((latestMessageTimestamp, message) => {
-                    const timestamp = new Date(message.timestamp).getTime();
-                    return Number.isFinite(timestamp) ? Math.max(latestMessageTimestamp, timestamp) : latestMessageTimestamp;
+                    if (message.readBy.some(email => normalizeActivityActor(email) === currentUserEmail)) {
+                        return latestMessageTimestamp;
+                    }
+                    return Math.max(latestMessageTimestamp, getActivityTimestamp(message.timestamp));
                 }, 0);
             return Math.max(latestChatTimestamp, chatLatest);
         }, 0);
         const latestMessageTimestamp = Math.max(latestDmTimestamp, latestGroupTimestamp);
         const latestEventTimestamp = safeEvents.reduce((latest: number, event: ClubEvent) => {
-            const timestamp = event.date instanceof Date ? event.date.getTime() : new Date(event.date).getTime();
-            return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+            if (viewedByCurrentUser(event.viewedBy, currentUserEmail)) {
+                return latest;
+            }
+            return Math.max(latest, getActivityTimestamp(event.date));
         }, 0);
         const latestGalleryTimestamp = safeGalleryImages.reduce((latest: number, image: GalleryImage) => {
-            if (image.status !== 'approved') return latest;
-            const timestamp = new Date(image.date).getTime();
-            return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
+            if (image.status !== 'approved' || isCurrentUserActor(image.author)) {
+                return latest;
+            }
+            return Math.max(latest, getActivityTimestamp(image.date));
         }, 0);
         const latestFormTimestamp = safeForms.reduce((latest: number, form: ClubForm) => {
-            const createdAt = new Date(form.createdAt).getTime();
+            const createdAt =
+                !isCurrentUserActor(form.createdBy) && !viewedByCurrentUser(form.viewedBy, currentUserEmail)
+                    ? getActivityTimestamp(form.createdAt)
+                    : 0;
             const latestResponse = form.responses.reduce((responseLatest, response) => {
-                const submittedAt = new Date(response.submittedAt).getTime();
-                return Number.isFinite(submittedAt) ? Math.max(responseLatest, submittedAt) : responseLatest;
+                if (normalizeActivityActor(response.respondentEmail) === currentUserEmail) {
+                    return responseLatest;
+                }
+                return Math.max(responseLatest, getActivityTimestamp(response.submittedAt));
             }, 0);
-            return Math.max(latest, Number.isFinite(createdAt) ? createdAt : 0, latestResponse);
+            return Math.max(latest, createdAt, latestResponse);
         }, 0);
-        const attendanceActivity = safeEvents.reduce((count, event) => count + (event.attendees?.length ?? 0), 0);
-
-        const hasUnreadAnnouncements = latestAnnouncementTimestamp > tabLastViewed.announcements;
-        const hasUnreadSocials = latestSocialTimestamp > tabLastViewed.social;
-        const hasUnreadMessages = latestMessageTimestamp > tabLastViewed.messages;
-        const hasUnreadEvents = latestEventTimestamp > tabLastViewed.calendar;
-        const hasUnreadGallery = latestGalleryTimestamp > tabLastViewed.gallery;
-        const hasUnreadForms = latestFormTimestamp > tabLastViewed.forms;
-        const hasUnreadAttendance = role === 'Admin' && attendanceActivity > tabLastViewed.attendance;
+        const attendanceActivity =
+            role === 'Admin'
+                ? safeEvents.reduce(
+                      (count, event) =>
+                          count +
+                          (Array.isArray(event.attendees)
+                              ? event.attendees.filter(email => normalizeActivityActor(email) !== currentUserEmail).length
+                              : 0),
+                      0
+                  )
+                : 0;
 
         return {
-            announcements: hasUnreadAnnouncements,
-            social: hasUnreadSocials,
-            messages: hasUnreadMessages,
-            calendar: hasUnreadEvents,
-            gallery: hasUnreadGallery,
-            forms: hasUnreadForms,
-            attendance: hasUnreadAttendance,
+            announcements: latestAnnouncementTimestamp,
+            social: latestSocialTimestamp,
+            messages: latestMessageTimestamp,
+            calendar: latestEventTimestamp,
+            gallery: latestGalleryTimestamp,
+            forms: latestFormTimestamp,
+            attendance: attendanceActivity,
         };
-    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms, tabLastViewed]);
+    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms]);
+
+    const unread = useMemo(() => {
+        if (loading || !user) {
+            return {
+                announcements: false,
+                social: false,
+                messages: false,
+                calendar: false,
+                gallery: false,
+                forms: false,
+                attendance: false,
+            };
+        }
+
+        return {
+            announcements: activityByKey.announcements > tabLastViewed.announcements,
+            social: activityByKey.social > tabLastViewed.social,
+            messages: activityByKey.messages > tabLastViewed.messages,
+            calendar: activityByKey.calendar > tabLastViewed.calendar,
+            gallery: activityByKey.gallery > tabLastViewed.gallery,
+            forms: activityByKey.forms > tabLastViewed.forms,
+            attendance: role === 'Admin' && activityByKey.attendance > tabLastViewed.attendance,
+        };
+    }, [activityByKey, loading, role, tabLastViewed, user]);
     
     const announcementsHook = useAnnouncements();
     const socialPostsHook = useSocialPosts();
@@ -985,70 +1045,10 @@ export function useNotifications() {
 
     const markTabViewed = useCallback((key: NotificationKey) => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) return;
-        const activityValueByKey: Record<NotificationKey, number> = {
-            announcements: unread.announcements
-                ? (Array.isArray(announcements) ? announcements.reduce((latest, announcement) => {
-                    const timestamp = new Date(announcement.date).getTime();
-                    return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-                }, 0) : 0)
-                : tabLastViewed.announcements,
-            social: unread.social
-                ? (Array.isArray(socialPosts) ? socialPosts.reduce((latest, post) => {
-                    const timestamp = new Date(post.date).getTime();
-                    return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-                }, 0) : 0)
-                : tabLastViewed.social,
-            messages: unread.messages
-                ? Math.max(
-                    Object.values(allMessages && typeof allMessages === 'object' ? allMessages : {})
-                        .flat()
-                        .filter((message: Message) => message.sender !== user.email)
-                        .reduce((latest, message) => {
-                            const timestamp = new Date(message.timestamp).getTime();
-                            return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-                        }, 0),
-                    (Array.isArray(groupChats) ? groupChats : []).reduce((latest, chat) => {
-                        const chatLatest = chat.messages
-                            .filter(message => message.sender !== user.email)
-                            .reduce((messageLatest, message) => {
-                                const timestamp = new Date(message.timestamp).getTime();
-                                return Number.isFinite(timestamp) ? Math.max(messageLatest, timestamp) : messageLatest;
-                            }, 0);
-                        return Math.max(latest, chatLatest);
-                    }, 0)
-                )
-                : tabLastViewed.messages,
-            calendar: unread.calendar
-                ? (Array.isArray(events) ? events.reduce((latest, event) => {
-                    const timestamp = event.date instanceof Date ? event.date.getTime() : new Date(event.date).getTime();
-                    return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-                }, 0) : 0)
-                : tabLastViewed.calendar,
-            gallery: unread.gallery
-                ? (Array.isArray(galleryImages) ? galleryImages.reduce((latest, image) => {
-                    if (image.status !== 'approved') return latest;
-                    const timestamp = new Date(image.date).getTime();
-                    return Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest;
-                }, 0) : 0)
-                : tabLastViewed.gallery,
-            attendance: unread.attendance
-                ? (Array.isArray(events) ? events.reduce((count, event) => count + (event.attendees?.length ?? 0), 0) : 0)
-                : tabLastViewed.attendance,
-            forms: unread.forms
-                ? (Array.isArray(forms) ? forms.reduce((latest, form) => {
-                    const createdAt = new Date(form.createdAt).getTime();
-                    const latestResponse = form.responses.reduce((responseLatest, response) => {
-                        const submittedAt = new Date(response.submittedAt).getTime();
-                        return Number.isFinite(submittedAt) ? Math.max(responseLatest, submittedAt) : responseLatest;
-                    }, 0);
-                    return Math.max(latest, Number.isFinite(createdAt) ? createdAt : 0, latestResponse);
-                }, 0) : 0)
-                : tabLastViewed.forms,
-        };
-        const nextValue = activityValueByKey[key];
+        const nextValue = activityByKey[key];
         writeTabLastViewed(user.email, selectedOrgId, selectedGroupId, key, nextValue);
         setTabLastViewed(prev => ({ ...prev, [key]: nextValue }));
-    }, [allMessages, announcements, events, forms, galleryImages, groupChats, selectedGroupId, selectedOrgId, socialPosts, tabLastViewed, unread, user?.email]);
+    }, [activityByKey, selectedGroupId, selectedOrgId, user?.email]);
 
     return { unread, loading, markAllAsRead, markTabViewed };
 }

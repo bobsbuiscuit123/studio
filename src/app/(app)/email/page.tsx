@@ -55,7 +55,6 @@ function EmailPageInner() {
 
   const emailForm = useForm<z.infer<typeof emailFormSchema>>({
     resolver: zodResolver(emailFormSchema),
-    values: emailContent, 
     defaultValues: {
         subject: '',
         body: '',
@@ -64,7 +63,8 @@ function EmailPageInner() {
 
   // Re-validate the form whenever emailContent changes
   useEffect(() => {
-    emailForm.trigger();
+    emailForm.reset(emailContent);
+    void emailForm.trigger();
   }, [emailContent, emailForm]);
 
   useEffect(() => {
@@ -107,9 +107,28 @@ function EmailPageInner() {
         });
         return;
       }
+      const payload = result.data.data;
+      const generatedDraft =
+        payload &&
+        typeof payload === "object" &&
+        "ok" in payload &&
+        "data" in payload &&
+        (payload as { ok?: boolean }).ok
+          ? (payload as { data?: GenerateEmailOutput }).data
+          : (payload as GenerateEmailOutput | undefined);
+
+      if (!generatedDraft?.subject || !generatedDraft?.body) {
+        toast({
+          title: "Error",
+          description: "The generated email draft was empty.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setEmailContent({
-        subject: result.data.data.subject,
-        body: result.data.data.body,
+        subject: generatedDraft.subject,
+        body: generatedDraft.body,
       });
       notifyOrgAiUsageChanged(undefined, 1);
       toast({ title: "Email draft generated!" });

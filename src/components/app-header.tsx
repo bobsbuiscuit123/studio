@@ -80,7 +80,6 @@ const pageTitles: { [key: string]: string } = {
 
 export function AppHeader() {
   const pathname = usePathname();
-  const isFormsRoute = pathname === "/forms" || pathname === "/demo/app/forms";
   const isMessagesRoute =
     pathname === "/messages" ||
     pathname.startsWith("/messages/") ||
@@ -201,7 +200,7 @@ export function AppHeader() {
   const isAdminRole = role === 'Admin';
   const showQuotaBadge = orgStatus?.role === 'owner';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
-  const mobileTitle = isFormsRoute ? appName : title;
+  const mobileTitle = title;
   const isNativeApp = isMounted && Capacitor.isNativePlatform();
 
   const loadTransferCandidates = async () => {

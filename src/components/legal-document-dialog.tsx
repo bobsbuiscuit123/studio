@@ -185,7 +185,7 @@ export function TermsContent() {
 
       <div className="space-y-2">
         <p className="font-semibold">9. Governing Law</p>
-        <p>These terms are governed by the laws of [Your State/Country].</p>
+        <p>These terms are governed by the laws of the United States.</p>
       </div>
 
       <div className="space-y-2">

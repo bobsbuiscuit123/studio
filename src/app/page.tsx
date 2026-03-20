@@ -175,11 +175,11 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
     };
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
             <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="h-11 w-full"
                 onClick={handleGoogleOAuth}
                 disabled={providerLoading !== null}
             >
@@ -188,7 +188,7 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
             <Button
                 type="button"
                 variant="outline"
-                className="w-full"
+                className="h-11 w-full"
                 onClick={signInWithApple}
                 disabled={providerLoading !== null}
             >
@@ -211,7 +211,7 @@ function LegalNotice({
   onOpenPrivacy: () => void;
 }) {
     return (
-        <p className="mt-3 text-center text-xs text-gray-500">
+        <p className="mt-2 text-center text-xs leading-5 text-gray-500">
             By continuing, you agree to our{" "}
             <button type="button" onClick={onOpenTerms} className="font-medium text-foreground underline underline-offset-2">
                 Terms &amp; Conditions
@@ -306,15 +306,15 @@ function SignUpForm({
     };
     
     return (
-        <div className="w-full max-w-md">
-            <CardHeader>
+        <div className="w-full">
+            <CardHeader className="px-0 pt-0 pb-3">
                 <CardTitle className="text-[1.65rem]">Sign Up</CardTitle>
                 <CardDescription>Get started with CASPO by creating an account.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
+            <CardContent className="px-0 pb-0">
+                <div className="space-y-3.5">
                 <OAuthButtons supabase={supabase} />
-                <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-4">
+                <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-3.5">
                     <div>
                         <Label htmlFor="name-signup">Full Name</Label>
                         <Input id="name-signup" {...form.register('name')} placeholder="e.g., Alex Johnson" />
@@ -340,7 +340,7 @@ function SignUpForm({
                 <LegalNotice onOpenTerms={() => setLegalDialog('terms')} onOpenPrivacy={() => setLegalDialog('privacy')} />
                 </div>
             </CardContent>
-             <CardFooter className="justify-center">
+             <CardFooter className="justify-center px-0 pt-4 pb-0">
                 <p className="text-sm text-muted-foreground">
                     Already have an account?{' '}
                     <Button variant="link" className="p-0 h-auto" onClick={onSwitchToLogin}>Log In</Button>
@@ -408,15 +408,15 @@ function LoginForm({
     
     return (
         <>
-         <div className="w-full max-w-md">
-             <CardHeader>
+         <div className="w-full">
+             <CardHeader className="px-0 pt-0 pb-3">
                 <CardTitle className="text-[1.65rem]">Log In</CardTitle>
                 <CardDescription>Enter your credentials to access your account.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <div className="space-y-4">
+            <CardContent className="px-0 pb-0">
+                <div className="space-y-3.5">
                 <OAuthButtons supabase={supabase} />
-                <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+                <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-3.5">
                     <div>
                         <Label htmlFor="email-login">Email</Label>
                         <Input id="email-login" {...loginForm.register('email')} />
@@ -437,7 +437,7 @@ function LoginForm({
                 <LegalNotice onOpenTerms={() => setLegalDialog('terms')} onOpenPrivacy={() => setLegalDialog('privacy')} />
                 </div>
             </CardContent>
-            <CardFooter className="justify-center">
+            <CardFooter className="justify-center px-0 pt-4 pb-0">
                 <p className="text-sm text-muted-foreground">
                     Don't have an account?{' '}
                     <Button variant="link" className="p-0 h-auto" onClick={onSwitchToSignUp}>Sign Up</Button>
@@ -611,16 +611,16 @@ export default function HomePage() {
   if (!user) {
     return (
         <div className="viewport-page bg-background">
-             <div className="viewport-scroll flex h-full flex-col items-center justify-center px-4 pb-4 pt-8">
+             <div className="viewport-scroll flex h-full flex-col items-center justify-center px-4 pb-4 pt-4 sm:pt-8">
              <Card className="auth-card-shell w-full max-w-md">
-                <CardHeader className="items-center pt-8">
-                    <div className="mt-5 flex justify-center items-center gap-4 mb-1">
+                <CardHeader className="items-center px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
+                    <div className="mb-0 flex items-center justify-center gap-4">
                         <Logo className="h-10 w-10 text-primary" />
                         <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
                     </div>
                 </CardHeader>
 
-                <div className="p-6 pt-0">
+                <div className="px-5 pb-5 pt-0 sm:px-6 sm:pb-6">
                    {authMode === 'login' ? (
                         <LoginForm onLogin={saveUser} onSwitchToSignUp={() => setAuthMode('signup')} supabase={supabase} />
                    ) : (

@@ -148,16 +148,35 @@ function EmailPageInner() {
   
   if (role && role === 'Member') {
     return (
-        <div className="flex items-center justify-center h-full">
-            <Card className="p-8 text-center">
+        <div className="tab-page-shell">
+            <div className="tab-page-header">
+              <h1 className="flex items-center gap-2 text-2xl font-semibold">
+                <Mail className="h-6 w-6" /> Email
+              </h1>
+            </div>
+            <div className="tab-page-content">
+            <Card className="mt-6 p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
                 <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>
+            </div>
         </div>
     )
   }
 
   return (
+    <div className="tab-page-shell">
+      <div className="tab-page-header">
+        <div className="space-y-1">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            <Mail className="h-6 w-6" /> Email
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Draft a message once and send it to the whole group from Gmail.
+          </p>
+        </div>
+      </div>
+      <div className="tab-page-content pt-2">
     <div className="grid gap-6">
       <Card>
         <CardHeader className="flex items-center justify-between">
@@ -274,6 +293,8 @@ function EmailPageInner() {
           </div>
         </CardFooter>
       </Card>
+    </div>
+      </div>
     </div>
   );
 }

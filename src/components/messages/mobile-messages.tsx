@@ -121,16 +121,34 @@ export function MessagesListScreen() {
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex min-h-0 flex-1 flex-col justify-start px-4"><div className="text-sm text-muted-foreground">Loading messages...</div></div>;
+    return (
+      <div className="tab-page-shell px-4">
+        <div className="tab-page-header">
+          <h2 className="text-xl font-semibold">Messages</h2>
+        </div>
+        <div className="tab-page-content">
+          <div className="text-sm text-muted-foreground">Loading messages...</div>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
-    return <div className="flex min-h-0 flex-1 flex-col justify-start px-4"><div className="text-sm text-muted-foreground">Please log in to see messages.</div></div>;
+    return (
+      <div className="tab-page-shell px-4">
+        <div className="tab-page-header">
+          <h2 className="text-xl font-semibold">Messages</h2>
+        </div>
+        <div className="tab-page-content">
+          <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start px-4 pt-3">
-      <div className="header relative shrink-0 space-y-3 pb-3">
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4">
+      <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
@@ -198,9 +216,9 @@ export function MessagesListScreen() {
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-4">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-2">
         {filteredConversations.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
+          <div className="tab-empty-state text-sm text-muted-foreground">
             No conversations yet
           </div>
         ) : (
@@ -344,11 +362,29 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
-    return <div className="flex min-h-0 flex-1 flex-col justify-start px-4"><div className="text-sm text-muted-foreground">Loading conversation...</div></div>;
+    return (
+      <div className="tab-page-shell px-4">
+        <div className="tab-page-header">
+          <h2 className="text-xl font-semibold">Messages</h2>
+        </div>
+        <div className="tab-page-content">
+          <div className="text-sm text-muted-foreground">Loading conversation...</div>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
-    return <div className="flex min-h-0 flex-1 flex-col justify-start px-4"><div className="text-sm text-muted-foreground">Please log in to see messages.</div></div>;
+    return (
+      <div className="tab-page-shell px-4">
+        <div className="tab-page-header">
+          <h2 className="text-xl font-semibold">Messages</h2>
+        </div>
+        <div className="tab-page-content">
+          <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
+        </div>
+      </div>
+    );
   }
 
   if (!conversation) {
@@ -366,8 +402,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start px-4 pt-3">
-      <div className="header flex shrink-0 items-center gap-3 border-b bg-background pb-3">
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4">
+      <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />
           <span className="sr-only">Back to conversations</span>
@@ -383,9 +419,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto py-4">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-4">
         {activeMessages.length === 0 ? (
-          <div className="text-sm text-muted-foreground">
+          <div className="tab-empty-state text-sm text-muted-foreground">
             No conversations yet
           </div>
         ) : (

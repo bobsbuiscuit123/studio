@@ -281,7 +281,19 @@ export default function SocialPage() {
 
   return (
     <>
-    <div className="grid gap-8 md:grid-cols-3">
+    <div className="tab-page-shell">
+      <div className="tab-page-header">
+        <div className="space-y-1">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            <Network className="h-6 w-6" /> Social
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Draft and review posts with the feed anchored directly below the header.
+          </p>
+        </div>
+      </div>
+      <div className="tab-page-content pt-2">
+    <div className="grid gap-4 md:grid-cols-3 md:gap-6">
       {canEditContent && (
         <div className="md:col-span-1">
             <Card>
@@ -469,12 +481,14 @@ export default function SocialPage() {
             )})}
           </div>
         ) : (
-             <Card className="flex items-center justify-center py-12 md:col-span-2">
-              <CardContent>
-                <p className="text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
+             <Card className="md:col-span-2">
+              <CardContent className="py-10">
+                <p className="tab-empty-state text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>
         )}
+      </div>
+    </div>
       </div>
     </div>
     <Dialog open={!!editingPost || !!postToReview} onOpenChange={handleDialogClose}>

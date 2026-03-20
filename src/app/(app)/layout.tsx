@@ -50,7 +50,7 @@ export default function AppLayout({
             className={`main-container mx-auto flex w-full max-w-screen-md min-w-0 flex-1 flex-col overflow-x-clip print:p-0 ${
               isMessagesRoute
                 ? "messages-route-shell gap-0 px-0 py-0"
-                : "safe-bottom-space gap-4 px-4 py-3 sm:max-w-none sm:p-4 lg:gap-6 lg:p-6"
+                : "safe-bottom-space gap-4 px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0"
             }`}
           >
             <OfflineCallout />

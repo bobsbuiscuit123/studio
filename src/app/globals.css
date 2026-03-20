@@ -178,6 +178,47 @@ main,
   overflow: hidden;
 }
 
+.tab-page-shell {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tab-page-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  background: hsl(var(--background) / 0.96);
+  padding-top: 0.25rem;
+  padding-bottom: 0.75rem;
+  backdrop-filter: blur(14px);
+}
+
+.tab-page-content {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: max(6rem, calc(var(--safe-area-bottom) + 6rem));
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tab-page-content::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.tab-empty-state {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+
 .viewport-page {
   position: fixed;
   inset: 0;

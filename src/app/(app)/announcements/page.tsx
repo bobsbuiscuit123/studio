@@ -502,7 +502,19 @@ function AnnouncementsPageInner() {
   
   return (
     <>
-    <div className="grid gap-8 md:grid-cols-3">
+    <div className="tab-page-shell">
+      <div className="tab-page-header">
+        <div className="space-y-1">
+          <h1 className="flex items-center gap-2 text-2xl font-semibold">
+            <Megaphone className="h-6 w-6" /> Announcements
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Share updates with members and keep the latest posts anchored at the top.
+          </p>
+        </div>
+      </div>
+      <div className="tab-page-content pt-2">
+    <div className="grid gap-4 md:grid-cols-3 md:gap-6">
       {canEditContent && (
         <div className="md:col-span-1">
             <Card>
@@ -720,9 +732,6 @@ function AnnouncementsPageInner() {
         </div>
       )}
       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold">Recent Announcements</h2>
-        </div>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
             safeAnnouncements.length > 0 ? (
@@ -835,9 +844,9 @@ function AnnouncementsPageInner() {
                 );
               })
           ) : (
-            <Card className="flex items-center justify-center py-12">
-              <CardContent>
-                <div className="text-center">
+            <Card>
+              <CardContent className="py-10">
+                <div className="tab-empty-state">
                   <p className="text-muted-foreground">No announcements yet.</p>
                   {canEditContent ? (
                     <p className="text-muted-foreground">Create one to update your members.</p>
@@ -849,6 +858,8 @@ function AnnouncementsPageInner() {
             </Card>
           )}
         </div>
+      </div>
+    </div>
       </div>
     </div>
     

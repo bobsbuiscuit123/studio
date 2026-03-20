@@ -31,7 +31,7 @@ import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
 import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
@@ -93,6 +93,8 @@ export function AppHeader() {
   const title = pageTitles[pathname] || appName;
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
+  const selectedOrgId = !useDemo ? getSelectedOrgId() : null;
+  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
@@ -195,7 +197,7 @@ export function AppHeader() {
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
-  const showQuotaBadge = role === 'Admin' || role === 'Officer' || role === 'Member';
+  const showQuotaBadge = orgStatus?.role === 'owner';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
 
   const loadTransferCandidates = async () => {
@@ -354,7 +356,7 @@ export function AppHeader() {
           ) : null}
         </div>
 
-        {!useDemo && getSelectedOrgId() && showQuotaBadge ? (
+        {!useDemo && selectedOrgId && showQuotaBadge ? (
           <div className="shrink-0">
             <OrgAiQuotaBadge compact />
           </div>

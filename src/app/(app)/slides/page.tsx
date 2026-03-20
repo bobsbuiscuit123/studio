@@ -212,20 +212,39 @@ export default function SlidesPage() {
 
   if (role && role === 'Member') {
     return (
-        <div className="flex items-center justify-center h-full">
-            <Card className="p-8 text-center">
+        <div className="tab-page-shell">
+            <div className="tab-page-header">
+              <h1 className="flex items-center gap-2 text-2xl font-semibold">
+                <Presentation className="h-6 w-6" /> Slides
+              </h1>
+            </div>
+            <div className="tab-page-content">
+            <Card className="mt-6 p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
                 <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>
+            </div>
         </div>
     )
   }
 
   return (
     <>
+      <div className="tab-page-shell">
+        <div className="tab-page-header">
+          <div className="space-y-1">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold">
+              <Presentation className="h-6 w-6" /> Slides
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Generate meeting decks without the page recentring as new content arrives.
+            </p>
+          </div>
+        </div>
+        <div className="tab-page-content pt-2">
       <div id="interactive-content">
-        <div className="grid md:grid-cols-3 gap-8">
-          <div className="md:col-span-1 space-y-8">
+        <div className="grid gap-4 md:grid-cols-3 md:gap-6">
+          <div className="md:col-span-1 space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
@@ -321,9 +340,9 @@ export default function SlidesPage() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="flex-grow flex items-center justify-center min-h-[500px]">
+              <CardContent className="min-h-[500px] flex-grow">
                 {isLoading && (
-                  <div className="flex items-center justify-center h-full">
+                  <div className="tab-empty-state flex items-start justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                   </div>
                 )}
@@ -350,7 +369,7 @@ export default function SlidesPage() {
                         <CarouselNext className="-right-12" />
                     </Carousel>
                 ) : !isLoading && (
-                  <div className="flex items-center justify-center h-full text-center text-muted-foreground">
+                  <div className="tab-empty-state text-center text-muted-foreground">
                       <div>
                         <p>Generated slides will be displayed here.</p>
                         <p className="text-sm">Use the form on the left to generate a new presentation or select one from your history.</p>
@@ -360,6 +379,8 @@ export default function SlidesPage() {
               </CardContent>
             </Card>
           </div>
+        </div>
+      </div>
         </div>
       </div>
       <Dialog open={!!editingSlide} onOpenChange={() => setEditingSlide(null)}>

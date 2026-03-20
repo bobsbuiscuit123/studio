@@ -291,6 +291,11 @@ export default function AssistantPage() {
 
 export default function AssistantPage() {
   return (
+    <div className="tab-page-shell">
+      <div className="tab-page-header">
+        <h1 className="text-2xl font-semibold">Assistant</h1>
+      </div>
+      <div className="tab-page-content pt-2">
     <div className="space-y-6">
       <Card>
         <CardHeader>
@@ -298,7 +303,7 @@ export default function AssistantPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            <div className="flex h-[60vh] items-center justify-center rounded-xl border bg-muted/20 px-6 text-center">
+            <div className="rounded-xl border bg-muted/20 px-6 py-10 text-center">
               <div>
                 <h2 className="text-2xl font-semibold tracking-tight">Unavailable right now</h2>
                 <p className="mt-3 text-sm text-muted-foreground">Coming soon.</p>
@@ -320,6 +325,8 @@ export default function AssistantPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+      </div>
     </div>
   );
 }

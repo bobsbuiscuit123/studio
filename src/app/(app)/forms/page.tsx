@@ -200,8 +200,8 @@ function FormsPageInner() {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
-      <header className="shrink-0">
+    <div className="tab-page-shell">
+      <header className="tab-page-header">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <ClipboardList className="h-6 w-6" /> Forms
@@ -210,7 +210,7 @@ function FormsPageInner() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1">
+      <div className="tab-page-content pt-2">
       <div className="grid gap-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">
@@ -328,7 +328,7 @@ function FormsPageInner() {
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading forms...</p>
               ) : safeForms.length === 0 ? (
-                <p className="text-muted-foreground">No forms yet. {canEditContent ? "Create one to collect responses." : ""}</p>
+                <p className="tab-empty-state text-muted-foreground">No forms yet. {canEditContent ? "Create one to collect responses." : ""}</p>
               ) : (
                 safeForms.map(form => {
                   const responses = Array.isArray(form.responses) ? form.responses : [];

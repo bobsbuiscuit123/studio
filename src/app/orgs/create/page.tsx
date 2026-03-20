@@ -52,6 +52,7 @@ export default function OrgCreatePage() {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [tokenBalance, setTokenBalance] = useState(0);
   const [hasUsedTrial, setHasUsedTrial] = useState(false);
+  const [trialPreviewAccepted, setTrialPreviewAccepted] = useState(false);
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [createdOrg, setCreatedOrg] = useState<{
@@ -65,8 +66,10 @@ export default function OrgCreatePage() {
     () => calculateTokenUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
     [maxUserLimit, dailyAiLimitPerUser]
   );
+  const previewTokenBalance =
+    !hasUsedTrial && trialPreviewAccepted ? tokenBalance + TRIAL_TOKENS : tokenBalance;
   const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
-    tokenBalance,
+    previewTokenBalance,
     estimate.estimatedMonthlyTokens
   );
 
@@ -82,6 +85,12 @@ export default function OrgCreatePage() {
 
     void loadWallet();
   }, []);
+
+  useEffect(() => {
+    if (step === 2 && !hasUsedTrial && !trialPreviewAccepted) {
+      setTrialDialogOpen(true);
+    }
+  }, [hasUsedTrial, step, trialPreviewAccepted]);
 
   const validateForm = () => {
     if (!orgName.trim()) {
@@ -135,7 +144,7 @@ export default function OrgCreatePage() {
 
   const handleCreateClick = async () => {
     if (!validateForm()) return;
-    if (!hasUsedTrial) {
+    if (!hasUsedTrial && !trialPreviewAccepted) {
       setTrialDialogOpen(true);
       return;
     }
@@ -338,22 +347,18 @@ export default function OrgCreatePage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span>Your current balance</span>
-                        <span className="font-semibold text-slate-900">{tokenBalance.toLocaleString()} tokens</span>
+                        <span className="font-semibold text-slate-900">{previewTokenBalance.toLocaleString()} tokens</span>
                       </div>
-                      {tokenBalance > 0 ? (
+                      {previewTokenBalance > 0 ? (
                         <div className="flex items-center justify-between">
                           <span>Estimated days remaining</span>
                           <span className="font-semibold text-slate-900">{estimatedDaysRemaining} days</span>
                         </div>
                       ) : null}
-                      {!hasUsedTrial ? (
-                        <div className="flex items-center justify-between">
-                          <span>First organization trial</span>
-                          <span className="font-semibold text-slate-900">{TRIAL_TOKENS.toLocaleString()} tokens</span>
-                        </div>
-                      ) : null}
                       <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
-                        Tokens are only used as members make AI requests. Creating the organization is free.
+                        {trialPreviewAccepted && !hasUsedTrial
+                          ? `Your ${TRIAL_TOKENS.toLocaleString()} courtesy tokens are previewed here and will be added only after you create your first organization.`
+                          : 'Tokens are only used as members make AI requests. Creating the organization is free.'}
                       </div>
                     </CardContent>
                   </Card>
@@ -389,9 +394,9 @@ export default function OrgCreatePage() {
       <Dialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen}>
         <DialogContent className="rounded-3xl">
           <DialogHeader>
-            <DialogTitle>Free Trial Activated</DialogTitle>
+            <DialogTitle>Courtesy tokens from CASPO</DialogTitle>
             <DialogDescription>
-              You get {TRIAL_TOKENS.toLocaleString()} free AI tokens for your first organization.
+              If you create your first organization, CASPO will gift you {TRIAL_TOKENS.toLocaleString()} free AI tokens.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 text-sm text-slate-600">
@@ -406,26 +411,34 @@ export default function OrgCreatePage() {
               <span className="font-semibold text-slate-900">{TRIAL_TOKENS.toLocaleString()}</span>
             </div>
             <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-              <span>Your free tokens will last approximately</span>
+              <span>These tokens will last approximately</span>
               <span className="font-semibold text-slate-900">{estimate.daysCovered} days</span>
             </div>
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
-              Your current balance: {tokenBalance.toLocaleString()} tokens
+              Courtesy of CASPO, you can preview a balance of {(
+                tokenBalance + TRIAL_TOKENS
+              ).toLocaleString()} tokens before checkout.
+            </div>
+            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
+              The tokens are not officially added to your account until you actually create your first organization.
             </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
               className="rounded-2xl"
+              onClick={() => setTrialDialogOpen(false)}
+            >
+              Maybe later
+            </Button>
+            <Button
+              className="rounded-2xl"
               onClick={() => {
+                setTrialPreviewAccepted(true);
                 setTrialDialogOpen(false);
-                setTokenDialogOpen(true);
               }}
             >
-              Buy Tokens
-            </Button>
-            <Button className="rounded-2xl" onClick={() => void submitCreateOrg()} disabled={createSubmitting}>
-              {createSubmitting ? 'Creating organization...' : 'Create Organization'}
+              Accept gift
             </Button>
           </DialogFooter>
         </DialogContent>

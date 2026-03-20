@@ -38,13 +38,19 @@ type Group = {
   role?: string | null;
 };
 
+type GroupsResponse = {
+  ok: boolean;
+  data?: {
+    groups: Group[];
+  };
+};
+
 export default function ClubsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
   const { user, saveUser, clearUser } = useCurrentUser();
   const [groups, setGroups] = useState<Group[]>([]);
-  const [memberGroupIds, setMemberGroupIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [joinCode, setJoinCode] = useState("");
   const [groupName, setGroupName] = useState("");
@@ -139,62 +145,20 @@ export default function ClubsPage() {
         router.replace("/orgs");
         return;
       }
-      const { data: groupRows, error: groupError } = await supabase
-        .from("groups")
-        .select("id,name,description,join_code")
-        .eq("org_id", selectedOrgId)
-        .order("created_at", { ascending: true });
-      if (groupError) {
-        toast({ title: "Error", description: groupError.message, variant: "destructive" });
-      } else {
-        const groupIds = (groupRows || []).map((group) => group.id);
-        const logoByGroupId = new Map<string, string>();
-        if (groupIds.length > 0) {
-          const { data: groupStateRows, error: groupStateError } = await supabase
-            .from("group_state")
-            .select("group_id,data")
-            .eq("org_id", selectedOrgId)
-            .in("group_id", groupIds);
-          if (groupStateError) {
-            toast({ title: "Group icon lookup failed", description: groupStateError.message, variant: "destructive" });
-          } else {
-            (groupStateRows || []).forEach((row) => {
-              const logo = (row.data as { logo?: string } | null)?.logo;
-              if (typeof logo === "string" && logo.trim()) {
-                logoByGroupId.set(row.group_id, logo);
-              }
-            });
-          }
-        }
-        setGroups(
-          (groupRows || []).map((group) => ({
-            ...group,
-            logo: logoByGroupId.get(group.id) || null,
-          }))
-        );
-      }
-      const { data: membershipRows, error: membershipError } = await supabase
-        .from("group_memberships")
-        .select("group_id,role")
-        .eq("org_id", selectedOrgId)
-        .eq("user_id", authUser.user.id);
-      if (membershipError) {
+      const groupsResult = await safeFetchJson<GroupsResponse>(
+        `/api/groups?orgId=${encodeURIComponent(selectedOrgId)}`,
+        { method: "GET" }
+      );
+      if (!groupsResult.ok) {
         toast({
-          title: "Group membership lookup failed",
-          description: membershipError.message,
+          title: "Group lookup failed",
+          description: groupsResult.error.message,
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
-      const ids = new Set<string>((membershipRows || []).map((row) => row.group_id));
-      setMemberGroupIds(ids);
-      setGroups((prev) =>
-        prev.map((group) => ({
-          ...group,
-          role: (membershipRows || []).find((row) => row.group_id === group.id)?.role ?? null,
-        }))
-      );
+      setGroups(groupsResult.data?.data?.groups ?? []);
       setLoading(false);
     };
     load();
@@ -388,8 +352,7 @@ export default function ClubsPage() {
     router.replace("/login");
   };
 
-  const displayedGroups = groups.filter((group) => memberGroupIds.has(group.id));
-  const groupsWithLogos = displayedGroups.map((group) => ({
+  const groupsWithLogos = groups.map((group) => ({
     ...group,
     logo: group.logo || `https://placehold.co/100x100.png?text=${group.name.charAt(0)}`,
   }));

@@ -201,7 +201,7 @@ function FormsPageInner() {
 
   return (
     <div className="tab-page-shell">
-      <header className="tab-page-header">
+      <header className="tab-page-header border-b border-border/70">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <ClipboardList className="h-6 w-6" /> Forms
@@ -210,7 +210,7 @@ function FormsPageInner() {
         </div>
       </header>
 
-      <div className="tab-page-content pt-2">
+      <div className="tab-page-content pt-0">
       <div className="grid gap-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">

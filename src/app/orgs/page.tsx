@@ -66,22 +66,15 @@ export default function OrgsPage() {
         router.replace('/login');
         return;
       }
-      const { data, error } = await supabase
-        .from('memberships')
-        .select('org_id, role, orgs (id, name)')
-        .eq('user_id', authUser.user.id);
-      if (error) {
-        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+      const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
+        method: 'GET',
+      });
+      if (!result.ok) {
+        toast({ title: 'Error', description: result.error.message, variant: 'destructive' });
         setLoading(false);
         return;
       }
-      const mapped = (data || [])
-        .map((row: any) => ({
-          id: row.orgs?.id || row.org_id,
-          name: row.orgs?.name || 'Organization',
-          role: row.role,
-        }))
-        .filter((org: OrgSummary) => Boolean(org.id));
+      const mapped = Array.isArray(result.data.data) ? result.data.data : [];
       setOrgs(mapped);
       setLoading(false);
 

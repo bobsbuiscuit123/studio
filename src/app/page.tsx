@@ -553,23 +553,13 @@ export default function HomePage() {
           return;
         }
 
-        const { data: authUser } = await supabase.auth.getUser();
-        const userId = authUser.user?.id;
-        if (!active) return;
-        if (!userId) {
-          navigateWithFallback('/login');
-          return;
-        }
-
-        const { data: membership } = await supabase
-          .from('memberships')
-          .select('org_id')
-          .eq('org_id', selectedOrgId)
-          .eq('user_id', userId)
-          .maybeSingle();
+        const statusResult = await safeFetchJson<{ ok: true; data: { orgId: string } }>(
+          `/api/orgs/${selectedOrgId}/status`,
+          { method: 'GET' }
+        );
         if (!active) return;
 
-        if (membership) {
+        if (statusResult.ok) {
           navigateWithFallback('/clubs');
           return;
         }

@@ -35,7 +35,8 @@ export async function GET(
     );
   }
 
-  const { data: membership } = await supabase
+  const admin = createSupabaseAdmin();
+  const { data: membership } = await admin
     .from('memberships')
     .select('role')
     .eq('org_id', parsed.data)
@@ -48,7 +49,6 @@ export async function GET(
     );
   }
 
-  const admin = createSupabaseAdmin();
   const [{ data: org }, { count }, { data: usage }] = await Promise.all([
     admin
       .from('orgs')

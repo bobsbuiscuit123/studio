@@ -79,6 +79,7 @@ const pageTitles: { [key: string]: string } = {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const isFormsRoute = pathname === "/forms" || pathname === "/demo/app/forms";
   const isMessagesRoute =
     pathname === "/messages" ||
     pathname.startsWith("/messages/") ||
@@ -199,6 +200,7 @@ export function AppHeader() {
   const isAdminRole = role === 'Admin';
   const showQuotaBadge = orgStatus?.role === 'owner';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
+  const mobileTitle = isFormsRoute ? appName : title;
 
   const loadTransferCandidates = async () => {
     if (!supabase || !user?.email) return [];
@@ -280,7 +282,7 @@ export function AppHeader() {
   return (
     <>
     <header className={`sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur ${isMessagesRoute ? "hidden md:block" : ""}`}>
-      <div className="mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 py-1.5 md:max-w-none lg:px-6">
+      <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6">
         <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
           <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">
             <Logo className="h-6 w-6" />
@@ -327,7 +329,7 @@ export function AppHeader() {
 
         <div className="min-w-0 flex-1 text-center sm:hidden">
           <div className="flex items-center justify-center gap-1">
-            <h1 className="truncate text-base font-semibold leading-tight">{title}</h1>
+            <h1 className="truncate text-base font-semibold leading-tight">{mobileTitle}</h1>
             {hasGroupContext ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -350,7 +352,7 @@ export function AppHeader() {
             ) : null}
           </div>
           {(orgName || clubName) ? (
-            <p className="truncate text-[11px] text-muted-foreground">
+            <p className="truncate text-[11px] leading-tight text-muted-foreground">
               {[orgName, clubName].filter(Boolean).join(" / ")}
             </p>
           ) : null}

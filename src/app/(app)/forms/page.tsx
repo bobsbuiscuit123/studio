@@ -201,16 +201,19 @@ function FormsPageInner() {
 
   return (
     <div className="tab-page-shell">
-      <header className="tab-page-header border-b border-border/70">
+      <header className="tab-page-header -mx-4 border-b border-border/70 px-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <ClipboardList className="h-6 w-6" /> Forms
-            <span className="text-sm font-normal text-muted-foreground">Collect responses and track reads</span>
-          </h1>
+          <div className="flex items-center gap-2">
+            <ClipboardList className="h-6 w-6 shrink-0" />
+            <h1 className="text-2xl font-semibold">Forms</h1>
+            <span className="truncate text-sm font-normal text-muted-foreground">
+              Collect responses and track reads
+            </span>
+          </div>
         </div>
       </header>
 
-      <div className="tab-page-content pt-0">
+      <div className="tab-page-content pt-3">
       <div className="grid gap-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">

@@ -110,7 +110,7 @@
 }
 
 body {
-  padding-top: var(--safe-area-top);
+  padding-top: 0;
   padding-right: var(--safe-area-right);
   padding-bottom: var(--safe-area-bottom);
   padding-left: var(--safe-area-left);
@@ -197,6 +197,18 @@ main,
   backdrop-filter: blur(14px);
 }
 
+.app-header-inner {
+  padding-top: max(0.35rem, var(--safe-area-top));
+  padding-bottom: 0.4rem;
+}
+
+@media (min-width: 640px) {
+  .app-header-inner {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+}
+
 .tab-page-content {
   min-height: 0;
   flex: 1 1 0%;
@@ -225,6 +237,10 @@ main,
   width: 100%;
   height: 100lvh;
   min-height: 100lvh;
+  padding-top: var(--safe-area-top);
+  padding-right: var(--safe-area-right);
+  padding-bottom: var(--safe-area-bottom);
+  padding-left: var(--safe-area-left);
   overflow: hidden;
 }
 

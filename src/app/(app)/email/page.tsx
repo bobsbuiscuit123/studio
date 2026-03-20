@@ -154,15 +154,11 @@ function EmailPageInner() {
                 <Mail className="h-6 w-6" /> Email
               </h1>
             </div>
-            <div className="tab-page-content pt-2">
-            <div className="tab-page-fill">
-            <Card className="tab-page-fill-card p-8 text-center">
-                <div className="tab-page-empty-fill">
-                  <CardTitle>Access Denied</CardTitle>
-                  <CardDescription>This page is only available to club administrators and officers.</CardDescription>
-                </div>
+            <div className="tab-page-content">
+            <Card className="mt-6 p-8 text-center">
+                <CardTitle>Access Denied</CardTitle>
+                <CardDescription>This page is only available to club administrators and officers.</CardDescription>
             </Card>
-            </div>
             </div>
         </div>
     )
@@ -181,7 +177,6 @@ function EmailPageInner() {
         </div>
       </div>
       <div className="tab-page-content pt-2">
-    <div className="tab-page-fill">
     <div className="grid gap-6">
       <Card>
         <CardHeader className="flex items-center justify-between">
@@ -298,7 +293,6 @@ function EmailPageInner() {
           </div>
         </CardFooter>
       </Card>
-    </div>
     </div>
       </div>
     </div>

@@ -145,15 +145,11 @@ export default function FinancesPage() {
                 <Landmark className="h-6 w-6" /> Finances
               </h1>
             </div>
-            <div className="tab-page-content pt-2">
-            <div className="tab-page-fill">
-            <Card className="tab-page-fill-card p-8 text-center">
-                <div className="tab-page-empty-fill">
-                  <CardTitle>Access Denied</CardTitle>
-                  <CardDescription>This page is only available to group admins.</CardDescription>
-                </div>
+            <div className="tab-page-content">
+            <Card className="mt-6 p-8 text-center">
+                <CardTitle>Access Denied</CardTitle>
+                <CardDescription>This page is only available to group admins.</CardDescription>
             </Card>
-            </div>
             </div>
         </div>
     )
@@ -173,7 +169,6 @@ export default function FinancesPage() {
         </div>
       </div>
       <div className="tab-page-content pt-2">
-    <div className="tab-page-fill">
     <div className="grid gap-4 md:grid-cols-3 md:gap-6">
         <div className="md:col-span-2 space-y-8">
             <div className="grid gap-4 md:grid-cols-3">
@@ -259,7 +254,7 @@ export default function FinancesPage() {
                     </TableBody>
                 </Table>
                 ) : (
-                    <div className="tab-page-empty-fill text-muted-foreground">
+                    <div className="tab-empty-state py-10 text-muted-foreground">
                         <p>No transactions yet. Add one to get started!</p>
                     </div>
                 )
@@ -387,7 +382,6 @@ export default function FinancesPage() {
             </Card>
             )}
         </div>
-    </div>
     </div>
       </div>
     </div>

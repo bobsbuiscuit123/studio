@@ -41,22 +41,24 @@ export default function AppLayout({
         <div className="print:hidden">
           <AppSidebar />
         </div>
-        <div className="app-shell-main relative min-h-0 min-w-0">
-          <div className="print:hidden">
+        <div className="relative flex h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden">
+          <div className="shrink-0 print:hidden">
             <AppHeader />
           </div>
           <ImportLocalData />
-          <main
-            className={`app-tab-stage main-container mx-auto w-full max-w-screen-md min-h-0 min-w-0 overflow-x-clip print:p-0 ${
-              isMessagesRoute
-                ? "messages-route-shell gap-0 px-0 py-0"
-                : "safe-bottom-space gap-4 px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0"
-            }`}
-          >
-            <OfflineCallout />
-            <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
-          </main>
-          <div className="print:hidden md:hidden">
+          <div className="flex flex-1 min-h-0 flex-col">
+            <main
+              className={`main-container mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col overflow-x-clip print:p-0 ${
+                isMessagesRoute
+                  ? "messages-route-shell gap-0 px-0 py-0"
+                  : "safe-bottom-space gap-4 px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0"
+              }`}
+            >
+              <OfflineCallout />
+              <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
+            </main>
+          </div>
+          <div className="shrink-0 print:hidden md:hidden">
             <AppMobileTabBar />
           </div>
         </div>

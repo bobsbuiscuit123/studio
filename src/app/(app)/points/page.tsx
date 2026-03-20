@@ -128,11 +128,20 @@ export default function PointsPage() {
   };
   
   if (membersLoading || eventsLoading || entriesLoading) {
-    return <Loader2 className="animate-spin" />
+    return (
+      <div className="app-page-shell">
+        <div className="app-page-scroll">
+          <div className="flex flex-col gap-4">
+            <Loader2 className="animate-spin" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <>
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
@@ -272,6 +281,7 @@ export default function PointsPage() {
             </CardContent>
         </Card>
       </div>
-    </>
+      </div>
+    </div>
   );
 }

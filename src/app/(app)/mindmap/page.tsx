@@ -106,11 +106,19 @@ export default function MindMapPage() {
   };
   
   if (loading) {
-    return <div>Loading Mind Map...</div>
+    return (
+      <div className="app-page-shell">
+        <div className="app-page-scroll">
+          <div>Loading Mind Map...</div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-8 h-full">
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
+        <div className="grid gap-8 md:grid-cols-3">
       <div className="md:col-span-1">
         <Card>
           <CardHeader>
@@ -148,6 +156,8 @@ export default function MindMapPage() {
           <MiniMap style={{ height: 80, width: 120 }} />
           <Background gap={12} size={1} />
         </ReactFlow>
+      </div>
+        </div>
       </div>
     </div>
   );

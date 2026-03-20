@@ -216,7 +216,8 @@ export default function MembersPage() {
   }
 
   return (
-    <div>
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-semibold">Member Directory</h1>
         <div className="flex gap-2">
@@ -313,10 +314,10 @@ export default function MembersPage() {
               <p className="text-muted-foreground">Share the join code to invite your first members.</p>
             ) : (
               <p className="text-muted-foreground">Ask an admin for the join code.</p>
-            )}
+           )}
           </div>
         )}
-
+      </div>
       <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
         <DialogContent>
           <DialogHeader>

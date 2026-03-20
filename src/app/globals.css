@@ -134,24 +134,9 @@ main,
   min-height: 100dvh;
 }
 
-.app-shell-main {
-  display: flex;
-  height: 100%;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.app-tab-stage {
-  display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .main-container {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   min-height: 0;
   flex: 1 1 auto;
@@ -182,19 +167,17 @@ main,
   overflow: hidden;
 }
 
-.app-route-shell {
+.app-page-shell {
   display: flex;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   flex-direction: column;
   overflow: hidden;
 }
 
-.app-route-scroll {
-  display: flex;
+.app-page-scroll {
   min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
+  flex: 1 1 0%;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -203,36 +186,10 @@ main,
   touch-action: pan-y;
 }
 
-.app-route-scroll::-webkit-scrollbar {
+.app-page-scroll::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
-}
-
-.app-route-inner {
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: flex-start;
-}
-
-.app-route-shell:has(.tab-page-shell) .app-route-scroll,
-.app-route-shell:has(.messages-screen) .app-route-scroll {
-  overflow: hidden;
-}
-
-.app-route-shell:has(.tab-page-shell) .app-route-inner,
-.app-route-shell:has(.messages-screen) .app-route-inner {
-  min-height: 0;
-  flex: 1 1 auto;
-}
-
-.app-route-shell:has(.tab-page-shell) .app-route-inner > .tab-page-shell,
-.app-route-shell:has(.messages-screen) .app-route-inner > .messages-screen {
-  display: flex;
-  min-height: 0;
-  flex: 1 1 auto;
-  flex-direction: column;
 }
 
 .tab-page-shell {

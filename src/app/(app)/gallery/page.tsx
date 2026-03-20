@@ -279,7 +279,9 @@ export default function GalleryPage() {
   const pendingImages = images.filter(img => img.status === 'pending' && isValidImage(img));
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
+        <div className="flex flex-col gap-8">
       <Card>
         <CardHeader>
           <CardTitle>Upload New Images</CardTitle>
@@ -471,6 +473,8 @@ export default function GalleryPage() {
              <p className="text-muted-foreground">Upload an image to get started!</p>
           </div>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

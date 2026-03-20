@@ -410,7 +410,8 @@ export default function CalendarPage() {
   const weekLabels = ["S", "M", "T", "W", "T", "F", "S"];
   
   return (
-    <>
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
     <div className="grid gap-4 md:gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
       <div className="space-y-4 md:col-span-2">
         <Card className="mobile-panel overflow-hidden">
@@ -768,6 +769,7 @@ export default function CalendarPage() {
         </Card>
       </div>
     </div>
+      </div>
     {selectedEvent && (
         <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
             <DialogContent>
@@ -956,7 +958,7 @@ export default function CalendarPage() {
           </DialogContent>
         </Dialog>
     )}
-    </>
+    </div>
   );
 }
 

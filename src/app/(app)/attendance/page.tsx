@@ -84,12 +84,22 @@ export default function AttendancePage() {
 
 
   if (eventsLoading || userLoading || membersLoading) {
-    return <div className="flex min-h-0 flex-1 flex-col justify-start"><Loader2 className="animate-spin" /></div>
+    return (
+      <div className="app-page-shell">
+        <div className="app-page-scroll">
+          <div className="flex min-h-0 flex-1 flex-col justify-start">
+            <Loader2 className="animate-spin" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (canEditContent) {
     // Admin/officer view
     return (
+      <div className="app-page-shell">
+        <div className="app-page-scroll">
       <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
         <div className="shrink-0">
           <h1 className="text-3xl font-bold">Event Attendance</h1>
@@ -156,11 +166,15 @@ export default function AttendancePage() {
         </Card>
         </div>
       </div>
+        </div>
+      </div>
     );
   }
 
   // Member View
   return (
+    <div className="app-page-shell">
+      <div className="app-page-scroll">
     <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
         <div className="shrink-0 space-y-1">
             <h1 className="text-2xl font-semibold">Attendance</h1>
@@ -230,6 +244,8 @@ export default function AttendancePage() {
         </div>
     </div>
     </div>
+    </div>
+      </div>
     </div>
   );
 }

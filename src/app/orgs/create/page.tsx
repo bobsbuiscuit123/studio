@@ -20,7 +20,6 @@ import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
 import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
 import { safeFetchJson } from '@/lib/network';
 
-const JOIN_CODE_PATTERN = /^[A-Z0-9]{4,10}$/;
 const MAX_USER_LIMIT_MAX = 10_000;
 
 type TokenWalletResponse = {
@@ -47,7 +46,6 @@ export default function OrgCreatePage() {
   const [orgName, setOrgName] = useState('');
   const [orgCategory, setOrgCategory] = useState('');
   const [orgDescription, setOrgDescription] = useState('');
-  const [createJoinCode, setCreateJoinCode] = useState('');
   const [maxUserLimit, setMaxUserLimit] = useState(25);
   const [dailyAiLimitPerUser, setDailyAiLimitPerUser] = useState(2);
   const [step, setStep] = useState<1 | 2>(1);
@@ -63,7 +61,6 @@ export default function OrgCreatePage() {
     trialGranted: boolean;
   } | null>(null);
 
-  const normalizedJoinCode = createJoinCode.trim().toUpperCase();
   const estimate = useMemo(
     () => calculateTokenUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
     [maxUserLimit, dailyAiLimitPerUser]
@@ -91,14 +88,6 @@ export default function OrgCreatePage() {
       toast({ title: 'Missing name', description: 'Enter an organization name.', variant: 'destructive' });
       return false;
     }
-    if (normalizedJoinCode && !JOIN_CODE_PATTERN.test(normalizedJoinCode)) {
-      toast({
-        title: 'Invalid join code',
-        description: 'Custom join codes must be 4-10 uppercase letters or numbers.',
-        variant: 'destructive',
-      });
-      return false;
-    }
     return true;
   };
 
@@ -115,7 +104,6 @@ export default function OrgCreatePage() {
         description: orgDescription.trim(),
         memberCap: maxUserLimit,
         dailyAiLimit: dailyAiLimitPerUser,
-        ...(normalizedJoinCode ? { joinCode: normalizedJoinCode } : {}),
       }),
     });
 
@@ -260,27 +248,14 @@ export default function OrgCreatePage() {
                       placeholder="e.g., Central High Activities"
                     />
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="org-category">Category</Label>
-                      <Input
-                        id="org-category"
-                        value={orgCategory}
-                        onChange={(e) => setOrgCategory(e.target.value)}
-                        placeholder="School, Community, Nonprofit"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="org-join-code">Custom Join Code (optional)</Label>
-                      <Input
-                        id="org-join-code"
-                        value={createJoinCode}
-                        onChange={(e) => setCreateJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                        placeholder="ABC123"
-                        maxLength={10}
-                      />
-                      <p className="text-xs text-slate-500">Leave blank to auto-generate a join code.</p>
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="org-category">Category</Label>
+                    <Input
+                      id="org-category"
+                      value={orgCategory}
+                      onChange={(e) => setOrgCategory(e.target.value)}
+                      placeholder="School, Community, Nonprofit"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="org-description">Description</Label>

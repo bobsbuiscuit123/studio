@@ -10,6 +10,8 @@ const baseSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
+  NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY: z.string().optional(),
+  REVENUECAT_WEBHOOK_AUTH: z.string().optional(),
 });
 
 export const validateServerEnv = () => {
@@ -40,4 +42,3 @@ export const validateServerEnv = () => {
 
   validated = true;
 };
-

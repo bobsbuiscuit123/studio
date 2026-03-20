@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from '@/components/ui/badge';
 import { useOrgAiQuotaStatus } from '@/lib/data-hooks';
 import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
+import type { AppleTokenPurchaseOutcome } from '@/lib/token-purchases';
 
 const healthLabel = {
   healthy: 'Healthy',
@@ -27,7 +28,7 @@ export default function OrgCreditsPage() {
   const params = useParams<{ orgId: string }>();
   const router = useRouter();
   const orgId = typeof params.orgId === 'string' ? params.orgId : null;
-  const { status, loading } = useOrgAiQuotaStatus(orgId);
+  const { status, loading, refresh } = useOrgAiQuotaStatus(orgId);
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
 
   const recentActivity = useMemo(() => status?.recentTokenActivity ?? [], [status?.recentTokenActivity]);
@@ -55,6 +56,10 @@ export default function OrgCreditsPage() {
       </div>
     );
   }
+
+  const handleTokenPurchaseComplete = async (_result: AppleTokenPurchaseOutcome) => {
+    await refresh({ silent: true });
+  };
 
   return (
     <div className="viewport-page bg-emerald-50/70 text-slate-900">
@@ -183,7 +188,8 @@ export default function OrgCreditsPage() {
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
         title="Buy tokens"
-        description="Choose a token package, then confirm your purchase on the next step."
+        description="Choose a token package, then confirm your purchase with Apple on the next step."
+        onPurchaseComplete={handleTokenPurchaseComplete}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { Logo } from '@/components/icons';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
 import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
 import { safeFetchJson } from '@/lib/network';
+import type { AppleTokenPurchaseOutcome } from '@/lib/token-purchases';
 
 const MAX_USER_LIMIT_MAX = 10_000;
 
@@ -73,18 +74,18 @@ export default function OrgCreatePage() {
     estimate.estimatedMonthlyTokens
   );
 
-  useEffect(() => {
-    const loadWallet = async () => {
-      const response = await safeFetchJson<TokenWalletResponse>('/api/tokens/wallet', { method: 'GET' });
-      if (!response.ok) {
-        return;
-      }
-      setTokenBalance(Number(response.data.data?.tokenBalance ?? 0));
-      setHasUsedTrial(Boolean(response.data.data?.hasUsedTrial));
-    };
-
-    void loadWallet();
+  const loadWallet = useCallback(async () => {
+    const response = await safeFetchJson<TokenWalletResponse>('/api/tokens/wallet', { method: 'GET' });
+    if (!response.ok) {
+      return;
+    }
+    setTokenBalance(Number(response.data.data?.tokenBalance ?? 0));
+    setHasUsedTrial(Boolean(response.data.data?.hasUsedTrial));
   }, []);
+
+  useEffect(() => {
+    void loadWallet();
+  }, [loadWallet]);
 
   useEffect(() => {
     if (step === 2 && !hasUsedTrial && !trialPreviewAccepted) {
@@ -162,6 +163,15 @@ export default function OrgCreatePage() {
     if (!createdOrg?.joinCode) return;
     await navigator.clipboard.writeText(createdOrg.joinCode);
     toast({ title: 'Copied', description: 'Organization join code copied.' });
+  };
+
+  const handleTokenPurchaseComplete = async (result: AppleTokenPurchaseOutcome) => {
+    if (typeof result.tokenBalance === 'number') {
+      setTokenBalance(result.tokenBalance);
+      return;
+    }
+
+    await loadWallet();
   };
 
   return (
@@ -448,7 +458,8 @@ export default function OrgCreatePage() {
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
         title="Buy tokens"
-        description="Choose a token package, then confirm your purchase on the next step."
+        description="Choose a token package, then confirm your purchase with Apple on the next step."
+        onPurchaseComplete={handleTokenPurchaseComplete}
       />
     </div>
   );

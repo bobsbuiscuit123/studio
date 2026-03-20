@@ -28,35 +28,35 @@ export const TRIAL_TOKENS = 2500;
 
 export const TOKEN_PACKAGES: TokenPackage[] = [
   {
-    productId: 'caspo_tokens_2200',
+    productId: 'tokens_basic',
     tokens: 2200,
     priceLabel: '$2.99',
     displayName: 'Basic',
     displayLabel: '2,200 tokens',
   },
   {
-    productId: 'caspo_tokens_6000',
+    productId: 'tokens_growth',
     tokens: 6000,
     priceLabel: '$6.99',
     displayName: 'Growth',
     displayLabel: '6,000 tokens',
   },
   {
-    productId: 'caspo_tokens_12500',
+    productId: 'tokens_pro',
     tokens: 12500,
     priceLabel: '$12.99',
     displayName: 'Pro',
     displayLabel: '12,500 tokens',
   },
   {
-    productId: 'caspo_tokens_28000',
+    productId: 'tokens_scale',
     tokens: 28000,
     priceLabel: '$24.99',
     displayName: 'Scale',
     displayLabel: '28,000 tokens',
   },
   {
-    productId: 'caspo_tokens_65000',
+    productId: 'tokens_enterprise',
     tokens: 65000,
     priceLabel: '$49.99',
     displayName: 'Enterprise',

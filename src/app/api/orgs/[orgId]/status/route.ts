@@ -4,6 +4,13 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
+import {
+  calculateEstimatedDailyCredits,
+  calculateEstimatedDaysRemaining,
+  calculateEstimatedMonthlyCredits,
+  getAiAvailability,
+  getCreditHealth,
+} from '@/lib/pricing';
 
 export async function GET(
   request: Request,
@@ -42,16 +49,11 @@ export async function GET(
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: plan }, { data: sub }, { count }, { data: usage }, { data: org }] = await Promise.all([
+  const [{ data: org }, { count }, { data: usage }, { data: activity }] = await Promise.all([
     admin
-      .from('org_billing_plans')
-      .select('max_user_limit, daily_credit_per_user')
-      .eq('org_id', parsed.data)
-      .maybeSingle(),
-    admin
-      .from('org_subscriptions')
-      .select('status, cancel_at_period_end, current_period_start, current_period_end, created_at')
-      .eq('org_id', parsed.data)
+      .from('orgs')
+      .select('name, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
+      .eq('id', parsed.data)
       .maybeSingle(),
     admin
       .from('memberships')
@@ -64,40 +66,48 @@ export async function GET(
       .eq('user_id', userId)
       .eq('usage_date', getRequestDayKey(request))
       .maybeSingle(),
-    admin
-      .from('orgs')
-      .select('created_at')
-      .eq('id', parsed.data)
-      .maybeSingle(),
+    membership.role === 'owner'
+      ? admin
+          .from('credit_transactions')
+          .select('id, amount, type, description, metadata, created_at')
+          .eq('organization_id', parsed.data)
+          .order('created_at', { ascending: false })
+          .limit(10)
+      : Promise.resolve({ data: null as null }),
   ]);
 
-  const orgCreatedAt = org?.created_at ?? sub?.created_at ?? null;
-  const currentPeriodStart = sub?.current_period_start ?? orgCreatedAt;
-  const currentPeriodEnd =
-    sub?.current_period_end ??
-    (currentPeriodStart
-      ? (() => {
-          const next = new Date(currentPeriodStart);
-          next.setMonth(next.getMonth() + 1);
-          return next.toISOString();
-        })()
-      : null);
+  const memberLimit = Number(org?.member_limit ?? 0);
+  const dailyAiLimitPerUser = Number(org?.ai_daily_limit_per_user ?? 0);
+  const creditBalance = Number(org?.credit_balance ?? 0);
+  const estimatedMonthlyCredits = calculateEstimatedMonthlyCredits(memberLimit, dailyAiLimitPerUser);
+  const estimatedDailyCredits = calculateEstimatedDailyCredits(memberLimit, dailyAiLimitPerUser);
+  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(creditBalance, estimatedMonthlyCredits);
+  const aiAvailability = getAiAvailability(creditBalance, estimatedMonthlyCredits);
+  const creditHealth = getCreditHealth(estimatedDaysRemaining);
 
   return NextResponse.json({
     ok: true,
     data: {
       orgId: parsed.data,
+      orgName: org?.name ?? 'Organization',
       role: membership.role,
-      status: sub?.status ?? 'inactive',
-      cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
-      maxUserLimit: plan?.max_user_limit ?? 0,
-      dailyCreditPerUser: plan?.daily_credit_per_user ?? 0,
+      memberLimit,
+      dailyAiLimitPerUser,
       activeUsers: count ?? 0,
-      creditsUsedToday: usage?.credits_used ?? 0,
-      createdAt: orgCreatedAt,
-      currentPeriodStart,
-      currentPeriodEnd,
-      serviceEndsAt: Boolean(sub?.cancel_at_period_end) ? currentPeriodEnd : null,
+      requestsUsedToday: usage?.credits_used ?? 0,
+      aiAvailability,
+      estimatedMonthlyCredits,
+      estimatedDailyCredits,
+      creditHealth,
+      createdAt: org?.created_at ?? null,
+      updatedAt: org?.updated_at ?? null,
+      ...(membership.role === 'owner'
+        ? {
+            creditBalance,
+            estimatedDaysRemaining,
+            recentCreditActivity: activity ?? [],
+          }
+        : {}),
     },
   });
 }

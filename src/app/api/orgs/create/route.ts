@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
-import { computeOrgPricing } from '@/lib/pricing';
+import { calculateEstimatedMonthlyCredits } from '@/lib/pricing';
 
 const ensureUniqueJoinCode = async (admin: ReturnType<typeof createSupabaseAdmin>, preferred?: string) => {
   if (preferred) {
@@ -18,7 +18,19 @@ const ensureUniqueJoinCode = async (admin: ReturnType<typeof createSupabaseAdmin
     return preferred;
   }
 
-  return undefined;
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const generated = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const { data } = await admin
+      .from('orgs')
+      .select('id')
+      .eq('join_code', generated)
+      .maybeSingle();
+    if (!data?.id) {
+      return generated;
+    }
+  }
+
+  return null;
 };
 
 export async function POST(request: Request) {
@@ -50,7 +62,7 @@ export async function POST(request: Request) {
       .regex(/^[A-Z0-9]{4,10}$/)
       .optional(),
     maxUserLimit: z.number().int().min(1),
-    dailyCreditPerUser: z.number().int().min(0),
+    dailyAiLimitPerUser: z.number().int().min(0),
   });
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -77,39 +89,48 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdmin();
   const joinCodeInput = parsed.data.joinCode?.trim().toUpperCase();
   const reservedJoinCode = await ensureUniqueJoinCode(admin, joinCodeInput || undefined);
-  if (joinCodeInput && !reservedJoinCode) {
+  if (!reservedJoinCode) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unable to reserve join code.', source: 'app' }),
       { status: 409, headers: getRateLimitHeaders(limiter) }
     );
   }
 
-  const pricing = computeOrgPricing(parsed.data.maxUserLimit, parsed.data.dailyCreditPerUser);
-  const nowDate = new Date();
-  const periodEndDate = new Date(nowDate);
-  periodEndDate.setMonth(periodEndDate.getMonth() + 1);
-  const now = nowDate.toISOString();
-  const periodEnd = periodEndDate.toISOString();
+  const { data: walletProfile } = await admin
+    .from('profiles')
+    .select('credit_balance')
+    .eq('id', userId)
+    .maybeSingle();
+  const walletBalance = Number(walletProfile?.credit_balance ?? 0);
+
   const orgInsert: {
     name: string;
     category: string | null;
     description: string | null;
     created_by: string;
+    owner_user_id: string;
+    member_limit: number;
+    ai_daily_limit_per_user: number;
+    credit_balance: number;
+    updated_at: string;
     join_code?: string;
   } = {
     name: parsed.data.name.trim(),
     category: parsed.data.category?.trim() || null,
     description: parsed.data.description?.trim() || null,
     created_by: userId,
+    owner_user_id: userId,
+    member_limit: parsed.data.maxUserLimit,
+    ai_daily_limit_per_user: parsed.data.dailyAiLimitPerUser,
+    credit_balance: walletBalance,
+    updated_at: new Date().toISOString(),
   };
-  if (reservedJoinCode) {
-    orgInsert.join_code = reservedJoinCode;
-  }
+  orgInsert.join_code = reservedJoinCode;
 
   const { data: org, error: orgError } = await admin
     .from('orgs')
     .insert(orgInsert)
-    .select('id, join_code')
+    .select('id, join_code, credit_balance')
     .single();
 
   if (orgError || !org?.id || !org?.join_code) {
@@ -142,62 +163,45 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error: planError } = await admin
-    .from('org_billing_plans')
-    .insert({
-      org_id: org.id,
-      max_user_limit: parsed.data.maxUserLimit,
-      daily_credit_per_user: parsed.data.dailyCreditPerUser,
-      static_cost: pricing.staticCost,
-      variable_cost: pricing.variableCost,
-      multiplier: pricing.multiplier,
-      retail_price: pricing.retailPrice,
-      currency: 'usd',
-    });
-  if (planError) {
-    await rollbackOrg();
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: planError.message,
-        source: 'network',
+  if (walletBalance > 0) {
+    const [{ error: walletResetError }, { error: transactionError }] = await Promise.all([
+      admin.from('profiles').upsert({ id: userId, credit_balance: 0 }, { onConflict: 'id' }),
+      admin.from('credit_transactions').insert({
+        organization_id: org.id,
+        actor_user_id: userId,
+        type: 'adjustment',
+        amount: walletBalance,
+        description: 'Owner wallet credits applied during organization creation',
+        metadata: { source: 'wallet_transfer' },
       }),
-      { status: 500, headers: getRateLimitHeaders(limiter) }
-    );
+    ]);
+
+    if (walletResetError || transactionError) {
+      await rollbackOrg();
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: walletResetError?.message || transactionError?.message || 'Unable to create organization.',
+          source: 'network',
+        }),
+        { status: 500, headers: getRateLimitHeaders(limiter) }
+      );
+    }
   }
 
-  const { error: subscriptionError } = await admin
-    .from('org_subscriptions')
-    .insert({
-      org_id: org.id,
-      payment_provider: 'iap',
-      status: 'active',
-      current_period_start: now,
-      current_period_end: periodEnd,
-      cancel_at_period_end: false,
-    });
-  if (subscriptionError) {
-    await rollbackOrg();
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: subscriptionError.message,
-        source: 'network',
-      }),
-      { status: 500, headers: getRateLimitHeaders(limiter) }
-    );
-  }
-
-  console.info('[billing] organization provisioned for future IAP', {
-    userId,
-    orgId: org.id,
-    joinCode: org.join_code,
-    maxUserLimit: parsed.data.maxUserLimit,
-    dailyCreditPerUser: parsed.data.dailyCreditPerUser,
-  });
+  const estimatedMonthlyCredits = calculateEstimatedMonthlyCredits(
+    parsed.data.maxUserLimit,
+    parsed.data.dailyAiLimitPerUser
+  );
 
   return NextResponse.json(
-    { ok: true, orgId: org.id, joinCode: org.join_code, paymentProvider: 'iap' },
+    {
+      ok: true,
+      orgId: org.id,
+      joinCode: org.join_code,
+      estimatedMonthlyCredits,
+      creditBalance: Number(org.credit_balance ?? walletBalance),
+    },
     { headers: getRateLimitHeaders(limiter) }
   );
 }

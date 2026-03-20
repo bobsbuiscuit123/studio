@@ -13,9 +13,11 @@ export function OrgAiQuotaBadge({
   className?: string;
   compact?: boolean;
 }) {
-  const { loading, used, limit, percent } = useOrgAiQuotaStatus(orgId);
+  const { loading, status, used, limit, percent } = useOrgAiQuotaStatus(orgId);
+  const paused = status?.aiAvailability === 'paused';
+  const limited = status?.aiAvailability === 'limited';
   const clampedPercent = Math.max(0, Math.min(100, percent));
-  const hue = 145 - (145 * clampedPercent) / 100;
+  const hue = paused ? 0 : limited ? 38 : 145 - (145 * clampedPercent) / 100;
   const accent = `hsl(${hue} 78% 42%)`;
   const accentSoft = `hsl(${hue} 85% 94%)`;
   const accentBorder = `hsl(${hue} 75% 82%)`;
@@ -65,9 +67,15 @@ export function OrgAiQuotaBadge({
         </div>
       </div>
       <div className="leading-tight">
-        <div className="font-semibold">AI limit</div>
+        <div className="font-semibold">{paused ? 'AI temporarily unavailable' : 'AI availability'}</div>
         <div className="opacity-80">
-          {loading ? "Loading..." : `${used}/${limit} used today`}
+          {loading
+            ? "Loading..."
+            : paused
+              ? "Your organization has run out of credits"
+              : limited
+                ? "AI availability may be limited soon"
+                : `${used}/${limit} requests used today`}
         </div>
       </div>
     </div>

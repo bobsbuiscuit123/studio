@@ -1,16 +1,19 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AlertTriangle, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
-import { computeOrgPricing } from '@/lib/pricing';
+import { calculateCreditUsageEstimate, calculateEstimatedDaysRemaining } from '@/lib/pricing';
 import { Logo } from '@/components/icons';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
+import { CreditPackDialog } from '@/components/orgs/credit-pack-dialog';
+import { safeFetchJson } from '@/lib/network';
 
 const JOIN_CODE_PATTERN = /^[A-Z0-9]{4,10}$/;
 const MAX_USER_LIMIT_MAX = 10_000;
@@ -23,18 +26,37 @@ export default function OrgCreatePage() {
   const [orgDescription, setOrgDescription] = useState('');
   const [createJoinCode, setCreateJoinCode] = useState('');
   const [maxUserLimit, setMaxUserLimit] = useState(25);
-  const [dailyCreditPerUser, setDailyCreditPerUser] = useState(40);
+  const [dailyAiLimitPerUser, setDailyAiLimitPerUser] = useState(40);
   const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [createdOrg, setCreatedOrg] = useState<{ orgId: string; joinCode: string } | null>(null);
+  const [step, setStep] = useState<1 | 2>(1);
+  const [createdOrg, setCreatedOrg] = useState<{ orgId: string; joinCode: string; creditBalance: number } | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false);
 
-  const pricing = useMemo(
-    () => computeOrgPricing(maxUserLimit, dailyCreditPerUser),
-    [maxUserLimit, dailyCreditPerUser]
+  const estimate = useMemo(
+    () => calculateCreditUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
+    [maxUserLimit, dailyAiLimitPerUser]
   );
 
   const normalizedJoinCode = createJoinCode.trim().toUpperCase();
-  const checkoutJoinCodePreview = normalizedJoinCode || 'AUTO-GENERATED';
+  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
+    walletBalance,
+    estimate.estimatedMonthlyCredits
+  );
+  const lowBalance = estimate.estimatedMonthlyCredits > walletBalance;
+
+  useEffect(() => {
+    const loadWallet = async () => {
+      const response = await safeFetchJson<{
+        ok: boolean;
+        data?: { creditBalance: number };
+      }>('/api/credits/wallet', { method: 'GET' });
+      if (response.ok) {
+        setWalletBalance(Number(response.data.data?.creditBalance ?? 0));
+      }
+    };
+    void loadWallet();
+  }, []);
 
   const handleCreateOrg = async () => {
     if (!orgName.trim()) {
@@ -50,44 +72,39 @@ export default function OrgCreatePage() {
       return;
     }
     setCreateSubmitting(true);
-    const payload: {
-      name: string;
-      category: string;
-      description: string;
-      maxUserLimit: number;
-      dailyCreditPerUser: number;
+    const response = await safeFetchJson<{
+      ok: boolean;
+      orgId?: string;
       joinCode?: string;
-    } = {
-      name: orgName.trim(),
-      category: orgCategory.trim(),
-      description: orgDescription.trim(),
-      maxUserLimit,
-      dailyCreditPerUser,
-    };
-    if (normalizedJoinCode) {
-      payload.joinCode = normalizedJoinCode;
-    }
-    const response = await fetch('/api/orgs/create', {
+      creditBalance?: number;
+      error?: { message?: string };
+    }>('/api/orgs/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        name: orgName.trim(),
+        category: orgCategory.trim(),
+        description: orgDescription.trim(),
+        maxUserLimit,
+        dailyAiLimitPerUser,
+        ...(normalizedJoinCode ? { joinCode: normalizedJoinCode } : {}),
+      }),
     });
-    const result = await response.json().catch(() => null);
-    if (!response.ok) {
+    if (!response.ok || !response.data?.orgId || !response.data?.joinCode) {
       toast({
         title: 'Create failed',
-        description: result?.error?.message || 'Unable to create organization.',
+        description: response.ok ? response.data?.error?.message || 'Unable to create organization.' : response.error.message,
         variant: 'destructive',
       });
       setCreateSubmitting(false);
       return;
     }
-    if (!result?.orgId || !result?.joinCode) {
-      toast({ title: 'Create failed', description: 'Missing organization details.', variant: 'destructive' });
-      setCreateSubmitting(false);
-      return;
-    }
-    setCreatedOrg({ orgId: result.orgId, joinCode: result.joinCode });
+    setCreatedOrg({
+      orgId: response.data.orgId,
+      joinCode: response.data.joinCode,
+      creditBalance: Number(response.data.creditBalance ?? 0),
+    });
+    setWalletBalance(0);
     setCreateSubmitting(false);
   };
 
@@ -111,8 +128,8 @@ export default function OrgCreatePage() {
         <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/70 via-transparent to-emerald-50/60" />
       </div>
 
-      <div className="viewport-scroll relative mx-auto flex w-full max-w-5xl flex-col gap-10 px-6 py-12">
-        <header className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+      <div className="viewport-scroll relative mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 shadow-lg">
               <Logo className="h-6 w-6 text-emerald-700" />
@@ -120,95 +137,53 @@ export default function OrgCreatePage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
+              <p className="text-sm text-slate-600">Organization setup is free. Credits are only used as members use AI.</p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => router.push('/orgs')}>
+          <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/orgs')}>
             Back to organizations
           </Button>
         </header>
 
         {createdOrg ? (
-          <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
+          <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
             <CardHeader>
-              <CardTitle className="text-2xl">Organization Created</CardTitle>
-              <CardDescription>Your organization is ready. Share this join code with members so they can join.</CardDescription>
+              <CardTitle className="text-2xl">Organization created</CardTitle>
+              <CardDescription>Your organization is ready. Share the join code and add credits any time.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+              <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 text-center">
                 <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
                 <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
               </div>
-              <p className="text-sm text-slate-600">You can now continue into the workspace and finish the rest of your setup there.</p>
+              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5">
+                <div className="flex items-center justify-between gap-3 text-sm text-slate-600">
+                  <span>Starting credit balance</span>
+                  <span className="font-semibold text-slate-900">{createdOrg.creditBalance.toLocaleString()} credits</span>
+                </div>
+              </div>
             </CardContent>
             <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <Button variant="outline" onClick={handleCopyJoinCode}>
+              <Button variant="outline" className="rounded-2xl" onClick={handleCopyJoinCode}>
                 Copy join code
               </Button>
-              <Button className="flex-1" onClick={handleContinue}>
+              <Button
+                variant="outline"
+                className="rounded-2xl"
+                onClick={() => router.push(`/orgs/${createdOrg.orgId}/credits`)}
+              >
+                Manage credits
+              </Button>
+              <Button className="flex-1 rounded-2xl" onClick={handleContinue}>
                 Continue to workspace
               </Button>
             </CardFooter>
           </Card>
-        ) : step === 3 ? (
-          <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-2xl">Checkout</CardTitle>
-              <CardDescription>Review your saved plan before purchase.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-center">
-                <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code Preview</p>
-                <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{checkoutJoinCodePreview}</p>
-                <p className="mt-3 text-xs text-slate-500">
-                  {normalizedJoinCode ? 'Your custom join code will be used after purchase.' : 'A join code will be generated after purchase.'}
-                </p>
-              </div>
-              <Card className="border border-slate-200 bg-slate-50/80 shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Plan summary</CardTitle>
-                  <CardDescription>This is your saved starting point for future IAP setup.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-slate-600">
-                  <div className="flex items-center justify-between">
-                    <span>Max users</span>
-                    <span>{maxUserLimit.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Daily AI credit per user</span>
-                    <span>{dailyCreditPerUser}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Static cost</span>
-                    <span>${pricing.staticCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Variable cost</span>
-                    <span>${pricing.variableCost.toFixed(2)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Multiplier</span>
-                    <span>{pricing.multiplier.toFixed(2)}x</span>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-900">
-                    <span>Total per month</span>
-                    <span>${pricing.retailPrice.toFixed(2)}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            </CardContent>
-            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <Button variant="outline" onClick={() => setStep(2)}>
-                Back
-              </Button>
-              <Button className="flex-1" onClick={handleCreateOrg} disabled={createSubmitting}>
-                {createSubmitting ? 'Creating organization...' : 'Buy'}
-              </Button>
-            </CardFooter>
-          </Card>
         ) : (
-          <Card className="border-transparent bg-white/80 shadow-xl backdrop-blur">
+          <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Organization setup</CardTitle>
+              <CardDescription>Configure your member capacity and estimated AI usage.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center gap-3">
@@ -216,7 +191,7 @@ export default function OrgCreatePage() {
                 <div className="text-sm font-medium">Organization details</div>
                 <div className="h-px flex-1 bg-slate-200" />
                 <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 2 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
-                <div className="text-sm font-medium">Plan preferences</div>
+                <div className="text-sm font-medium">AI configuration</div>
               </div>
 
               {step === 1 ? (
@@ -250,11 +225,6 @@ export default function OrgCreatePage() {
                         maxLength={10}
                       />
                       <p className="text-xs text-slate-500">Leave blank to auto-generate a join code.</p>
-                      {normalizedJoinCode && !JOIN_CODE_PATTERN.test(normalizedJoinCode) ? (
-                        <p className="text-xs text-rose-600">
-                          Custom join codes must be 4-10 uppercase letters or numbers.
-                        </p>
-                      ) : null}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -268,11 +238,11 @@ export default function OrgCreatePage() {
                   </div>
                 </div>
               ) : (
-                <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
                   <div className="space-y-6">
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Max users (you can change later)</Label>
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>Max users</Label>
                         <Input
                           type="number"
                           value={maxUserLimit}
@@ -283,7 +253,7 @@ export default function OrgCreatePage() {
                             if (!Number.isFinite(nextValue)) return;
                             setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(1, nextValue)));
                           }}
-                          className="w-24 text-right"
+                          className="w-28 text-right"
                         />
                       </div>
                       <Slider
@@ -295,67 +265,115 @@ export default function OrgCreatePage() {
                       />
                     </div>
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Daily AI credit per user</Label>
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>Daily AI requests per member</Label>
                         <Input
                           type="number"
-                          value={dailyCreditPerUser}
+                          value={dailyAiLimitPerUser}
                           min={0}
-                          onChange={(e) => setDailyCreditPerUser(Number(e.target.value))}
-                          className="w-24 text-right"
+                          max={200}
+                          onChange={(e) => setDailyAiLimitPerUser(Math.max(0, Number(e.target.value) || 0))}
+                          className="w-28 text-right"
                         />
                       </div>
                       <Slider
-                        value={[dailyCreditPerUser]}
+                        value={[dailyAiLimitPerUser]}
                         min={0}
                         max={200}
                         step={1}
-                        onValueChange={(values) => setDailyCreditPerUser(values[0])}
+                        onValueChange={(values) => setDailyAiLimitPerUser(values[0])}
                       />
                     </div>
                   </div>
-                  <Card className="border border-slate-200 bg-slate-50/80 shadow-sm">
+
+                  <Card className="rounded-[28px] border border-slate-200 bg-slate-50/90 shadow-sm">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Monthly estimate</CardTitle>
-                      <CardDescription>Saved now so your later IAP pricing has a starting point.</CardDescription>
+                      <CardTitle className="text-base">Estimated credit usage</CardTitle>
+                      <CardDescription>
+                        Based on your current settings, here’s the estimated monthly AI credit usage for your organization.
+                      </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3 text-sm text-slate-600">
+                    <CardContent className="space-y-4 text-sm text-slate-600">
                       <div className="flex items-center justify-between">
-                        <span>Static cost</span>
-                        <span>${pricing.staticCost.toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Variable cost</span>
-                        <span>${pricing.variableCost.toFixed(2)}</span>
+                        <span>Estimated monthly usage</span>
+                        <span className="font-semibold text-slate-900">
+                          {estimate.estimatedMonthlyCredits.toLocaleString()} credits
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span>Multiplier</span>
-                        <span>{pricing.multiplier.toFixed(2)}x</span>
+                        <span>Estimated daily usage</span>
+                        <span className="font-semibold text-slate-900">
+                          {estimate.estimatedDailyCredits.toLocaleString()} credits/day
+                        </span>
                       </div>
-                      <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-base font-semibold text-slate-900">
-                        <span>Total per month</span>
-                        <span>${pricing.retailPrice.toFixed(2)}</span>
+                      <div className="flex items-center justify-between">
+                        <span>Current owner balance</span>
+                        <span className="font-semibold text-slate-900">{walletBalance.toLocaleString()} credits</span>
                       </div>
+                      {walletBalance > 0 ? (
+                        <div className="flex items-center justify-between">
+                          <span>Estimated days remaining</span>
+                          <span className="font-semibold text-slate-900">{estimatedDaysRemaining} days</span>
+                        </div>
+                      ) : null}
+                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
+                        Organizations are free to create. Credits are only used as members use AI.
+                      </div>
+                      {lowBalance ? (
+                        <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                            <div>
+                              <p className="font-medium">Your current balance may not fully support this configuration.</p>
+                              <p className="mt-1 text-amber-800">
+                                You can create the organization now and add credits anytime.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 </div>
               )}
             </CardContent>
-            <CardFooter className="flex flex-col items-stretch gap-3">
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={() => setStep(step === 1 ? 2 : 1)}>
-                  {step === 1 ? 'Next: Plan preferences' : 'Back to details'}
+            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
+              {step === 1 ? (
+                <Button variant="outline" className="rounded-2xl" onClick={() => setStep(2)}>
+                  Next: AI configuration
                 </Button>
-                {step === 2 && (
-                  <Button onClick={() => setStep(3)} className="flex-1">
-                    Continue to checkout
+              ) : (
+                <Button variant="outline" className="rounded-2xl" onClick={() => setStep(1)}>
+                  Back to details
+                </Button>
+              )}
+              {step === 2 ? (
+                <>
+                  <Button
+                    variant="outline"
+                    className="rounded-2xl"
+                    onClick={() => setCreditDialogOpen(true)}
+                  >
+                    <Coins className="mr-2 h-4 w-4" />
+                    Add credits
                   </Button>
-                )}
-              </div>
+                  <Button className="flex-1 rounded-2xl" onClick={handleCreateOrg} disabled={createSubmitting}>
+                    {createSubmitting ? 'Creating organization...' : 'Create organization'}
+                  </Button>
+                </>
+              ) : null}
             </CardFooter>
           </Card>
         )}
       </div>
+
+      <CreditPackDialog
+        open={creditDialogOpen}
+        onOpenChange={setCreditDialogOpen}
+        title="Add credits before launch"
+        description="Credits you add now will be applied to this organization when it is created."
+        onPurchased={(nextBalance) => setWalletBalance(nextBalance)}
+      />
     </div>
   );
 }

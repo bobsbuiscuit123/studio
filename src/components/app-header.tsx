@@ -91,7 +91,7 @@ export function AppHeader() {
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
   const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
-  const { role, canEditContent } = useCurrentUserRole();
+  const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -195,7 +195,7 @@ export function AppHeader() {
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
-  const showQuotaBadge = role === 'Admin' || role === 'Officer';
+  const showQuotaBadge = role === 'Admin' || role === 'Officer' || role === 'Member';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
 
   const loadTransferCandidates = async () => {
@@ -354,8 +354,8 @@ export function AppHeader() {
           ) : null}
         </div>
 
-        {!useDemo && getSelectedOrgId() && canEditContent && showQuotaBadge ? (
-          <div className="hidden shrink-0 sm:block">
+        {!useDemo && getSelectedOrgId() && showQuotaBadge ? (
+          <div className="shrink-0">
             <OrgAiQuotaBadge compact />
           </div>
         ) : null}

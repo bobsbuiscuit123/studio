@@ -147,13 +147,13 @@ export default function OrgJoinPage() {
         </Card>
       </div>
 
-      <UpgradePlanDialog
-        open={upgradeOpen}
-        onOpenChange={setUpgradeOpen}
-        title="Organization at capacity"
-        description="This organization is full. Ask an admin to upgrade the plan."
-        primaryLabel="Got it"
-        onPrimary={() => setUpgradeOpen(false)}
+        <UpgradePlanDialog
+          open={upgradeOpen}
+          onOpenChange={setUpgradeOpen}
+          title="Organization at capacity"
+          description="This organization is full. Ask the owner to raise the member limit."
+          primaryLabel="Got it"
+          onPrimary={() => setUpgradeOpen(false)}
       />
     </div>
   );

@@ -41,43 +41,10 @@ export async function POST(
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: sub }, { data: org }] = await Promise.all([
-    admin
-      .from('org_subscriptions')
-      .select('current_period_start, current_period_end, cancel_at_period_end')
-      .eq('org_id', parsed.data)
-      .maybeSingle(),
-    admin
-      .from('orgs')
-      .select('created_at')
-      .eq('id', parsed.data)
-      .maybeSingle(),
-  ]);
-
-  const baseStart = sub?.current_period_start ?? org?.created_at ?? new Date().toISOString();
-  const serviceEndsAt =
-    sub?.current_period_end ??
-    (() => {
-      const next = new Date(baseStart);
-      next.setMonth(next.getMonth() + 1);
-      return next.toISOString();
-    })();
-
-  const { error: updateError } = await admin
-    .from('org_subscriptions')
-    .upsert({
-      org_id: parsed.data,
-      payment_provider: 'iap',
-      status: 'active',
-      current_period_start: baseStart,
-      current_period_end: serviceEndsAt,
-      cancel_at_period_end: true,
-      updated_at: new Date().toISOString(),
-    });
-
-  if (updateError) {
+  const { error: deleteError } = await admin.from('orgs').delete().eq('id', parsed.data);
+  if (deleteError) {
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: updateError.message, source: 'network' }),
+      err({ code: 'NETWORK_HTTP_ERROR', message: deleteError.message, source: 'network' }),
       { status: 500 }
     );
   }
@@ -86,8 +53,7 @@ export async function POST(
     ok: true,
     data: {
       orgId: parsed.data,
-      serviceEndsAt,
-      cancelAtPeriodEnd: true,
+      deletedAt: new Date().toISOString(),
     },
   });
 }

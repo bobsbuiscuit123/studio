@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Copy, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, Coins, Copy, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -63,7 +63,7 @@ export default function ClubsPage() {
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
   const formatDate = (value?: string | null) =>
@@ -75,31 +75,33 @@ export default function ClubsPage() {
         }).format(new Date(value))
       : "Unknown";
 
-  const handleScheduleOrgDeletion = async () => {
+  const handleDeleteOrganization = async () => {
     if (!selectedOrgId || !isOrgOwner) return;
     setDeleteOrgSubmitting(true);
-    const response = await safeFetchJson<{ ok: boolean; data?: { serviceEndsAt: string } }>(
+    const response = await safeFetchJson<{ ok: boolean; data?: { deletedAt: string } }>(
       `/api/orgs/${selectedOrgId}/cancel`,
       {
         method: "POST",
       }
     );
-    if (!response.ok || !response.data?.ok || !response.data.data?.serviceEndsAt) {
+    if (!response.ok || !response.data?.ok || !response.data.data?.deletedAt) {
       toast({
         title: "Delete failed",
-        description: response.ok ? "Unable to schedule organization deletion." : response.error.message,
+        description: response.ok ? "Unable to delete organization." : response.error.message,
         variant: "destructive",
       });
       setDeleteOrgSubmitting(false);
       return;
     }
-    await refreshOrgStatus({ silent: true });
     setDeleteOrgSubmitting(false);
     setIsDeleteOrgOpen(false);
+    clearSelectedOrgId();
+    clearSelectedGroupId();
     toast({
-      title: "Deletion scheduled",
-      description: `Organization access will end after ${formatDate(response.data.data.serviceEndsAt)}.`,
+      title: "Organization deleted",
+      description: "The organization and its credits were removed.",
     });
+    router.push("/orgs");
   };
 
   useEffect(() => {
@@ -557,44 +559,43 @@ export default function ClubsPage() {
         )}
 
         {isOrgOwner ? (
-          <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
-            <Trash2 className="mr-2" /> Delete Organization
-          </Button>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button variant="outline" onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)} className="w-full">
+              <Coins className="mr-2" /> Manage Credits
+            </Button>
+            <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
+              <Trash2 className="mr-2" /> Delete Organization
+            </Button>
+          </div>
         ) : null}
       </div>
       <AlertDialog open={isOrgOwner && isDeleteOrgOpen} onOpenChange={setIsDeleteOrgOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete organization?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Your subscription will end and services will no longer be available after{" "}
-              {formatDate(orgStatus?.serviceEndsAt ?? orgStatus?.currentPeriodEnd)}.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-3 text-sm text-slate-600">
-            <p>Organization created: {formatDate(orgStatus?.createdAt)}</p>
-            <p>Current paid period started: {formatDate(orgStatus?.currentPeriodStart ?? orgStatus?.createdAt)}</p>
-            <p>Access remains active until the end of the paid month, even if you delete in the middle of the month.</p>
-            {orgStatus?.cancelAtPeriodEnd ? (
-              <p className="font-medium text-amber-700">
-                This organization is already scheduled to end after {formatDate(orgStatus?.serviceEndsAt ?? orgStatus?.currentPeriodEnd)}.
-              </p>
-            ) : null}
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteOrgSubmitting}>Keep organization</AlertDialogCancel>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete organization?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This removes the organization, its groups, and its credit history for all members.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-3 text-sm text-slate-600">
+              <p>Organization created: {formatDate(orgStatus?.createdAt)}</p>
+              <p>Current credit balance: {Number(orgStatus?.creditBalance ?? 0).toLocaleString()} credits.</p>
+              <p>AI will stop for members immediately because the organization will no longer exist.</p>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleteOrgSubmitting}>Keep organization</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={(event) => {
-                event.preventDefault();
-                void handleScheduleOrgDeletion();
-              }}
-              disabled={deleteOrgSubmitting || orgStatus?.cancelAtPeriodEnd || !isOrgOwner}
-            >
-              {deleteOrgSubmitting ? "Scheduling..." : orgStatus?.cancelAtPeriodEnd ? "Already scheduled" : "Delete organization"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void handleDeleteOrganization();
+                }}
+                disabled={deleteOrgSubmitting || !isOrgOwner}
+              >
+                {deleteOrgSubmitting ? "Deleting..." : "Delete organization"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
       </AlertDialog>
       <ProfileDialog
         isOpen={isProfileOpen}

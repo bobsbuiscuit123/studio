@@ -668,17 +668,28 @@ export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calenda
 
 export type OrgAiQuotaStatus = {
     orgId: string;
+    orgName: string;
     role: string;
-    status: string;
-    cancelAtPeriodEnd: boolean;
-    maxUserLimit: number;
-    dailyCreditPerUser: number;
+    memberLimit: number;
+    dailyAiLimitPerUser: number;
     activeUsers: number;
-    creditsUsedToday: number;
+    requestsUsedToday: number;
+    aiAvailability: 'available' | 'limited' | 'paused';
+    estimatedMonthlyCredits: number;
+    estimatedDailyCredits: number;
+    creditHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
+    creditBalance?: number;
+    estimatedDaysRemaining?: number;
+    recentCreditActivity?: Array<{
+        id: string;
+        amount: number;
+        type: string;
+        description: string;
+        metadata?: Record<string, unknown> | null;
+        created_at: string;
+    }>;
     createdAt: string | null;
-    currentPeriodStart: string | null;
-    currentPeriodEnd: string | null;
-    serviceEndsAt: string | null;
+    updatedAt: string | null;
 };
 
 export const notifyOrgAiUsageChanged = (
@@ -746,9 +757,9 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
                     prev
                         ? {
                               ...prev,
-                              creditsUsedToday: Math.min(
-                                  prev.dailyCreditPerUser,
-                                  prev.creditsUsedToday + delta
+                              requestsUsedToday: Math.min(
+                                  prev.dailyAiLimitPerUser,
+                                  prev.requestsUsedToday + delta
                               ),
                           }
                         : prev
@@ -770,8 +781,8 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
         };
     }, [refresh]);
 
-    const used = status?.creditsUsedToday ?? 0;
-    const limit = status?.dailyCreditPerUser ?? 0;
+    const used = status?.requestsUsedToday ?? 0;
+    const limit = status?.dailyAiLimitPerUser ?? 0;
     const remaining = Math.max(0, limit - used);
     const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
 

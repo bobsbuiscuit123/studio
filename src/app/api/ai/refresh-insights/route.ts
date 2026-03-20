@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestDayKey } from '@/lib/day-key';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
-import { headers } from 'next/headers';
+import { calculateCreditCostPerRequest } from '@/lib/pricing';
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -70,43 +70,18 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdmin();
-  const [{ data: plan }, { data: sub }] = await Promise.all([
-    admin
-      .from('org_billing_plans')
-      .select('daily_credit_per_user')
-      .eq('org_id', orgId)
-      .maybeSingle(),
-    admin
-      .from('org_subscriptions')
-      .select('status')
-      .eq('org_id', orgId)
-      .maybeSingle(),
-  ]);
+  const { data: org } = await admin
+    .from('orgs')
+    .select('member_limit, ai_daily_limit_per_user, credit_balance')
+    .eq('id', orgId)
+    .maybeSingle();
 
-  const status = sub?.status ?? 'inactive';
-  if (!['active', 'trialing'].includes(status)) {
-    return NextResponse.json(
-      err({
-        code: 'BILLING_INACTIVE',
-        message: 'Billing inactive. In-app purchase access is not active for this organization.',
-        source: 'app',
-      }),
-      { status: 402 }
-    );
-  }
+  const memberLimit = Number(org?.member_limit ?? 0);
+  const dailyLimit = Number(org?.ai_daily_limit_per_user ?? 0);
+  const creditBalance = Number(org?.credit_balance ?? 0);
+  const creditCost = calculateCreditCostPerRequest(memberLimit);
 
-  const dailyLimit = plan?.daily_credit_per_user ?? 0;
-  const usageDate = getRequestDayKey(request);
-  const { data: result } = await admin.rpc('increment_daily_credits', {
-    p_org_id: orgId,
-    p_user_id: userId,
-    p_usage_date: usageDate,
-    p_increment_by: 1,
-    p_daily_limit: dailyLimit,
-  });
-  const success = Array.isArray(result) ? result[0]?.success : result?.success;
-  const newValue = Array.isArray(result) ? result[0]?.new_value : result?.new_value;
-  if (!success) {
+  if (dailyLimit <= 0) {
     return NextResponse.json(
       err({
         code: 'DAILY_LIMIT_REACHED',
@@ -117,11 +92,71 @@ export async function POST(request: Request) {
     );
   }
 
+  if (creditBalance <= 0 || creditBalance < creditCost) {
+    return NextResponse.json(
+      err({
+        code: 'AI_CREDITS_DEPLETED',
+        message: 'AI temporarily unavailable. Your organization has run out of credits.',
+        source: 'app',
+      }),
+      { status: 402 }
+    );
+  }
+
+  const usageDate = getRequestDayKey(request);
+  const { data: result, error: consumeError } = await admin.rpc('consume_org_ai_credit', {
+    p_org_id: orgId,
+    p_user_id: userId,
+    p_usage_date: usageDate,
+    p_daily_limit: dailyLimit,
+    p_credit_cost: creditCost,
+  });
+
+  if (consumeError) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: consumeError.message,
+        source: 'network',
+      }),
+      { status: 500 }
+    );
+  }
+
+  const consumeResult = Array.isArray(result) ? result[0] : result;
+  const reason = String(consumeResult?.reason ?? '');
+  const usedToday = Number(consumeResult?.new_request_count ?? 0);
+  const remainingBalance = Number(consumeResult?.remaining_balance ?? 0);
+
+  if (!consumeResult?.success) {
+    if (reason === 'daily_limit_reached') {
+      return NextResponse.json(
+        err({
+          code: 'DAILY_LIMIT_REACHED',
+          message: 'Daily limit reached.',
+          source: 'ai',
+        }),
+        { status: 429 }
+      );
+    }
+
+    return NextResponse.json(
+      err({
+        code: 'AI_CREDITS_DEPLETED',
+        message: 'AI temporarily unavailable. Your organization has run out of credits.',
+        source: 'app',
+      }),
+      { status: 402 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     data: {
-      usedToday: Number(newValue ?? 0),
-      remaining: Math.max(0, dailyLimit - Number(newValue ?? 0)),
+      usedToday,
+      remaining: Math.max(0, dailyLimit - usedToday),
+      remainingBalance,
+      creditCost,
     },
   });
 }

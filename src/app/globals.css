@@ -202,6 +202,10 @@ main,
   padding-bottom: 0.4rem;
 }
 
+.app-header-inner-native {
+  padding-top: 0.35rem;
+}
+
 @media (min-width: 640px) {
   .app-header-inner {
     padding-top: 0.5rem;
@@ -212,6 +216,8 @@ main,
 .tab-page-content {
   min-height: 0;
   flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: max(6rem, calc(var(--safe-area-bottom) + 6rem));
@@ -228,6 +234,36 @@ main,
 
 .tab-empty-state {
   margin-top: 1.5rem;
+  text-align: center;
+}
+
+.tab-page-fill {
+  display: flex;
+  min-height: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.tab-page-fill-card {
+  display: flex;
+  min-height: 100%;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.tab-page-fill-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.tab-page-empty-fill {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 1.5rem;
   text-align: center;
 }
 

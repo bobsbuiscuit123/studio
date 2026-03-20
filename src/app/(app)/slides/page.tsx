@@ -218,11 +218,15 @@ export default function SlidesPage() {
                 <Presentation className="h-6 w-6" /> Slides
               </h1>
             </div>
-            <div className="tab-page-content">
-            <Card className="mt-6 p-8 text-center">
-                <CardTitle>Access Denied</CardTitle>
-                <CardDescription>This page is only available to club administrators and officers.</CardDescription>
+            <div className="tab-page-content pt-2">
+            <div className="tab-page-fill">
+            <Card className="tab-page-fill-card p-8 text-center">
+                <div className="tab-page-empty-fill">
+                  <CardTitle>Access Denied</CardTitle>
+                  <CardDescription>This page is only available to club administrators and officers.</CardDescription>
+                </div>
             </Card>
+            </div>
             </div>
         </div>
     )
@@ -242,6 +246,7 @@ export default function SlidesPage() {
           </div>
         </div>
         <div className="tab-page-content pt-2">
+      <div className="tab-page-fill">
       <div id="interactive-content">
         <div className="grid gap-4 md:grid-cols-3 md:gap-6">
           <div className="md:col-span-1 space-y-6">
@@ -340,7 +345,7 @@ export default function SlidesPage() {
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="min-h-[500px] flex-grow">
+              <CardContent className="flex min-h-[500px] flex-grow flex-col">
                 {isLoading && (
                   <div className="tab-empty-state flex items-start justify-center">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -369,7 +374,7 @@ export default function SlidesPage() {
                         <CarouselNext className="-right-12" />
                     </Carousel>
                 ) : !isLoading && (
-                  <div className="tab-empty-state text-center text-muted-foreground">
+                  <div className="tab-page-empty-fill text-muted-foreground">
                       <div>
                         <p>Generated slides will be displayed here.</p>
                         <p className="text-sm">Use the form on the left to generate a new presentation or select one from your history.</p>
@@ -380,6 +385,7 @@ export default function SlidesPage() {
             </Card>
           </div>
         </div>
+      </div>
       </div>
         </div>
       </div>

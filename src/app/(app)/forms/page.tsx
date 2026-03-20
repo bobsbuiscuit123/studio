@@ -66,6 +66,7 @@ function FormsPageInner() {
   });
 
   const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
+  const hasForms = safeForms.length > 0;
   const memberNameByEmail = useMemo(() => {
     const list = Array.isArray(members) ? members : [];
     return new Map(list.map(member => [member.email, member.name]));
@@ -214,6 +215,7 @@ function FormsPageInner() {
       </header>
 
       <div className="tab-page-content pt-3">
+      <div className="tab-page-fill">
       <div className="grid gap-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">
@@ -321,17 +323,19 @@ function FormsPageInner() {
             </Card>
         )}
 
-        <div className={canEditContent ? "lg:col-span-2" : "lg:col-span-3"}>
-          <Card>
+        <div className={canEditContent ? "lg:col-span-2" : "tab-page-fill lg:col-span-3"}>
+          <Card className={!canEditContent && !hasForms ? "tab-page-fill-card" : undefined}>
             <CardHeader>
               <CardTitle>Live forms</CardTitle>
               <CardDescription>Members can view, answer, and you can track reads and replies.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className={!canEditContent && !hasForms ? "tab-page-fill-body" : "space-y-4"}>
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading forms...</p>
               ) : safeForms.length === 0 ? (
-                <p className="tab-empty-state text-muted-foreground">No forms yet. {canEditContent ? "Create one to collect responses." : ""}</p>
+                <div className="tab-page-empty-fill text-muted-foreground">
+                  <p>No forms yet. {canEditContent ? "Create one to collect responses." : ""}</p>
+                </div>
               ) : (
                 safeForms.map(form => {
                   const responses = Array.isArray(form.responses) ? form.responses : [];
@@ -565,6 +569,7 @@ function FormsPageInner() {
             </CardContent>
           </Card>
         </div>
+      </div>
       </div>
       </div>
     </div>

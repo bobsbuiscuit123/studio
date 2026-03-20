@@ -293,6 +293,7 @@ export default function SocialPage() {
         </div>
       </div>
       <div className="tab-page-content pt-2">
+    <div className="tab-page-fill">
     <div className="grid gap-4 md:grid-cols-3 md:gap-6">
       {canEditContent && (
         <div className="md:col-span-1">
@@ -368,7 +369,7 @@ export default function SocialPage() {
             </Card>
         </div>
       )}
-       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
+       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3 flex min-h-full flex-col"}>
         <h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
         {loading ? <p>Loading...</p> : 
           socialPosts.length > 0 ? (
@@ -481,13 +482,14 @@ export default function SocialPage() {
             )})}
           </div>
         ) : (
-             <Card className="md:col-span-2">
-              <CardContent className="py-10">
-                <p className="tab-empty-state text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
+             <Card className={!canEditContent ? "tab-page-fill-card md:col-span-2" : "md:col-span-2"}>
+              <CardContent className={!canEditContent ? "tab-page-empty-fill" : "py-10"}>
+                <p className={`${canEditContent ? "tab-empty-state " : ""}text-muted-foreground`}>No social posts yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>
         )}
       </div>
+    </div>
     </div>
       </div>
     </div>

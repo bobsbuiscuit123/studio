@@ -296,14 +296,14 @@ export default function AssistantPage() {
         <h1 className="text-2xl font-semibold">Assistant</h1>
       </div>
       <div className="tab-page-content pt-2">
-    <div className="space-y-6">
-      <Card>
+    <div className="tab-page-fill gap-6">
+      <Card className="tab-page-fill-card">
         <CardHeader>
           <CardTitle>Assistant</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            <div className="rounded-xl border bg-muted/20 px-6 py-10 text-center">
+        <CardContent className="tab-page-fill-body">
+          <div className="tab-page-fill gap-6">
+            <div className="tab-page-empty-fill rounded-xl border bg-muted/20 px-6 py-10">
               <div>
                 <h2 className="text-2xl font-semibold tracking-tight">Unavailable right now</h2>
                 <p className="mt-3 text-sm text-muted-foreground">Coming soon.</p>

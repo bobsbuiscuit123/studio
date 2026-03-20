@@ -514,6 +514,7 @@ function AnnouncementsPageInner() {
         </div>
       </div>
       <div className="tab-page-content pt-2">
+    <div className="tab-page-fill">
     <div className="grid gap-4 md:grid-cols-3 md:gap-6">
       {canEditContent && (
         <div className="md:col-span-1">
@@ -731,7 +732,7 @@ function AnnouncementsPageInner() {
             </Card>
         </div>
       )}
-      <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
+      <div className={canEditContent ? "md:col-span-2" : "md:col-span-3 flex min-h-full flex-col"}>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
             safeAnnouncements.length > 0 ? (
@@ -844,9 +845,9 @@ function AnnouncementsPageInner() {
                 );
               })
           ) : (
-            <Card>
-              <CardContent className="py-10">
-                <div className="tab-empty-state">
+            <Card className={!canEditContent ? "tab-page-fill-card" : undefined}>
+              <CardContent className={!canEditContent ? "tab-page-empty-fill" : "py-10"}>
+                <div className={canEditContent ? "tab-empty-state" : ""}>
                   <p className="text-muted-foreground">No announcements yet.</p>
                   {canEditContent ? (
                     <p className="text-muted-foreground">Create one to update your members.</p>
@@ -859,6 +860,7 @@ function AnnouncementsPageInner() {
           )}
         </div>
       </div>
+    </div>
     </div>
       </div>
     </div>

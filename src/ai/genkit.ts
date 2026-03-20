@@ -1,6 +1,7 @@
 import 'server-only';
 import type { z } from 'zod';
 import { recordGeminiRequest } from '@/ai/ai-action-context';
+import { clampAiOutputChars } from '@/lib/ai-output-limit';
 import { err, ok, type AppError, type Result } from '@/lib/result';
 import { addBreadcrumb, captureException } from '@/lib/telemetry';
 
@@ -24,7 +25,7 @@ export type ChatMessage = {
   content: string;
 };
 
-const MAX_APP_AI_PROMPT_CHARS = 2936;
+const MAX_APP_AI_PROMPT_CHARS = 1856;
 
 // Gemini setup (only validated when provider is gemini)
 const geminiKey =
@@ -377,6 +378,7 @@ export async function callAI<TOutput>(options: {
   responseFormat?: 'json_object';
   modelOverride?: string;
   outputSchema: z.ZodType<TOutput>;
+  maxOutputChars?: number;
   timeoutMs?: number;
 }): Promise<Result<TOutput>>;
 export async function callAI(options: {
@@ -385,6 +387,7 @@ export async function callAI(options: {
   responseFormat?: 'json_object';
   modelOverride?: string;
   outputSchema?: undefined;
+  maxOutputChars?: number;
   timeoutMs?: number;
 }): Promise<Result<string>>;
 export async function callAI<TOutput>(options: {
@@ -393,6 +396,7 @@ export async function callAI<TOutput>(options: {
   responseFormat?: 'json_object';
   modelOverride?: string;
   outputSchema?: z.ZodType<TOutput>;
+  maxOutputChars?: number;
   timeoutMs?: number;
 }): Promise<Result<TOutput | string>> {
   const {
@@ -401,6 +405,7 @@ export async function callAI<TOutput>(options: {
     responseFormat,
     modelOverride,
     outputSchema,
+    maxOutputChars,
     timeoutMs,
   } = options;
   logAiEnvDebug();
@@ -536,6 +541,14 @@ export async function callAI<TOutput>(options: {
     MAX_APP_AI_PROMPT_CHARS
   );
 
+  const applyOutputCharLimit = <TValue>(value: TValue): TValue => {
+    if (typeof maxOutputChars !== 'number' || maxOutputChars < 0) {
+      return value;
+    }
+
+    return clampAiOutputChars(value, maxOutputChars);
+  };
+
   const run = async () => {
     if (provider === 'gemini') {
       const modules = await loadGeminiModules();
@@ -579,7 +592,19 @@ export async function callAI<TOutput>(options: {
         throw error;
       }
       if (outputSchema) {
-        return ok(res.output as TOutput);
+        const limitedOutput = applyOutputCharLimit(res.output as TOutput);
+        const validated = outputSchema.safeParse(limitedOutput);
+        if (!validated.success) {
+          return err(
+            makeAiError(
+              'AI_SCHEMA_INVALID',
+              'AI response validation failed.',
+              validated.error.message,
+              true
+            )
+          );
+        }
+        return ok(validated.data);
       }
       const text = res?.text;
       if (!text || typeof text !== 'string') {
@@ -592,7 +617,7 @@ export async function callAI<TOutput>(options: {
           )
         );
       }
-      return ok(text.trim());
+      return ok(applyOutputCharLimit(text.trim()));
     }
 
     if (provider === 'openrouter') {
@@ -617,9 +642,21 @@ export async function callAI<TOutput>(options: {
             )
           );
         }
-        return ok(validated.data);
+        const limitedOutput = applyOutputCharLimit(validated.data);
+        const limitedValidated = outputSchema.safeParse(limitedOutput);
+        if (!limitedValidated.success) {
+          return err(
+            makeAiError(
+              'AI_SCHEMA_INVALID',
+              'AI response validation failed.',
+              limitedValidated.error.message,
+              true
+            )
+          );
+        }
+        return ok(limitedValidated.data);
       }
-      return ok(content);
+      return ok(applyOutputCharLimit(content));
     }
 
     const content = await callOpenAIChat({
@@ -643,9 +680,21 @@ export async function callAI<TOutput>(options: {
           )
         );
       }
-      return ok(validated.data);
+      const limitedOutput = applyOutputCharLimit(validated.data);
+      const limitedValidated = outputSchema.safeParse(limitedOutput);
+      if (!limitedValidated.success) {
+        return err(
+          makeAiError(
+            'AI_SCHEMA_INVALID',
+            'AI response validation failed.',
+            limitedValidated.error.message,
+            true
+          )
+        );
+      }
+      return ok(limitedValidated.data);
     }
-    return ok(content);
+    return ok(applyOutputCharLimit(content));
   };
 
   const promise = run()

@@ -17,6 +17,8 @@ import { resolveInsightRequest } from '@/ai/flows/resolve-insight-request';
 import { resolveMetricValue } from '@/ai/flows/resolve-metric-value';
 import { resolveGraphRequest } from '@/ai/flows/resolve-graph-request';
 import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
+import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
+import { isResult } from '@/lib/result';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
@@ -68,6 +70,33 @@ const errorResponse = (error: unknown, status = 500) =>
       headers: jsonHeaders,
     }
   );
+
+const clampTabAiResult = (value: unknown) => {
+  if (isResult(value)) {
+    if (!value.ok) {
+      return value;
+    }
+
+    return {
+      ...value,
+      data: clampAiOutputChars(value.data, MAX_TAB_AI_OUTPUT_CHARS),
+    };
+  }
+
+  return clampAiOutputChars(value, MAX_TAB_AI_OUTPUT_CHARS);
+};
+
+const cappedTabActions = new Set([
+  'announcement',
+  'form',
+  'calendar',
+  'email',
+  'messages',
+  'gallery',
+  'transaction',
+  'social',
+  'slides',
+]);
 
 export async function POST(request: Request) {
   try {
@@ -221,8 +250,12 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log('AI RESULT:', result);
-    return successResponse(result, 200);
+    const shouldClampResult =
+      feature === 'chat' && cappedTabActions.has(action);
+    const finalResult = shouldClampResult ? clampTabAiResult(result) : result;
+
+    console.log('AI RESULT:', finalResult);
+    return successResponse(finalResult, 200);
   } catch (error) {
     return new Response(
       JSON.stringify({

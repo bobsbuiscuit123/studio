@@ -10,6 +10,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { sanitizeAiText } from '@/lib/ai-safety';
 import { ok, type Result } from '@/lib/result';
 import { z } from 'zod';
@@ -37,6 +38,7 @@ export async function generateClubAnnouncement(
   const result = await callAI<GenerateClubAnnouncementOutput>({
     responseFormat: 'json_object',
     outputSchema: GenerateClubAnnouncementOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

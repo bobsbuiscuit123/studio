@@ -4,7 +4,7 @@ import { callAI } from '@/ai/genkit';
 import { err, ok, type Result } from '@/lib/result';
 import { z } from 'zod';
 
-const MAX_GEMINI_PROMPT_CHARS = 2936;
+const MAX_GEMINI_PROMPT_CHARS = 1856;
 const DEFAULT_SYSTEM_PROMPT =
   'You are a helpful assistant. Answer clearly and directly.';
 const MINIMAL_SYSTEM_PROMPT = 'Helpful assistant.';

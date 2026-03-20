@@ -9,6 +9,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { type Result } from '@/lib/result';
 import { z } from 'zod';
 
@@ -34,6 +35,7 @@ export async function generateMeetingSlides(
   const result = await callAI<GenerateMeetingSlidesOutput>({
     responseFormat: 'json_object',
     outputSchema: GenerateMeetingSlidesOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

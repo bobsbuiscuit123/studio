@@ -3,6 +3,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { sanitizeAiText } from '@/lib/ai-safety';
 import { ok, type Result } from '@/lib/result';
 import { z } from 'zod';
@@ -31,6 +32,7 @@ export async function generateMessage(
   const result = await callAI<GenerateMessageOutput>({
     responseFormat: 'json_object',
     outputSchema: GenerateMessageOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

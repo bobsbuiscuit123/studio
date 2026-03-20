@@ -8,6 +8,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { type Result } from '@/lib/result';
 import {z} from 'zod';
 
@@ -36,6 +37,7 @@ export async function addCalendarEvent(
   const result = await callAI<AddCalendarEventOutput>({
     responseFormat: 'json_object',
     outputSchema: AddCalendarEventOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

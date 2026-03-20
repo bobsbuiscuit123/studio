@@ -10,6 +10,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { sanitizeAiText } from '@/lib/ai-safety';
 import { err, ok, type Result } from '@/lib/result';
 import { z } from 'zod';
@@ -48,6 +49,7 @@ export async function generateSocialMediaPost(
   const text = await callAI<z.infer<typeof ModelOutputSchema>>({
     responseFormat: 'json_object',
     outputSchema: ModelOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

@@ -8,6 +8,7 @@
  */
 
 import { callAI } from '@/ai/genkit';
+import { MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { type Result } from '@/lib/result';
 import { z } from 'zod';
 
@@ -35,6 +36,7 @@ export async function addTransaction(
   const result = await callAI<AddTransactionOutput>({
     responseFormat: 'json_object',
     outputSchema: AddTransactionOutputSchema,
+    maxOutputChars: MAX_TAB_AI_OUTPUT_CHARS,
     messages: [
       {
         role: 'system',

@@ -23,7 +23,8 @@
       "autoIncrement": true,
       "ios": {
         "scheme": "App",
-        "buildConfiguration": "Release"
+        "buildConfiguration": "Release",
+        "workingDirectory": "ios/App"
       }
     }
   },

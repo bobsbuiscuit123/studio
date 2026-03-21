@@ -21,10 +21,61 @@ const rootXcodeproj = path.join(iosRoot, 'App.xcodeproj');
 const rootAppDir = path.join(iosRoot, 'App');
 const rootSpmDir = path.join(iosRoot, 'CapApp-SPM');
 const rootDebugXcconfig = path.join(iosRoot, 'debug.xcconfig');
+const rootPodfile = path.join(iosRoot, 'Podfile');
 
 const tempXcodeproj = path.join(iosRoot, '__tmp_App.xcodeproj');
 const tempAppDir = path.join(iosRoot, '__tmp_App');
 const tempSpmDir = path.join(iosRoot, '__tmp_CapApp-SPM');
+
+const podfileTemplate = `source 'https://cdn.cocoapods.org/'
+platform :ios, '15.0'
+
+project 'App.xcodeproj'
+
+target 'App' do
+end
+`;
+
+function rewriteNestedProjectPaths() {
+  const pbxprojPath = path.join(nestedXcodeproj, 'project.pbxproj');
+  if (existsSync(pbxprojPath)) {
+    const pbxproj = readFileSync(pbxprojPath, 'utf8').replaceAll('path = debug.xcconfig;', 'path = ../debug.xcconfig;');
+    writeFileSync(pbxprojPath, pbxproj);
+  }
+
+  const packageSwiftPath = path.join(nestedSpmDir, 'Package.swift');
+  if (existsSync(packageSwiftPath)) {
+    let packageSwift = readFileSync(packageSwiftPath, 'utf8');
+    packageSwift = packageSwift.replaceAll('\\', '/');
+    packageSwift = packageSwift.replaceAll('../../node_modules/', '../../../node_modules/');
+    writeFileSync(packageSwiftPath, packageSwift);
+  }
+}
+
+function prepareNestedLayoutForCapSync() {
+  const nestedLayoutExists = existsSync(nestedXcodeproj) && existsSync(nestedAppDir) && existsSync(nestedSpmDir);
+  if (nestedLayoutExists) {
+    rewriteNestedProjectPaths();
+    return;
+  }
+
+  const flatLayoutExists = existsSync(rootXcodeproj) && existsSync(rootAppDir) && existsSync(rootSpmDir);
+  if (!flatLayoutExists) {
+    throw new Error('Unable to prepare iOS sync because neither the flat nor nested Capacitor layout is present');
+  }
+
+  renameSync(rootXcodeproj, tempXcodeproj);
+  renameSync(rootAppDir, tempAppDir);
+  renameSync(rootSpmDir, tempSpmDir);
+
+  mkdirSync(nestedWrapper, { recursive: true });
+
+  renameSync(tempXcodeproj, nestedXcodeproj);
+  renameSync(tempAppDir, nestedAppDir);
+  renameSync(tempSpmDir, nestedSpmDir);
+
+  rewriteNestedProjectPaths();
+}
 
 function runCapSync() {
   const isWindows = process.platform === 'win32';
@@ -82,6 +133,10 @@ function rewriteProjectPaths() {
   writeFileSync(packageSwiftPath, packageSwift);
 }
 
+function ensureRootPodfile() {
+  writeFileSync(rootPodfile, podfileTemplate);
+}
+
 function ensureScheme() {
   const schemeDir = path.join(rootXcodeproj, 'xcshareddata', 'xcschemes');
   const schemePath = path.join(schemeDir, 'App.xcscheme');
@@ -92,11 +147,12 @@ function ensureScheme() {
   }
 }
 
+prepareNestedLayoutForCapSync();
 runCapSync();
 ensureExpectedNestedLayout();
-clearPreviousFlatTargets();
 flattenTree();
 rewriteProjectPaths();
+ensureRootPodfile();
 ensureScheme();
 
 await import('./verify-ios-eas-layout.mjs');

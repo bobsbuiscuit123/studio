@@ -1,0 +1,6 @@
+{
+  "name": "react-native",
+  "version": "0.84.1",
+  "private": true,
+  "description": "Local metadata shim so EAS can resolve react-native/package.json for this Capacitor app."
+}

@@ -1,48 +1,13 @@
 import UIKit
 import Capacitor
 
-final class AppBridgeViewController: CAPBridgeViewController {
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 246.0 / 255.0, green: 250.0 / 255.0, blue: 244.0 / 255.0, alpha: 1.0)
-        title = nil
-        navigationItem.title = nil
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        title = nil
-        navigationItem.title = nil
-        navigationController?.setNavigationBarHidden(true, animated: false)
-        navigationController?.navigationBar.isHidden = true
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: false)
-        navigationController?.navigationBar.isHidden = true
-    }
-
-    override var prefersStatusBarHidden: Bool {
-        false
-    }
-
-    override var preferredStatusBarStyle: UIStatusBarStyle {
-        .darkContent
-    }
-}
-
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let bridgeViewController = AppBridgeViewController()
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = bridgeViewController
-        window.makeKeyAndVisible()
-        self.window = window
+        // Override point for customization after application launch.
         return true
     }
 

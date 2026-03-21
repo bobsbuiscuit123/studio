@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { SignInWithApple } from '@capacitor-community/apple-sign-in';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -50,76 +49,6 @@ const loginFormSchema = z.object({
     email: z.string().email("Please enter a valid email address."),
     password: z.string().min(1, "Password is required."),
 });
-
-function AppleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
-      <path d="M16.365 12.54c.014 1.51.77 2.9 2.029 3.67-.8 1.14-1.83 2.27-3.15 2.29-1.27.03-1.68-.75-3.14-.75-1.46 0-1.92.72-3.12.78-1.28.05-2.27-1.28-3.08-2.42C4.24 13.69 3 9.28 4.7 6.33c.85-1.46 2.36-2.38 4-2.41 1.25-.02 2.43.84 3.14.84.71 0 2.05-1.04 3.46-.89.59.02 2.25.24 3.31 1.8-.08.05-1.98 1.15-1.95 3.43ZM14.43 2.6c.67-.8 1.12-1.9 1-3-.97.04-2.15.65-2.84 1.45-.62.71-1.16 1.84-1.01 2.92 1.08.08 2.17-.54 2.85-1.37Z" />
-    </svg>
-  );
-}
-
-function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
-    const [providerLoading, setProviderLoading] = useState<'apple' | null>(null);
-    const { toast } = useToast();
-    const router = useRouter();
-
-    type NativeAppleAuthorizeResult = {
-      identityToken?: string;
-      response?: {
-        identityToken?: string | null;
-      };
-    };
-
-    const signInWithApple = async () => {
-        setProviderLoading('apple');
-
-        try {
-            const result = await SignInWithApple.authorize({
-              scopes: 'email name',
-            } as unknown as Parameters<typeof SignInWithApple.authorize>[0]) as NativeAppleAuthorizeResult;
-            const identityToken = result.identityToken ?? result.response?.identityToken;
-
-            if (!identityToken) {
-              throw new Error('No identity token returned from Apple');
-            }
-
-            const { error } = await supabase.auth.signInWithIdToken({
-              provider: 'apple',
-              token: identityToken,
-            });
-
-            if (error) {
-              throw error;
-            }
-
-            router.push('/dashboard');
-        } catch (err) {
-            console.error('Apple login error:', err);
-        } finally {
-            setProviderLoading(null);
-        }
-    };
-
-    return (
-        <div className="space-y-2.5">
-            <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-full"
-                onClick={signInWithApple}
-                disabled={providerLoading !== null}
-            >
-                <AppleLogoIcon /> Continue with Apple
-            </Button>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                <div className="h-px flex-1 bg-border" />
-                <span>or continue with email</span>
-                <div className="h-px flex-1 bg-border" />
-            </div>
-        </div>
-    );
-}
 
 function LegalNotice({
   onOpenTerms,
@@ -231,7 +160,6 @@ function SignUpForm({
             </CardHeader>
             <CardContent className="px-0 pb-0">
                 <div className="space-y-3.5">
-                <OAuthButtons supabase={supabase} />
                 <form onSubmit={form.handleSubmit(handleSaveUser)} className="space-y-3.5">
                     <div>
                         <Label htmlFor="name-signup">Full Name</Label>
@@ -333,7 +261,6 @@ function LoginForm({
             </CardHeader>
             <CardContent className="px-0 pb-0">
                 <div className="space-y-3.5">
-                <OAuthButtons supabase={supabase} />
                 <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-3.5">
                     <div>
                         <Label htmlFor="email-login">Email</Label>

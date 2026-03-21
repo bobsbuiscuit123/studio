@@ -5,7 +5,8 @@
   "build": {
     "production": {
       "ios": {
-        "scheme": "App"
+        "scheme": "App",
+        "projectPath": "ios/App/App.xcodeproj"
       }
     }
   }

@@ -7,6 +7,11 @@
       "bundleIdentifier": "com.caspo.app",
       "buildNumber": "6"
     },
+    "infoPlist": {
+      "NSPhotoLibraryUsageDescription": "Caspo uses your photo library to let you upload images for AI features.",
+      "NSPhotoLibraryAddUsageDescription": "Caspo saves generated images to your photo library.",
+      "NSCameraUsageDescription": "Caspo uses your camera to capture images for AI features."
+    },
     "extra": {
       "eas": {
         "projectId": "cee6cce7-0d7e-424a-8e07-ee547a3e9e25"

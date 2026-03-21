@@ -1,5 +1,5 @@
 diff --git a/node_modules/@expo/config-plugins/build/ios/Paths.js b/node_modules/@expo/config-plugins/build/ios/Paths.js
-index 39fb0a5..6b361e7 100644
+index 39fb0a5..167e2cf 100644
 --- a/node_modules/@expo/config-plugins/build/ios/Paths.js
 +++ b/node_modules/@expo/config-plugins/build/ios/Paths.js
 @@ -75,7 +75,7 @@ function _getRequireWildcardCache(e) { if ("function" != typeof WeakMap) return
@@ -26,6 +26,15 @@ index 39fb0a5..6b361e7 100644
  function getAppDelegateObjcHeaderFilePath(projectRoot) {
 -  const [using, ...extra] = (0, _glob2().withSortedGlobResult)((0, _glob().globSync)('ios/*/AppDelegate.h', {
 +  const [using, ...extra] = (0, _glob2().withSortedGlobResult)((0, _glob().globSync)('ios/**/AppDelegate.h', {
+     absolute: true,
+     cwd: projectRoot,
+     ignore: ignoredPaths
+@@ -135,7 +135,7 @@ function getAppDelegateObjcHeaderFilePath(projectRoot) {
+   return using;
+ }
+ function getPodfilePath(projectRoot) {
+-  const [using, ...extra] = (0, _glob2().withSortedGlobResult)((0, _glob().globSync)('ios/Podfile', {
++  const [using, ...extra] = (0, _glob2().withSortedGlobResult)((0, _glob().globSync)('ios/**/Podfile', {
      absolute: true,
      cwd: projectRoot,
      ignore: ignoredPaths

@@ -1,0 +1,15 @@
+diff --git a/node_modules/@capacitor/cli/dist/config.js b/node_modules/@capacitor/cli/dist/config.js
+index a766e5a..f3e2ddc 100644
+--- a/node_modules/@capacitor/cli/dist/config.js
++++ b/node_modules/@capacitor/cli/dist/config.js
+@@ -359,7 +359,9 @@ async function determineCocoapodPath() {
+     return 'pod';
+ }
+ async function determinePackageManager(rootDir, platformDir, nativeProjectDirAbs) {
+-    if ((0, fs_extra_1.existsSync)((0, path_1.resolve)(nativeProjectDirAbs, 'CapApp-SPM'))) {
++    const podfilePath = (0, path_1.resolve)(nativeProjectDirAbs, 'Podfile');
++    const podfileExists = (0, fs_extra_1.existsSync)(podfilePath);
++    if (!podfileExists && (0, fs_extra_1.existsSync)((0, path_1.resolve)(nativeProjectDirAbs, 'CapApp-SPM'))) {
+         return 'SPM';
+     }
+     let gemfilePath = '';

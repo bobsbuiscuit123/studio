@@ -1,0 +1,58 @@
+diff --git a/node_modules/eas-cli/build/build/ios/version.js b/node_modules/eas-cli/build/build/ios/version.js
+index 8534b7c..5b88732 100644
+--- a/node_modules/eas-cli/build/build/ios/version.js
++++ b/node_modules/eas-cli/build/build/ios/version.js
+@@ -133,16 +133,16 @@ async function maybeResolveVersionsAsync(projectDir, exp, targets, vcsClient) {
+     }
+ }
+ function getInfoPlistPath(projectDir, buildSettings) {
++    const iosProjectDir = getIosProjectDir(projectDir);
+     if (buildSettings.INFOPLIST_FILE) {
+         const infoPlistFile = buildSettings.INFOPLIST_FILE.startsWith('"')
+             ? buildSettings.INFOPLIST_FILE.slice(1, -1)
+             : buildSettings.INFOPLIST_FILE;
+-        const iosDir = path_1.default.join(projectDir, 'ios');
+         const plistPath = evaluateTemplateString(infoPlistFile, {
+             ...buildSettings,
+-            SRCROOT: iosDir,
++            SRCROOT: iosProjectDir,
+         });
+-        return path_1.default.isAbsolute(plistPath) ? plistPath : path_1.default.resolve(iosDir, plistPath);
++        return path_1.default.isAbsolute(plistPath) ? plistPath : path_1.default.resolve(iosProjectDir, plistPath);
+     }
+     else {
+         return config_plugins_1.IOSConfig.Paths.getInfoPlistPath(projectDir);
+@@ -154,7 +154,7 @@ async function readInfoPlistAsync(projectDir, buildSettings) {
+ }
+ async function updateNativeVersionsAsync({ projectDir, version, buildNumber, targets, }) {
+     const project = config_plugins_1.IOSConfig.XcodeUtils.getPbxproj(projectDir);
+-    const iosDir = path_1.default.join(projectDir, 'ios');
++    const iosProjectDir = getIosProjectDir(projectDir);
+     const infoPlistFiles = [];
+     for (const target of targets) {
+         const { targetName, buildConfiguration } = target;
+@@ -165,11 +165,11 @@ async function updateNativeVersionsAsync({ projectDir, version, buildNumber, tar
+         const infoPlist = xcBuildConfiguration?.buildSettings?.INFOPLIST_FILE;
+         if (infoPlist) {
+             const evaluatedInfoPlistPath = trimQuotes(evaluateTemplateString(infoPlist, {
+-                SRCROOT: iosDir,
++                SRCROOT: iosProjectDir,
+             }));
+             const absolutePath = path_1.default.isAbsolute(evaluatedInfoPlistPath)
+                 ? evaluatedInfoPlistPath
+-                : path_1.default.join(iosDir, evaluatedInfoPlistPath);
++                : path_1.default.join(iosProjectDir, evaluatedInfoPlistPath);
+             infoPlistFiles.push(path_1.default.normalize(absolutePath));
+         }
+     }
+@@ -188,6 +188,10 @@ async function updateNativeVersionsAsync({ projectDir, version, buildNumber, tar
+ function trimQuotes(s) {
+     return s?.startsWith('"') && s.endsWith('"') ? s.slice(1, -1) : s;
+ }
++function getIosProjectDir(projectDir) {
++    const pbxProjectPath = config_plugins_1.IOSConfig.Paths.getPBXProjectPath(projectDir);
++    return path_1.default.dirname(path_1.default.dirname(pbxProjectPath));
++}
+ function evaluateTemplateString(s, buildSettings) {
+     // necessary because XCBuildConfiguration['buildSettings'] is not a plain object
+     const vars = { ...buildSettings };

@@ -10,4 +10,13 @@
       }
     }
   }
+  ,
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "kartheek.mukkavilli@gmail.com",
+        "ascAppId": "6760799213"
+      }
+    }
+  }
 }

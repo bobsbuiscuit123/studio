@@ -51,57 +51,6 @@ const loginFormSchema = z.object({
     password: z.string().min(1, "Password is required."),
 });
 
-function getConfiguredSiteOrigin() {
-  const configuredSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  if (configuredSiteUrl && /^https?:\/\//i.test(configuredSiteUrl)) {
-    try {
-      const parsed = new URL(configuredSiteUrl);
-      const isLocalhost =
-        parsed.hostname === 'localhost' ||
-        parsed.hostname === '127.0.0.1' ||
-        parsed.hostname === '0.0.0.0';
-      if (!isLocalhost) {
-        return parsed.origin;
-      }
-    } catch {
-      // Fall through to runtime origin below.
-    }
-  }
-  if (typeof window !== 'undefined') {
-    const runtimeOrigin = window.location.origin;
-    return runtimeOrigin;
-  }
-  return undefined;
-}
-
-function getOAuthRedirectTo() {
-  const origin = getConfiguredSiteOrigin();
-  return origin ? `${origin}/auth/callback` : undefined;
-}
-
-function GoogleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M23.49 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47a5.53 5.53 0 0 1-2.39 3.63v2.99h3.87c2.26-2.08 3.54-5.14 3.54-8.86Z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.96-1.07 7.95-2.91l-3.87-2.99c-1.07.72-2.44 1.14-4.08 1.14-3.13 0-5.78-2.11-6.72-4.95H1.29v3.08A12 12 0 0 0 12 24Z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.28 14.29A7.19 7.19 0 0 1 4.91 12c0-.8.14-1.57.37-2.29V6.63H1.29A12 12 0 0 0 0 12c0 1.94.46 3.78 1.29 5.37l3.99-3.08Z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.77c1.77 0 3.36.61 4.61 1.8l3.45-3.45A11.96 11.96 0 0 0 12 0 12 12 0 0 0 1.29 6.63l3.99 3.08C6.22 6.87 8.87 4.77 12 4.77Z"
-      />
-    </svg>
-  );
-}
-
 function AppleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
@@ -111,7 +60,7 @@ function AppleLogoIcon({ className = "mr-2 h-4 w-4" }: { className?: string }) {
 }
 
 function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabaseBrowserClient> }) {
-    const [providerLoading, setProviderLoading] = useState<'google' | 'apple' | null>(null);
+    const [providerLoading, setProviderLoading] = useState<'apple' | null>(null);
     const { toast } = useToast();
     const router = useRouter();
 
@@ -120,28 +69,6 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
       response?: {
         identityToken?: string | null;
       };
-    };
-
-    const handleGoogleOAuth = async () => {
-        setProviderLoading('google');
-        const redirectTo = getOAuthRedirectTo();
-        const { data, error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: {
-              ...(redirectTo ? { redirectTo } : {}),
-              skipBrowserRedirect: true,
-            },
-        });
-        if (error) {
-            toast({ title: "OAuth failed", description: error.message, variant: "destructive" });
-            setProviderLoading(null);
-            return;
-        }
-        if (data?.url) {
-            window.open(data.url, "_blank");
-            return;
-        }
-        setProviderLoading(null);
     };
 
     const signInWithApple = async () => {
@@ -176,15 +103,6 @@ function OAuthButtons({ supabase }: { supabase: ReturnType<typeof createSupabase
 
     return (
         <div className="space-y-2.5">
-            <Button
-                type="button"
-                variant="outline"
-                className="h-11 w-full"
-                onClick={handleGoogleOAuth}
-                disabled={providerLoading !== null}
-            >
-                <GoogleLogoIcon /> Continue with Google
-            </Button>
             <Button
                 type="button"
                 variant="outline"

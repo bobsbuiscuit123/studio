@@ -1,5 +1,12 @@
 {
   "expo": {
+    "name": "CASPO",
+    "slug": "nextn",
+    "version": "1.0.0",
+    "ios": {
+      "bundleIdentifier": "com.caspo.app",
+      "buildNumber": "1"
+    },
     "extra": {
       "eas": {
         "projectId": "cee6cce7-0d7e-424a-8e07-ee547a3e9e25"

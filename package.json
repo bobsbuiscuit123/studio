@@ -7,7 +7,6 @@
     "dev:demo": "cross-env NEXT_PUBLIC_DEMO_MODE=true AI_ENABLED=true node scripts/dev.mjs",
     "genkit:dev": "node scripts/genkit-watch.mjs",
     "genkit:watch": "node scripts/genkit-watch.mjs",
-    "eas-build-pre-install": "node scripts/eas-pre-install-debug.mjs",
     "postinstall": "patch-package",
     "build": "next build",
     "start": "next start",

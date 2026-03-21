@@ -1,34 +1,12 @@
 {
   "cli": {
-    "version": ">= 18.4.0",
     "appVersionSource": "local"
   },
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "scheme": "App",
-        "buildConfiguration": "Debug"
-      }
-    },
-    "preview": {
-      "distribution": "internal",
-      "ios": {
-        "scheme": "App",
-        "buildConfiguration": "Release"
-      }
-    },
     "production": {
-      "autoIncrement": true,
       "ios": {
-        "scheme": "App",
-        "buildConfiguration": "Release",
-        "workingDirectory": "ios/App"
+        "scheme": "App"
       }
     }
-  },
-  "submit": {
-    "production": {}
   }
 }

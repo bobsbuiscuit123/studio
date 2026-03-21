@@ -1,15 +1,24 @@
 diff --git a/node_modules/@capacitor/cli/dist/config.js b/node_modules/@capacitor/cli/dist/config.js
-index a766e5a..f3e2ddc 100644
+index a766e5a..72da8cb 100644
 --- a/node_modules/@capacitor/cli/dist/config.js
 +++ b/node_modules/@capacitor/cli/dist/config.js
-@@ -359,7 +359,9 @@ async function determineCocoapodPath() {
-     return 'pod';
- }
- async function determinePackageManager(rootDir, platformDir, nativeProjectDirAbs) {
--    if ((0, fs_extra_1.existsSync)((0, path_1.resolve)(nativeProjectDirAbs, 'CapApp-SPM'))) {
-+    const podfilePath = (0, path_1.resolve)(nativeProjectDirAbs, 'Podfile');
-+    const podfileExists = (0, fs_extra_1.existsSync)(podfilePath);
-+    if (!podfileExists && (0, fs_extra_1.existsSync)((0, path_1.resolve)(nativeProjectDirAbs, 'CapApp-SPM'))) {
-         return 'SPM';
-     }
-     let gemfilePath = '';
+@@ -225,11 +225,14 @@ async function loadIOSConfig(rootDir, extConfig) {
+     const name = 'ios';
+     const platformDir = (_b = (_a = extConfig.ios) === null || _a === void 0 ? void 0 : _a.path) !== null && _b !== void 0 ? _b : 'ios';
+     const platformDirAbs = (0, path_1.resolve)(rootDir, platformDir);
+     const scheme = (_d = (_c = extConfig.ios) === null || _c === void 0 ? void 0 : _c.scheme) !== null && _d !== void 0 ? _d : 'App';
+-    const nativeProjectDir = 'App';
+-    const nativeProjectDirAbs = (0, path_1.resolve)(platformDirAbs, nativeProjectDir);
+-    const nativeTargetDir = `${nativeProjectDir}/App`;
++    const hasFlatProjectLayout = (0, fs_extra_1.existsSync)((0, path_1.resolve)(platformDirAbs, 'Podfile')) &&
++        (0, fs_extra_1.existsSync)((0, path_1.resolve)(platformDirAbs, `${scheme}.xcodeproj`)) &&
++        (0, fs_extra_1.existsSync)((0, path_1.resolve)(platformDirAbs, scheme));
++    const nativeProjectDir = hasFlatProjectLayout ? '.' : 'App';
++    const nativeProjectDirAbs = hasFlatProjectLayout ? platformDirAbs : (0, path_1.resolve)(platformDirAbs, nativeProjectDir);
++    const nativeTargetDir = hasFlatProjectLayout ? scheme : `${nativeProjectDir}/App`;
+     const nativeTargetDirAbs = (0, path_1.resolve)(platformDirAbs, nativeTargetDir);
+-    const nativeXcodeProjDir = `${nativeProjectDir}/App.xcodeproj`;
++    const nativeXcodeProjDir = hasFlatProjectLayout ? `${scheme}.xcodeproj` : `${nativeProjectDir}/App.xcodeproj`;
+     const nativeXcodeProjDirAbs = (0, path_1.resolve)(platformDirAbs, nativeXcodeProjDir);
+     const nativeXcodeWorkspaceDirAbs = (0, promise_1.lazy)(() => determineXcodeWorkspaceDirAbs(nativeProjectDirAbs));
+     const podPath = (0, promise_1.lazy)(() => determineCocoapodPath());

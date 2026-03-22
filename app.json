@@ -8,7 +8,7 @@
       "buildNumber": "4"
     },
     "infoPlist": {
-      "NSPhotoLibraryUsageDescription": "Caspo uses your photo library to let you upload images for AI features.",
+      "NSPhotoLibraryUsageDescription": "Caspo uses your photo library to allow you to upload images for posts, profiles, or content within the app.",
       "NSPhotoLibraryAddUsageDescription": "Caspo saves generated images to your photo library.",
       "NSCameraUsageDescription": "Caspo uses your camera to capture images for AI features."
     },

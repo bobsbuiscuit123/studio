@@ -21,6 +21,7 @@ import {
   loadAppleTokenPackages,
   purchaseAppleTokenPackage,
   type AppleTokenPurchaseOutcome,
+  type NativeApplePurchaseAvailability,
   type StoreBackedTokenPackage,
 } from '@/lib/token-purchases';
 
@@ -50,6 +51,7 @@ export function TokenPackageDialog({
   const [purchaseSubmitting, setPurchaseSubmitting] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [availabilityMessage, setAvailabilityMessage] = useState<string | null>(null);
+  const [nativeAvailability, setNativeAvailability] = useState<NativeApplePurchaseAvailability | null>(null);
 
   const selectedPack = useMemo(
     () => packages.find((pack) => pack.productId === selectedProductId) ?? null,
@@ -70,6 +72,7 @@ export function TokenPackageDialog({
     let active = true;
     const availability = getNativeApplePurchaseAvailability();
     setAvailabilityMessage(availability.supported ? null : availability.reason ?? null);
+    setNativeAvailability(availability);
     setPurchaseError(null);
     console.log('Capacitor.isNativePlatform()', Capacitor.isNativePlatform());
     console.log(
@@ -202,6 +205,51 @@ export function TokenPackageDialog({
                 {purchaseError}
               </div>
             ) : null}
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600">
+              <p className="text-[10px] font-semibold uppercase text-slate-500">Debug</p>
+              {[
+                {
+                  label: 'Native platform',
+                  value: String(Capacitor.isNativePlatform()),
+                },
+                {
+                  label: 'Capacitor platform',
+                  value: Capacitor.getPlatform() ?? 'unknown',
+                },
+                {
+                  label: 'env key present',
+                  value: Boolean(process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY).toString(),
+                },
+                {
+                  label: 'Availability supported',
+                  value:
+                    nativeAvailability?.supported != null
+                      ? nativeAvailability.supported.toString()
+                      : 'pending',
+                },
+                {
+                  label: 'Availability reason',
+                  value: nativeAvailability?.reason ?? 'n/a',
+                },
+                {
+                  label: 'Packages w/ RevenueCat',
+                  value: `${packages.filter((pack) => pack.revenueCatPackage).length}/${packages.length}`,
+                },
+                {
+                  label: 'Selected pack mapped',
+                  value: selectedRevenueCatPackage ? 'yes' : 'no',
+                },
+                {
+                  label: 'Loading packages',
+                  value: loadingPackages ? 'true' : 'false',
+                },
+              ].map((stat) => (
+                <div key={stat.label} className="mt-2 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">{stat.label}</span>
+                  <span className="font-mono text-[10px] text-slate-900">{stat.value}</span>
+                </div>
+              ))}
+            </div>
             {loadingPackages ? (
               <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" />

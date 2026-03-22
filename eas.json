@@ -6,7 +6,7 @@
   "build": {
     "production": {
       "env": {
-        "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_THVQGlrCXAcNvtJSzvOZhctIGMc"
+        "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "$REV_CAT_APPLE_API_KEY"
       },
       "ios": {
         "scheme": "App",

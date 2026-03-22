@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "ios": {
       "bundleIdentifier": "com.caspo.app",
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "infoPlist": {
       "NSPhotoLibraryUsageDescription": "Caspo uses your photo library to allow you to upload images for posts, profiles, or content within the app.",

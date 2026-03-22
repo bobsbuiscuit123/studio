@@ -41,7 +41,7 @@ export function TokenPackageDialog({
   const [packages, setPackages] = useState<StoreBackedTokenPackage[]>(() =>
     TOKEN_PACKAGES.map((pack) => ({
       ...pack,
-      storeProduct: null,
+      revenueCatPackage: null,
       resolvedPriceLabel: pack.priceLabel,
     }))
   );
@@ -54,6 +54,7 @@ export function TokenPackageDialog({
     () => packages.find((pack) => pack.productId === selectedProductId) ?? null,
     [packages, selectedProductId]
   );
+  const selectedRevenueCatPackage = selectedPack?.revenueCatPackage ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -69,7 +70,7 @@ export function TokenPackageDialog({
       setPackages(
         TOKEN_PACKAGES.map((pack) => ({
           ...pack,
-          storeProduct: null,
+          revenueCatPackage: null,
           resolvedPriceLabel: pack.priceLabel,
         }))
       );
@@ -83,6 +84,7 @@ export function TokenPackageDialog({
       .then((nextPackages) => {
         if (!active) return;
         setPackages(nextPackages);
+        console.log('Packages available', nextPackages.filter((pack) => pack.revenueCatPackage).length);
       })
       .catch((error) => {
         if (!active) return;
@@ -113,6 +115,9 @@ export function TokenPackageDialog({
   };
 
   const handlePurchase = async () => {
+    if (!selectedPack || !selectedRevenueCatPackage) {
+      return;
+    }
     if (!selectedPack) return;
 
     setPurchaseError(null);
@@ -197,7 +202,7 @@ export function TokenPackageDialog({
                 <CardContent className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-sm text-slate-600">
                     <Coins className="h-4 w-4 text-emerald-600" />
-                    {pack.storeProduct?.description || 'Fixed Apple token package'}
+                    {pack.revenueCatPackage?.product.description || 'Fixed Apple token package'}
                   </div>
                   <Button
                     onClick={() => setSelectedProductId(pack.productId)}
@@ -255,7 +260,12 @@ export function TokenPackageDialog({
             <Button
               className="rounded-2xl"
               onClick={() => void handlePurchase()}
-              disabled={purchaseSubmitting || Boolean(availabilityMessage) || loadingPackages}
+              disabled={
+                purchaseSubmitting ||
+                Boolean(availabilityMessage) ||
+                loadingPackages ||
+                !selectedRevenueCatPackage
+              }
             >
               {purchaseSubmitting ? (
                 <>

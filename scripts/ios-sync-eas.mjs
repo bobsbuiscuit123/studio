@@ -10,6 +10,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+process.env.CAPACITOR_CONFIG = 'capacitor.config.ts';
+
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const iosRoot = path.join(repoRoot, 'ios');
 const nestedWrapper = path.join(iosRoot, 'App');

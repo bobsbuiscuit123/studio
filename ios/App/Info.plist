@@ -14,12 +14,6 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Caspo uses your photo library to let you upload images for AI features.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Caspo saves generated images to your photo library.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Caspo uses your camera to capture images for AI features.</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>

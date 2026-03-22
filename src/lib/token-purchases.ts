@@ -2,20 +2,19 @@
 
 import { Capacitor } from '@capacitor/core';
 import {
-  PRODUCT_CATEGORY,
   Purchases,
-  type PurchasesStoreProduct,
+  type PurchasesPackage,
+  type PurchasesOfferings,
 } from '@revenuecat/purchases-capacitor';
 import { safeFetchJson } from '@/lib/network';
 import { TOKEN_PACKAGES, type TokenPackage } from '@/lib/pricing';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
-const PRODUCT_IDS = TOKEN_PACKAGES.map((pack) => pack.productId);
 const WALLET_POLL_ATTEMPTS = 12;
 const WALLET_POLL_DELAY_MS = 1500;
 
 export type StoreBackedTokenPackage = TokenPackage & {
-  storeProduct: PurchasesStoreProduct | null;
+  revenueCatPackage: PurchasesPackage | null;
   resolvedPriceLabel: string;
 };
 
@@ -52,6 +51,8 @@ type WalletResponse = {
 
 let configuredAppUserId: string | null = null;
 let configurePromise: Promise<void> | null = null;
+let cachedOfferings: PurchasesOfferings | null = null;
+let offeringsPromise: Promise<PurchasesOfferings> | null = null;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -138,7 +139,15 @@ const ensureRevenueCatConfigured = async (appUserID: string) => {
   }
 };
 
-const getStoreProductsById = async () => {
+const loadOfferings = async (): Promise<PurchasesOfferings> => {
+  if (cachedOfferings) {
+    return cachedOfferings;
+  }
+
+  if (offeringsPromise) {
+    return offeringsPromise;
+  }
+
   const availability = getNativeApplePurchaseAvailability();
   if (!availability.supported) {
     throw new Error(availability.reason);
@@ -147,17 +156,28 @@ const getStoreProductsById = async () => {
   const appUserID = await getAuthenticatedUserId();
   await ensureRevenueCatConfigured(appUserID);
 
-  const { canMakePayments } = await Purchases.canMakePayments();
-  if (!canMakePayments) {
-    throw new Error('This device cannot make Apple in-app purchases right now.');
+  offeringsPromise = Purchases.getOfferings()
+    .then((offerings) => {
+      console.log('Offerings loaded');
+      cachedOfferings = offerings;
+      return offerings;
+    })
+    .finally(() => {
+      offeringsPromise = null;
+    });
+
+  return offeringsPromise;
+};
+
+const getPackageForProductId = (
+  productId: string,
+  availablePackages: PurchasesPackage[] | null
+): PurchasesPackage | null => {
+  if (!availablePackages) {
+    return null;
   }
 
-  const { products } = await Purchases.getProducts({
-    productIdentifiers: PRODUCT_IDS,
-    type: PRODUCT_CATEGORY.NON_SUBSCRIPTION,
-  });
-
-  return new Map(products.map((product) => [product.identifier, product]));
+  return availablePackages.find((pkg) => pkg.product.identifier === productId) ?? null;
 };
 
 const getProviderTransactionId = (metadata?: Record<string, unknown> | null) => {
@@ -220,6 +240,13 @@ const purchaseWasCancelled = (error: unknown) => {
   return false;
 };
 
+const purchasePackage = async (pkg: PurchasesPackage) => {
+  console.log('Purchase triggered', pkg.identifier);
+  return Purchases.purchasePackage({
+    aPackage: pkg,
+  });
+};
+
 export class ApplePurchaseCancelledError extends Error {
   constructor() {
     super('Purchase cancelled.');
@@ -232,19 +259,21 @@ export const loadAppleTokenPackages = async (): Promise<StoreBackedTokenPackage[
   if (!availability.supported) {
     return TOKEN_PACKAGES.map((pack) => ({
       ...pack,
-      storeProduct: null,
+      revenueCatPackage: null,
       resolvedPriceLabel: pack.priceLabel,
     }));
   }
 
-  const productsById = await getStoreProductsById();
+  const offerings = await loadOfferings();
+  const availablePackages = offerings.current?.availablePackages ?? [];
+  console.log('Packages available', availablePackages.length);
 
   return TOKEN_PACKAGES.map((pack) => {
-    const storeProduct = productsById.get(pack.productId) ?? null;
+    const revenueCatPackage = getPackageForProductId(pack.productId, availablePackages);
     return {
       ...pack,
-      storeProduct,
-      resolvedPriceLabel: storeProduct?.priceString ?? pack.priceLabel,
+      revenueCatPackage,
+      resolvedPriceLabel: revenueCatPackage?.product.priceString ?? pack.priceLabel,
     };
   });
 };
@@ -258,14 +287,17 @@ export const purchaseAppleTokenPackage = async (
   }
 
   try {
-    const product =
-      selectedPack.storeProduct ?? (await getStoreProductsById()).get(selectedPack.productId);
+    const revenueCatPackage =
+      selectedPack.revenueCatPackage ??
+      (await loadOfferings()).current?.availablePackages.find(
+        (pkg) => pkg.product.identifier === selectedPack.productId
+      );
 
-    if (!product) {
-      throw new Error('This Apple token pack is not available yet. Check RevenueCat product mapping.');
+    if (!revenueCatPackage) {
+      throw new Error('This Apple token pack is not available yet. Check RevenueCat offering.');
     }
 
-    const purchaseResult = await Purchases.purchaseStoreProduct({ product });
+    const purchaseResult = await purchasePackage(revenueCatPackage);
     await Purchases.syncPurchases().catch(() => undefined);
 
     const transactionId =

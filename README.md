@@ -11,6 +11,7 @@ Client:
 - `NEXT_PUBLIC_APP_ENV`
 - `NEXT_PUBLIC_SENTRY_DSN`
 - `NEXT_PUBLIC_SENTRY_RELEASE`
+- `NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY` (set via EAS secret for production builds)
 
 Server:
 - `SUPABASE_SERVICE_ROLE_KEY`
@@ -60,4 +61,8 @@ Rotate leaked keys before public launch.
 - Email confirmation is not required for signup; accounts are created if the email is not already in use.
 - `SUPABASE_SERVICE_ROLE_KEY` must be set for `/api/auth/signup` to work.
 - trigger ios pipeline
+
+## RevenueCat / Apple IAP config
+- Create the production secret with `eas secret:create --env production REV_CAT_APPLE_API_KEY --value <your key>`.
+- The production iOS build profile injects this secret as `NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY`, so you must keep the secret in EAS rather than committing it.
 

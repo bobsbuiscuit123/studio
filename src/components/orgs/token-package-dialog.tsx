@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Coins, Loader2 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import {
   Dialog,
   DialogContent,
@@ -57,6 +58,11 @@ export function TokenPackageDialog({
   const selectedRevenueCatPackage = selectedPack?.revenueCatPackage ?? null;
 
   useEffect(() => {
+    console.log('selectedPack', selectedPack);
+    console.log('selectedRevenueCatPackage', selectedRevenueCatPackage);
+  }, [selectedPack, selectedRevenueCatPackage]);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -65,6 +71,16 @@ export function TokenPackageDialog({
     const availability = getNativeApplePurchaseAvailability();
     setAvailabilityMessage(availability.supported ? null : availability.reason ?? null);
     setPurchaseError(null);
+    console.log('Capacitor.isNativePlatform()', Capacitor.isNativePlatform());
+    console.log(
+      'env key present',
+      !!process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY
+    );
+    console.log('availabilityMessage', availabilityMessage);
+    console.log(
+      'TOKEN_PACKAGES',
+      TOKEN_PACKAGES.map((p) => ({ id: p.productId, productId: p.productId }))
+    );
 
     if (!availability.supported) {
       setPackages(
@@ -85,6 +101,12 @@ export function TokenPackageDialog({
         if (!active) return;
         setPackages(nextPackages);
         console.log('Packages available', nextPackages.filter((pack) => pack.revenueCatPackage).length);
+        const offerings = nextPackages.map((pack) => ({
+          pkgIdentifier: pack.revenueCatPackage?.identifier,
+          productIdentifier: pack.revenueCatPackage?.product.identifier,
+          productId: pack.productId,
+        }));
+        console.log('available packages details', offerings);
       })
       .catch((error) => {
         if (!active) return;
@@ -257,16 +279,16 @@ export function TokenPackageDialog({
             >
               Cancel
             </Button>
-            <Button
-              className="rounded-2xl"
-              onClick={() => void handlePurchase()}
-              disabled={
-                purchaseSubmitting ||
-                Boolean(availabilityMessage) ||
-                loadingPackages ||
-                !selectedRevenueCatPackage
-              }
-            >
+          <Button
+            className="rounded-2xl"
+            onClick={() => void handlePurchase()}
+            disabled={
+              purchaseSubmitting ||
+              Boolean(availabilityMessage) ||
+              loadingPackages ||
+              !selectedRevenueCatPackage
+            }
+          >
               {purchaseSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

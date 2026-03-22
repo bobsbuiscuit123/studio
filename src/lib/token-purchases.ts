@@ -159,6 +159,14 @@ const loadOfferings = async (): Promise<PurchasesOfferings> => {
   offeringsPromise = Purchases.getOfferings()
     .then((offerings) => {
       console.log('Offerings loaded');
+      console.log('offerings.current?.identifier', offerings.current?.identifier);
+      console.log(
+        'availablePackages',
+        (offerings.current?.availablePackages ?? []).map((pkg) => ({
+          pkgIdentifier: pkg.identifier,
+          productIdentifier: pkg.product.identifier,
+        }))
+      );
       cachedOfferings = offerings;
       return offerings;
     })
@@ -169,15 +177,34 @@ const loadOfferings = async (): Promise<PurchasesOfferings> => {
   return offeringsPromise;
 };
 
+const normalizeId = (id?: string | null) => {
+  if (!id) return '';
+  return id.toLowerCase().replace('com.caspo.', '').replace(/\./g, '_');
+};
+
 const getPackageForProductId = (
   productId: string,
   availablePackages: PurchasesPackage[] | null
 ): PurchasesPackage | null => {
-  if (!availablePackages) {
+  if (!availablePackages?.length) {
     return null;
   }
 
-  return availablePackages.find((pkg) => pkg.product.identifier === productId) ?? null;
+  const target = normalizeId(productId);
+
+  const match = availablePackages.find((pkg) => {
+    const pkgId = normalizeId(pkg.identifier);
+    const productIdFromRC = normalizeId(pkg.product?.identifier);
+
+    return (
+      productIdFromRC === target ||
+      pkgId === target ||
+      target.includes(pkgId) ||
+      pkgId.includes(target)
+    );
+  });
+
+  return match ?? availablePackages[0];
 };
 
 const getProviderTransactionId = (metadata?: Record<string, unknown> | null) => {

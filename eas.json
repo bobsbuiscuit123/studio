@@ -1,17 +1,19 @@
 {
   "cli": {
-    "version": "18.4.0",
+    "version": ">=18.4.0",
     "appVersionSource": "remote"
   },
   "build": {
     "production": {
+      "env": {
+        "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_THVQGlrCXAcNvtJSzvOZhctIGMc"
+      },
       "ios": {
         "scheme": "App",
         "autoIncrement": true
       }
     }
-  }
-  ,
+  },
   "submit": {
     "production": {
       "ios": {

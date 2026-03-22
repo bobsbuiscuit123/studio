@@ -4,8 +4,7 @@
     "slug": "nextn",
     "version": "1.0.0",
     "ios": {
-      "bundleIdentifier": "com.caspo.app",
-      "buildNumber": "6"
+      "bundleIdentifier": "com.caspo.app"
     },
     "infoPlist": {
       "NSPhotoLibraryUsageDescription": "Caspo uses your photo library to let you upload images for AI features.",

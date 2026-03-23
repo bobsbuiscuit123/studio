@@ -3,6 +3,8 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Capacitor } from "@capacitor/core";
+import { initializeRevenueCat } from "@/lib/token-purchases";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";
@@ -34,6 +36,15 @@ export default function AppLayout({
       router.replace("/clubs");
     }
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      console.log("Not native, skipping RevenueCat");
+      return;
+    }
+
+    void initializeRevenueCat();
+  }, []);
 
   return (
     <NotificationsProvider>

@@ -3,6 +3,7 @@
 import { Capacitor } from '@capacitor/core';
 import {
   Purchases,
+  LOG_LEVEL,
   type PurchasesPackage,
   type PurchasesOfferings,
 } from '@revenuecat/purchases-capacitor';
@@ -51,13 +52,48 @@ type WalletResponse = {
 
 let configuredAppUserId: string | null = null;
 let configurePromise: Promise<void> | null = null;
+let isConfigured = false;
 let cachedOfferings: PurchasesOfferings | null = null;
-let offeringsPromise: Promise<PurchasesOfferings> | null = null;
+let offeringsPromise: Promise<PurchasesOfferings | null> | null = null;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getRevenueCatAppleApiKey = () =>
   process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY?.trim() ?? '';
+
+export function initializeRevenueCat(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) {
+    console.log('Not native, skipping RevenueCat');
+    return Promise.resolve();
+  }
+
+  if (!configurePromise) {
+    configurePromise = (async () => {
+      console.log('Initializing RevenueCat...');
+      await Purchases.setLogLevel({ level: LOG_LEVEL.DEBUG });
+      const apiKey = getRevenueCatAppleApiKey();
+      console.log('RC apiKey:', apiKey);
+
+      if (!apiKey) {
+        console.error('Missing RC API key');
+        configurePromise = null;
+        throw new Error('Missing RC API key');
+      }
+
+      await Purchases.configure({ apiKey });
+      isConfigured = true;
+      console.log('RevenueCat configured');
+    })().catch((error) => {
+      configurePromise = null;
+      console.error('RevenueCat initialization failed', error);
+      throw error;
+    });
+  }
+
+  return configurePromise;
+}
+
+export const isRevenueCatReady = () => isConfigured;
 
 export const getNativeApplePurchaseAvailability =
   (): NativeApplePurchaseAvailability => {
@@ -93,53 +129,24 @@ const getAuthenticatedUserId = async () => {
 };
 
 const ensureRevenueCatConfigured = async (appUserID: string) => {
+  await initializeRevenueCat();
+
+  if (!isConfigured) {
+    throw new Error('RevenueCat is not configured.');
+  }
+
   if (configuredAppUserId === appUserID) {
     return;
   }
 
-  if (!configurePromise) {
-    configurePromise = (async () => {
-      const apiKey = getRevenueCatAppleApiKey();
-      if (!apiKey) {
-        throw new Error('Missing RevenueCat Apple API key.');
-      }
-
-      let isConfigured = false;
-      try {
-        const result = await Purchases.isConfigured();
-        isConfigured = result.isConfigured;
-      } catch {
-        isConfigured = false;
-      }
-
-      if (!isConfigured) {
-        await Purchases.configure({
-          apiKey,
-          appUserID,
-        });
-        configuredAppUserId = appUserID;
-        return;
-      }
-
-      const { appUserID: currentAppUserID } = await Purchases.getAppUserID();
-      if (currentAppUserID !== appUserID) {
-        await Purchases.logIn({ appUserID });
-      }
-      configuredAppUserId = appUserID;
-    })().finally(() => {
-      configurePromise = null;
-    });
-  }
-
-  await configurePromise;
-
-  if (configuredAppUserId !== appUserID) {
-    await Purchases.logIn({ appUserID });
-    configuredAppUserId = appUserID;
-  }
+  await Purchases.logIn({ appUserID });
+  configuredAppUserId = appUserID;
 };
 
-const loadOfferings = async (): Promise<PurchasesOfferings> => {
+const loadOfferings = async (): Promise<PurchasesOfferings | null> => {
+  console.log('loadOfferings called');
+  console.log('Capacitor.isNativePlatform:', Capacitor.isNativePlatform());
+
   if (cachedOfferings) {
     return cachedOfferings;
   }
@@ -153,26 +160,49 @@ const loadOfferings = async (): Promise<PurchasesOfferings> => {
     throw new Error(availability.reason);
   }
 
-  const appUserID = await getAuthenticatedUserId();
-  await ensureRevenueCatConfigured(appUserID);
+  offeringsPromise = (async () => {
+    await initializeRevenueCat();
 
-  offeringsPromise = Purchases.getOfferings()
-    .then((offerings) => {
-      console.log('Offerings loaded');
-      console.log('offerings.current?.identifier', offerings.current?.identifier);
-      console.log(
-        'availablePackages',
-        (offerings.current?.availablePackages ?? []).map((pkg) => ({
-          pkgIdentifier: pkg.identifier,
-          productIdentifier: pkg.product.identifier,
-        }))
-      );
-      cachedOfferings = offerings;
-      return offerings;
-    })
-    .finally(() => {
-      offeringsPromise = null;
-    });
+    if (!isConfigured) {
+      console.error('RevenueCat is not configured yet');
+      return null;
+    }
+
+    const appUserID = await getAuthenticatedUserId();
+    await ensureRevenueCatConfigured(appUserID);
+
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      console.log('Fetching offerings attempt', attempt);
+      try {
+        const offerings = await Purchases.getOfferings();
+        const allOfferings = offerings.all ?? {};
+        const fallbackOffering =
+          offerings.current || Object.values(allOfferings)[0] || null;
+        const packages = fallbackOffering?.availablePackages ?? [];
+
+        console.log('offerings:', offerings);
+        console.log('packages length:', packages.length);
+
+        if (packages.length > 0) {
+          cachedOfferings = offerings;
+          return offerings;
+        }
+      } catch (error) {
+        console.error('RC error fetching offerings:', error);
+        const message = error instanceof Error ? error.message : '';
+        if (message.includes('None of the products could be fetched')) {
+          console.error('App Store product fetch failure detected');
+        }
+      }
+
+      await wait(1500);
+    }
+
+    console.error('Offerings still empty after retries');
+    return null;
+  })().finally(() => {
+    offeringsPromise = null;
+  });
 
   return offeringsPromise;
 };
@@ -292,8 +322,15 @@ export const loadAppleTokenPackages = async (): Promise<StoreBackedTokenPackage[
   }
 
   const offerings = await loadOfferings();
-  const availablePackages = offerings.current?.availablePackages ?? [];
+  const allOfferings = offerings?.all ?? {};
+  const activeOffering =
+    offerings?.current || Object.values(allOfferings)[0] || null;
+  const availablePackages = activeOffering?.availablePackages ?? [];
   console.log('Packages available', availablePackages.length);
+  console.log(
+    'Available package identifiers',
+    availablePackages.map((pkg) => pkg.identifier)
+  );
 
   return TOKEN_PACKAGES.map((pack) => {
     const revenueCatPackage = getPackageForProductId(pack.productId, availablePackages);
@@ -314,11 +351,16 @@ export const purchaseAppleTokenPackage = async (
   }
 
   try {
+    const offerings = await loadOfferings();
+    const allOfferings = offerings?.all ?? {};
+    const activeOffering =
+      offerings?.current || Object.values(allOfferings)[0] || null;
+    const availablePackages = activeOffering?.availablePackages ?? [];
+    console.log('availablePackages length:', availablePackages.length);
+
     const revenueCatPackage =
       selectedPack.revenueCatPackage ??
-      (await loadOfferings()).current?.availablePackages.find(
-        (pkg) => pkg.product.identifier === selectedPack.productId
-      );
+      availablePackages.find((pkg) => pkg.product.identifier === selectedPack.productId);
 
     if (!revenueCatPackage) {
       throw new Error('This Apple token pack is not available yet. Check RevenueCat offering.');

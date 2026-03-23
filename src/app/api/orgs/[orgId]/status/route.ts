@@ -116,8 +116,8 @@ export async function GET(
   const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
   const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
 
-  let tokenBalance = readBalance(org).balance;
-  let estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
+  const tokenBalance = readBalance(org).balance;
+  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
   let recentTokenActivity: Array<{
     id: string;
     amount: number;

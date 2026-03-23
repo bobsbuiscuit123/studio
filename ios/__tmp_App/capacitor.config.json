@@ -1,0 +1,24 @@
+{
+	"appId": "com.caspo.app",
+	"appName": "CASPO",
+	"webDir": "out",
+	"backgroundColor": "#f6faf4",
+	"server": {
+		"url": "https://casporeal.vercel.app",
+		"cleartext": true
+	},
+	"ios": {
+		"contentInset": "automatic",
+		"scrollEnabled": true,
+		"zoomEnabled": false,
+		"backgroundColor": "#f6faf4"
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPCameraPlugin",
+		"FilesystemPlugin",
+		"PushNotificationsPlugin",
+		"SharePlugin",
+		"PurchasesPlugin"
+	]
+}

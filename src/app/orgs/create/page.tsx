@@ -56,6 +56,7 @@ export default function OrgCreatePage() {
   const [trialPreviewAccepted, setTrialPreviewAccepted] = useState(false);
   const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
+  const [trialDialogAlreadyShown, setTrialDialogAlreadyShown] = useState(false);
   const [createdOrg, setCreatedOrg] = useState<{
     orgId: string;
     joinCode: string;
@@ -88,10 +89,29 @@ export default function OrgCreatePage() {
   }, [loadWallet]);
 
   useEffect(() => {
-    if (step === 2 && !hasUsedTrial && !trialPreviewAccepted) {
-      setTrialDialogOpen(true);
+    if (typeof window === 'undefined') return;
+    const storedShown = window.localStorage.getItem('orgTrialDialogShown') === 'true';
+    const storedAccepted = window.localStorage.getItem('orgTrialDialogAccepted') === 'true';
+    setTrialDialogAlreadyShown(storedShown);
+    if (storedAccepted) {
+      setTrialPreviewAccepted(true);
     }
-  }, [hasUsedTrial, step, trialPreviewAccepted]);
+  }, []);
+
+  useEffect(() => {
+    if (
+      step === 2 &&
+      !hasUsedTrial &&
+      !trialPreviewAccepted &&
+      !trialDialogAlreadyShown
+    ) {
+      setTrialDialogOpen(true);
+      setTrialDialogAlreadyShown(true);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('orgTrialDialogShown', 'true');
+      }
+    }
+  }, [hasUsedTrial, step, trialPreviewAccepted, trialDialogAlreadyShown]);
 
   const validateForm = () => {
     if (!orgName.trim()) {
@@ -446,6 +466,9 @@ export default function OrgCreatePage() {
               onClick={() => {
                 setTrialPreviewAccepted(true);
                 setTrialDialogOpen(false);
+                if (typeof window !== 'undefined') {
+                  window.localStorage.setItem('orgTrialDialogAccepted', 'true');
+                }
               }}
             >
               Accept gift

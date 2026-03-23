@@ -104,6 +104,14 @@ export function MessagesListScreen() {
       conversation.subtitle.toLowerCase().includes(query)
     );
   });
+  const availableDirectMessages = members.filter(member => member.email !== (user?.email ?? ""));
+
+  useEffect(() => {
+    if (searchTerm.trim()) return;
+    if (availableDirectMessages.length !== 1) return;
+    if (filteredConversations.length !== 1) return;
+    router.replace(getConversationHref({ type: "dm", partner: availableDirectMessages[0] }));
+  }, [availableDirectMessages, filteredConversations, router, searchTerm]);
 
   const handleCreateGroup = (values: z.infer<typeof newGroupFormSchema>) => {
     if (!user) return;
@@ -149,7 +157,7 @@ export function MessagesListScreen() {
   return (
     <div
       className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "max(1rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))" }}
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 3rem)" }}
     >
       <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
         <div className="flex items-center justify-between">
@@ -221,9 +229,33 @@ export function MessagesListScreen() {
 
       <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-2">
         {filteredConversations.length === 0 ? (
-          <div className="tab-empty-state text-sm text-muted-foreground">
-            No conversations yet
-          </div>
+          availableDirectMessages.length > 0 ? (
+            <div className="space-y-2">
+              {availableDirectMessages.map(member => (
+                <button
+                  key={member.email}
+                  type="button"
+                  onClick={() => router.push(getConversationHref({ type: "dm", partner: member }))}
+                  className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:scale-[0.99] hover:bg-muted/40"
+                >
+                  <ConversationAvatar
+                    name={member.name}
+                    avatar={member.avatar}
+                    initials={getInitials(member.name)}
+                    isGroup={false}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{member.name}</p>
+                    <p className="truncate text-sm text-muted-foreground">Start a conversation</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="tab-empty-state text-sm text-muted-foreground">
+              No other members available to message yet
+            </div>
+          )
         ) : (
           <div className="space-y-2">
             {filteredConversations.map(conversation => (
@@ -407,7 +439,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   return (
     <div
       className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "max(1rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))" }}
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 3rem)" }}
     >
       <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>

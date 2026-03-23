@@ -147,7 +147,10 @@ export function MessagesListScreen() {
   }
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4">
+    <div
+      className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
+      style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 1rem)" }}
+    >
       <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>

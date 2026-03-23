@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Copy, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,9 @@ import { useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
+
+const MAX_MEMBER_LIMIT = 10_000;
+const MAX_DAILY_AI_LIMIT = 200;
 
 type Group = {
   id: string;
@@ -69,7 +73,7 @@ export default function ClubsPage() {
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgAiQuotaStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
   const formatDate = (value?: string | null) =>
@@ -245,6 +249,53 @@ export default function ClubsPage() {
 
   const canShowCreate = true;
   const createDisabled = false;
+
+  const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
+  const [editMemberLimit, setEditMemberLimit] = useState(0);
+  const [editDailyLimit, setEditDailyLimit] = useState(0);
+  const [editOrgSubmitting, setEditOrgSubmitting] = useState(false);
+
+  const clampMemberLimit = (value: number) => {
+    const parsed = Number.isFinite(value) ? Math.round(value) : 0;
+    return Math.min(MAX_MEMBER_LIMIT, Math.max(1, parsed));
+  };
+
+  const clampDailyLimit = (value: number) => {
+    const parsed = Number.isFinite(value) ? Math.round(value) : 0;
+    return Math.min(MAX_DAILY_AI_LIMIT, Math.max(0, parsed));
+  };
+
+  useEffect(() => {
+    if (!isEditOrgOpen && orgStatus) {
+      setEditMemberLimit(orgStatus.memberLimit);
+      setEditDailyLimit(orgStatus.dailyAiLimitPerUser);
+    }
+  }, [isEditOrgOpen, orgStatus]);
+
+  const handleUpdateOrgLimits = async () => {
+    if (!selectedOrgId || !isOrgOwner) return;
+    setEditOrgSubmitting(true);
+    try {
+      const response = await safeFetchJson<{ ok: true }>(`/api/orgs/${selectedOrgId}/update`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          memberLimit: editMemberLimit,
+          dailyAiLimitPerUser: editDailyLimit,
+        }),
+      });
+      if (!response.ok) {
+        const message = response.error?.message || "Unable to update organization settings.";
+        toast({ title: "Update failed", description: message, variant: "destructive" });
+        return;
+      }
+      setIsEditOrgOpen(false);
+      toast({ title: "Organization updated", description: "Limits saved.", variant: "success" });
+      void refreshOrgStatus();
+    } finally {
+      setEditOrgSubmitting(false);
+    }
+  };
 
   const handleBackToOrgs = () => {
     clearSelectedGroupId();
@@ -430,6 +481,93 @@ export default function ClubsPage() {
                 </div>
                 <DialogFooter>
                   <Button onClick={handleCreateClub}>Create Group</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {isOrgOwner && (
+            <Dialog open={isEditOrgOpen} onOpenChange={setIsEditOrgOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="w-full">
+                  <Pencil className="mr-2" /> Edit Organization
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg rounded-3xl">
+                <DialogHeader>
+                  <DialogTitle>Edit organization limits</DialogTitle>
+                  <DialogDescription>
+                    Adjust the maximum number of members and the daily AI request cap per person.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6 py-2">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label className="text-base">Member limit</Label>
+                      <span className="text-sm font-semibold">{editMemberLimit.toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={MAX_MEMBER_LIMIT}
+                        value={editMemberLimit}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setEditMemberLimit(clampMemberLimit(Number(event.target.value)))
+                        }
+                        className="w-24 text-right"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Up to {MAX_MEMBER_LIMIT.toLocaleString()} members
+                      </p>
+                    </div>
+                    <Slider
+                      value={[editMemberLimit]}
+                      min={1}
+                      max={MAX_MEMBER_LIMIT}
+                      step={1}
+                      onValueChange={(values) => setEditMemberLimit(clampMemberLimit(values[0]))}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label className="text-base">Daily AI requests per member</Label>
+                      <span className="text-sm font-semibold">{editDailyLimit}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={MAX_DAILY_AI_LIMIT}
+                        value={editDailyLimit}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setEditDailyLimit(clampDailyLimit(Number(event.target.value)))
+                        }
+                        className="w-24 text-right"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Max {MAX_DAILY_AI_LIMIT} requests per day
+                      </p>
+                    </div>
+                    <Slider
+                      value={[editDailyLimit]}
+                      min={0}
+                      max={MAX_DAILY_AI_LIMIT}
+                      step={1}
+                      onValueChange={(values) => setEditDailyLimit(clampDailyLimit(values[0]))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Limits help keep token usage predictable for everyone.
+                    </p>
+                  </div>
+                </div>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setIsEditOrgOpen(false)} disabled={editOrgSubmitting}>
+                    Cancel
+                  </Button>
+                  <Button className="flex-1" onClick={handleUpdateOrgLimits} disabled={editOrgSubmitting}>
+                    {editOrgSubmitting ? "Saving..." : "Save changes"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

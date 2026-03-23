@@ -1,4 +1,3 @@
-import fs from 'fs';
 import {
   existsSync,
   readFileSync,
@@ -64,11 +63,6 @@ function prepareNestedLayoutForCapSync() {
 
   const flatLayoutExists = existsSync(rootXcodeproj) && existsSync(rootAppDir) && existsSync(rootSpmDir);
   if (!flatLayoutExists) {
-    // 🔥 TEMP FIX: support __tmp_App layout
-if (fs.existsSync(path.join(iosDir, '__tmp_App'))) {
-  console.log('Using __tmp_App layout directly');
-  return;
-}
     throw new Error('Unable to prepare iOS sync because neither the flat nor nested Capacitor layout is present');
   }
 

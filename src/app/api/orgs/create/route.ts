@@ -174,103 +174,34 @@ const schema = z
     if (!reservedJoinCode) {
       break;
     }
-
-    const { data: rpcResult, error: createError } = await admin.rpc('create_organization_with_trial', {
-      p_owner_id: userId,
-      p_name: parsed.data.name.trim(),
-      p_category: parsed.data.category?.trim() || null,
-      p_description: parsed.data.description?.trim() || null,
-      p_join_code: reservedJoinCode,
-      p_member_cap: memberCap,
-      p_daily_ai_limit: dailyAiLimit,
+    const fallback = await insertOrgWithFallback({
+      admin,
+      userId,
+      name: parsed.data.name.trim(),
+      category: parsed.data.category?.trim() || null,
+      description: parsed.data.description?.trim() || null,
+      joinCode: reservedJoinCode,
+      memberCap,
+      dailyAiLimit,
     });
 
-    if (createError) {
-      const shouldFallbackToLegacySchema =
-        isMissingColumnError(createError, 'token_balance') ||
-        isMissingColumnError(createError, 'owner_id') ||
-        isMissingColumnError(createError, 'member_cap') ||
-        isMissingColumnError(createError, 'daily_ai_limit') ||
-        isMissingColumnError(createError, 'updated_at');
-      if (shouldFallbackToLegacySchema) {
-        const fallback = await insertOrgWithFallback({
-          admin,
-          userId,
-          name: parsed.data.name.trim(),
-          category: parsed.data.category?.trim() || null,
-          description: parsed.data.description?.trim() || null,
-          joinCode: reservedJoinCode,
-          memberCap,
-          dailyAiLimit,
-        });
-
-        if (fallback.error) {
-          return NextResponse.json(
-            err({
-              code: 'NETWORK_HTTP_ERROR',
-              message: fallback.error.message,
-              source: 'network',
-            }),
-            { status: 500, headers: getRateLimitHeaders(limiter) }
-          );
-        }
-
-        if (!fallback.orgId) {
-          return NextResponse.json(
-            err({
-              code: 'NETWORK_HTTP_ERROR',
-              message: 'Unable to create organization.',
-              source: 'network',
-            }),
-            { status: 500, headers: getRateLimitHeaders(limiter) }
-          );
-        }
-
-        const membershipInsert = await admin
-          .from('memberships')
-          .insert({ user_id: userId, org_id: fallback.orgId, role: 'owner' });
-
-        if (membershipInsert.error) {
-          return NextResponse.json(
-            err({
-              code: 'NETWORK_HTTP_ERROR',
-              message: membershipInsert.error.message,
-              source: 'network',
-            }),
-            { status: 500, headers: getRateLimitHeaders(limiter) }
-          );
-        }
-
-        return NextResponse.json(
-          {
-            ok: true,
-            orgId: fallback.orgId,
-            joinCode: reservedJoinCode,
-            tokenBalance: 0,
-            trialGranted: false,
-            usedLegacySchema: fallback.usedLegacySchema,
-          },
-          { headers: getRateLimitHeaders(limiter) }
-        );
-      }
-
+    if (fallback.error) {
       const duplicateJoinCode =
-        createError.code === '23505' || /join_code/i.test(createError.message);
+        fallback.error.code === '23505' || /join_code/i.test(fallback.error.message);
       if (duplicateJoinCode) {
         continue;
       }
       return NextResponse.json(
         err({
           code: 'NETWORK_HTTP_ERROR',
-          message: createError.message,
+          message: fallback.error.message,
           source: 'network',
         }),
         { status: 500, headers: getRateLimitHeaders(limiter) }
       );
     }
 
-    const created = Array.isArray(rpcResult) ? rpcResult[0] : rpcResult;
-    if (!created?.org_id || !created?.join_code) {
+    if (!fallback.orgId) {
       return NextResponse.json(
         err({
           code: 'NETWORK_HTTP_ERROR',
@@ -281,13 +212,29 @@ const schema = z
       );
     }
 
+    const membershipInsert = await admin
+      .from('memberships')
+      .insert({ user_id: userId, org_id: fallback.orgId, role: 'owner' });
+
+    if (membershipInsert.error) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: membershipInsert.error.message,
+          source: 'network',
+        }),
+        { status: 500, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
     return NextResponse.json(
       {
         ok: true,
-        orgId: created.org_id as string,
-        joinCode: created.join_code as string,
-        tokenBalance: Number(created.token_balance ?? 0),
-        trialGranted: Boolean(created.trial_granted),
+        orgId: fallback.orgId,
+        joinCode: reservedJoinCode,
+        tokenBalance: 0,
+        trialGranted: false,
+        usedLegacySchema: fallback.usedLegacySchema,
       },
       { headers: getRateLimitHeaders(limiter) }
     );

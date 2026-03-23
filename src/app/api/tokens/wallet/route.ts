@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
+import { isMissingColumnError, readBalance } from '@/lib/org-balance';
 
 export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
@@ -38,14 +39,30 @@ export async function GET(request: Request) {
         .limit(10),
     ]);
 
-    if (!org) {
+    let normalizedOrg = org;
+    if (!normalizedOrg) {
+      const legacyOrgResponse = await admin
+        .from('orgs')
+        .select('credit_balance, owner_user_id')
+        .eq('id', orgId)
+        .maybeSingle();
+      if (legacyOrgResponse.data) {
+        normalizedOrg = {
+          ...legacyOrgResponse.data,
+          token_balance: legacyOrgResponse.data.credit_balance,
+          owner_id: legacyOrgResponse.data.owner_user_id,
+        };
+      }
+    }
+
+    if (!normalizedOrg) {
       return NextResponse.json(
         err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
         { status: 404 }
       );
     }
 
-    if (org.owner_id !== userId) {
+    if (normalizedOrg.owner_id !== userId) {
       return NextResponse.json(
         err({ code: 'VALIDATION', message: 'Not the organization owner.', source: 'app' }),
         { status: 403 }
@@ -55,7 +72,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       ok: true,
       data: {
-        tokenBalance: Number(org.token_balance ?? 0),
+        tokenBalance: readBalance(normalizedOrg).balance,
         hasUsedTrial: Boolean(profile?.has_used_trial),
         recentTokenActivity: activity ?? [],
       },

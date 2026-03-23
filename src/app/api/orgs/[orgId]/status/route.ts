@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
+import { isMissingColumnError, isMissingFunctionError, readBalance } from '@/lib/org-balance';
 import {
   calculateDailyTokenEstimate,
   calculateEstimatedDaysRemaining,
@@ -50,7 +51,7 @@ export async function GET(
   }
 
   const [
-    { data: org },
+    orgResponse,
     { count },
     { data: usage },
     statsResponse,
@@ -74,12 +75,48 @@ export async function GET(
     admin.rpc('get_org_token_stats', { p_org_id: parsed.data }),
   ]);
 
+  let org = orgResponse.data;
+  if (orgResponse.error && (
+    isMissingColumnError(orgResponse.error, 'token_balance') ||
+    isMissingColumnError(orgResponse.error, 'owner_id') ||
+    isMissingColumnError(orgResponse.error, 'member_cap') ||
+    isMissingColumnError(orgResponse.error, 'daily_ai_limit')
+  )) {
+    const legacyOrgResponse = await admin
+      .from('orgs')
+      .select('name, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
+      .eq('id', parsed.data)
+      .maybeSingle();
+
+    if (legacyOrgResponse.error) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: legacyOrgResponse.error.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+
+    org = legacyOrgResponse.data
+      ? {
+          ...legacyOrgResponse.data,
+          owner_id: legacyOrgResponse.data.owner_user_id,
+          member_cap: legacyOrgResponse.data.member_limit,
+          daily_ai_limit: legacyOrgResponse.data.ai_daily_limit_per_user,
+          token_balance: legacyOrgResponse.data.credit_balance,
+        }
+      : null;
+  } else if (orgResponse.error) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgResponse.error.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
   const memberLimit = Number(org?.member_cap ?? 0);
   const dailyAiLimitPerUser = Number(org?.daily_ai_limit ?? 0);
   const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
   const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
 
-  let tokenBalance = Number(org?.token_balance ?? 0);
+  let tokenBalance = readBalance(org).balance;
   let estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
   let recentTokenActivity: Array<{
     id: string;
@@ -91,20 +128,26 @@ export async function GET(
   }> = [];
 
   if (membership.role === 'owner') {
-    const { data: activity } = await admin
+    const { data: activity, error: activityError } = await admin
       .from('token_transactions')
       .select('id, amount, type, description, metadata, created_at')
       .eq('organization_id', parsed.data)
       .order('created_at', { ascending: false })
       .limit(10);
 
-    recentTokenActivity = activity ?? [];
+    if (!activityError) {
+      recentTokenActivity = activity ?? [];
+    }
   }
 
   const aiAvailability = getAiAvailability(tokenBalance, estimatedMonthlyTokens);
   const tokenHealth = getTokenHealth(calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens));
 
-  const statsDataRaw = statsResponse?.data;
+  const statsError = statsResponse?.error;
+  const statsDataRaw =
+    statsError && isMissingFunctionError(statsError, 'get_org_token_stats')
+      ? null
+      : statsResponse?.data;
   const statsData = Array.isArray(statsDataRaw) ? statsDataRaw[0] : statsDataRaw;
   const tokensPurchased = Math.max(0, Number(statsData?.tokens_purchased ?? 0));
   const tokensUsed = Math.max(0, Math.min(Number(statsData?.tokens_used ?? 0), tokensPurchased));

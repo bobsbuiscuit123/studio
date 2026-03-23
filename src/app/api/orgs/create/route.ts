@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
+import { isMissingColumnError } from '@/lib/org-balance';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 
 const JOIN_CODE_LENGTH = 6;
@@ -13,6 +14,77 @@ const generateJoinCode = () =>
   Array.from({ length: JOIN_CODE_LENGTH }, () =>
     JOIN_CODE_CHARSET[Math.floor(Math.random() * JOIN_CODE_CHARSET.length)]
   ).join('');
+
+const insertOrgWithFallback = async ({
+  admin,
+  userId,
+  name,
+  category,
+  description,
+  joinCode,
+  memberCap,
+  dailyAiLimit,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  userId: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  joinCode: string;
+  memberCap: number;
+  dailyAiLimit: number;
+}) => {
+  const common = {
+    name,
+    join_code: joinCode,
+    category,
+    description,
+    created_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const modernInsert = await admin
+    .from('orgs')
+    .insert({
+      ...common,
+      owner_id: userId,
+      member_cap: memberCap,
+      daily_ai_limit: dailyAiLimit,
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (!modernInsert.error) {
+    return { orgId: modernInsert.data?.id ?? null, usedLegacySchema: false, error: null };
+  }
+
+  const shouldTryLegacy =
+    isMissingColumnError(modernInsert.error, 'owner_id') ||
+    isMissingColumnError(modernInsert.error, 'member_cap') ||
+    isMissingColumnError(modernInsert.error, 'daily_ai_limit') ||
+    isMissingColumnError(modernInsert.error, 'updated_at');
+
+  if (!shouldTryLegacy) {
+    return { orgId: null, usedLegacySchema: false, error: modernInsert.error };
+  }
+
+  const legacyInsert = await admin
+    .from('orgs')
+    .insert({
+      ...common,
+      owner_user_id: userId,
+      member_limit: memberCap,
+      ai_daily_limit_per_user: dailyAiLimit,
+    })
+    .select('id')
+    .maybeSingle();
+
+  return {
+    orgId: legacyInsert.data?.id ?? null,
+    usedLegacySchema: !legacyInsert.error,
+    error: legacyInsert.error,
+  };
+};
 
 const reserveRandomJoinCode = async (admin: ReturnType<typeof createSupabaseAdmin>) => {
   for (let attempt = 0; attempt < 25; attempt += 1) {
@@ -114,6 +186,69 @@ const schema = z
     });
 
     if (createError) {
+      const missingTokenColumn = isMissingColumnError(createError, 'token_balance');
+      if (missingTokenColumn) {
+        const fallback = await insertOrgWithFallback({
+          admin,
+          userId,
+          name: parsed.data.name.trim(),
+          category: parsed.data.category?.trim() || null,
+          description: parsed.data.description?.trim() || null,
+          joinCode: reservedJoinCode,
+          memberCap,
+          dailyAiLimit,
+        });
+
+        if (fallback.error) {
+          return NextResponse.json(
+            err({
+              code: 'NETWORK_HTTP_ERROR',
+              message: fallback.error.message,
+              source: 'network',
+            }),
+            { status: 500, headers: getRateLimitHeaders(limiter) }
+          );
+        }
+
+        if (!fallback.orgId) {
+          return NextResponse.json(
+            err({
+              code: 'NETWORK_HTTP_ERROR',
+              message: 'Unable to create organization.',
+              source: 'network',
+            }),
+            { status: 500, headers: getRateLimitHeaders(limiter) }
+          );
+        }
+
+        const membershipInsert = await admin
+          .from('memberships')
+          .insert({ user_id: userId, org_id: fallback.orgId, role: 'owner' });
+
+        if (membershipInsert.error) {
+          return NextResponse.json(
+            err({
+              code: 'NETWORK_HTTP_ERROR',
+              message: membershipInsert.error.message,
+              source: 'network',
+            }),
+            { status: 500, headers: getRateLimitHeaders(limiter) }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            ok: true,
+            orgId: fallback.orgId,
+            joinCode: reservedJoinCode,
+            tokenBalance: 0,
+            trialGranted: false,
+            usedLegacySchema: fallback.usedLegacySchema,
+          },
+          { headers: getRateLimitHeaders(limiter) }
+        );
+      }
+
       const duplicateJoinCode =
         createError.code === '23505' || /join_code/i.test(createError.message);
       if (duplicateJoinCode) {

@@ -255,7 +255,8 @@ const registerTokenPurchaseIntent = async (orgId: string, transactionId: string)
 
 const waitForWalletGrant = async (
   transactionId: string,
-  orgId?: string | null
+  orgId?: string | null,
+  options?: { startingBalance?: number | null; expectedTokens?: number | null }
 ): Promise<Pick<AppleTokenPurchaseOutcome, 'status' | 'tokenBalance' | 'tokensGranted'>> => {
   for (let attempt = 0; attempt < WALLET_POLL_ATTEMPTS; attempt += 1) {
     const walletUrl = orgId
@@ -281,6 +282,20 @@ const waitForWalletGrant = async (
           status: 'granted',
           tokenBalance,
           tokensGranted: Number(matchingActivity.amount ?? 0),
+        };
+      }
+
+      const startingBalance = Number(options?.startingBalance ?? NaN);
+      const expectedTokens = Number(options?.expectedTokens ?? NaN);
+      if (
+        Number.isFinite(startingBalance) &&
+        Number.isFinite(expectedTokens) &&
+        tokenBalance >= startingBalance + expectedTokens
+      ) {
+        return {
+          status: 'granted',
+          tokenBalance,
+          tokensGranted: expectedTokens,
         };
       }
     }
@@ -393,8 +408,19 @@ export const purchaseAppleTokenPackage = async (
       throw new Error('Organization context required to assign purchased tokens.');
     }
 
+    const initialWallet = await safeFetchJson<WalletResponse>(
+      `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`,
+      { method: 'GET', timeoutMs: 10_000, retry: { retries: 1 }, treatOfflineAsError: false }
+    );
+    const startingBalance = initialWallet.ok
+      ? Number(initialWallet.data.data?.tokenBalance ?? 0)
+      : null;
+
     await registerTokenPurchaseIntent(orgId, transactionId);
-    const grantResult = await waitForWalletGrant(transactionId, orgId);
+    const grantResult = await waitForWalletGrant(transactionId, orgId, {
+      startingBalance,
+      expectedTokens: selectedPack.tokens,
+    });
 
     return {
       productId: selectedPack.productId,

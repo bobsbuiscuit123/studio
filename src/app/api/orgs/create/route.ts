@@ -40,13 +40,13 @@ const insertOrgWithFallback = async ({
     category,
     description,
     created_by: userId,
-    updated_at: new Date().toISOString(),
   };
 
   const modernInsert = await admin
     .from('orgs')
     .insert({
       ...common,
+      updated_at: new Date().toISOString(),
       owner_id: userId,
       member_cap: memberCap,
       daily_ai_limit: dailyAiLimit,
@@ -186,8 +186,13 @@ const schema = z
     });
 
     if (createError) {
-      const missingTokenColumn = isMissingColumnError(createError, 'token_balance');
-      if (missingTokenColumn) {
+      const shouldFallbackToLegacySchema =
+        isMissingColumnError(createError, 'token_balance') ||
+        isMissingColumnError(createError, 'owner_id') ||
+        isMissingColumnError(createError, 'member_cap') ||
+        isMissingColumnError(createError, 'daily_ai_limit') ||
+        isMissingColumnError(createError, 'updated_at');
+      if (shouldFallbackToLegacySchema) {
         const fallback = await insertOrgWithFallback({
           admin,
           userId,

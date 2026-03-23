@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { grantTokenPurchaseCompat } from '@/lib/token-grants';
 
 export const runtime = 'nodejs';
 
@@ -99,8 +100,11 @@ export async function POST(request: Request) {
     event.aliases
   );
   const productId = event.product_id?.trim() ?? '';
-  const transactionId =
-    event.transaction_id?.trim() || event.original_transaction_id?.trim() || '';
+  const transactionCandidates = [
+    event.transaction_id?.trim() ?? '',
+    event.original_transaction_id?.trim() ?? '',
+  ].filter(Boolean);
+  const transactionId = transactionCandidates[0] ?? '';
 
   if (!userId || !productId || !transactionId) {
     return NextResponse.json(
@@ -129,14 +133,13 @@ export async function POST(request: Request) {
   };
 
   const admin = createSupabaseAdmin();
-  const { data: intent } = await admin
+  const { data: intents } = await admin
     .from('token_purchase_intents')
-    .select('org_id')
+    .select('org_id, provider_transaction_id')
     .eq('provider', 'revenuecat')
-    .eq('provider_transaction_id', transactionId)
-    .maybeSingle();
+    .in('provider_transaction_id', transactionCandidates);
 
-  const orgId = intent?.org_id ?? null;
+  const orgId = intents?.[0]?.org_id ?? null;
   if (!orgId) {
     return NextResponse.json(
       { ok: false, error: 'Missing organization mapping for this purchase.' },
@@ -144,17 +147,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data, error } = await admin.rpc('grant_token_purchase', {
-    p_user_id: userId,
-    p_product_id: productId,
-    p_provider_transaction_id: transactionId,
-    p_provider: 'revenuecat',
-    p_environment: event.environment ?? null,
-    p_metadata: metadata,
-    p_org_id: orgId,
-  });
-
-  if (error) {
+  let grantResult;
+  try {
+    grantResult = await grantTokenPurchaseCompat({
+      admin,
+      userId,
+      productId,
+      transactionId,
+      provider: 'revenuecat',
+      environment: event.environment ?? null,
+      metadata,
+      orgId,
+    });
+  } catch (error) {
     console.error('RevenueCat webhook token grant failed', error);
     return NextResponse.json(
       { ok: false, error: 'Failed to grant token purchase.' },
@@ -162,12 +167,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const grantResult = Array.isArray(data) ? data[0] : data;
-
   return NextResponse.json({
     ok: true,
-    granted: Boolean(grantResult?.granted),
-    tokenBalance: Number(grantResult?.token_balance ?? 0),
-    tokensGranted: Number(grantResult?.tokens_granted ?? 0),
+    granted: grantResult.granted,
+    tokenBalance: grantResult.tokenBalance,
+    tokensGranted: grantResult.tokensGranted,
   });
 }

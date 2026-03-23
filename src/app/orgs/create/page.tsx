@@ -17,9 +17,7 @@ import {
 } from '@/lib/pricing';
 import { Logo } from '@/components/icons';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
-import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
 import { safeFetchJson } from '@/lib/network';
-import type { AppleTokenPurchaseOutcome } from '@/lib/token-purchases';
 
 const MAX_USER_LIMIT_MAX = 10_000;
 
@@ -54,7 +52,6 @@ export default function OrgCreatePage() {
   const [tokenBalance, setTokenBalance] = useState(0);
   const [hasUsedTrial, setHasUsedTrial] = useState(false);
   const [trialPreviewAccepted, setTrialPreviewAccepted] = useState(false);
-  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
   const [trialDialogOpen, setTrialDialogOpen] = useState(false);
   const [trialDialogAlreadyShown, setTrialDialogAlreadyShown] = useState(false);
   const [createdOrg, setCreatedOrg] = useState<{
@@ -183,15 +180,6 @@ export default function OrgCreatePage() {
     if (!createdOrg?.joinCode) return;
     await navigator.clipboard.writeText(createdOrg.joinCode);
     toast({ title: 'Copied', description: 'Organization join code copied.' });
-  };
-
-  const handleTokenPurchaseComplete = async (result: AppleTokenPurchaseOutcome) => {
-    if (typeof result.tokenBalance === 'number') {
-      setTokenBalance(result.tokenBalance);
-      return;
-    }
-
-    await loadWallet();
   };
 
   return (
@@ -407,10 +395,13 @@ export default function OrgCreatePage() {
               )}
               {step === 2 ? (
                 <>
-                  <Button variant="outline" className="rounded-2xl" onClick={() => setTokenDialogOpen(true)}>
+                  <Button variant="outline" className="rounded-2xl" disabled>
                     <Coins className="mr-2 h-4 w-4" />
-                    Buy Tokens
+                    Buy Tokens after setup
                   </Button>
+                  <p className="text-xs text-slate-500">
+                    Token purchases are made per organization. Finish creating your organization first, then visit its billing page to add tokens.
+                  </p>
                   <Button className="flex-1 rounded-2xl" onClick={() => void handleCreateClick()} disabled={createSubmitting}>
                     {createSubmitting ? 'Creating organization...' : 'Create Organization'}
                   </Button>
@@ -477,13 +468,6 @@ export default function OrgCreatePage() {
         </DialogContent>
       </Dialog>
 
-      <TokenPackageDialog
-        open={tokenDialogOpen}
-        onOpenChange={setTokenDialogOpen}
-        title="Buy tokens"
-        description="Choose a token package, then confirm your purchase with Apple on the next step."
-        onPurchaseComplete={handleTokenPurchaseComplete}
-      />
     </div>
   );
 }

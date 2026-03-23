@@ -33,6 +33,8 @@ type OrgStatus = {
   tokenHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
   tokenBalance?: number;
   estimatedDaysRemaining?: number;
+  tokensPurchased: number;
+  tokensUsed: number;
 };
 
 const roleLabel = (role: string) => (role === 'owner' ? 'Owner' : 'Member');
@@ -198,6 +200,16 @@ export default function OrgsPage() {
               {orgs.map((org) => {
                 const status = statusByOrg[org.id];
                 const isOwner = org.role === 'owner';
+                const tokensPurchased = status?.tokensPurchased ?? 0;
+                const tokensUsed = Math.min(
+                  Math.max(status?.tokensUsed ?? 0, 0),
+                  tokensPurchased
+                );
+                const tokensLeft = Math.max(tokensPurchased - tokensUsed, 0);
+                const ownerTokenUsageLabel =
+                  tokensPurchased > 0
+                    ? `${tokensLeft.toLocaleString()}/${tokensPurchased.toLocaleString()} tokens left`
+                    : '0/0';
                 return (
                   <Card key={org.id} className="rounded-[28px] border border-slate-200 bg-white/85 shadow-sm">
                     <CardHeader>
@@ -260,9 +272,14 @@ export default function OrgsPage() {
                       ) : null}
                     </CardContent>
                     <CardFooter className="flex items-center gap-2">
-                      <Button onClick={() => handleSelectOrg(org.id)} className="flex-1 rounded-2xl">
-                        Open
-                      </Button>
+                    <Button onClick={() => handleSelectOrg(org.id)} className="flex-1 rounded-2xl">
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span>Open</span>
+                        {isOwner ? (
+                          <span className="text-xs text-slate-500">{ownerTokenUsageLabel}</span>
+                        ) : null}
+                      </div>
+                    </Button>
                       {isOwner ? (
                         <Button
                           variant="outline"

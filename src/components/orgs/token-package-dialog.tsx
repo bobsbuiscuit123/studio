@@ -31,12 +31,14 @@ export function TokenPackageDialog({
   title,
   description,
   onPurchaseComplete,
+  orgId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
   onPurchaseComplete?: (result: AppleTokenPurchaseOutcome) => Promise<void> | void;
+  orgId: string | null;
 }) {
   const { toast } = useToast();
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -144,10 +146,21 @@ export function TokenPackageDialog({
     if (!selectedPack) return;
 
     setPurchaseError(null);
+    if (!orgId) {
+      const message = 'Select an organization before purchasing tokens.';
+      setPurchaseError(message);
+      toast({
+        title: 'Organization required',
+        description: message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setPurchaseSubmitting(true);
 
     try {
-      const result = await purchaseAppleTokenPackage(selectedPack);
+      const result = await purchaseAppleTokenPackage(selectedPack, orgId);
       await onPurchaseComplete?.(result);
 
       toast({
@@ -203,6 +216,11 @@ export function TokenPackageDialog({
                 {purchaseError}
               </div>
             ) : null}
+            {!orgId ? (
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Token purchases require an organization context. Open the organization billing page to continue.
+              </div>
+            ) : null}
             {loadingPackages ? (
               <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -230,6 +248,8 @@ export function TokenPackageDialog({
                   <Button
                     onClick={() => setSelectedProductId(pack.productId)}
                     className="rounded-2xl"
+                    disabled={!orgId}
+                    title={!orgId ? 'Token purchases require an organization' : undefined}
                   >
                     Buy
                   </Button>

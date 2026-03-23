@@ -129,6 +129,21 @@ export async function POST(request: Request) {
   };
 
   const admin = createSupabaseAdmin();
+  const { data: intent } = await admin
+    .from('token_purchase_intents')
+    .select('org_id')
+    .eq('provider', 'revenuecat')
+    .eq('provider_transaction_id', transactionId)
+    .maybeSingle();
+
+  const orgId = intent?.org_id ?? null;
+  if (!orgId) {
+    return NextResponse.json(
+      { ok: false, error: 'Missing organization mapping for this purchase.' },
+      { status: 400 }
+    );
+  }
+
   const { data, error } = await admin.rpc('grant_token_purchase', {
     p_user_id: userId,
     p_product_id: productId,
@@ -136,6 +151,7 @@ export async function POST(request: Request) {
     p_provider: 'revenuecat',
     p_environment: event.environment ?? null,
     p_metadata: metadata,
+    p_org_id: orgId,
   });
 
   if (error) {

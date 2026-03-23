@@ -70,6 +70,9 @@ alter table public.orgs
 alter table public.orgs
   add column if not exists daily_ai_limit int not null default 40;
 
+alter table public.orgs
+  add column if not exists token_balance int not null default 0;
+
 update public.orgs
 set owner_id = created_by
 where owner_id is null;
@@ -143,11 +146,25 @@ create index if not exists idx_token_transactions_user_created_at
 create index if not exists idx_token_transactions_org_created_at
   on public.token_transactions(organization_id, created_at desc);
 
+create table if not exists public.token_purchase_intents (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null default 'revenuecat',
+  provider_transaction_id text not null,
+  org_id uuid not null references public.orgs(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (provider, provider_transaction_id)
+);
+
+create index if not exists idx_token_purchase_intents_provider_created_at
+  on public.token_purchase_intents(provider, created_at desc);
+
 create index if not exists idx_ai_usage_logs_owner_created_at
   on public.ai_usage_logs(owner_user_id, created_at desc);
 
 alter table public.token_transactions enable row level security;
 alter table public.ai_usage_logs enable row level security;
+
+alter table public.token_purchase_intents enable row level security;
 
 drop policy if exists "token_transactions_select_own" on public.token_transactions;
 create policy "token_transactions_select_own" on public.token_transactions
@@ -218,9 +235,10 @@ set search_path = public, pg_temp
 as $$
 declare
   new_org_id uuid;
-  current_balance int := 0;
   already_used_trial boolean := false;
   granted_trial boolean := false;
+  trial_tokens constant int := 2500;
+  resulting_balance int := 0;
 begin
   perform set_config('caspo.allow_token_mutation', '1', true);
 
@@ -228,8 +246,8 @@ begin
   values (p_owner_id, 0, false, now())
   on conflict (id) do nothing;
 
-  select coalesce(p.token_balance, 0), coalesce(p.has_used_trial, false)
-  into current_balance, already_used_trial
+  select coalesce(p.has_used_trial, false)
+  into already_used_trial
   from public.profiles p
   where p.id = p_owner_id
   for update;
@@ -263,15 +281,17 @@ begin
   on conflict do nothing;
 
   if not already_used_trial then
-    current_balance := current_balance + 2500;
     granted_trial := true;
 
     update public.profiles
-    set token_balance = current_balance,
-        has_used_trial = true,
+    set has_used_trial = true,
         trial_granted_at = coalesce(trial_granted_at, now()),
         updated_at = now()
     where id = p_owner_id;
+
+    update public.orgs
+    set token_balance = token_balance + trial_tokens
+    where id = new_org_id;
 
     insert into public.token_transactions (
       user_id,
@@ -288,15 +308,19 @@ begin
       new_org_id,
       p_owner_id,
       'trial',
-      2500,
-      current_balance,
+      trial_tokens,
+      trial_tokens,
       'First organization trial tokens',
-      jsonb_build_object('trial_tokens', 2500)
+      jsonb_build_object('trial_tokens', trial_tokens)
     );
   end if;
 
+  select token_balance into resulting_balance
+  from public.orgs
+  where id = new_org_id;
+
   return query
-    select new_org_id, p_join_code, granted_trial, current_balance;
+    select new_org_id, p_join_code, granted_trial, coalesce(resulting_balance, 0);
 end;
 $$;
 
@@ -318,10 +342,11 @@ declare
 begin
   perform set_config('caspo.allow_token_mutation', '1', true);
 
-  select owner_id, coalesce(daily_ai_limit, 0)
-  into org_owner_id, daily_limit
+  select owner_id, coalesce(daily_ai_limit, 0), coalesce(token_balance, 0)
+  into org_owner_id, daily_limit, current_balance
   from public.orgs
-  where id = p_org_id;
+  where id = p_org_id
+  for update;
 
   if org_owner_id is null then
     return query select false, 'org_not_found', 0, 0, 0;
@@ -336,16 +361,6 @@ begin
     return query select false, 'not_member', 0, 0, 0;
     return;
   end if;
-
-  insert into public.profiles (id, token_balance, has_used_trial, updated_at)
-  values (org_owner_id, 0, false, now())
-  on conflict (id) do nothing;
-
-  select coalesce(p.token_balance, 0)
-  into current_balance
-  from public.profiles p
-  where p.id = org_owner_id
-  for update;
 
   if current_balance <= 0 then
     select coalesce(request_count, 0)
@@ -386,10 +401,10 @@ begin
     return;
   end if;
 
-  update public.profiles
+  update public.orgs
   set token_balance = token_balance - 1,
       updated_at = now()
-  where id = org_owner_id
+  where id = p_org_id
   returning token_balance into current_balance;
 
   insert into public.ai_usage_logs (
@@ -432,6 +447,22 @@ begin
     select true, 'ok', updated_requests, greatest(daily_limit - updated_requests, 0), current_balance;
 end;
 $$;
+
+create or replace function public.get_org_token_stats(
+  p_org_id uuid
+)
+returns table(tokens_purchased int, tokens_used int)
+language sql
+security definer
+set search_path = public, pg_temp
+as $$
+select
+  coalesce((select sum(tokens_granted) from public.token_purchase_grants where org_id = p_org_id), 0),
+  coalesce(-(select sum(amount) from public.token_transactions where organization_id = p_org_id and type = 'usage'), 0);
+$$;
+
+revoke all on function public.get_org_token_stats(uuid) from public;
+grant execute on function public.get_org_token_stats(uuid) to service_role;
 
 revoke all on function public.create_organization_with_trial(uuid, text, text, text, text, int, int) from public;
 revoke all on function public.consume_owner_token_for_org_ai(uuid, uuid, date) from public;

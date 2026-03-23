@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,8 @@ import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
 import { LegalDocumentDialog } from "@/components/legal-document-dialog";
+import { useOrgAiQuotaStatus } from "@/lib/data-hooks";
+import { getSelectedOrgId } from "@/lib/selection";
 
 type ProfileDialogProps = {
   isOpen: boolean;
@@ -80,7 +83,12 @@ export function ProfileDialog({
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
+  const [tokenLoading, setTokenLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+  const selectedOrgId = getSelectedOrgId();
+  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
 
   useEffect(() => {
     if (isOpen) {
@@ -90,6 +98,39 @@ export function ProfileDialog({
       setAvatarPreview(user?.avatar || null);
     }
   }, [user, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const fetchBalance = async () => {
+      setTokenLoading(true);
+      const response = await safeFetchJson<{ ok: true; data: { tokenBalance: number } }>(
+        "/api/tokens/wallet",
+        { method: "GET" }
+      );
+      if (!active) return;
+      if (response.ok) {
+        setTokenBalance(response.data.data.tokenBalance);
+      } else {
+        setTokenBalance(null);
+      }
+      setTokenLoading(false);
+    };
+    void fetchBalance();
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
+
+  const tokensPurchased = Math.max(0, orgStatus?.tokensPurchased ?? 0);
+  const tokensUsed = Math.max(0, Math.min(orgStatus?.tokensUsed ?? 0, tokensPurchased));
+  const tokensLeft = Math.max(tokensPurchased - tokensUsed, 0);
+
+  const handleBuyMoreTokens = () => {
+    if (!selectedOrgId) return;
+    onOpenChange(false);
+    router.push(`/orgs/${selectedOrgId}/credits`);
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -253,6 +294,42 @@ export function ProfileDialog({
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} readOnly disabled />
+            </div>
+            {orgStatus?.role === "owner" && selectedOrgId ? (
+              <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+                <div className="flex items-center justify-between">
+                  <span>Tokens used / purchased</span>
+                  <span className="font-semibold text-slate-900">
+                    {tokensUsed.toLocaleString()} / {tokensPurchased.toLocaleString()}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {tokensLeft.toLocaleString()} tokens available for this organization.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 w-full rounded-2xl"
+                  onClick={handleBuyMoreTokens}
+                >
+                  Buy more tokens
+                </Button>
+              </div>
+            ) : null}
+            <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span>Token balance</span>
+                {tokenLoading ? (
+                  <span className="text-xs">Loading…</span>
+                ) : (
+                  <span className="font-semibold text-slate-900">
+                    {tokenBalance !== null ? tokenBalance.toLocaleString() : "—"} tokens
+                  </span>
+                )}
+              </div>
+              <p className="text-xs">
+                Your balance updates automatically whenever you buy or receive tokens.
+              </p>
             </div>
             <div className="overflow-hidden rounded-xl border">
               <button

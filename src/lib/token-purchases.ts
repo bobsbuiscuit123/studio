@@ -244,11 +244,24 @@ const getProviderTransactionId = (metadata?: Record<string, unknown> | null) => 
   return typeof direct === 'string' ? direct : null;
 };
 
+const registerTokenPurchaseIntent = async (orgId: string, transactionId: string) => {
+  await safeFetchJson('/api/orgs/' + encodeURIComponent(orgId) + '/token-purchase-intent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transactionId }),
+    retry: { retries: 1 },
+  });
+};
+
 const waitForWalletGrant = async (
-  transactionId: string
+  transactionId: string,
+  orgId?: string | null
 ): Promise<Pick<AppleTokenPurchaseOutcome, 'status' | 'tokenBalance' | 'tokensGranted'>> => {
   for (let attempt = 0; attempt < WALLET_POLL_ATTEMPTS; attempt += 1) {
-    const walletResponse = await safeFetchJson<WalletResponse>('/api/tokens/wallet', {
+    const walletUrl = orgId
+      ? `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`
+      : '/api/tokens/wallet';
+    const walletResponse = await safeFetchJson<WalletResponse>(walletUrl, {
       method: 'GET',
       timeoutMs: 10_000,
       retry: { retries: 1 },
@@ -345,7 +358,8 @@ export const loadAppleTokenPackages = async (): Promise<StoreBackedTokenPackage[
 };
 
 export const purchaseAppleTokenPackage = async (
-  selectedPack: StoreBackedTokenPackage
+  selectedPack: StoreBackedTokenPackage,
+  orgId: string | null
 ): Promise<AppleTokenPurchaseOutcome> => {
   const availability = getNativeApplePurchaseAvailability();
   if (!availability.supported) {
@@ -375,7 +389,12 @@ export const purchaseAppleTokenPackage = async (
       purchaseResult.transaction?.transactionIdentifier?.trim() ||
       `${selectedPack.productId}:${Date.now()}`;
 
-    const grantResult = await waitForWalletGrant(transactionId);
+    if (!orgId) {
+      throw new Error('Organization context required to assign purchased tokens.');
+    }
+
+    await registerTokenPurchaseIntent(orgId, transactionId);
+    const grantResult = await waitForWalletGrant(transactionId, orgId);
 
     return {
       productId: selectedPack.productId,

@@ -297,6 +297,12 @@ export default function ClubsPage() {
     }
   };
 
+  const handleBuyTokensFromDialog = () => {
+    if (!selectedOrgId) return;
+    setIsEditOrgOpen(false);
+    router.push(`/orgs/${selectedOrgId}/credits`);
+  };
+
   const handleBackToOrgs = () => {
     clearSelectedGroupId();
     router.push("/orgs");
@@ -560,6 +566,16 @@ export default function ClubsPage() {
                       Limits help keep token usage predictable for everyone.
                     </p>
                   </div>
+                </div>
+                <div className="rounded-[24px] border border-slate-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
+                  <p className="text-xs">Need more tokens for this organization?</p>
+                  <Button
+                    variant="ghost"
+                    className="mt-2 w-full rounded-2xl border border-blue-200 px-3 py-2 text-sm text-blue-800"
+                    onClick={handleBuyTokensFromDialog}
+                  >
+                    Buy tokens
+                  </Button>
                 </div>
                 <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => setIsEditOrgOpen(false)} disabled={editOrgSubmitting}>

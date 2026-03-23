@@ -190,6 +190,7 @@ export default function OrgCreditsPage() {
         title="Buy tokens"
         description="Choose a token package, then confirm your purchase with Apple on the next step."
         onPurchaseComplete={handleTokenPurchaseComplete}
+        orgId={orgId}
       />
     </div>
   );

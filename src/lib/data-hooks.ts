@@ -703,6 +703,8 @@ export type OrgAiQuotaStatus = {
     }>;
     createdAt: string | null;
     updatedAt: string | null;
+    tokensPurchased: number;
+    tokensUsed: number;
 };
 
 export const notifyOrgAiUsageChanged = (

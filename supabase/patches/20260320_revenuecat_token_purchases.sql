@@ -3,6 +3,7 @@ create table if not exists public.token_purchase_grants (
   user_id uuid not null references auth.users(id) on delete cascade,
   provider text not null default 'revenuecat',
   provider_transaction_id text not null,
+  org_id uuid not null references public.orgs(id) on delete cascade,
   product_id text not null,
   tokens_granted integer not null,
   environment text,
@@ -17,6 +18,9 @@ create index if not exists idx_token_purchase_grants_user_created_at
 create index if not exists idx_token_purchase_grants_product_created_at
   on public.token_purchase_grants(product_id, created_at desc);
 
+create index if not exists idx_token_purchase_grants_org_created_at
+  on public.token_purchase_grants(org_id, created_at desc);
+
 alter table public.token_purchase_grants enable row level security;
 
 create or replace function public.grant_token_purchase(
@@ -25,7 +29,8 @@ create or replace function public.grant_token_purchase(
   p_provider_transaction_id text,
   p_provider text default 'revenuecat',
   p_environment text default null,
-  p_metadata jsonb default '{}'::jsonb
+  p_metadata jsonb default '{}'::jsonb,
+  p_org_id uuid default null
 )
 returns table(granted boolean, token_balance integer, tokens_granted integer)
 language plpgsql
@@ -37,6 +42,8 @@ declare
   mapped_tokens integer := 0;
   existing_tokens integer := 0;
   normalized_provider text := coalesce(nullif(p_provider, ''), 'revenuecat');
+  target_org_id uuid := p_org_id;
+  org_owner uuid;
 begin
   perform set_config('caspo.allow_token_mutation', '1', true);
 
@@ -61,15 +68,32 @@ begin
     raise exception 'Unknown token product id: %', p_product_id;
   end if;
 
-  insert into public.profiles (id, token_balance, has_used_trial, updated_at)
-  values (p_user_id, 0, false, now())
-  on conflict (id) do nothing;
+  if target_org_id is null then
+    select org_id
+    into target_org_id
+    from public.token_purchase_intents
+    where provider = normalized_provider
+      and provider_transaction_id = p_provider_transaction_id
+    limit 1;
+  end if;
 
-  select coalesce(p.token_balance, 0)
-  into current_balance
-  from public.profiles p
-  where p.id = p_user_id
+  if target_org_id is null then
+    raise exception 'Missing organization for token purchase grant.';
+  end if;
+
+  select owner_id, coalesce(token_balance, 0)
+  into org_owner, current_balance
+  from public.orgs
+  where id = target_org_id
   for update;
+
+  if org_owner is null then
+    raise exception 'Organization not found for this purchase.';
+  end if;
+
+  if org_owner <> p_user_id then
+    raise exception 'Only the organization owner can receive token purchases.';
+  end if;
 
   select g.tokens_granted
   into existing_tokens
@@ -89,6 +113,7 @@ begin
     provider_transaction_id,
     product_id,
     tokens_granted,
+    org_id,
     environment,
     metadata
   )
@@ -98,6 +123,7 @@ begin
     p_provider_transaction_id,
     p_product_id,
     mapped_tokens,
+    target_org_id,
     p_environment,
     coalesce(p_metadata, '{}'::jsonb)
   )
@@ -115,12 +141,11 @@ begin
     return;
   end if;
 
-  current_balance := current_balance + mapped_tokens;
-
-  update public.profiles
-  set token_balance = current_balance,
+  update public.orgs
+  set token_balance = current_balance + mapped_tokens,
       updated_at = now()
-  where id = p_user_id;
+  where id = target_org_id
+  returning token_balance into current_balance;
 
   insert into public.token_transactions (
     user_id,
@@ -134,7 +159,7 @@ begin
   )
   values (
     p_user_id,
-    null,
+    target_org_id,
     p_user_id,
     'purchase',
     mapped_tokens,
@@ -144,7 +169,8 @@ begin
       'provider', normalized_provider,
       'provider_transaction_id', p_provider_transaction_id,
       'product_id', p_product_id,
-      'environment', p_environment
+      'environment', p_environment,
+      'organization_id', target_org_id
     )
   );
 

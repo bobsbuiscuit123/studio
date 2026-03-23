@@ -49,10 +49,15 @@ export async function GET(
     );
   }
 
-  const [{ data: org }, { count }, { data: usage }] = await Promise.all([
+  const [
+    { data: org },
+    { count },
+    { data: usage },
+    statsResponse,
+  ] = await Promise.all([
     admin
       .from('orgs')
-      .select('name, owner_id, member_cap, daily_ai_limit, created_at, updated_at')
+      .select('name, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
       .eq('id', parsed.data)
       .maybeSingle(),
     admin
@@ -66,6 +71,7 @@ export async function GET(
       .eq('user_id', userId)
       .eq('usage_date', getRequestDayKey(request))
       .maybeSingle(),
+    admin.rpc('get_org_token_stats', { p_org_id: parsed.data }),
   ]);
 
   const memberLimit = Number(org?.member_cap ?? 0);
@@ -73,8 +79,8 @@ export async function GET(
   const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
   const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
 
-  let tokenBalance = 0;
-  let estimatedDaysRemaining = 0;
+  let tokenBalance = Number(org?.token_balance ?? 0);
+  let estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
   let recentTokenActivity: Array<{
     id: string;
     amount: number;
@@ -84,36 +90,24 @@ export async function GET(
     created_at: string;
   }> = [];
 
-  if (membership.role === 'owner' && org?.owner_id) {
-    const [{ data: ownerProfile }, { data: activity }] = await Promise.all([
-      admin
-        .from('profiles')
-        .select('token_balance')
-        .eq('id', org.owner_id)
-        .maybeSingle(),
-      admin
-        .from('token_transactions')
-        .select('id, amount, type, description, metadata, created_at')
-        .eq('user_id', org.owner_id)
-        .eq('organization_id', parsed.data)
-        .order('created_at', { ascending: false })
-        .limit(10),
-    ]);
+  if (membership.role === 'owner') {
+    const { data: activity } = await admin
+      .from('token_transactions')
+      .select('id, amount, type, description, metadata, created_at')
+      .eq('organization_id', parsed.data)
+      .order('created_at', { ascending: false })
+      .limit(10);
 
-    tokenBalance = Number(ownerProfile?.token_balance ?? 0);
-    estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
     recentTokenActivity = activity ?? [];
-  } else if (org?.owner_id) {
-    const { data: ownerProfile } = await admin
-      .from('profiles')
-      .select('token_balance')
-      .eq('id', org.owner_id)
-      .maybeSingle();
-    tokenBalance = Number(ownerProfile?.token_balance ?? 0);
   }
 
   const aiAvailability = getAiAvailability(tokenBalance, estimatedMonthlyTokens);
   const tokenHealth = getTokenHealth(calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens));
+
+  const statsDataRaw = statsResponse?.data;
+  const statsData = Array.isArray(statsDataRaw) ? statsDataRaw[0] : statsDataRaw;
+  const tokensPurchased = Math.max(0, Number(statsData?.tokens_purchased ?? 0));
+  const tokensUsed = Math.max(0, Math.min(Number(statsData?.tokens_used ?? 0), tokensPurchased));
 
   return NextResponse.json({
     ok: true,
@@ -129,6 +123,8 @@ export async function GET(
       estimatedMonthlyTokens,
       estimatedDailyTokens,
       tokenHealth,
+      tokensPurchased,
+      tokensUsed,
       createdAt: org?.created_at ?? null,
       updatedAt: org?.updated_at ?? null,
       ...(membership.role === 'owner'

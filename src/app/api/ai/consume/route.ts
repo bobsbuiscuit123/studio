@@ -19,6 +19,7 @@ import { resolveGraphRequest } from '@/ai/flows/resolve-graph-request';
 import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { isResult } from '@/lib/result';
+import { getRequestDayKey } from '@/lib/day-key';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
@@ -139,6 +140,44 @@ export async function POST(request: Request) {
     }
 
     const admin = createSupabaseAdmin();
+
+    const { data: consumeData, error: consumeError } = await admin.rpc('consume_owner_token_for_org_ai', {
+      p_org_id: orgId,
+      p_user_id: userId,
+      p_usage_date: getRequestDayKey(request),
+    });
+
+    if (consumeError) {
+      return errorResponse(new Error(consumeError.message), 500);
+    }
+
+    const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+    const reason = String(consumeResult?.reason ?? '');
+    const remainingTokens = Number(consumeResult?.remaining_tokens ?? 0);
+    const remainingToday = Number(consumeResult?.remaining_today ?? 0);
+
+    if (!consumeResult?.success) {
+      if (reason === 'not_member') {
+        return errorResponse(new Error('Not a member.'), 403);
+      }
+
+      if (reason === 'daily_limit_reached') {
+        return errorResponse(new Error('Daily limit reached.'), 429);
+      }
+
+      if (reason === 'insufficient_tokens' || reason === '') {
+        return errorResponse(new Error('AI temporarily unavailable. Your organization has run out of credits.'), 402);
+      }
+
+      if (reason === 'org_not_found') {
+        return errorResponse(new Error('Organization not found.'), 404);
+      }
+
+      return errorResponse(new Error('AI temporarily unavailable.'), 402);
+    }
+
+    console.log('Token usage remaining tokens:', remainingTokens, 'remaining today:', remainingToday);
+
     const feature = parsed.data.feature;
     const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);
 

@@ -9,7 +9,6 @@
         "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_THVQGlrCXAcNvtJSzvOZhctIGMc"
       },
       "ios": {
-        "scheme": "App",
         "autoIncrement": true
       }
     }

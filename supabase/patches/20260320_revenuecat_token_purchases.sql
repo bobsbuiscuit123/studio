@@ -65,10 +65,10 @@ begin
   values (p_user_id, 0, false, now())
   on conflict (id) do nothing;
 
-  select coalesce(token_balance, 0)
+  select coalesce(p.token_balance, 0)
   into current_balance
-  from public.profiles
-  where id = p_user_id
+  from public.profiles p
+  where p.id = p_user_id
   for update;
 
   select g.tokens_granted

@@ -228,10 +228,10 @@ begin
   values (p_owner_id, 0, false, now())
   on conflict (id) do nothing;
 
-  select coalesce(token_balance, 0), coalesce(has_used_trial, false)
+  select coalesce(p.token_balance, 0), coalesce(p.has_used_trial, false)
   into current_balance, already_used_trial
-  from public.profiles
-  where id = p_owner_id
+  from public.profiles p
+  where p.id = p_owner_id
   for update;
 
   insert into public.orgs (
@@ -341,10 +341,10 @@ begin
   values (org_owner_id, 0, false, now())
   on conflict (id) do nothing;
 
-  select coalesce(token_balance, 0)
+  select coalesce(p.token_balance, 0)
   into current_balance
-  from public.profiles
-  where id = org_owner_id
+  from public.profiles p
+  where p.id = org_owner_id
   for update;
 
   if current_balance <= 0 then

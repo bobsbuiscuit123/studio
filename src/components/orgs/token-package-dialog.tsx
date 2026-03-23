@@ -203,20 +203,6 @@ export function TokenPackageDialog({
                 {purchaseError}
               </div>
             ) : null}
-            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] text-slate-600">
-              <p className="text-[10px] font-semibold uppercase text-slate-500">
-                RevenueCat debug
-              </p>
-              <p className="text-[10px] text-slate-500">
-                Native: {String(Capacitor.isNativePlatform())}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                Configured: {String(isRevenueCatReady())}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                Packages mapped: {packages.filter((pack) => pack.revenueCatPackage).length}
-              </p>
-            </div>
             {loadingPackages ? (
               <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" />

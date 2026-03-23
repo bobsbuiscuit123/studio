@@ -1,4 +1,5 @@
 import type { OrgState } from '@/lib/org-state';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import type {
   Announcement,
   ClubEvent,
@@ -70,21 +71,21 @@ const createMembers = (groupName: string): Member[] => [
     name: 'Jordan Lee',
     email: 'jordan.lee@clubhub.demo',
     role: 'Admin',
-    avatar: 'https://placehold.co/100x100.png?text=J',
+    avatar: getPlaceholderImageUrl({ label: 'J' }),
   },
   {
     id: `officer-${groupName.toLowerCase().replace(/\s+/g, '-')}`,
     name: 'Maya Patel',
     email: 'maya.patel@clubhub.demo',
     role: 'Officer',
-    avatar: 'https://placehold.co/100x100.png?text=M',
+    avatar: getPlaceholderImageUrl({ label: 'M' }),
   },
   {
     id: `member-${groupName.toLowerCase().replace(/\s+/g, '-')}`,
     name: 'Evan Kim',
     email: 'evan.kim@clubhub.demo',
     role: 'Member',
-    avatar: 'https://placehold.co/100x100.png?text=E',
+    avatar: getPlaceholderImageUrl({ label: 'E' }),
   },
 ];
 
@@ -145,7 +146,7 @@ const createSocialPosts = (): SocialPost[] => [
     id: 201,
     title: 'Practice session highlights',
     content: 'Great turnout and strong collaboration from all groups.',
-    images: ['https://placehold.co/600x400.png?text=Highlights'],
+    images: [getPlaceholderImageUrl({ label: 'Hi', width: 600, height: 400 })],
     author: 'maya.patel@clubhub.demo',
     date: addDaysIso(-2),
     likes: 8,
@@ -219,7 +220,7 @@ const createGroupChats = (): GroupChat[] => [
 const createGalleryImages = (): GalleryImage[] => [
   {
     id: 301,
-    src: 'https://placehold.co/800x600.png?text=Demo+Gallery+1',
+    src: getPlaceholderImageUrl({ label: 'G1', width: 800, height: 600 }),
     alt: 'Group meeting photo',
     author: 'evan.kim@clubhub.demo',
     date: addDaysIso(-3),
@@ -298,7 +299,7 @@ export const DEMO_GROUPS: DemoGroup[] = [
     category: 'STEM',
     description: 'Builds autonomous challenge bots and mentors first-year members.',
     meetingTime: 'Tuesdays at 4 PM',
-    logo: 'https://placehold.co/100x100.png?text=R',
+    logo: getPlaceholderImageUrl({ label: 'R' }),
   },
   {
     id: 'demo-debate',
@@ -307,7 +308,7 @@ export const DEMO_GROUPS: DemoGroup[] = [
     category: 'Academic',
     description: 'Weekly policy debate practice and tournament prep.',
     meetingTime: 'Wednesdays at 3:30 PM',
-    logo: 'https://placehold.co/100x100.png?text=D',
+    logo: getPlaceholderImageUrl({ label: 'D' }),
   },
   {
     id: 'demo-service',
@@ -316,7 +317,7 @@ export const DEMO_GROUPS: DemoGroup[] = [
     category: 'Service',
     description: 'Coordinates local outreach and community events.',
     meetingTime: 'Fridays at 2 PM',
-    logo: 'https://placehold.co/100x100.png?text=S',
+    logo: getPlaceholderImageUrl({ label: 'S' }),
   },
 ];
 
@@ -420,7 +421,7 @@ const createDemoUser = (role: DemoRole): User => {
   return {
     name: `Demo ${role}`,
     email: `${slug}@clubhub.demo`,
-    avatar: `https://placehold.co/100x100.png?text=${role.charAt(0)}`,
+    avatar: getPlaceholderImageUrl({ label: role.charAt(0) }),
   };
 };
 

@@ -1,31 +1,17 @@
 'use client';
 
-'use client';
-
 import { useEffect, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-
-const ONLINE_PROBE_URL = '/icon.svg';
 
 const getInitialOnline = () => {
   if (typeof navigator === 'undefined') return true;
   return navigator.onLine ?? true;
 };
 
-const probeOnline = async () => {
-  try {
-    await fetch(ONLINE_PROBE_URL, { method: 'HEAD', cache: 'no-store' });
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const confirmOnline = async () => {
+const confirmOnline = () => {
   if (typeof navigator === 'undefined') return true;
-  if (navigator.onLine) return true;
-  return probeOnline();
+  return navigator.onLine ?? true;
 };
 
 export function NetworkStatusBanner() {
@@ -35,8 +21,8 @@ export function NetworkStatusBanner() {
   useEffect(() => {
     let active = true;
 
-    const syncOnline = async () => {
-      const online = await confirmOnline();
+    const syncOnline = () => {
+      const online = confirmOnline();
       if (active) setIsOnline(online);
     };
 
@@ -47,8 +33,8 @@ export function NetworkStatusBanner() {
         description: 'Connection restored. You can continue where you left off.',
       });
     };
-    const handleOffline = async () => {
-      const online = await confirmOnline();
+    const handleOffline = () => {
+      const online = confirmOnline();
       if (!active) return;
       if (online) {
         setIsOnline(true);
@@ -102,14 +88,14 @@ export function OfflineCallout() {
   useEffect(() => {
     let active = true;
 
-    const syncOnline = async () => {
-      const online = await confirmOnline();
+    const syncOnline = () => {
+      const online = confirmOnline();
       if (active) setIsOnline(online);
     };
 
     const handleOnline = () => setIsOnline(true);
-    const handleOffline = async () => {
-      const online = await confirmOnline();
+    const handleOffline = () => {
+      const online = confirmOnline();
       if (active) setIsOnline(online);
     };
 

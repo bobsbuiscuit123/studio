@@ -29,6 +29,7 @@ import { useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
+import { getPlaceholderImageUrl } from "@/lib/placeholders";
 
 const MAX_MEMBER_LIMIT = 10_000;
 const MAX_DAILY_AI_LIMIT = 200;
@@ -290,7 +291,7 @@ export default function ClubsPage() {
         return;
       }
       setIsEditOrgOpen(false);
-      toast({ title: "Organization updated", description: "Limits saved.", variant: "success" });
+      toast({ title: "Organization updated", description: "Limits saved." });
       void refreshOrgStatus();
     } finally {
       setEditOrgSubmitting(false);
@@ -411,7 +412,7 @@ export default function ClubsPage() {
 
   const groupsWithLogos = groups.map((group) => ({
     ...group,
-    logo: group.logo || `https://placehold.co/100x100.png?text=${group.name.charAt(0)}`,
+    logo: group.logo || getPlaceholderImageUrl({ label: group.name.charAt(0) }),
   }));
 
   return (
@@ -459,7 +460,7 @@ export default function ClubsPage() {
                 <div className="space-y-3 py-2">
                   <div className="flex flex-col items-center gap-2">
                     <Image
-                      src={groupLogo || `https://placehold.co/100x100.png?text=${(groupName || "G").charAt(0)}`}
+                      src={groupLogo || getPlaceholderImageUrl({ label: (groupName || "G").charAt(0) })}
                       alt="Group logo preview"
                       width={96}
                       height={96}
@@ -772,7 +773,7 @@ export default function ClubsPage() {
           <div className="space-y-4 py-2">
             <div className="flex flex-col items-center gap-2">
               <Image
-                src={editGroupLogo || `https://placehold.co/100x100.png?text=${(editGroupName || editingGroup?.name || "G").charAt(0)}`}
+                src={editGroupLogo || getPlaceholderImageUrl({ label: (editGroupName || editingGroup?.name || "G").charAt(0) })}
                 alt="Group logo preview"
                 width={96}
                 height={96}

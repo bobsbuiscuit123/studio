@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import { useEffect, useState, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
@@ -76,7 +77,7 @@ export default function MembersPage() {
       role: currentUserRole,
       avatar:
         user.avatar ||
-        `https://placehold.co/100x100.png?text=${(user.name || user.email || "U").charAt(0)}`,
+        getPlaceholderImageUrl({ label: (user.name || user.email || "U").charAt(0) }),
       dataAiHint: "person profile",
     };
   }, [currentUserRole, user?.avatar, user?.email, user?.name]);

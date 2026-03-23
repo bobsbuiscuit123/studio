@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from 'react';
 import type { OrgState } from '@/lib/org-state';
 import type { Member, User } from '@/lib/mock-data';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import {
   DEMO_SHARED_STATE_STORAGE_KEY,
   DEMO_GROUPS,
@@ -36,7 +37,7 @@ const mergeUserIntoMembers = (members: Member[], user: User, appRole: DemoAppRol
     name: user.name,
     email: user.email,
     role: appRole,
-    avatar: user.avatar || `https://placehold.co/100x100.png?text=${user.name.charAt(0)}`,
+    avatar: user.avatar || getPlaceholderImageUrl({ label: user.name.charAt(0) }),
   };
 
   const existingIndex = members.findIndex(member => member.email === user.email);

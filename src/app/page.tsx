@@ -34,6 +34,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 import { LegalDocumentDialog } from '@/components/legal-document-dialog';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
@@ -137,14 +138,14 @@ function SignUpForm({
               id: data.user.id,
               email: values.email,
               display_name: values.name,
-              avatar_url: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`,
+              avatar_url: getPlaceholderImageUrl({ label: values.name.charAt(0) }),
             });
         }
         const newUser: User = {
             name: values.name,
             email: values.email,
             password: '',
-            avatar: `https://placehold.co/100x100.png?text=${values.name.charAt(0)}`
+            avatar: getPlaceholderImageUrl({ label: values.name.charAt(0) })
         };
         clearSelectedOrgId();
         clearSelectedGroupId();
@@ -239,14 +240,14 @@ function LoginForm({
               id: data.user.id,
               email: values.email,
               display_name: displayName,
-              avatar_url: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+              avatar_url: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
             });
         }
         const user: User = {
             name: displayName,
             email: values.email,
             password: '',
-            avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`
+            avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) })
         };
         onLogin(user);
         toast({ title: `Welcome back, ${displayName}!`});
@@ -355,7 +356,7 @@ export default function HomePage() {
         setLocalUser({
           name: displayName,
           email: sessionUser.email || '',
-          avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+          avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
         });
       }
     };
@@ -370,7 +371,7 @@ export default function HomePage() {
       setLocalUser({
         name: displayName,
         email: sessionUser.email || '',
-        avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+        avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
       });
     });
     return () => {

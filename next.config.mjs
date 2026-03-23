@@ -19,11 +19,11 @@ const cspDirectives = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  "img-src 'self' data: blob: https://placehold.co",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self' data:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  `connect-src 'self' https://*.sentry.io https://fonts.googleapis.com https://fonts.gstatic.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  `connect-src 'self' https://*.sentry.io${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "form-action 'self'",
 ];
 
@@ -37,16 +37,6 @@ const csp = cspDirectives.join("; ");
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
-  },
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "placehold.co",
-        port: "",
-        pathname: "/**",
-      },
-    ],
   },
   async headers() {
     return [

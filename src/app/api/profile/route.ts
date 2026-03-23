@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 export async function PATCH(request: Request) {
   const body = await request.json().catch(() => ({}));
@@ -34,7 +35,7 @@ export async function PATCH(request: Request) {
     'Member';
   const avatarUrl =
     parsed.data.avatar ||
-    `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`;
+    getPlaceholderImageUrl({ label: displayName.charAt(0) });
 
   const { error } = await supabase.from('profiles').upsert({
     id: user.id,

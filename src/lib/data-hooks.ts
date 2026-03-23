@@ -8,6 +8,7 @@ import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/lib/group-permissions';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 type ClubData = {
     members: Member[];
@@ -77,8 +78,17 @@ const writeTabLastViewed = (userEmail: string, orgId: string, groupId: string, k
 
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
+const orgAiStatusCache = new Map<string, OrgAiQuotaStatus>();
+const orgAiStatusLoadedAt = new Map<string, number>();
+let currentUserCache: User | null = null;
+let currentUserHydrationPromise: Promise<User | null> | null = null;
+const ORG_AI_STATUS_REFRESH_TTL_MS = 60_000;
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
+const shouldRefreshOnVisibility = () =>
+  typeof document !== 'undefined' &&
+  document.visibilityState === 'visible' &&
+  (typeof navigator === 'undefined' || navigator.onLine !== false);
 
 const normalizeClubData = (data: ClubData): ClubData => {
     const defaults = getDefaultClubData();
@@ -238,7 +248,7 @@ function useClubDataStore() {
 
         let cancelled = false;
         const refreshFromBackend = async () => {
-            if (document.visibilityState !== 'visible') return;
+            if (!shouldRefreshOnVisibility()) return;
             try {
                 const nextData = await fetchFreshGroupState(supabase, orgId, clubId);
                 if (!cancelled) {
@@ -259,14 +269,14 @@ function useClubDataStore() {
         };
 
         window.addEventListener('visibilitychange', handleVisibilityChange);
-        const intervalId = window.setInterval(() => {
-            void refreshFromBackend();
-        }, 5000);
+        window.addEventListener('focus', handleVisibilityChange);
+        window.addEventListener('online', handleVisibilityChange);
 
         return () => {
             cancelled = true;
             window.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.clearInterval(intervalId);
+            window.removeEventListener('focus', handleVisibilityChange);
+            window.removeEventListener('online', handleVisibilityChange);
         };
     }, [clubId, orgId, supabase, useDemo]);
 
@@ -516,8 +526,31 @@ export function useCurrentUser() {
     }
     const supabase = createSupabaseBrowserClient();
     const getDefaultAvatar = (displayName: string) =>
-      `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`;
+      getPlaceholderImageUrl({ label: displayName.charAt(0) });
     const hydrate = async () => {
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser) as User;
+          currentUserCache = parsedUser;
+          setUser(parsedUser);
+          setLoading(false);
+        } catch {
+          localStorage.removeItem('currentUser');
+        }
+      } else if (currentUserCache) {
+        setUser(currentUserCache);
+        setLoading(false);
+      }
+
+      if (currentUserHydrationPromise) {
+        const cachedUser = await currentUserHydrationPromise;
+        setUser(cachedUser);
+        setLoading(false);
+        return;
+      }
+
+      currentUserHydrationPromise = (async () => {
       try {
         const { data } = await supabase.auth.getSession();
         const sessionUser = data.session?.user;
@@ -537,24 +570,27 @@ export function useCurrentUser() {
             email: profile?.email || sessionUser.email || '',
             avatar: profile?.avatar_url || getDefaultAvatar(displayName),
           } as User;
+          currentUserCache = hydratedUser;
           localStorage.setItem('currentUser', JSON.stringify(hydratedUser));
-          setUser(hydratedUser);
-          return;
+          return hydratedUser;
         }
-        const storedUser = localStorage.getItem('currentUser');
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-          return;
-        }
-        setUser(null);
+        currentUserCache = null;
+        return null;
       } catch (error) {
         console.error('Error reading user from storage on init', error);
-        setUser(null);
+        return currentUserCache;
+      }
+      })();
+
+      try {
+        const hydratedUser = await currentUserHydrationPromise;
+        setUser(hydratedUser);
       } finally {
+        currentUserHydrationPromise = null;
         setLoading(false);
       }
     };
-    hydrate();
+    void hydrate();
   }, [demoCtx, useDemo]);
 
   const setLocalUser = useCallback((nextUser: User | null) => {
@@ -564,8 +600,10 @@ export function useCurrentUser() {
     }
     setUser(nextUser);
     if (nextUser) {
+      currentUserCache = nextUser;
       localStorage.setItem('currentUser', JSON.stringify(nextUser));
     } else {
+      currentUserCache = null;
       localStorage.removeItem('currentUser');
     }
   }, [useDemo]);
@@ -590,6 +628,7 @@ export function useCurrentUser() {
         ? (newUser as (currentUser: User | null) => User)(user)
         : ({ ...(user || {}), ...newUser } as User);
     localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+    currentUserCache = updatedUser;
     setUser(updatedUser);
     const response = await safeFetchJson<{ ok: boolean; data?: User }>('/api/profile', {
       method: 'PATCH',
@@ -601,6 +640,7 @@ export function useCurrentUser() {
     });
     if (response.ok && response.data?.data) {
       localStorage.setItem('currentUser', JSON.stringify(response.data.data));
+      currentUserCache = response.data.data;
       setUser(response.data.data);
       return;
     }
@@ -613,6 +653,7 @@ export function useCurrentUser() {
       return;
     }
     setUser(null);
+    currentUserCache = null;
     localStorage.removeItem('currentUser');
   }, [useDemo]);
 
@@ -725,11 +766,20 @@ export const notifyOrgAiUsageChanged = (
 export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
     const [status, setStatus] = useState<OrgAiQuotaStatus | null>(null);
     const [loading, setLoading] = useState(true);
+    const [lastLoadedAt, setLastLoadedAt] = useState(0);
     const orgId = orgIdOverride ?? getSelectedOrgId();
 
-    const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    const refresh = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
         if (!orgId) {
             setStatus(null);
+            setLoading(false);
+            return;
+        }
+        const cachedStatus = orgAiStatusCache.get(orgId) ?? null;
+        const lastLoaded = orgAiStatusLoadedAt.get(orgId) ?? lastLoadedAt;
+        const isFresh = Date.now() - lastLoaded < ORG_AI_STATUS_REFRESH_TTL_MS;
+        if (!options?.force && cachedStatus && isFresh) {
+            setStatus(cachedStatus);
             setLoading(false);
             return;
         }
@@ -742,12 +792,16 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
         );
         if (response.ok) {
             setStatus(response.data.data);
+            orgAiStatusCache.set(orgId, response.data.data);
+            const loadedAt = Date.now();
+            orgAiStatusLoadedAt.set(orgId, loadedAt);
+            setLastLoadedAt(loadedAt);
         } else {
             console.error('Failed to load org AI status', response.error);
-            setStatus(null);
+            setStatus(cachedStatus);
         }
         setLoading(false);
-    }, [orgId]);
+    }, [lastLoadedAt, orgId]);
 
     useEffect(() => {
         void refresh();
@@ -755,7 +809,7 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
 
     useEffect(() => {
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible') {
+            if (shouldRefreshOnVisibility()) {
                 void refresh({ silent: true });
             }
         };
@@ -780,19 +834,17 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
                         : prev
                 );
             }
-            void refresh({ silent: true });
+            void refresh({ silent: true, force: true });
         };
         window.addEventListener('visibilitychange', handleVisibilityChange);
         window.addEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-        const intervalId = window.setInterval(() => {
-            if (document.visibilityState === 'visible') {
-                void refresh({ silent: true });
-            }
-        }, 10000);
+        window.addEventListener('focus', handleVisibilityChange);
+        window.addEventListener('online', handleVisibilityChange);
         return () => {
             window.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-            window.clearInterval(intervalId);
+            window.removeEventListener('focus', handleVisibilityChange);
+            window.removeEventListener('online', handleVisibilityChange);
         };
     }, [refresh]);
 

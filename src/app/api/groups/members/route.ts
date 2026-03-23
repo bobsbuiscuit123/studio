@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { err } from '@/lib/result';
 import {
   displayGroupRole,
@@ -181,7 +182,7 @@ export async function GET(request: Request) {
       avatar:
         (typeof fromState?.avatar === 'string' && fromState.avatar) ||
         profile?.avatar_url ||
-        `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+        getPlaceholderImageUrl({ label: displayName.charAt(0) }),
       dataAiHint:
         typeof fromState?.dataAiHint === 'string' ? fromState.dataAiHint : undefined,
     };
@@ -338,7 +339,7 @@ export async function POST(request: Request) {
                 name: profile?.display_name || profile?.email || 'Member',
                 email: profile?.email || '',
                 role: displayGroupRole(parsed.data.role),
-                avatar: `https://placehold.co/100x100.png?text=${(profile?.display_name || profile?.email || 'M').charAt(0)}`,
+                avatar: getPlaceholderImageUrl({ label: (profile?.display_name || profile?.email || 'M').charAt(0) }),
               },
             ],
           },

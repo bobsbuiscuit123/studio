@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
       name: displayName,
       email: profile?.email || '',
       role: displayGroupRole('admin'),
-      avatar: `https://placehold.co/100x100.png?text=${displayName.charAt(0)}`,
+      avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
     },
   ];
   const membershipInsert = await admin

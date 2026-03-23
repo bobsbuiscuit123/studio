@@ -276,7 +276,14 @@ export default function OrgsPage() {
                       <div className="flex flex-col items-start gap-0.5">
                         <span>Open</span>
                         {isOwner ? (
-                          <span className="text-xs text-slate-500">{ownerTokenUsageLabel}</span>
+                          <>
+                            <span className="text-xs text-slate-500">{ownerTokenUsageLabel}</span>
+                            <span className="text-xs text-slate-500">
+                              {status?.estimatedDaysRemaining
+                                ? `~${Math.round(status.estimatedDaysRemaining)} days remaining`
+                                : "Estimate pending"}
+                            </span>
+                          </>
                         ) : null}
                       </div>
                     </Button>

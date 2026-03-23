@@ -306,6 +306,11 @@ export function ProfileDialog({
                 <p className="text-xs text-muted-foreground">
                   {tokensLeft.toLocaleString()} tokens available for this organization.
                 </p>
+                <p className="text-xs text-muted-foreground">
+                  {orgStatus?.estimatedDaysRemaining
+                    ? `Estimated ${Math.round(orgStatus.estimatedDaysRemaining)} days remaining at current usage.`
+                    : "Estimated days remaining will appear after usage stabilizes."}
+                </p>
                 <Button
                   variant="outline"
                   size="sm"

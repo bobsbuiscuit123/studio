@@ -149,7 +149,7 @@ export function MessagesListScreen() {
   return (
     <div
       className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 1rem)" }}
+      style={{ paddingTop: "max(1rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))" }}
     >
       <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
         <div className="flex items-center justify-between">
@@ -407,7 +407,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   return (
     <div
       className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.75rem)" }}
+      style={{ paddingTop: "max(1rem, calc(env(safe-area-inset-top, 0px) + 1.5rem))" }}
     >
       <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
@@ -428,7 +428,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-4">
         {activeMessages.length === 0 ? (
           <div className="tab-empty-state text-sm text-muted-foreground">
-            No conversations yet
+            Start the conversation with {title}
           </div>
         ) : (
           <div className="space-y-2">
@@ -459,7 +459,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         )}
       </div>
 
-      <div className="header shrink-0 border-t bg-background pb-3 pt-3">
+      <div
+        className="header shrink-0 border-t bg-background pt-3"
+        style={{ paddingBottom: "calc(var(--safe-area-bottom, 0px) + 5.5rem)" }}
+      >
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
           <Input
             {...messageForm.register("text")}

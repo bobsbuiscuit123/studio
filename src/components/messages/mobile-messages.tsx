@@ -405,7 +405,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4">
+    <div
+      className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
+      style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.75rem)" }}
+    >
       <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />

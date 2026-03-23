@@ -58,7 +58,7 @@ export async function GET(
   ] = await Promise.all([
     admin
       .from('orgs')
-      .select('name, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
+      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
       .eq('id', parsed.data)
       .maybeSingle(),
     admin
@@ -84,7 +84,7 @@ export async function GET(
   )) {
     const legacyOrgResponse = await admin
       .from('orgs')
-      .select('name, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
+      .select('name, join_code, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
       .eq('id', parsed.data)
       .maybeSingle();
 
@@ -172,6 +172,7 @@ export async function GET(
       updatedAt: org?.updated_at ?? null,
       ...(membership.role === 'owner'
         ? {
+            joinCode: org?.join_code ?? null,
             tokenBalance,
             estimatedDaysRemaining,
             recentTokenActivity,

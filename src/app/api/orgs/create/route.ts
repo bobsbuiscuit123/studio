@@ -4,11 +4,12 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
-import { isMissingColumnError } from '@/lib/org-balance';
+import { isMissingColumnError, readBalance } from '@/lib/org-balance';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 
 const JOIN_CODE_LENGTH = 6;
 const JOIN_CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TRIAL_TOKENS = 2500;
 
 const generateJoinCode = () =>
   Array.from({ length: JOIN_CODE_LENGTH }, () =>
@@ -96,6 +97,105 @@ const reserveRandomJoinCode = async (admin: ReturnType<typeof createSupabaseAdmi
   }
 
   return null;
+};
+
+const grantFirstOrgTrialTokens = async ({
+  admin,
+  userId,
+  orgId,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  userId: string;
+  orgId: string;
+}) => {
+  const profileResponse = await admin
+    .from('profiles')
+    .select('has_used_trial')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profileResponse.error && !isMissingColumnError(profileResponse.error, 'has_used_trial')) {
+    return { granted: false, tokenBalance: 0 };
+  }
+
+  const alreadyUsedTrial = Boolean(profileResponse.data?.has_used_trial);
+  if (alreadyUsedTrial) {
+    const orgBalanceResponse = await admin
+      .from('orgs')
+      .select('token_balance, credit_balance')
+      .eq('id', orgId)
+      .maybeSingle();
+    return { granted: false, tokenBalance: readBalance(orgBalanceResponse.data).balance };
+  }
+
+  try {
+    await admin.from('profiles').upsert(
+      {
+        id: userId,
+        has_used_trial: true,
+        trial_granted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch {
+    // Do not block org creation if the profile trial marker cannot be updated.
+  }
+
+  const orgResponse = await admin
+    .from('orgs')
+    .select('token_balance, credit_balance')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  const currentBalance = readBalance(orgResponse.data).balance;
+
+  let updated = false;
+  let nextBalance = currentBalance;
+
+  const tokenUpdate = await admin
+    .from('orgs')
+    .update({
+      token_balance: currentBalance + TRIAL_TOKENS,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orgId);
+
+  if (!tokenUpdate.error) {
+    updated = true;
+    nextBalance = currentBalance + TRIAL_TOKENS;
+  } else {
+    const creditUpdate = await admin
+      .from('orgs')
+      .update({
+        credit_balance: currentBalance + TRIAL_TOKENS,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', orgId);
+    if (!creditUpdate.error) {
+      updated = true;
+      nextBalance = currentBalance + TRIAL_TOKENS;
+    }
+  }
+
+  if (updated) {
+    try {
+      await admin.from('token_transactions').insert({
+        user_id: userId,
+        organization_id: orgId,
+        actor_user_id: userId,
+        type: 'trial',
+        amount: TRIAL_TOKENS,
+        balance_after: nextBalance,
+        description: 'First organization trial tokens',
+        metadata: { trial_tokens: TRIAL_TOKENS },
+      });
+    } catch {
+      // The balance grant matters more than the activity log.
+    }
+  }
+
+  return { granted: updated, tokenBalance: nextBalance };
 };
 
 export async function POST(request: Request) {
@@ -227,13 +327,19 @@ const schema = z
       );
     }
 
+    const trialGrant = await grantFirstOrgTrialTokens({
+      admin,
+      userId,
+      orgId: fallback.orgId,
+    }).catch(() => ({ granted: false, tokenBalance: 0 }));
+
     return NextResponse.json(
       {
         ok: true,
         orgId: fallback.orgId,
         joinCode: reservedJoinCode,
-        tokenBalance: 0,
-        trialGranted: false,
+        tokenBalance: trialGrant.tokenBalance,
+        trialGranted: trialGrant.granted,
         usedLegacySchema: fallback.usedLegacySchema,
       },
       { headers: getRateLimitHeaders(limiter) }

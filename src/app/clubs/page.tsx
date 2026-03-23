@@ -320,6 +320,12 @@ export default function ClubsPage() {
     toast({ title: "Copied", description: "Join code copied to clipboard." });
   };
 
+  const handleCopyOrgJoinCode = async () => {
+    if (!orgStatus?.joinCode) return;
+    await navigator.clipboard.writeText(orgStatus.joinCode);
+    toast({ title: "Copied", description: "Organization join code copied." });
+  };
+
   const handleOpenEditGroup = (group: Group) => {
     setEditingGroup(group);
     setEditGroupName(group.name);
@@ -500,17 +506,36 @@ export default function ClubsPage() {
                   <Pencil className="mr-2" /> Edit Organization
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg rounded-3xl">
-                <DialogHeader>
-                  <DialogTitle>Edit organization limits</DialogTitle>
-                  <DialogDescription>
-                    Adjust the maximum number of members and the daily AI request cap per person.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-6 py-2">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <Label className="text-base">Member limit</Label>
+                <DialogContent className="max-w-lg rounded-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Edit organization limits</DialogTitle>
+                    <DialogDescription>
+                      Adjust the maximum number of members and the daily AI request cap per person.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-6 py-2">
+                    {orgStatus?.joinCode ? (
+                      <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-emerald-950">Organization join code</p>
+                            <p className="text-xs text-emerald-800">
+                              Share this code if you need to invite someone again.
+                            </p>
+                          </div>
+                          <Button type="button" variant="outline" size="icon" onClick={handleCopyOrgJoinCode}>
+                            <Copy className="h-4 w-4" />
+                            <span className="sr-only">Copy organization join code</span>
+                          </Button>
+                        </div>
+                        <div className="mt-3 rounded-2xl bg-white px-4 py-3 text-center text-xl font-semibold tracking-[0.35em] text-emerald-950">
+                          {orgStatus.joinCode}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <Label className="text-base">Member limit</Label>
                       <span className="text-sm font-semibold">{editMemberLimit.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center gap-2">

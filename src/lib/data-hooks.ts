@@ -724,6 +724,7 @@ export type OrgAiQuotaStatus = {
     orgId: string;
     orgName: string;
     role: string;
+    joinCode?: string;
     memberLimit: number;
     dailyAiLimitPerUser: number;
     activeUsers: number;

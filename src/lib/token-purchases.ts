@@ -59,8 +59,10 @@ let offeringsPromise: Promise<PurchasesOfferings | null> | null = null;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getRevenueCatAppleApiKey = () =>
-  process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY?.trim() ?? '';
-
+  Capacitor.isNativePlatform()
+    ? 'appl_THVQGIrCXAcNvtJSzvOZhctIGMc'
+    : process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY?.trim() ?? '';
+    
 export function initializeRevenueCat(): Promise<void> {
   if (!Capacitor.isNativePlatform()) {
     console.log('Not native, skipping RevenueCat');

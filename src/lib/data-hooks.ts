@@ -10,6 +10,12 @@ import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/lib/group-permissions';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { calculateEstimatedDaysRemaining, getAiAvailability, getTokenHealth } from '@/lib/pricing';
+import {
+    clearSatisfiedPendingOrgTokenBalance,
+    getPendingOrgTokenBalanceTarget,
+    registerPendingOrgTokenBalance,
+    wasOrgTokenPurchaseProcessed,
+} from '@/lib/org-token-optimistic';
 
 type ClubData = {
     members: Member[];
@@ -81,8 +87,6 @@ const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
 const orgAiStatusCache = new Map<string, OrgAiQuotaStatus>();
 const orgAiStatusLoadedAt = new Map<string, number>();
-const orgAiPendingPurchaseTargets = new Map<string, number>();
-const orgAiProcessedPurchaseTransactions = new Set<string>();
 let currentUserCache: User | null = null;
 let currentUserHydrationPromise: Promise<User | null> | null = null;
 const ORG_AI_STATUS_REFRESH_TTL_MS = 60_000;
@@ -817,15 +821,13 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
         );
         if (response.ok) {
             const serverStatus = response.data.data;
-            const pendingTarget = orgAiPendingPurchaseTargets.get(orgId);
+            const pendingTarget = getPendingOrgTokenBalanceTarget(orgId);
             const serverBalance = Number(serverStatus.tokenBalance ?? 0);
             const nextStatus =
                 Number.isFinite(pendingTarget) && serverBalance < Number(pendingTarget)
                     ? applyOrgBalanceSnapshot(serverStatus, Number(pendingTarget))
                     : serverStatus;
-            if (Number.isFinite(pendingTarget) && serverBalance >= Number(pendingTarget)) {
-                orgAiPendingPurchaseTargets.delete(orgId);
-            }
+            clearSatisfiedPendingOrgTokenBalance(orgId, serverBalance);
             setStatus(nextStatus);
             orgAiStatusCache.set(orgId, nextStatus);
             const loadedAt = Date.now();
@@ -866,7 +868,7 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
                   if (serverBalance < targetBalance) {
                       continue;
                   }
-                  orgAiPendingPurchaseTargets.delete(orgId);
+                  clearSatisfiedPendingOrgTokenBalance(orgId, serverBalance);
                   orgAiStatusCache.set(orgId, serverStatus);
                   const loadedAt = Date.now();
                   orgAiStatusLoadedAt.set(orgId, loadedAt);
@@ -882,39 +884,49 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
                   event && 'detail' in event
                       ? (event as CustomEvent<{ orgId?: string | null; transactionId?: string | null; tokenBalance?: number | null; tokensGranted?: number | null }>).detail
                       : undefined;
-              const changedOrgId = detail?.orgId ?? null;
-              if (changedOrgId && orgId && changedOrgId !== orgId) return;
-              const transactionId = String(detail?.transactionId ?? '').trim();
-              if (transactionId) {
-                  const transactionKey = `${orgId ?? changedOrgId ?? 'unknown'}:${transactionId}`;
-                  if (orgAiProcessedPurchaseTransactions.has(transactionKey)) {
-                      return;
-                  }
-                  orgAiProcessedPurchaseTransactions.add(transactionKey);
-              }
-              const nextBalance = Number(detail?.tokenBalance ?? NaN);
-              const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
-              if (Number.isFinite(nextBalance)) {
-                  setStatus(prev => {
-                      if (!prev) return prev;
-                      const nextStatus = applyOrgBalanceSnapshot(prev, nextBalance);
-                      orgAiPendingPurchaseTargets.set(orgId ?? nextStatus.orgId, nextBalance);
-                      orgAiStatusCache.set(orgId ?? nextStatus.orgId, nextStatus);
-                      return nextStatus;
-                  });
-                  void reconcilePurchaseBalance(nextBalance);
-              } else if (Number.isFinite(purchasedTokens) && purchasedTokens > 0) {
-                  setStatus(prev => {
-                      if (!prev) return prev;
-                      const optimisticBalance = Math.max(0, Number(prev.tokenBalance ?? 0) + purchasedTokens);
-                      const nextStatus = applyOrgBalanceSnapshot(prev, optimisticBalance);
-                      orgAiPendingPurchaseTargets.set(orgId ?? nextStatus.orgId, optimisticBalance);
-                      orgAiStatusCache.set(orgId ?? nextStatus.orgId, nextStatus);
-                      void reconcilePurchaseBalance(optimisticBalance);
-                      return nextStatus;
-                  });
-              }
-          };
+                const changedOrgId = detail?.orgId ?? null;
+                if (changedOrgId && orgId && changedOrgId !== orgId) return;
+                const resolvedOrgId = orgId ?? changedOrgId ?? null;
+                if (!resolvedOrgId) return;
+                const transactionId = String(detail?.transactionId ?? '').trim();
+                if (wasOrgTokenPurchaseProcessed(resolvedOrgId, transactionId)) {
+                    return;
+                }
+                const nextBalance = Number(detail?.tokenBalance ?? NaN);
+                const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
+                const cachedStatus = orgAiStatusCache.get(resolvedOrgId) ?? null;
+                const currentKnownBalance = Number(
+                    status?.tokenBalance ?? cachedStatus?.tokenBalance ?? 0
+                );
+                const pendingTarget = registerPendingOrgTokenBalance({
+                    orgId: resolvedOrgId,
+                    transactionId,
+                    currentBalance: currentKnownBalance,
+                    tokenBalance: nextBalance,
+                    tokensGranted: purchasedTokens,
+                });
+                if (Number.isFinite(nextBalance)) {
+                    setStatus(prev => {
+                        const base = prev ?? cachedStatus;
+                        if (!base) return prev;
+                        const nextStatus = applyOrgBalanceSnapshot(base, nextBalance);
+                        orgAiStatusCache.set(resolvedOrgId, nextStatus);
+                        return nextStatus;
+                    });
+                    void reconcilePurchaseBalance(nextBalance);
+                } else if (Number.isFinite(pendingTarget)) {
+                    setStatus(prev => {
+                        const base = prev ?? cachedStatus;
+                        if (!base) return prev;
+                        const nextStatus = applyOrgBalanceSnapshot(base, Number(pendingTarget));
+                        orgAiStatusCache.set(resolvedOrgId, nextStatus);
+                        return nextStatus;
+                    });
+                    void reconcilePurchaseBalance(Number(pendingTarget));
+                } else {
+                    void refresh({ silent: true, force: true });
+                }
+            };
           const handleUsageChanged = (event?: Event) => {
               const detail =
                   event && 'detail' in event
@@ -951,7 +963,7 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
               window.removeEventListener('focus', handleVisibilityChange);
               window.removeEventListener('online', handleVisibilityChange);
           };
-      }, [orgId, refresh]);
+      }, [orgId, refresh, status?.tokenBalance]);
 
     const used = status?.requestsUsedToday ?? 0;
     const limit = status?.dailyAiLimitPerUser ?? 0;

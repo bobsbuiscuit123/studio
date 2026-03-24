@@ -15,6 +15,7 @@ import { clearSelectedGroupId, clearSelectedOrgId, setSelectedOrgId } from '@/li
 import { safeFetchJson } from '@/lib/network';
 import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
 import type { AppleTokenPurchaseOutcome } from '@/lib/token-purchases';
+import { registerPendingOrgTokenBalance } from '@/lib/org-token-optimistic';
 
 const MAX_USER_LIMIT_MAX = 10_000;
 
@@ -209,6 +210,15 @@ export default function OrgCreatePage() {
           }
         : current
     );
+    if (createdOrg?.orgId) {
+      registerPendingOrgTokenBalance({
+        orgId: createdOrg.orgId,
+        transactionId: result.transactionId,
+        currentBalance: createdOrg.tokenBalance,
+        tokenBalance: result.tokenBalance,
+        tokensGranted: result.tokensGranted,
+      });
+    }
   };
 
   return (

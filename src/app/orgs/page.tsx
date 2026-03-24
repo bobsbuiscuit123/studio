@@ -13,6 +13,12 @@ import { clearSelectedGroupId, clearSelectedOrgId, setSelectedOrgId } from '@/li
 import { Logo } from '@/components/icons';
 import { Coins, Sparkles, Users } from 'lucide-react';
 import { calculateEstimatedDaysRemaining, getAiAvailability, getTokenHealth } from '@/lib/pricing';
+import {
+  clearSatisfiedPendingOrgTokenBalance,
+  getPendingOrgTokenBalanceTarget,
+  registerPendingOrgTokenBalance,
+  wasOrgTokenPurchaseProcessed,
+} from '@/lib/org-token-optimistic';
 
 type OrgSummary = {
   id: string;
@@ -70,8 +76,6 @@ export default function OrgsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const processedTransactionsRef = useRef<Set<string>>(new Set());
-  const pendingTargetsRef = useRef<Map<string, number>>(new Map());
 
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgStatus>>({});
@@ -86,14 +90,12 @@ export default function OrgsPage() {
       return null;
     }
     const serverStatus = statusResult.data.data;
-    const pendingTarget = pendingTargetsRef.current.get(orgId);
+    const pendingTarget = getPendingOrgTokenBalanceTarget(orgId);
     const serverBalance = Number(serverStatus.tokenBalance ?? 0);
     if (Number.isFinite(pendingTarget) && serverBalance < Number(pendingTarget)) {
       return applyOrgBalanceSnapshot(serverStatus, Number(pendingTarget));
     }
-    if (Number.isFinite(pendingTarget) && serverBalance >= Number(pendingTarget)) {
-      pendingTargetsRef.current.delete(orgId);
-    }
+    clearSatisfiedPendingOrgTokenBalance(orgId, serverBalance);
     return serverStatus;
   }, []);
 
@@ -107,7 +109,7 @@ export default function OrgsPage() {
       const nextBalance = Number(nextStatus.tokenBalance ?? 0);
       setStatusByOrg(prev => ({ ...prev, [orgId]: nextStatus }));
       if (nextBalance >= targetBalance) {
-        pendingTargetsRef.current.delete(orgId);
+        clearSatisfiedPendingOrgTokenBalance(orgId, nextBalance);
         return;
       }
     }
@@ -160,33 +162,39 @@ export default function OrgsPage() {
       const orgId = String(detail?.orgId ?? '').trim();
       if (!orgId) return;
       const transactionId = String(detail?.transactionId ?? '').trim();
-      const transactionKey = `${orgId}:${transactionId}`;
-      if (transactionId && processedTransactionsRef.current.has(transactionKey)) {
+      if (wasOrgTokenPurchaseProcessed(orgId, transactionId)) {
         return;
-      }
-      if (transactionId) {
-        processedTransactionsRef.current.add(transactionKey);
       }
 
       let targetBalance = Number(detail?.tokenBalance ?? NaN);
       const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
+      const currentStatus = statusByOrg[orgId];
+      const knownBalance = Number(currentStatus?.tokenBalance ?? 0);
+      const pendingTarget = registerPendingOrgTokenBalance({
+        orgId,
+        transactionId,
+        currentBalance: knownBalance,
+        tokenBalance: targetBalance,
+        tokensGranted: purchasedTokens,
+      });
 
       setStatusByOrg(prev => {
         const current = prev[orgId];
-        if (!current) {
+        if (!current && !Number.isFinite(pendingTarget)) {
           return prev;
         }
         const optimisticBalance = Number.isFinite(targetBalance)
           ? targetBalance
-          : Math.max(0, Number(current.tokenBalance ?? 0) + (Number.isFinite(purchasedTokens) ? purchasedTokens : 0));
+          : Number(pendingTarget);
         if (!Number.isFinite(optimisticBalance)) {
           return prev;
         }
         targetBalance = optimisticBalance;
-        pendingTargetsRef.current.set(orgId, optimisticBalance);
         return {
           ...prev,
-          [orgId]: applyOrgBalanceSnapshot(current, optimisticBalance),
+          ...(current
+            ? { [orgId]: applyOrgBalanceSnapshot(current, optimisticBalance) }
+            : {}),
         };
       });
 
@@ -199,7 +207,7 @@ export default function OrgsPage() {
     return () => {
       window.removeEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
     };
-  }, [reconcileOrgStatus]);
+  }, [reconcileOrgStatus, statusByOrg]);
 
   const handleSelectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);

@@ -115,6 +115,8 @@ export async function GET(
   const dailyAiLimitPerUser = Number(org?.daily_ai_limit ?? 0);
   const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
   const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
+  const isOwner = String(org?.owner_id ?? '') === userId || membership.role === 'owner';
+  const effectiveRole = isOwner ? 'owner' : membership.role;
 
   const tokenBalance = readBalance(org).balance;
   const estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
@@ -127,7 +129,7 @@ export async function GET(
     created_at: string;
   }> = [];
 
-  if (membership.role === 'owner') {
+  if (isOwner) {
     const { data: activity, error: activityError } = await admin
       .from('token_transactions')
       .select('id, amount, type, description, metadata, created_at')
@@ -157,7 +159,7 @@ export async function GET(
     data: {
       orgId: parsed.data,
       orgName: org?.name ?? 'Organization',
-      role: membership.role,
+      role: effectiveRole,
       memberLimit,
       dailyAiLimitPerUser,
       activeUsers: count ?? 0,
@@ -170,7 +172,7 @@ export async function GET(
       tokensUsed,
       createdAt: org?.created_at ?? null,
       updatedAt: org?.updated_at ?? null,
-      ...(membership.role === 'owner'
+      ...(isOwner
         ? {
             joinCode: org?.join_code ?? null,
             tokenBalance,

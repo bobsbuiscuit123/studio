@@ -6,6 +6,7 @@ import { err } from '@/lib/result';
 
 const bodySchema = z.object({
   transactionId: z.string().min(1),
+  productId: z.string().min(1),
   provider: z.string().optional(),
 });
 
@@ -46,14 +47,23 @@ export async function POST(
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership } = await admin
-    .from('memberships')
-    .select('role')
-    .eq('org_id', parsedOrgId.data)
-    .eq('user_id', userId)
+  const orgResponse = await admin
+    .from('orgs')
+    .select('owner_id')
+    .eq('id', parsedOrgId.data)
     .maybeSingle();
 
-  if (!membership || membership.role !== 'owner') {
+  let ownerId = orgResponse.data?.owner_id ?? null;
+  if (!ownerId && orgResponse.error && /owner_id/i.test(orgResponse.error.message)) {
+    const legacyOrgResponse = await admin
+      .from('orgs')
+      .select('owner_user_id')
+      .eq('id', parsedOrgId.data)
+      .maybeSingle();
+    ownerId = legacyOrgResponse.data?.owner_user_id ?? null;
+  }
+
+  if (!ownerId || ownerId !== userId) {
     return NextResponse.json(
       err({
         code: 'VALIDATION',
@@ -65,24 +75,15 @@ export async function POST(
   }
 
   const normalizedProvider = intentBody.data.provider?.trim() || 'revenuecat';
-  const { data: existingIntent } = await admin
-    .from('token_purchase_intents')
-    .select('id')
-    .eq('provider', normalizedProvider)
-    .eq('provider_transaction_id', intentBody.data.transactionId.trim())
-    .maybeSingle();
-
-  if (existingIntent) {
-    return NextResponse.json({ ok: true });
-  }
-
   const { error } = await admin
     .from('token_purchase_intents')
-    .insert({
+    .upsert({
       provider_transaction_id: intentBody.data.transactionId.trim(),
       provider: normalizedProvider,
       org_id: parsedOrgId.data,
-    });
+      user_id: userId,
+      product_id: intentBody.data.productId.trim(),
+    }, { onConflict: 'provider,provider_transaction_id' });
 
   if (error) {
     return NextResponse.json(

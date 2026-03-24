@@ -244,13 +244,20 @@ const getProviderTransactionId = (metadata?: Record<string, unknown> | null) => 
   return typeof direct === 'string' ? direct : null;
 };
 
-const registerTokenPurchaseIntent = async (orgId: string, transactionId: string) => {
-  await safeFetchJson('/api/orgs/' + encodeURIComponent(orgId) + '/token-purchase-intent', {
+const registerTokenPurchaseIntent = async (
+  orgId: string,
+  transactionId: string,
+  productId: string
+) => {
+  const result = await safeFetchJson('/api/orgs/' + encodeURIComponent(orgId) + '/token-purchase-intent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ transactionId }),
+    body: JSON.stringify({ transactionId, productId }),
     retry: { retries: 1 },
   });
+  if (!result.ok) {
+    throw new Error(result.error.message || 'Failed to register token purchase intent.');
+  }
 };
 
 const waitForWalletGrant = async (
@@ -416,7 +423,7 @@ export const purchaseAppleTokenPackage = async (
       ? Number(initialWallet.data.data?.tokenBalance ?? 0)
       : null;
 
-    await registerTokenPurchaseIntent(orgId, transactionId);
+    await registerTokenPurchaseIntent(orgId, transactionId, selectedPack.productId);
     const grantResult = await waitForWalletGrant(transactionId, orgId, {
       startingBalance,
       expectedTokens: selectedPack.tokens,

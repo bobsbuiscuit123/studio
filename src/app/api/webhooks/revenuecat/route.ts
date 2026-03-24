@@ -135,11 +135,25 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdmin();
   const { data: intents } = await admin
     .from('token_purchase_intents')
-    .select('org_id, provider_transaction_id')
+    .select('org_id, provider_transaction_id, user_id, product_id, created_at')
     .eq('provider', 'revenuecat')
     .in('provider_transaction_id', transactionCandidates);
 
-  const orgId = intents?.[0]?.org_id ?? null;
+  let orgId = intents?.[0]?.org_id ?? null;
+  if (!orgId) {
+    const fallbackIntentResponse = await admin
+      .from('token_purchase_intents')
+      .select('org_id, provider_transaction_id, created_at')
+      .eq('provider', 'revenuecat')
+      .eq('user_id', userId)
+      .eq('product_id', productId)
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    const fallbackIntent =
+      (fallbackIntentResponse.data ?? []).find(intent => typeof intent.org_id === 'string') ?? null;
+    orgId = fallbackIntent?.org_id ?? null;
+  }
   if (!orgId) {
     return NextResponse.json(
       { ok: false, error: 'Missing organization mapping for this purchase.' },

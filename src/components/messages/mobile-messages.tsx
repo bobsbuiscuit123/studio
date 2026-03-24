@@ -130,7 +130,7 @@ export function MessagesListScreen() {
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
-      <div className="tab-page-shell px-4">
+      <div className="tab-page-shell bg-background px-4">
         <div className="tab-page-header">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
@@ -143,7 +143,7 @@ export function MessagesListScreen() {
 
   if (!user) {
     return (
-      <div className="tab-page-shell px-4">
+      <div className="tab-page-shell bg-background px-4">
         <div className="tab-page-header">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
@@ -395,7 +395,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
-      <div className="tab-page-shell px-4">
+      <div className="tab-page-shell bg-background px-4">
         <div className="tab-page-header">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
@@ -408,7 +408,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (!user) {
     return (
-      <div className="tab-page-shell px-4">
+      <div className="tab-page-shell bg-background px-4">
         <div className="tab-page-header">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
@@ -421,7 +421,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (!conversation) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 text-left">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 bg-background px-4 text-left">
         <p className="text-sm text-muted-foreground">Conversation not found</p>
         <Button asChild variant="outline" className="w-fit">
           <Link href="/messages">Back to Messages</Link>

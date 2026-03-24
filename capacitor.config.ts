@@ -4,7 +4,7 @@ const config: CapacitorConfig = {
   appId: 'com.caspo.app',
   appName: 'CASPO',
   webDir: 'out', // not used, but clean
-  backgroundColor: '#e3f5e6',
+  backgroundColor: '#f6faf6',
   server: {
     url: 'https://casporeal.vercel.app',
     cleartext: true,
@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
     contentInset: 'never',
     scrollEnabled: true,
     zoomEnabled: false,
-    backgroundColor: '#e3f5e6',
+    backgroundColor: '#f6faf6',
   },
 };
 

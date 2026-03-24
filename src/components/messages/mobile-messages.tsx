@@ -155,10 +155,7 @@ export function MessagesListScreen() {
   }
 
   return (
-    <div
-      className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 3rem)" }}
-    >
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background px-4">
       <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
@@ -437,10 +434,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div
-      className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden px-4"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 3rem)" }}
-    >
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background px-4">
       <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />

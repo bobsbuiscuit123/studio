@@ -71,7 +71,7 @@
   html {
     height: 100%;
     min-height: 100%;
-    background-color: #e3f5e6;
+    background-color: hsl(var(--background));
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     overflow-x: hidden;
@@ -81,7 +81,7 @@
     @apply bg-background text-foreground;
     height: 100%;
     min-height: 100dvh;
-    background-color: #e3f5e6;
+    background-color: hsl(var(--background));
     overscroll-behavior: none;
     overflow: hidden;
   }

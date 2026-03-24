@@ -300,49 +300,87 @@ const confirmTokenPurchaseGrant = async (
   };
 };
 
-const waitForWalletGrant = async (
+const inspectWalletGrant = async (
   transactionId: string,
   orgId: string,
   options?: { startingBalance?: number | null; expectedTokens?: number | null }
+) => {
+  const walletUrl = `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`;
+  const walletResponse = await safeFetchJson<WalletResponse>(walletUrl, {
+    method: 'GET',
+    timeoutMs: 10_000,
+    retry: { retries: 1 },
+    treatOfflineAsError: false,
+  });
+
+  if (!walletResponse.ok) {
+    return null;
+  }
+
+  const tokenBalance = Number(walletResponse.data.data?.tokenBalance ?? 0);
+  const matchingActivity =
+    walletResponse.data.data?.recentTokenActivity?.find((item) => {
+      if (item.type !== 'purchase') return false;
+      return getProviderTransactionId(item.metadata) === transactionId;
+    }) ?? null;
+
+  if (matchingActivity) {
+    return {
+      status: 'granted' as const,
+      tokenBalance,
+      tokensGranted: Number(matchingActivity.amount ?? 0),
+    };
+  }
+
+  const startingBalance = Number(options?.startingBalance ?? NaN);
+  const expectedTokens = Number(options?.expectedTokens ?? NaN);
+  if (
+    Number.isFinite(startingBalance) &&
+    Number.isFinite(expectedTokens) &&
+    tokenBalance >= startingBalance + expectedTokens
+  ) {
+    return {
+      status: 'granted' as const,
+      tokenBalance,
+      tokensGranted: expectedTokens,
+    };
+  }
+
+  return null;
+};
+
+const waitForPersistedPurchaseGrant = async (
+  transactionId: string,
+  orgId: string,
+  productId: string,
+  options?: { startingBalance?: number | null; expectedTokens?: number | null }
 ): Promise<Pick<AppleTokenPurchaseOutcome, 'status' | 'tokenBalance' | 'tokensGranted'>> => {
   for (let attempt = 0; attempt < WALLET_POLL_ATTEMPTS; attempt += 1) {
-    const walletUrl = `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`;
-    const walletResponse = await safeFetchJson<WalletResponse>(walletUrl, {
-      method: 'GET',
-      timeoutMs: 10_000,
-      retry: { retries: 1 },
-      treatOfflineAsError: false,
-    });
-
-    if (walletResponse.ok) {
-      const tokenBalance = Number(walletResponse.data.data?.tokenBalance ?? 0);
-      const matchingActivity =
-        walletResponse.data.data?.recentTokenActivity?.find((item) => {
-          if (item.type !== 'purchase') return false;
-          return getProviderTransactionId(item.metadata) === transactionId;
-        }) ?? null;
-
-      if (matchingActivity) {
-        return {
-          status: 'granted',
-          tokenBalance,
-          tokensGranted: Number(matchingActivity.amount ?? 0),
-        };
-      }
-
+    try {
+      const confirmedGrant = await confirmTokenPurchaseGrant(orgId, transactionId, productId);
       const startingBalance = Number(options?.startingBalance ?? NaN);
       const expectedTokens = Number(options?.expectedTokens ?? NaN);
       if (
-        Number.isFinite(startingBalance) &&
-        Number.isFinite(expectedTokens) &&
-        tokenBalance >= startingBalance + expectedTokens
+        confirmedGrant.granted ||
+        (
+          Number.isFinite(startingBalance) &&
+          Number.isFinite(expectedTokens) &&
+          confirmedGrant.tokenBalance >= startingBalance + expectedTokens
+        )
       ) {
         return {
           status: 'granted',
-          tokenBalance,
-          tokensGranted: expectedTokens,
+          tokenBalance: confirmedGrant.tokenBalance,
+          tokensGranted: confirmedGrant.tokensGranted || (Number.isFinite(expectedTokens) ? expectedTokens : null),
         };
       }
+    } catch (error) {
+      console.warn('Token purchase confirmation attempt failed; retrying.', error);
+    }
+
+    const walletGrant = await inspectWalletGrant(transactionId, orgId, options);
+    if (walletGrant) {
+      return walletGrant;
     }
 
     await wait(WALLET_POLL_DELAY_MS);
@@ -462,25 +500,7 @@ export const purchaseAppleTokenPackage = async (
       : null;
 
     await registerTokenPurchaseIntent(orgId, transactionId, selectedPack.productId);
-    try {
-      const confirmedGrant = await confirmTokenPurchaseGrant(orgId, transactionId, selectedPack.productId);
-      if (
-        confirmedGrant.granted ||
-        (startingBalance !== null && confirmedGrant.tokenBalance > startingBalance)
-      ) {
-        return {
-          status: 'granted',
-          productId: selectedPack.productId,
-          transactionId,
-          tokenBalance: confirmedGrant.tokenBalance,
-          tokensGranted: confirmedGrant.tokensGranted || selectedPack.tokens,
-        };
-      }
-    } catch (error) {
-      console.warn('Direct token purchase confirmation failed; falling back to wallet polling.', error);
-    }
-
-    const grantResult = await waitForWalletGrant(transactionId, orgId, {
+    const grantResult = await waitForPersistedPurchaseGrant(transactionId, orgId, selectedPack.productId, {
       startingBalance,
       expectedTokens: selectedPack.tokens,
     });

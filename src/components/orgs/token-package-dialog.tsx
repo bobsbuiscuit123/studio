@@ -161,18 +161,21 @@ export function TokenPackageDialog({
 
     try {
       const result = await purchaseAppleTokenPackage(selectedPack, orgId);
-      const resolvedTokensGranted = Number(result.tokensGranted ?? selectedPack.tokens);
+      const resolvedTokensGranted =
+        result.status === 'granted'
+          ? Number(result.tokensGranted ?? selectedPack.tokens)
+          : null;
       const resolvedResult: AppleTokenPurchaseOutcome = {
         ...result,
         tokensGranted: resolvedTokensGranted,
       };
-      if (typeof window !== 'undefined' && orgId) {
+      if (typeof window !== 'undefined' && orgId && resolvedResult.status === 'granted') {
         window.dispatchEvent(
           new CustomEvent('org-token-purchase-complete', {
             detail: {
               orgId,
               transactionId: resolvedResult.transactionId,
-              tokenBalance: result.tokenBalance,
+              tokenBalance: resolvedResult.tokenBalance,
               tokensGranted: resolvedTokensGranted,
             },
           })
@@ -185,7 +188,7 @@ export function TokenPackageDialog({
         description:
           result.status === 'granted'
             ? `${selectedPack.displayName} added ${Number(
-                resolvedTokensGranted
+                resolvedTokensGranted ?? selectedPack.tokens
               ).toLocaleString()} tokens to your balance.`
             : 'Your Apple purchase succeeded. Tokens should appear in your balance shortly.',
       });

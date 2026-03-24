@@ -1,33 +1,22 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Coins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
-import {
-  TRIAL_TOKENS,
-  calculateEstimatedDaysRemaining,
-  calculateTokenUsageEstimate,
-} from '@/lib/pricing';
+import { calculateEstimatedDaysRemaining, calculateTokenUsageEstimate } from '@/lib/pricing';
 import { Logo } from '@/components/icons';
-import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
+import { clearSelectedGroupId, clearSelectedOrgId, setSelectedOrgId } from '@/lib/selection';
 import { safeFetchJson } from '@/lib/network';
+import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
+import type { AppleTokenPurchaseOutcome } from '@/lib/token-purchases';
 
 const MAX_USER_LIMIT_MAX = 10_000;
-
-type TokenWalletResponse = {
-  ok: boolean;
-  data?: {
-    tokenBalance: number;
-    hasUsedTrial: boolean;
-  };
-};
 
 type CreateOrgResponse = {
   ok: boolean;
@@ -38,9 +27,18 @@ type CreateOrgResponse = {
   error?: { message?: string };
 };
 
+type CreatedOrgState = {
+  orgId: string;
+  orgName: string;
+  joinCode: string;
+  tokenBalance: number;
+  trialGranted: boolean;
+};
+
 export default function OrgCreatePage() {
   const router = useRouter();
   const { toast } = useToast();
+  const cleanupStartedRef = useRef(false);
 
   const [orgName, setOrgName] = useState('');
   const [orgCategory, setOrgCategory] = useState('');
@@ -49,66 +47,19 @@ export default function OrgCreatePage() {
   const [dailyAiLimitPerUser, setDailyAiLimitPerUser] = useState(2);
   const [step, setStep] = useState<1 | 2>(1);
   const [createSubmitting, setCreateSubmitting] = useState(false);
-  const [tokenBalance, setTokenBalance] = useState(0);
-  const [hasUsedTrial, setHasUsedTrial] = useState(false);
-  const [trialPreviewAccepted, setTrialPreviewAccepted] = useState(false);
-  const [trialDialogOpen, setTrialDialogOpen] = useState(false);
-  const [trialDialogAlreadyShown, setTrialDialogAlreadyShown] = useState(false);
-  const [createdOrg, setCreatedOrg] = useState<{
-    orgId: string;
-    joinCode: string;
-    tokenBalance: number;
-    trialGranted: boolean;
-  } | null>(null);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
+  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const [setupCompleted, setSetupCompleted] = useState(false);
+  const [createdOrg, setCreatedOrg] = useState<CreatedOrgState | null>(null);
 
   const estimate = useMemo(
     () => calculateTokenUsageEstimate(maxUserLimit, dailyAiLimitPerUser),
     [maxUserLimit, dailyAiLimitPerUser]
   );
-  const previewTokenBalance =
-    !hasUsedTrial && trialPreviewAccepted ? tokenBalance + TRIAL_TOKENS : tokenBalance;
   const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
-    previewTokenBalance,
+    createdOrg?.tokenBalance ?? 0,
     estimate.estimatedMonthlyTokens
   );
-
-  const loadWallet = useCallback(async () => {
-    const response = await safeFetchJson<TokenWalletResponse>('/api/tokens/wallet', { method: 'GET' });
-    if (!response.ok) {
-      return;
-    }
-    setTokenBalance(Number(response.data.data?.tokenBalance ?? 0));
-    setHasUsedTrial(Boolean(response.data.data?.hasUsedTrial));
-  }, []);
-
-  useEffect(() => {
-    void loadWallet();
-  }, [loadWallet]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const storedShown = window.localStorage.getItem('orgTrialDialogShown') === 'true';
-    const storedAccepted = window.localStorage.getItem('orgTrialDialogAccepted') === 'true';
-    setTrialDialogAlreadyShown(storedShown);
-    if (storedAccepted) {
-      setTrialPreviewAccepted(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (
-      step === 2 &&
-      !hasUsedTrial &&
-      !trialPreviewAccepted &&
-      !trialDialogAlreadyShown
-    ) {
-      setTrialDialogOpen(true);
-      setTrialDialogAlreadyShown(true);
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('orgTrialDialogShown', 'true');
-      }
-    }
-  }, [hasUsedTrial, step, trialPreviewAccepted, trialDialogAlreadyShown]);
 
   const validateForm = () => {
     if (!orgName.trim()) {
@@ -117,6 +68,54 @@ export default function OrgCreatePage() {
     }
     return true;
   };
+
+  const cleanupPendingOrg = useCallback(async (options?: { keepalive?: boolean }) => {
+    if (!createdOrg?.orgId || setupCompleted || cleanupStartedRef.current) {
+      return;
+    }
+
+    cleanupStartedRef.current = true;
+    clearSelectedGroupId();
+    clearSelectedOrgId();
+
+    try {
+      await fetch(`/api/orgs/${createdOrg.orgId}/cancel`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: options?.keepalive ?? false,
+      });
+    } catch {
+      // Best-effort cleanup only.
+    }
+  }, [createdOrg?.orgId, setupCompleted]);
+
+  useEffect(() => {
+    if (!createdOrg?.orgId || setupCompleted || step !== 2 || typeof window === 'undefined') {
+      return;
+    }
+
+    const currentUrl = window.location.href;
+    window.history.pushState({ orgSetupPending: true }, '', currentUrl);
+
+    const handleBeforeUnload = () => {
+      void cleanupPendingOrg({ keepalive: true });
+    };
+
+    const handlePopState = () => {
+      void cleanupPendingOrg({ keepalive: true });
+      router.replace('/orgs');
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [cleanupPendingOrg, createdOrg?.orgId, router, setupCompleted, step]);
 
   const submitCreateOrg = async () => {
     if (!validateForm()) return;
@@ -146,40 +145,68 @@ export default function OrgCreatePage() {
       return;
     }
 
-    const nextTokenBalance = Number(response.data.tokenBalance ?? tokenBalance);
-    const trialGranted = Boolean(response.data.trialGranted);
-    setCreatedOrg({
+    const nextCreatedOrg = {
       orgId: response.data.orgId,
+      orgName: orgName.trim(),
       joinCode: response.data.joinCode,
-      tokenBalance: nextTokenBalance,
-      trialGranted,
-    });
-    setTokenBalance(nextTokenBalance);
-    setHasUsedTrial((current) => current || trialGranted);
-    setTrialDialogOpen(false);
+      tokenBalance: Number(response.data.tokenBalance ?? 0),
+      trialGranted: Boolean(response.data.trialGranted),
+    };
+
+    setCreatedOrg(nextCreatedOrg);
+    setSelectedOrgId(nextCreatedOrg.orgId);
+    clearSelectedGroupId();
+    setStep(2);
     setCreateSubmitting(false);
   };
 
-  const handleCreateClick = async () => {
-    if (!validateForm()) return;
-    if (!hasUsedTrial && !trialPreviewAccepted) {
-      setTrialDialogOpen(true);
-      return;
-    }
-    await submitCreateOrg();
+  const handleExitSetup = async () => {
+    await cleanupPendingOrg();
+    router.push('/orgs');
   };
 
-  const handleContinue = () => {
-    if (!createdOrg) return;
-    setSelectedOrgId(createdOrg.orgId);
-    clearSelectedGroupId();
+  const handleSetupComplete = async () => {
+    if (!createdOrg?.orgId) return;
+
+    setSetupSubmitting(true);
+    const response = await safeFetchJson<{ ok: true }>(`/api/orgs/${createdOrg.orgId}/update`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        memberLimit: maxUserLimit,
+        dailyAiLimitPerUser,
+      }),
+    });
+
+    if (!response.ok) {
+      toast({
+        title: 'Setup failed',
+        description: response.error.message || 'Unable to save organization settings.',
+        variant: 'destructive',
+      });
+      setSetupSubmitting(false);
+      return;
+    }
+
+    setSetupCompleted(true);
+    cleanupStartedRef.current = true;
+    toast({
+      title: 'Organization ready',
+      description: `${createdOrg.orgName} has been created and configured.`,
+    });
     router.push('/clubs');
   };
 
-  const handleCopyJoinCode = async () => {
-    if (!createdOrg?.joinCode) return;
-    await navigator.clipboard.writeText(createdOrg.joinCode);
-    toast({ title: 'Copied', description: 'Organization join code copied.' });
+  const handleTokenPurchaseComplete = async (result: AppleTokenPurchaseOutcome) => {
+    if (result.tokenBalance == null) return;
+    setCreatedOrg((current) =>
+      current
+        ? {
+            ...current,
+            tokenBalance: Number(result.tokenBalance ?? current.tokenBalance),
+          }
+        : current
+    );
   };
 
   return (
@@ -199,275 +226,211 @@ export default function OrgCreatePage() {
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
               <p className="text-sm text-slate-600">
-                Organization setup is free. Tokens are only used when members make AI requests.
+                Create the organization first for free, then finish the required setup.
               </p>
             </div>
           </div>
-          <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/orgs')}>
-            Back to organizations
+          <Button
+            variant="outline"
+            className="rounded-2xl"
+            onClick={() => void (createdOrg && !setupCompleted ? handleExitSetup() : router.push('/orgs'))}
+          >
+            {createdOrg && !setupCompleted ? 'Cancel setup' : 'Back to organizations'}
           </Button>
         </header>
 
-        {createdOrg ? (
-          <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-2xl">Organization created</CardTitle>
-              <CardDescription>Your organization is ready. Share the join code and manage tokens any time.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 text-center">
-                <p className="text-sm uppercase tracking-[0.3em] text-emerald-700">Join Code</p>
-                <p className="mt-3 text-4xl font-semibold tracking-[0.35em] text-slate-900">{createdOrg.joinCode}</p>
-              </div>
-              <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Current owner balance</span>
-                  <span className="font-semibold text-slate-900">
-                    {createdOrg.tokenBalance.toLocaleString()} tokens
-                  </span>
-                </div>
-                {createdOrg.trialGranted ? (
-                  <p className="mt-3 text-xs text-emerald-700">
-                    Your first organization trial added {TRIAL_TOKENS.toLocaleString()} free AI tokens.
-                  </p>
-                ) : null}
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              <Button variant="outline" className="rounded-2xl" onClick={handleCopyJoinCode}>
-                Copy join code
-              </Button>
-              <Button
-                variant="outline"
-                className="rounded-2xl"
-                onClick={() => router.push(`/orgs/${createdOrg.orgId}/credits`)}
-              >
-                View token billing
-              </Button>
-              <Button className="flex-1 rounded-2xl" onClick={handleContinue}>
-                Continue to workspace
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : (
-          <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
-            <CardHeader>
-              <CardTitle className="text-xl">Organization setup</CardTitle>
-              <CardDescription>Configure member capacity and estimate AI token usage.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 1 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
-                <div className="text-sm font-medium">Organization details</div>
-                <div className="h-px flex-1 bg-slate-200" />
-                <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 2 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
-                <div className="text-sm font-medium">AI configuration</div>
-              </div>
+        <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
+          <CardHeader>
+            <CardTitle className="text-xl">Organization setup</CardTitle>
+            <CardDescription>
+              {step === 1
+                ? 'Create the organization for free first.'
+                : `Finish the required setup for ${createdOrg?.orgName ?? 'your organization'}.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 1 ? 'bg-slate-900 text-white' : 'bg-emerald-600 text-white'}`}>1</div>
+              <div className="text-sm font-medium">Organization details</div>
+              <div className="h-px flex-1 bg-slate-200" />
+              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${step === 2 ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
+              <div className="text-sm font-medium">Required configuration</div>
+            </div>
 
-              {step === 1 ? (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="org-name">Organization Name</Label>
-                    <Input
-                      id="org-name"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="e.g., Central High Activities"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="org-category">Category</Label>
-                    <Input
-                      id="org-category"
-                      value={orgCategory}
-                      onChange={(e) => setOrgCategory(e.target.value)}
-                      placeholder="School, Community, Nonprofit"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="org-description">Description</Label>
-                    <Input
-                      id="org-description"
-                      value={orgDescription}
-                      onChange={(e) => setOrgDescription(e.target.value)}
-                      placeholder="Tell members what this organization is about."
-                    />
-                  </div>
+            {step === 1 ? (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="org-name">Organization Name</Label>
+                  <Input
+                    id="org-name"
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="e.g., Central High Activities"
+                  />
                 </div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Member cap</Label>
-                        <Input
-                          type="number"
-                          value={maxUserLimit}
-                          min={0}
-                          max={MAX_USER_LIMIT_MAX}
-                          onChange={(e) => {
-                            const nextValue = Number(e.target.value);
-                            if (!Number.isFinite(nextValue)) return;
-                            setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(0, nextValue)));
-                          }}
-                          className="w-28 text-right"
-                        />
-                      </div>
-                      <Slider
-                        value={[maxUserLimit]}
+                <div className="space-y-2">
+                  <Label htmlFor="org-category">Category</Label>
+                  <Input
+                    id="org-category"
+                    value={orgCategory}
+                    onChange={(e) => setOrgCategory(e.target.value)}
+                    placeholder="School, Community, Nonprofit"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="org-description">Description</Label>
+                  <Input
+                    id="org-description"
+                    value={orgDescription}
+                    onChange={(e) => setOrgDescription(e.target.value)}
+                    placeholder="Tell members what this organization is about."
+                  />
+                </div>
+                <div className="rounded-[24px] bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                  Creating the organization is free. Right after creation, you will be required to set member and AI limits.
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="space-y-6">
+                  <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Organization created</span>
+                      <span className="font-semibold">{createdOrg?.orgName}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <span>Join code</span>
+                      <span className="font-semibold tracking-[0.25em] text-slate-900">{createdOrg?.joinCode}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>Member cap</Label>
+                      <Input
+                        type="number"
+                        value={maxUserLimit}
                         min={0}
                         max={MAX_USER_LIMIT_MAX}
-                        step={1}
-                        onValueChange={(values) => setMaxUserLimit(values[0])}
+                        onChange={(e) => {
+                          const nextValue = Number(e.target.value);
+                          if (!Number.isFinite(nextValue)) return;
+                          setMaxUserLimit(Math.min(MAX_USER_LIMIT_MAX, Math.max(0, nextValue)));
+                        }}
+                        className="w-28 text-right"
                       />
                     </div>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label>Daily AI requests per member</Label>
-                        <Input
-                          type="number"
-                          value={dailyAiLimitPerUser}
-                          min={0}
-                          max={200}
-                          onChange={(e) => setDailyAiLimitPerUser(Math.max(0, Number(e.target.value) || 0))}
-                          className="w-28 text-right"
-                        />
-                      </div>
-                      <Slider
-                        value={[dailyAiLimitPerUser]}
+                    <Slider
+                      value={[maxUserLimit]}
+                      min={0}
+                      max={MAX_USER_LIMIT_MAX}
+                      step={1}
+                      onValueChange={(values) => setMaxUserLimit(values[0])}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label>Daily AI requests per member</Label>
+                      <Input
+                        type="number"
+                        value={dailyAiLimitPerUser}
                         min={0}
                         max={200}
-                        step={1}
-                        onValueChange={(values) => setDailyAiLimitPerUser(values[0])}
+                        onChange={(e) => setDailyAiLimitPerUser(Math.max(0, Number(e.target.value) || 0))}
+                        className="w-28 text-right"
                       />
                     </div>
+                    <Slider
+                      value={[dailyAiLimitPerUser]}
+                      min={0}
+                      max={200}
+                      step={1}
+                      onValueChange={(values) => setDailyAiLimitPerUser(values[0])}
+                    />
                   </div>
-
-                  <Card className="rounded-[28px] border border-slate-200 bg-slate-50/90 shadow-sm">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-base">Estimated token usage</CardTitle>
-                      <CardDescription>
-                        Based on your current settings, here’s the estimated AI token usage for this organization.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4 text-sm text-slate-600">
-                      <div className="flex items-center justify-between">
-                        <span>Estimated monthly usage</span>
-                        <span className="font-semibold text-slate-900">
-                          {estimate.estimatedMonthlyTokens.toLocaleString()} tokens
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Estimated daily usage</span>
-                        <span className="font-semibold text-slate-900">
-                          {estimate.estimatedDailyTokens.toLocaleString()} tokens/day
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Your current balance</span>
-                        <span className="font-semibold text-slate-900">{previewTokenBalance.toLocaleString()} tokens</span>
-                      </div>
-                      {previewTokenBalance > 0 ? (
-                        <div className="flex items-center justify-between">
-                          <span>Estimated days remaining</span>
-                          <span className="font-semibold text-slate-900">{estimatedDaysRemaining} days</span>
-                        </div>
-                      ) : null}
-                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
-                        {trialPreviewAccepted && !hasUsedTrial
-                          ? `Your ${TRIAL_TOKENS.toLocaleString()} courtesy tokens are previewed here and will be added only after you create your first organization.`
-                          : 'Tokens are only used as members make AI requests. Creating the organization is free.'}
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
-              )}
-            </CardContent>
-            <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
-              {step === 1 ? (
-                <Button variant="outline" className="rounded-2xl" onClick={() => setStep(2)}>
-                  Next: AI configuration
+
+                <Card className="rounded-[28px] border border-slate-200 bg-slate-50/90 shadow-sm">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Estimated token usage</CardTitle>
+                    <CardDescription>
+                      Set the limits for {createdOrg?.orgName ?? 'this organization'} and optionally add tokens right now.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-sm text-slate-600">
+                    <div className="flex items-center justify-between">
+                      <span>Estimated monthly usage</span>
+                      <span className="font-semibold text-slate-900">
+                        {estimate.estimatedMonthlyTokens.toLocaleString()} tokens
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Estimated daily usage</span>
+                      <span className="font-semibold text-slate-900">
+                        {estimate.estimatedDailyTokens.toLocaleString()} tokens/day
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Current organization balance</span>
+                      <span className="font-semibold text-slate-900">
+                        {(createdOrg?.tokenBalance ?? 0).toLocaleString()} tokens
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Estimated days remaining</span>
+                      <span className="font-semibold text-slate-900">{estimatedDaysRemaining} days</span>
+                    </div>
+                    {createdOrg?.trialGranted ? (
+                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-emerald-700">
+                        Your first organization courtesy tokens have already been added.
+                      </div>
+                    ) : (
+                      <div className="rounded-[24px] bg-white px-4 py-3 text-xs text-slate-500">
+                        You can buy tokens for this organization now or come back later from the org billing page.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </CardContent>
+
+          <CardFooter className="flex flex-col items-stretch gap-3 sm:flex-row">
+            {step === 1 ? (
+              <Button className="flex-1 rounded-2xl" onClick={() => void submitCreateOrg()} disabled={createSubmitting}>
+                {createSubmitting ? 'Creating organization...' : 'Create Organization'}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={() => setTokenDialogOpen(true)}
+                >
+                  <Coins className="mr-2 h-4 w-4" />
+                  Buy tokens for {createdOrg?.orgName ?? 'this organization'}
                 </Button>
-              ) : (
-                <Button variant="outline" className="rounded-2xl" onClick={() => setStep(1)}>
-                  Back to details
+                <Button
+                  className="flex-1 rounded-2xl"
+                  onClick={() => void handleSetupComplete()}
+                  disabled={setupSubmitting}
+                >
+                  {setupSubmitting ? 'Saving setup...' : 'Save setup and continue'}
                 </Button>
-              )}
-              {step === 2 ? (
-                <>
-                  <Button variant="outline" className="rounded-2xl" disabled>
-                    <Coins className="mr-2 h-4 w-4" />
-                    Buy Tokens after setup
-                  </Button>
-                  <p className="text-xs text-slate-500">
-                    Token purchases are made per organization. Finish creating your organization first, then visit its billing page to add tokens.
-                  </p>
-                  <Button className="flex-1 rounded-2xl" onClick={() => void handleCreateClick()} disabled={createSubmitting}>
-                    {createSubmitting ? 'Creating organization...' : 'Create Organization'}
-                  </Button>
-                </>
-              ) : null}
-            </CardFooter>
-          </Card>
-        )}
+              </>
+            )}
+          </CardFooter>
+        </Card>
       </div>
 
-      <Dialog open={trialDialogOpen} onOpenChange={setTrialDialogOpen}>
-        <DialogContent className="rounded-3xl">
-          <DialogHeader>
-            <DialogTitle>Courtesy tokens from CASPO</DialogTitle>
-            <DialogDescription>
-              If you create your first organization, CASPO will gift you {TRIAL_TOKENS.toLocaleString()} free AI tokens.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 text-sm text-slate-600">
-            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-              <span>Estimated monthly usage</span>
-              <span className="font-semibold text-slate-900">
-                {estimate.estimatedMonthlyTokens.toLocaleString()} tokens
-              </span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-              <span>Your free tokens</span>
-              <span className="font-semibold text-slate-900">{TRIAL_TOKENS.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-              <span>These tokens will last approximately</span>
-              <span className="font-semibold text-slate-900">{estimate.daysCovered} days</span>
-            </div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-900">
-              Courtesy of CASPO, you can preview a balance of {(
-                tokenBalance + TRIAL_TOKENS
-              ).toLocaleString()} tokens before checkout.
-            </div>
-            <div className="rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-500">
-              The tokens are not officially added to your account until you actually create your first organization.
-            </div>
-          </div>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              className="rounded-2xl"
-              onClick={() => setTrialDialogOpen(false)}
-            >
-              Maybe later
-            </Button>
-            <Button
-              className="rounded-2xl"
-              onClick={() => {
-                setTrialPreviewAccepted(true);
-                setTrialDialogOpen(false);
-                if (typeof window !== 'undefined') {
-                  window.localStorage.setItem('orgTrialDialogAccepted', 'true');
-                }
-              }}
-            >
-              Accept gift
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+      <TokenPackageDialog
+        open={tokenDialogOpen}
+        onOpenChange={setTokenDialogOpen}
+        title={`Buy tokens for ${createdOrg?.orgName ?? 'this organization'}`}
+        description="Buy tokens for this organization now, then complete the required setup to continue."
+        onPurchaseComplete={handleTokenPurchaseComplete}
+        orgId={createdOrg?.orgId ?? null}
+      />
     </div>
   );
 }

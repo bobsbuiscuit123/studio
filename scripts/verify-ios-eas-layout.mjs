@@ -61,6 +61,10 @@ if (!podfile.includes('post_install do |installer|')) {
   throw new Error('ios/Podfile is missing the post_install bundle-signing workaround');
 }
 
+if (!podfile.includes('target_installation_result.resource_bundle_targets.each do |resource_bundle_target|')) {
+  throw new Error('ios/Podfile is not disabling signing specifically for CocoaPods resource bundle targets');
+}
+
 if (!podfile.includes("config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'")) {
   throw new Error("ios/Podfile is missing CODE_SIGNING_ALLOWED = 'NO' for pod targets");
 }

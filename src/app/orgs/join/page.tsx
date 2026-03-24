@@ -95,12 +95,7 @@ export default function OrgJoinPage() {
   };
 
   return (
-    <div className="viewport-page bg-emerald-50/70 text-slate-900">
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_circle_at_-10%_-20%,rgba(16,185,129,0.25),transparent_60%),radial-gradient(900px_circle_at_110%_10%,rgba(34,197,94,0.24),transparent_55%),radial-gradient(900px_circle_at_40%_120%,rgba(74,222,128,0.2),transparent_60%)]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/70 via-transparent to-emerald-50/60" />
-      </div>
-
+    <div className="viewport-page bg-background text-slate-900">
       <div className="viewport-scroll relative mx-auto flex w-full max-w-4xl flex-col gap-10 px-6 py-12">
         <header className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">

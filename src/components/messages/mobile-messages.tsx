@@ -130,11 +130,11 @@ export function MessagesListScreen() {
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
-      <div className="tab-page-shell bg-background px-4">
-        <div className="tab-page-header">
+      <div className="tab-page-shell bg-background">
+        <div className="tab-page-header px-4" style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}>
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
-        <div className="tab-page-content">
+        <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Loading messages...</div>
         </div>
       </div>
@@ -143,11 +143,11 @@ export function MessagesListScreen() {
 
   if (!user) {
     return (
-      <div className="tab-page-shell bg-background px-4">
-        <div className="tab-page-header">
+      <div className="tab-page-shell bg-background">
+        <div className="tab-page-header px-4" style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}>
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
-        <div className="tab-page-content">
+        <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
         </div>
       </div>
@@ -155,8 +155,11 @@ export function MessagesListScreen() {
   }
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background px-4">
-      <div className="header tab-page-header relative -mx-4 space-y-3 px-4">
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
+      <div
+        className="header tab-page-header relative space-y-3 px-4"
+        style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}
+      >
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
@@ -224,7 +227,7 @@ export function MessagesListScreen() {
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-2">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pb-24 pt-2">
         {filteredConversations.length === 0 ? (
           availableDirectMessages.length > 0 ? (
             <div className="space-y-2">
@@ -395,11 +398,11 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
-      <div className="tab-page-shell bg-background px-4">
-        <div className="tab-page-header">
+      <div className="tab-page-shell bg-background">
+        <div className="tab-page-header px-4" style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}>
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
-        <div className="tab-page-content">
+        <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Loading conversation...</div>
         </div>
       </div>
@@ -408,11 +411,11 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (!user) {
     return (
-      <div className="tab-page-shell bg-background px-4">
-        <div className="tab-page-header">
+      <div className="tab-page-shell bg-background">
+        <div className="tab-page-header px-4" style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}>
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
-        <div className="tab-page-content">
+        <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
         </div>
       </div>
@@ -421,7 +424,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   if (!conversation) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-4 bg-background px-4 text-left">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 bg-background px-4 pt-[calc(var(--safe-area-top,0px)+0.5rem)] text-left">
         <p className="text-sm text-muted-foreground">Conversation not found</p>
         <Button asChild variant="outline" className="w-fit">
           <Link href="/messages">Back to Messages</Link>
@@ -434,8 +437,11 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background px-4">
-      <div className="header tab-page-header -mx-4 flex items-center gap-3 border-b px-4">
+    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
+      <div
+        className="header tab-page-header flex items-center gap-3 border-b px-4"
+        style={{ paddingTop: "calc(var(--safe-area-top, 0px) + 0.5rem)" }}
+      >
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />
           <span className="sr-only">Back to conversations</span>
@@ -451,7 +457,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto pb-24 pt-4">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pb-24 pt-4">
         {activeMessages.length === 0 ? (
           <div className="tab-empty-state text-sm text-muted-foreground">
             Start the conversation with {title}
@@ -486,8 +492,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       </div>
 
       <div
-        className="header shrink-0 border-t bg-background pt-3"
-        style={{ paddingBottom: "calc(var(--safe-area-bottom, 0px) + 5.5rem)" }}
+        className="header shrink-0 border-t bg-background px-4 pt-3"
+        style={{ paddingBottom: "calc(var(--safe-area-bottom, 0px) + 5rem)" }}
       >
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
           <Input

@@ -57,7 +57,7 @@ export default function OrgCreditsPage() {
   }
 
   return (
-    <div className="viewport-page bg-emerald-50/70 text-slate-900">
+    <div className="viewport-page bg-background text-slate-900">
       <div className="viewport-scroll mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

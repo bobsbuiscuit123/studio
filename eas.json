@@ -6,6 +6,7 @@
   "build": {
     "production": {
       "env": {
+        "EAS_BUILD_DISABLE_COCOAPODS_CACHE": "1",
         "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_THVQGlrCXAcNvtJSzvOZhctIGMc"
       },
       "ios": {

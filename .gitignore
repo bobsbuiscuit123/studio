@@ -42,6 +42,7 @@ next-env.d.ts
 .env.local
 .env.*.local
 .env*
+ios/__tmp_*
 
 # firebase
 firebase-debug.log

@@ -18,6 +18,9 @@ const requiredPaths = [
 
 const forbiddenPaths = [
   path.join(iosRoot, 'App', 'App.xcodeproj'),
+  path.join(iosRoot, '__tmp_App'),
+  path.join(iosRoot, '__tmp_App.xcodeproj'),
+  path.join(iosRoot, '__tmp_CapApp-SPM'),
 ];
 
 for (const requiredPath of requiredPaths) {

@@ -57,8 +57,8 @@ export function MessagesListScreen() {
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
-  const { data: allMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+  const { data: allMessages, loading: messagesLoading, refreshData: refreshMessages } = useMessages();
+  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading, refreshData: refreshGroupChats } = useGroupChats();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
@@ -84,6 +84,14 @@ export function MessagesListScreen() {
       localStorage.removeItem("messageTarget");
     }
   }, [members, membersLoading, router, user]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshMessages();
+      void refreshGroupChats();
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [refreshGroupChats, refreshMessages]);
 
   const conversationSummaries = useMemo(
     () =>
@@ -291,10 +299,23 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
-  const { data: allMessages, updateData: setAllMessages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading } = useGroupChats();
+  const {
+    data: allMessages,
+    updateData: setAllMessages,
+    setLocalData: setLocalMessages,
+    refreshData: refreshMessages,
+    loading: messagesLoading,
+  } = useMessages();
+  const {
+    data: groupChats,
+    updateData: setGroupChats,
+    setLocalData: setLocalGroupChats,
+    refreshData: refreshGroupChats,
+    loading: groupsLoading,
+  } = useGroupChats();
   const { toast } = useToast();
   const [lastMessageAt, setLastMessageAt] = useState(0);
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conversation = useMemo(
@@ -361,8 +382,17 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeMessages]);
 
-  const handleSendMessage = (values: z.infer<typeof messageFormSchema>) => {
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshMessages();
+      void refreshGroupChats();
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [refreshGroupChats, refreshMessages]);
+
+  const handleSendMessage = async (values: z.infer<typeof messageFormSchema>) => {
     if (!user || !conversation) return;
+    if (isSending) return;
     const now = Date.now();
     if (now - lastMessageAt < 1500) {
       toast({ title: "Slow down", description: "Please wait a moment before sending another message." });
@@ -376,14 +406,62 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       readBy: [user.email],
     };
 
+    setIsSending(true);
+    const selectedOrgId = window.localStorage.getItem("selectedOrgId");
+    const selectedGroupId = window.sessionStorage.getItem("selectedGroupId");
+    if (!selectedOrgId || !selectedGroupId) {
+      setIsSending(false);
+      toast({
+        title: "Message failed",
+        description: "No active group is selected.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const response = await fetch("/api/messages/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        conversation.type === "dm"
+          ? {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              conversationType: "dm",
+              partnerEmail: conversation.partner.email,
+              text: values.text,
+            }
+          : {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              conversationType: "group",
+              chatId: conversation.chat.id,
+              text: values.text,
+            }
+      ),
+    }).then(async res => {
+      const json = await res.json().catch(() => null);
+      return { ok: res.ok, data: json };
+    }).catch(() => ({ ok: false, data: null }));
+
+    setIsSending(false);
+    if (!response.ok) {
+      toast({
+        title: "Message failed",
+        description: response.data?.error?.message || "Your message was not saved. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (conversation.type === "dm") {
       const conversationKey = getConversationId(user.email, conversation.partner.email);
-      setAllMessages(prev => ({
+      setLocalMessages(prev => ({
         ...prev,
         [conversationKey]: [...(prev[conversationKey] || []), newMessage],
       }));
     } else {
-      setGroupChats(prev =>
+      setLocalGroupChats(prev =>
         prev.map(chat =>
           chat.id === conversation.chat.id
             ? { ...chat, messages: [...chat.messages, newMessage] }
@@ -391,6 +469,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         )
       );
     }
+    window.dispatchEvent(new CustomEvent("group-state-sync"));
 
     setLastMessageAt(now);
     messageForm.reset();
@@ -500,9 +579,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
             {...messageForm.register("text")}
             autoComplete="off"
             placeholder="Message"
+            disabled={isSending}
             className="min-h-11 rounded-xl border-border/70"
           />
-          <Button type="submit" size="icon" className="h-11 w-11 rounded-xl">
+          <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending}>
             <Send className="h-4 w-4" />
             <span className="sr-only">Send message</span>
           </Button>

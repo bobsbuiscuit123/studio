@@ -1,0 +1,245 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { err } from '@/lib/result';
+import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
+import { sendPushToUsers } from '@/lib/send-push';
+
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+
+const schema = z.discriminatedUnion('conversationType', [
+  z.object({
+    orgId: z.string().uuid(),
+    groupId: z.string().uuid(),
+    conversationType: z.literal('dm'),
+    partnerEmail: z.string().email(),
+    text: z.string().trim().min(1).max(500),
+  }),
+  z.object({
+    orgId: z.string().uuid(),
+    groupId: z.string().uuid(),
+    conversationType: z.literal('group'),
+    chatId: z.string().min(1),
+    text: z.string().trim().min(1).max(500),
+  }),
+]);
+
+const getConversationId = (email1: string, email2: string) => [email1, email2].sort().join('_');
+
+const getMessagePreview = (value: string) =>
+  value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Invalid message payload.', source: 'app' }),
+      { status: 400 }
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: userData } = await supabase.auth.getUser();
+  const actingUser = userData.user;
+  if (!actingUser?.id || !actingUser.email) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
+      { status: 401 }
+    );
+  }
+
+  const admin = createSupabaseAdmin();
+  const normalizedActorEmail = normalizeEmail(actingUser.email);
+  const membershipQuery = await admin
+    .from('group_memberships')
+    .select('user_id')
+    .eq('org_id', parsed.data.orgId)
+    .eq('group_id', parsed.data.groupId)
+    .eq('user_id', actingUser.id)
+    .maybeSingle();
+
+  if (!membershipQuery.data) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
+      { status: 403 }
+    );
+  }
+
+  const { data: stateRow, error: stateError } = await admin
+    .from('group_state')
+    .select('data')
+    .eq('org_id', parsed.data.orgId)
+    .eq('group_id', parsed.data.groupId)
+    .maybeSingle();
+
+  if (stateError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: stateError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
+  const currentData = ((stateRow?.data as Record<string, unknown> | null) ?? {}) as Record<string, any>;
+  const nextData = { ...currentData };
+  const newMessage = {
+    sender: actingUser.email,
+    text: parsed.data.text,
+    timestamp: new Date().toISOString(),
+    readBy: [actingUser.email],
+  };
+
+  const violation = findPolicyViolation(newMessage);
+  if (violation) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: policyErrorMessage, source: 'app' }),
+      { status: 400 }
+    );
+  }
+
+  let pushJob: Parameters<typeof sendPushToUsers>[0] | null = null;
+
+  if (parsed.data.conversationType === 'dm') {
+    const partnerEmail = normalizeEmail(parsed.data.partnerEmail);
+    const members = Array.isArray(currentData.members) ? currentData.members : [];
+    const partnerIsMember = members.some(
+      member => typeof member?.email === 'string' && normalizeEmail(member.email) === partnerEmail
+    );
+    if (!partnerIsMember) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'Recipient is not in this group.', source: 'app' }),
+        { status: 404 }
+      );
+    }
+
+    const conversationKey = getConversationId(normalizedActorEmail, partnerEmail);
+    const existingMessages = currentData.messages && typeof currentData.messages === 'object'
+      ? currentData.messages
+      : {};
+    nextData.messages = {
+      ...existingMessages,
+      [conversationKey]: [...(Array.isArray(existingMessages[conversationKey]) ? existingMessages[conversationKey] : []), newMessage],
+    };
+
+    const { data: profiles, error: profilesError } = await admin
+      .from('profiles')
+      .select('id, email')
+      .eq('email', partnerEmail)
+      .limit(1);
+
+    if (profilesError) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: profilesError.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+
+    const recipientId = profiles?.[0]?.id;
+    if (recipientId) {
+      const threadId = `dm__${encodeURIComponent(partnerEmail)}`;
+      pushJob = {
+        userIds: [recipientId],
+        title: 'New message',
+        body: getMessagePreview(parsed.data.text),
+        route: `/messages/${threadId}`,
+        params: { threadId },
+        type: 'message',
+        entityId: threadId,
+      };
+    }
+  } else {
+    const chatId = parsed.data.chatId;
+    const groupChats = Array.isArray(currentData.groupChats) ? currentData.groupChats : [];
+    const chatIndex = groupChats.findIndex(chat => chat && typeof chat === 'object' && chat.id === chatId);
+    if (chatIndex === -1) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'Conversation not found.', source: 'app' }),
+        { status: 404 }
+      );
+    }
+
+    const chat = groupChats[chatIndex];
+    const memberEmails = Array.isArray(chat.members)
+      ? chat.members
+          .map((member: unknown) => (typeof member === 'string' ? normalizeEmail(member) : ''))
+          .filter(Boolean)
+      : [];
+    if (!memberEmails.includes(normalizedActorEmail)) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'You are not in this conversation.', source: 'app' }),
+        { status: 403 }
+      );
+    }
+
+    const updatedChats = [...groupChats];
+    updatedChats[chatIndex] = {
+      ...chat,
+      messages: [...(Array.isArray(chat.messages) ? chat.messages : []), newMessage],
+    };
+    nextData.groupChats = updatedChats;
+
+    const recipientEmails = memberEmails.filter((email: string) => email !== normalizedActorEmail);
+    if (recipientEmails.length > 0) {
+      const { data: profiles, error: profilesError } = await admin
+        .from('profiles')
+        .select('id, email')
+        .in('email', recipientEmails);
+
+      if (profilesError) {
+        return NextResponse.json(
+          err({ code: 'NETWORK_HTTP_ERROR', message: profilesError.message, source: 'network' }),
+          { status: 500 }
+        );
+      }
+
+      const recipientIds = Array.from(
+        new Set(
+          (profiles ?? [])
+            .map(profile => profile.id)
+            .filter((value): value is string => typeof value === 'string' && value.length > 0 && value !== actingUser.id)
+        )
+      );
+
+      if (recipientIds.length > 0) {
+        const threadId = `group__${encodeURIComponent(chatId)}`;
+        pushJob = {
+          userIds: recipientIds,
+          title: 'New message',
+          body: getMessagePreview(parsed.data.text),
+          route: `/messages/${threadId}`,
+          params: { threadId },
+          type: 'message',
+          entityId: threadId,
+        };
+      }
+    }
+  }
+
+  const { error: upsertError } = await admin
+    .from('group_state')
+    .upsert(
+      {
+        org_id: parsed.data.orgId,
+        group_id: parsed.data.groupId,
+        data: nextData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'group_id' }
+    );
+
+  if (upsertError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: upsertError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
+  if (pushJob) {
+    void sendPushToUsers(pushJob).catch(error => {
+      console.error('Message push failed', error);
+    });
+  }
+
+  return NextResponse.json({ ok: true, data: { message: newMessage } });
+}

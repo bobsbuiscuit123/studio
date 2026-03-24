@@ -256,8 +256,48 @@ const registerTokenPurchaseIntent = async (
     retry: { retries: 1 },
   });
   if (!result.ok) {
-    throw new Error(result.error.message || 'Failed to register token purchase intent.');
+    const message = result.error.message || 'Failed to register token purchase intent.';
+    if (
+      /token_purchase_intents/i.test(message) &&
+      (/does not exist/i.test(message) || /could not find the table/i.test(message))
+    ) {
+      console.warn('token_purchase_intents table is unavailable; continuing without purchase intent registration.');
+      return false;
+    }
+    throw new Error(message);
   }
+  return true;
+};
+
+const confirmTokenPurchaseGrant = async (
+  orgId: string,
+  transactionId: string,
+  productId: string
+) => {
+  const result = await safeFetchJson<{
+    ok: boolean;
+    granted?: boolean;
+    tokenBalance?: number | null;
+    tokensGranted?: number | null;
+  }>(
+    '/api/orgs/' + encodeURIComponent(orgId) + '/token-purchase-confirm',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId, productId }),
+      retry: { retries: 1 },
+    }
+  );
+
+  if (!result.ok) {
+    throw new Error(result.error.message || 'Failed to confirm token purchase.');
+  }
+
+  return {
+    granted: Boolean(result.data.granted),
+    tokenBalance: Number(result.data.tokenBalance ?? 0),
+    tokensGranted: Number(result.data.tokensGranted ?? 0),
+  };
 };
 
 const waitForWalletGrant = async (
@@ -424,6 +464,24 @@ export const purchaseAppleTokenPackage = async (
       : null;
 
     await registerTokenPurchaseIntent(orgId, transactionId, selectedPack.productId);
+    try {
+      const confirmedGrant = await confirmTokenPurchaseGrant(orgId, transactionId, selectedPack.productId);
+      if (
+        confirmedGrant.granted ||
+        (startingBalance !== null && confirmedGrant.tokenBalance > startingBalance)
+      ) {
+        return {
+          status: 'granted',
+          productId: selectedPack.productId,
+          transactionId,
+          tokenBalance: confirmedGrant.tokenBalance,
+          tokensGranted: confirmedGrant.tokensGranted || selectedPack.tokens,
+        };
+      }
+    } catch (error) {
+      console.warn('Direct token purchase confirmation failed; falling back to wallet polling.', error);
+    }
+
     const grantResult = await waitForWalletGrant(transactionId, orgId, {
       startingBalance,
       expectedTokens: selectedPack.tokens,

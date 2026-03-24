@@ -12,6 +12,9 @@ const baseSchema = z.object({
   OPENROUTER_API_KEY: z.string().optional(),
   NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY: z.string().optional(),
   REVENUECAT_WEBHOOK_AUTH: z.string().optional(),
+  FIREBASE_PROJECT_ID: z.string().optional(),
+  FIREBASE_CLIENT_EMAIL: z.string().optional(),
+  FIREBASE_PRIVATE_KEY: z.string().optional(),
 });
 
 export const validateServerEnv = () => {
@@ -38,6 +41,10 @@ export const validateServerEnv = () => {
     if (provider === 'openrouter' && !env.OPENROUTER_API_KEY) {
       throw new Error('Missing OPENROUTER_API_KEY for production AI.');
     }
+  }
+
+  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
+    throw new Error('Missing Firebase Admin env vars for production push notifications.');
   }
 
   validated = true;

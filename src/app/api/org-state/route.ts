@@ -7,6 +7,7 @@ import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
+import { sendPushToUsers } from '@/lib/send-push';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const stableSerialize = (value: unknown): string => {
@@ -196,6 +197,327 @@ const stripCollaborativeAnnouncementFields = (announcements: unknown) => {
   });
 };
 
+const stripEventPushFields = (event: unknown) => {
+  if (!event || typeof event !== 'object') return event;
+
+  const {
+    viewedBy: _viewedBy,
+    attendees: _attendees,
+    rsvps: _rsvps,
+    read: _read,
+    lastViewedAttendees: _lastViewedAttendees,
+    ...rest
+  } = event as Record<string, unknown>;
+
+  return rest;
+};
+
+const getStateMemberEmails = (data: Record<string, any>) =>
+  Array.from(
+    new Set(
+      (Array.isArray(data.members) ? data.members : [])
+        .map(member => (typeof member?.email === 'string' ? member.email.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    )
+  );
+
+const getMessagePreview = (value: unknown) => {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return 'Open Caspo to view the latest message.';
+  return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
+};
+
+const getAnnouncementId = (item: Record<string, unknown>) => {
+  const value = item.id;
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+};
+
+const getEventId = (item: Record<string, unknown>) => {
+  return typeof item.id === 'string' ? item.id : '';
+};
+
+const resolveUserIdsByEmails = async (
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  emails: string[],
+  actorId: string
+) => {
+  const normalizedEmails = Array.from(
+    new Set(emails.map(email => email.trim().toLowerCase()).filter(Boolean))
+  );
+  if (normalizedEmails.length === 0) return [];
+
+  const { data, error } = await admin
+    .from('profiles')
+    .select('id, email')
+    .in('email', normalizedEmails);
+
+  if (error) {
+    throw error;
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .filter(profile => profile.id !== actorId)
+        .map(profile => profile.id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    )
+  );
+};
+
+const resolveOrgMemberUserIds = async (
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  orgId: string,
+  actorId: string
+) => {
+  const { data, error } = await admin
+    .from('memberships')
+    .select('user_id')
+    .eq('org_id', orgId);
+
+  if (error) {
+    throw error;
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map(row => row.user_id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0 && value !== actorId)
+    )
+  );
+};
+
+const resolveGroupMemberUserIds = async (
+  admin: ReturnType<typeof createSupabaseAdmin>,
+  orgId: string,
+  groupId: string,
+  actorId: string
+) => {
+  const { data, error } = await admin
+    .from('group_memberships')
+    .select('user_id')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId);
+
+  if (error) {
+    throw error;
+  }
+
+  return Array.from(
+    new Set(
+      (data ?? [])
+        .map(row => row.user_id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0 && value !== actorId)
+    )
+  );
+};
+
+const resolveDmParticipants = (conversationKey: string, memberEmails: string[]) => {
+  for (let left = 0; left < memberEmails.length; left += 1) {
+    for (let right = left + 1; right < memberEmails.length; right += 1) {
+      const candidate = [memberEmails[left], memberEmails[right]].sort().join('_');
+      if (candidate === conversationKey) {
+        return [memberEmails[left], memberEmails[right]];
+      }
+    }
+  }
+  return [];
+};
+
+const collectMessagePushJobs = async ({
+  admin,
+  actorId,
+  actorEmail,
+  currentData,
+  nextData,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  actorId: string;
+  actorEmail: string;
+  currentData: Record<string, any>;
+  nextData: Record<string, any>;
+}) => {
+  const jobs: Array<Parameters<typeof sendPushToUsers>[0]> = [];
+  const normalizedActorEmail = normalizeEmail(actorEmail);
+  const memberEmails = getStateMemberEmails(nextData);
+  const currentMessages = currentData.messages && typeof currentData.messages === 'object' ? currentData.messages : {};
+  const nextMessages = nextData.messages && typeof nextData.messages === 'object' ? nextData.messages : {};
+
+  for (const [conversationKey, nextListRaw] of Object.entries(nextMessages)) {
+    const nextList = Array.isArray(nextListRaw) ? nextListRaw : [];
+    const currentList = Array.isArray(currentMessages[conversationKey]) ? currentMessages[conversationKey] : [];
+    if (nextList.length <= currentList.length) continue;
+
+    const participants = resolveDmParticipants(conversationKey, memberEmails);
+    if (participants.length !== 2) continue;
+
+    const addedMessages = nextList.slice(currentList.length);
+    for (const message of addedMessages) {
+      if (!message || typeof message !== 'object') continue;
+      const sender = typeof message.sender === 'string' ? normalizeEmail(message.sender) : '';
+      if (!sender || sender !== normalizedActorEmail) continue;
+      const recipientEmail = participants.find(email => email !== sender);
+      if (!recipientEmail) continue;
+      const recipientIds = await resolveUserIdsByEmails(admin, [recipientEmail], actorId);
+      if (recipientIds.length === 0) continue;
+      const threadId = `dm__${encodeURIComponent(recipientEmail)}`;
+      jobs.push({
+        userIds: recipientIds,
+        title: 'New message',
+        body: getMessagePreview((message as { text?: unknown }).text),
+        route: `/messages/${threadId}`,
+        params: { threadId },
+        type: 'message',
+        entityId: threadId,
+      });
+    }
+  }
+
+  const currentGroupChats = Array.isArray(currentData.groupChats) ? currentData.groupChats : [];
+  const nextGroupChats = Array.isArray(nextData.groupChats) ? nextData.groupChats : [];
+  const currentGroupMap = new Map<string, Record<string, any>>();
+  currentGroupChats.forEach(chat => {
+    if (chat && typeof chat === 'object' && typeof chat.id === 'string') {
+      currentGroupMap.set(chat.id, chat);
+    }
+  });
+
+  for (const chat of nextGroupChats) {
+    if (!chat || typeof chat !== 'object' || typeof chat.id !== 'string') continue;
+    const currentChat = currentGroupMap.get(chat.id) ?? {};
+    const currentList = Array.isArray(currentChat.messages) ? currentChat.messages : [];
+    const nextList = Array.isArray(chat.messages) ? chat.messages : [];
+    if (nextList.length <= currentList.length) continue;
+
+    const groupMembers = Array.isArray(chat.members)
+      ? chat.members
+          .map((member: unknown) => (typeof member === 'string' ? normalizeEmail(member) : ''))
+          .filter(Boolean)
+      : [];
+    const addedMessages = nextList.slice(currentList.length);
+    for (const message of addedMessages) {
+      if (!message || typeof message !== 'object') continue;
+      const sender = typeof message.sender === 'string' ? normalizeEmail(message.sender) : '';
+      if (!sender || sender !== normalizedActorEmail) continue;
+      const recipientEmails = groupMembers.filter((email: string) => email !== sender);
+      const recipientIds = await resolveUserIdsByEmails(admin, recipientEmails, actorId);
+      if (recipientIds.length === 0) continue;
+      const threadId = `group__${encodeURIComponent(chat.id)}`;
+      jobs.push({
+        userIds: recipientIds,
+        title: 'New message',
+        body: getMessagePreview((message as { text?: unknown }).text),
+        route: `/messages/${threadId}`,
+        params: { threadId },
+        type: 'message',
+        entityId: threadId,
+      });
+    }
+  }
+
+  return jobs;
+};
+
+const collectAnnouncementPushJobs = async ({
+  admin,
+  actorId,
+  orgId,
+  currentData,
+  nextData,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  actorId: string;
+  orgId: string;
+  currentData: Record<string, any>;
+  nextData: Record<string, any>;
+}) => {
+  const jobs: Array<Parameters<typeof sendPushToUsers>[0]> = [];
+  const currentAnnouncements = Array.isArray(currentData.announcements) ? currentData.announcements : [];
+  const nextAnnouncements = Array.isArray(nextData.announcements) ? nextData.announcements : [];
+  const currentIds = new Set(
+    currentAnnouncements
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map(getAnnouncementId)
+      .filter(Boolean)
+  );
+  const recipientIds = await resolveOrgMemberUserIds(admin, orgId, actorId);
+  if (recipientIds.length === 0) return jobs;
+
+  nextAnnouncements.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const announcementId = getAnnouncementId(item);
+    if (!announcementId || currentIds.has(announcementId)) return;
+    const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'New announcement';
+    jobs.push({
+      userIds: recipientIds,
+      title: 'New announcement',
+      body: title,
+      route: `/announcements/${announcementId}`,
+      params: { announcementId },
+      type: 'announcement',
+      entityId: announcementId,
+    });
+  });
+
+  return jobs;
+};
+
+const collectEventPushJobs = async ({
+  admin,
+  actorId,
+  orgId,
+  groupId,
+  currentData,
+  nextData,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  actorId: string;
+  orgId: string;
+  groupId: string;
+  currentData: Record<string, any>;
+  nextData: Record<string, any>;
+}) => {
+  const jobs: Array<Parameters<typeof sendPushToUsers>[0]> = [];
+  const currentEvents = Array.isArray(currentData.events) ? currentData.events : [];
+  const nextEvents = Array.isArray(nextData.events) ? nextData.events : [];
+  const currentById = new Map<string, Record<string, unknown>>();
+
+  currentEvents.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const eventId = getEventId(item);
+    if (!eventId) return;
+    currentById.set(eventId, item);
+  });
+
+  const recipientIds = await resolveGroupMemberUserIds(admin, orgId, groupId, actorId);
+  if (recipientIds.length === 0) return jobs;
+
+  nextEvents.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const eventId = getEventId(item);
+    if (!eventId) return;
+    const currentEvent = currentById.get(eventId);
+    const changed =
+      !currentEvent ||
+      stableSerialize(stripEventPushFields(currentEvent)) !== stableSerialize(stripEventPushFields(item));
+    if (!changed) return;
+
+    const title = typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'Event update';
+    jobs.push({
+      userIds: recipientIds,
+      title: 'Event update',
+      body: title,
+      route: `/calendar?eventId=${encodeURIComponent(eventId)}`,
+      params: { eventId },
+      type: 'event',
+      entityId: eventId,
+    });
+  });
+
+  return jobs;
+};
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =
@@ -316,6 +638,31 @@ export async function POST(request: Request) {
     );
   }
 
+  const pendingPushJobs = await Promise.all([
+    collectMessagePushJobs({
+      admin,
+      actorId: userData.user.id,
+      actorEmail: userData.user.email ?? '',
+      currentData,
+      nextData: mergedData,
+    }),
+    collectAnnouncementPushJobs({
+      admin,
+      actorId: userData.user.id,
+      orgId: parsed.data.orgId,
+      currentData,
+      nextData: mergedData,
+    }),
+    collectEventPushJobs({
+      admin,
+      actorId: userData.user.id,
+      orgId: parsed.data.orgId,
+      groupId: parsed.data.groupId,
+      currentData,
+      nextData: mergedData,
+    }),
+  ]).then(results => results.flat());
+
   const { error } = await admin
     .from('group_state')
     .upsert(
@@ -336,6 +683,17 @@ export async function POST(request: Request) {
       }),
       { status: 500, headers: getRateLimitHeaders(limiter) }
     );
+  }
+
+  if (pendingPushJobs.length > 0) {
+    const pushResults = await Promise.allSettled(
+      pendingPushJobs.map(pushJob => sendPushToUsers(pushJob))
+    );
+    pushResults.forEach(result => {
+      if (result.status === 'rejected') {
+        console.error('Push dispatch failed', result.reason);
+      }
+    });
   }
 
   return NextResponse.json({ ok: true }, { headers: getRateLimitHeaders(limiter) });

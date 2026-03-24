@@ -43,9 +43,5 @@ export const validateServerEnv = () => {
     }
   }
 
-  if (!env.FIREBASE_PROJECT_ID || !env.FIREBASE_CLIENT_EMAIL || !env.FIREBASE_PRIVATE_KEY) {
-    throw new Error('Missing Firebase Admin env vars for production push notifications.');
-  }
-
   validated = true;
 };

@@ -110,7 +110,7 @@ export default function ClubsPage() {
     clearSelectedGroupId();
     toast({
       title: "Organization deleted",
-      description: "The organization was removed. Your token balance stays on your account.",
+      description: "The organization and its token balance were removed.",
     });
     router.push("/orgs");
   };

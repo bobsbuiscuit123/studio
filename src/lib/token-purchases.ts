@@ -302,13 +302,11 @@ const confirmTokenPurchaseGrant = async (
 
 const waitForWalletGrant = async (
   transactionId: string,
-  orgId?: string | null,
+  orgId: string,
   options?: { startingBalance?: number | null; expectedTokens?: number | null }
 ): Promise<Pick<AppleTokenPurchaseOutcome, 'status' | 'tokenBalance' | 'tokensGranted'>> => {
   for (let attempt = 0; attempt < WALLET_POLL_ATTEMPTS; attempt += 1) {
-    const walletUrl = orgId
-      ? `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`
-      : '/api/tokens/wallet';
+    const walletUrl = `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`;
     const walletResponse = await safeFetchJson<WalletResponse>(walletUrl, {
       method: 'GET',
       timeoutMs: 10_000,

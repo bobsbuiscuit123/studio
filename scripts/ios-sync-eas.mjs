@@ -142,7 +142,7 @@ runCapSync();
 ensureExpectedNestedLayout();
 flattenTree();
 rewriteProjectPaths();
-ensureRootPodfile();
+ensureRootPodfile(rootPodfile);
 ensureScheme();
 
 await import('./verify-ios-eas-layout.mjs');

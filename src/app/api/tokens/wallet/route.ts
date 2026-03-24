@@ -19,84 +19,66 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const orgId = url.searchParams.get('orgId');
 
-  if (orgId) {
-    const [{ data: profile }, { data: org }, { data: activity }] = await Promise.all([
-      admin
-        .from('profiles')
-        .select('has_used_trial')
-        .eq('id', userId)
-        .maybeSingle(),
-      admin
-        .from('orgs')
-        .select('token_balance, owner_id')
-        .eq('id', orgId)
-        .maybeSingle(),
-      admin
-        .from('token_transactions')
-        .select('id, amount, type, description, metadata, created_at')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: false })
-        .limit(10),
-    ]);
-
-    let normalizedOrg = org;
-    if (!normalizedOrg) {
-      const legacyOrgResponse = await admin
-        .from('orgs')
-        .select('credit_balance, owner_user_id')
-        .eq('id', orgId)
-        .maybeSingle();
-      if (legacyOrgResponse.data) {
-        normalizedOrg = {
-          ...legacyOrgResponse.data,
-          token_balance: legacyOrgResponse.data.credit_balance,
-          owner_id: legacyOrgResponse.data.owner_user_id,
-        };
-      }
-    }
-
-    if (!normalizedOrg) {
-      return NextResponse.json(
-        err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
-        { status: 404 }
-      );
-    }
-
-    if (normalizedOrg.owner_id !== userId) {
-      return NextResponse.json(
-        err({ code: 'VALIDATION', message: 'Not the organization owner.', source: 'app' }),
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json({
-      ok: true,
-      data: {
-        tokenBalance: readBalance(normalizedOrg).balance,
-        hasUsedTrial: Boolean(profile?.has_used_trial),
-        recentTokenActivity: activity ?? [],
-      },
-    });
+  if (!orgId) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Organization id is required.', source: 'app' }),
+      { status: 400 }
+    );
   }
 
-  const [{ data: profile }, { data: activity }] = await Promise.all([
+  const [{ data: profile }, { data: org }, { data: activity }] = await Promise.all([
     admin
       .from('profiles')
-      .select('token_balance, has_used_trial')
+      .select('has_used_trial')
       .eq('id', userId)
+      .maybeSingle(),
+    admin
+      .from('orgs')
+      .select('token_balance, owner_id')
+      .eq('id', orgId)
       .maybeSingle(),
     admin
       .from('token_transactions')
       .select('id, amount, type, description, metadata, created_at')
-      .eq('user_id', userId)
+      .eq('organization_id', orgId)
       .order('created_at', { ascending: false })
       .limit(10),
   ]);
 
+  let normalizedOrg = org;
+  if (!normalizedOrg) {
+    const legacyOrgResponse = await admin
+      .from('orgs')
+      .select('credit_balance, owner_user_id')
+      .eq('id', orgId)
+      .maybeSingle();
+    if (legacyOrgResponse.data) {
+      normalizedOrg = {
+        ...legacyOrgResponse.data,
+        token_balance: legacyOrgResponse.data.credit_balance,
+        owner_id: legacyOrgResponse.data.owner_user_id,
+      };
+    }
+  }
+
+  if (!normalizedOrg) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
+      { status: 404 }
+    );
+  }
+
+  if (normalizedOrg.owner_id !== userId) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Not the organization owner.', source: 'app' }),
+      { status: 403 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     data: {
-      tokenBalance: Number(profile?.token_balance ?? 0),
+      tokenBalance: readBalance(normalizedOrg).balance,
       hasUsedTrial: Boolean(profile?.has_used_trial),
       recentTokenActivity: activity ?? [],
     },

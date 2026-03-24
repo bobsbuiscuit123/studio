@@ -100,12 +100,16 @@ export function ProfileDialog({
   }, [user, isOpen]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !selectedOrgId || orgStatus?.role !== "owner") {
+      setTokenBalance(null);
+      setTokenLoading(false);
+      return;
+    }
     let active = true;
     const fetchBalance = async () => {
       setTokenLoading(true);
       const response = await safeFetchJson<{ ok: true; data: { tokenBalance: number } }>(
-        "/api/tokens/wallet",
+        `/api/tokens/wallet?orgId=${encodeURIComponent(selectedOrgId)}`,
         { method: "GET" }
       );
       if (!active) return;
@@ -120,7 +124,7 @@ export function ProfileDialog({
     return () => {
       active = false;
     };
-  }, [isOpen]);
+  }, [isOpen, orgStatus?.role, selectedOrgId]);
 
   const tokensPurchased = Math.max(0, orgStatus?.tokensPurchased ?? 0);
   const tokensUsed = Math.max(0, Math.min(orgStatus?.tokensUsed ?? 0, tokensPurchased));
@@ -323,7 +327,7 @@ export function ProfileDialog({
             ) : null}
             <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               <div className="flex items-center justify-between">
-                <span>Token balance</span>
+                <span>Organization token balance</span>
                 {tokenLoading ? (
                   <span className="text-xs">Loading…</span>
                 ) : (
@@ -333,7 +337,7 @@ export function ProfileDialog({
                 )}
               </div>
               <p className="text-xs">
-                Your balance updates automatically whenever you buy or receive tokens.
+                This balance is stored on the organization and updates after purchases or AI usage.
               </p>
             </div>
             <div className="overflow-hidden rounded-xl border">

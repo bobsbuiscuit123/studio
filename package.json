@@ -7,6 +7,8 @@
     "dev:demo": "cross-env NEXT_PUBLIC_DEMO_MODE=true AI_ENABLED=true node scripts/dev.mjs",
     "genkit:dev": "node scripts/genkit-watch.mjs",
     "genkit:watch": "node scripts/genkit-watch.mjs",
+    "eas-build-pre-install": "node scripts/eas-ensure-ios-podfile.mjs",
+    "eas-build-post-install": "node scripts/verify-ios-eas-layout.mjs",
     "ios:sync:eas": "node scripts/ios-sync-eas.mjs",
     "ios:verify:eas": "node scripts/verify-ios-eas-layout.mjs",
     "build": "next build",

@@ -9,6 +9,7 @@ import {
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { ensureRootPodfile } from './ios-podfile-template.mjs';
 
 process.env.CAPACITOR_CONFIG = 'capacitor.config.ts';
 
@@ -28,26 +29,6 @@ const rootPodfile = path.join(iosRoot, 'Podfile');
 const tempXcodeproj = path.join(iosRoot, '__tmp_App.xcodeproj');
 const tempAppDir = path.join(iosRoot, '__tmp_App');
 const tempSpmDir = path.join(iosRoot, '__tmp_CapApp-SPM');
-
-const podfileTemplate = `source 'https://cdn.cocoapods.org/'
-platform :ios, '15.0'
-
-project 'App.xcodeproj'
-
-target 'App' do
-end
-
-post_install do |installer|
-  installer.target_installation_results.pod_target_installation_results.each do |_pod_name, target_installation_result|
-    target_installation_result.resource_bundle_targets.each do |resource_bundle_target|
-      resource_bundle_target.build_configurations.each do |config|
-        config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-        config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
-      end
-    end
-  end
-end
-`;
 
 function rewriteNestedProjectPaths() {
   const pbxprojPath = path.join(nestedXcodeproj, 'project.pbxproj');
@@ -144,10 +125,6 @@ function rewriteProjectPaths() {
   packageSwift = packageSwift.replaceAll('\\', '/');
   packageSwift = packageSwift.replaceAll('../../../node_modules/', '../../node_modules/');
   writeFileSync(packageSwiftPath, packageSwift);
-}
-
-function ensureRootPodfile() {
-  writeFileSync(rootPodfile, podfileTemplate);
 }
 
 function ensureScheme() {

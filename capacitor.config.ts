@@ -10,7 +10,7 @@ const config: CapacitorConfig = {
     cleartext: true,
   },
   ios: {
-    contentInset: 'automatic',
+    contentInset: 'never',
     scrollEnabled: true,
     zoomEnabled: false,
     backgroundColor: '#f6faf4',

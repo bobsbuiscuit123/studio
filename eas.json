@@ -9,6 +9,7 @@
         "NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY": "appl_THVQGlrCXAcNvtJSzvOZhctIGMc"
       },
       "ios": {
+        "image": "macos-sequoia-15.6-xcode-16.4",
         "autoIncrement": true,
         "buildConfiguration": "Release"
       }

@@ -20,6 +20,8 @@ import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { isResult } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
+import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
+import { readBalance } from '@/lib/org-balance';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
@@ -141,17 +143,37 @@ export async function POST(request: Request) {
 
     const admin = createSupabaseAdmin();
 
+    const usageDate = getRequestDayKey(request);
     const { data: consumeData, error: consumeError } = await admin.rpc('consume_owner_token_for_org_ai', {
       p_org_id: orgId,
       p_user_id: userId,
-      p_usage_date: getRequestDayKey(request),
+      p_usage_date: usageDate,
     });
 
     if (consumeError) {
       return errorResponse(new Error(consumeError.message), 500);
     }
 
-    const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+    let consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+    const initialReason = String(consumeResult?.reason ?? '');
+
+    if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
+      const orgBalanceResponse = await admin
+        .from('orgs')
+        .select('token_balance, credit_balance')
+        .eq('id', orgId)
+        .maybeSingle();
+
+      if (!orgBalanceResponse.error && readBalance(orgBalanceResponse.data).balance > 0) {
+        consumeResult = await consumeOrgTokenCompat({
+          admin,
+          orgId,
+          userId,
+          usageDate,
+        });
+      }
+    }
+
     const reason = String(consumeResult?.reason ?? '');
     const remainingTokens = Number(consumeResult?.remaining_tokens ?? 0);
     const remainingToday = Number(consumeResult?.remaining_today ?? 0);

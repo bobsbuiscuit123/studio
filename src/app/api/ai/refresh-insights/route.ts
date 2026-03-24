@@ -5,6 +5,8 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestDayKey } from '@/lib/day-key';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
+import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
+import { readBalance } from '@/lib/org-balance';
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -56,10 +58,11 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdmin();
+  const usageDate = getRequestDayKey(request);
   const { data: result, error: consumeError } = await admin.rpc('consume_owner_token_for_org_ai', {
     p_org_id: orgId,
     p_user_id: userId,
-    p_usage_date: getRequestDayKey(request),
+    p_usage_date: usageDate,
   });
 
   if (consumeError) {
@@ -73,7 +76,26 @@ export async function POST(request: Request) {
     );
   }
 
-  const consumeResult = Array.isArray(result) ? result[0] : result;
+  let consumeResult = Array.isArray(result) ? result[0] : result;
+  const initialReason = String(consumeResult?.reason ?? '');
+
+  if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
+    const orgBalanceResponse = await admin
+      .from('orgs')
+      .select('token_balance, credit_balance')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (!orgBalanceResponse.error && readBalance(orgBalanceResponse.data).balance > 0) {
+      consumeResult = await consumeOrgTokenCompat({
+        admin,
+        orgId,
+        userId,
+        usageDate,
+      });
+    }
+  }
+
   const reason = String(consumeResult?.reason ?? '');
   const usedToday = Number(consumeResult?.used_today ?? 0);
   const remainingToday = Number(consumeResult?.remaining_today ?? 0);

@@ -198,12 +198,14 @@ export default function OrgCreatePage() {
   };
 
   const handleTokenPurchaseComplete = async (result: AppleTokenPurchaseOutcome) => {
-    if (result.tokenBalance == null) return;
     setCreatedOrg((current) =>
       current
         ? {
             ...current,
-            tokenBalance: Number(result.tokenBalance ?? current.tokenBalance),
+            tokenBalance:
+              result.tokenBalance != null
+                ? Number(result.tokenBalance)
+                : Math.max(0, current.tokenBalance + Number(result.tokensGranted ?? 0)),
           }
         : current
     );

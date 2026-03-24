@@ -818,34 +818,50 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
           const handleTokenPurchaseComplete = (event?: Event) => {
               const detail =
                   event && 'detail' in event
-                      ? (event as CustomEvent<{ orgId?: string | null; tokenBalance?: number | null }>).detail
+                      ? (event as CustomEvent<{ orgId?: string | null; tokenBalance?: number | null; tokensGranted?: number | null }>).detail
                       : undefined;
               const changedOrgId = detail?.orgId ?? null;
               if (changedOrgId && orgId && changedOrgId !== orgId) return;
               const nextBalance = Number(detail?.tokenBalance ?? NaN);
+              const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
               if (Number.isFinite(nextBalance)) {
-                  setStatus(prev =>
-                      prev
-                          ? {
-                                ...prev,
-                                tokenBalance: nextBalance,
-                                estimatedDaysRemaining: calculateEstimatedDaysRemaining(
-                                    nextBalance,
-                                    prev.estimatedMonthlyTokens
-                                ),
-                                tokenHealth: getTokenHealth(
-                                    calculateEstimatedDaysRemaining(
-                                        nextBalance,
-                                        prev.estimatedMonthlyTokens
-                                    )
-                                ),
-                                aiAvailability: getAiAvailability(
-                                    nextBalance,
-                                    prev.estimatedMonthlyTokens
-                                ),
-                            }
-                          : prev
-                  );
+                  setStatus(prev => {
+                      if (!prev) return prev;
+                      const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
+                          nextBalance,
+                          prev.estimatedMonthlyTokens
+                      );
+                      const nextStatus = {
+                          ...prev,
+                          tokenBalance: nextBalance,
+                          estimatedDaysRemaining,
+                          tokenHealth: getTokenHealth(estimatedDaysRemaining),
+                          aiAvailability: getAiAvailability(nextBalance, prev.estimatedMonthlyTokens),
+                      };
+                      orgAiStatusCache.set(orgId ?? nextStatus.orgId, nextStatus);
+                      return nextStatus;
+                  });
+              } else if (Number.isFinite(purchasedTokens) && purchasedTokens > 0) {
+                  setStatus(prev => {
+                      if (!prev) return prev;
+                      const optimisticBalance = Math.max(0, Number(prev.tokenBalance ?? 0) + purchasedTokens);
+                      const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
+                          optimisticBalance,
+                          prev.estimatedMonthlyTokens
+                      );
+                      const nextStatus = {
+                          ...prev,
+                          tokenBalance: optimisticBalance,
+                          estimatedDaysRemaining,
+                          tokenHealth: getTokenHealth(estimatedDaysRemaining),
+                          aiAvailability: getAiAvailability(
+                              optimisticBalance,
+                              prev.estimatedMonthlyTokens
+                          ),
+                      };
+                      orgAiStatusCache.set(orgId ?? nextStatus.orgId, nextStatus);
+                      return nextStatus;
+                  });
               }
               void refresh({ silent: true, force: true });
           };

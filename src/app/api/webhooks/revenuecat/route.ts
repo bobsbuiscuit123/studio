@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { grantTokenPurchaseCompat } from '@/lib/token-grants';
+import { normalizeTokenProductId } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
 
@@ -99,7 +100,8 @@ export async function POST(request: Request) {
     event.original_app_user_id,
     event.aliases
   );
-  const productId = event.product_id?.trim() ?? '';
+  const productIdRaw = event.product_id?.trim() ?? '';
+  const productId = normalizeTokenProductId(productIdRaw);
   const transactionCandidates = [
     event.transaction_id?.trim() ?? '',
     event.original_transaction_id?.trim() ?? '',
@@ -121,6 +123,7 @@ export async function POST(request: Request) {
     original_app_user_id: event.original_app_user_id ?? null,
     aliases: event.aliases ?? [],
     product_id: productId,
+    raw_product_id: productIdRaw || null,
     event_type: event.type,
     environment: event.environment ?? null,
     store: event.store ?? null,
@@ -146,7 +149,7 @@ export async function POST(request: Request) {
       .select('org_id, provider_transaction_id, created_at')
       .eq('provider', 'revenuecat')
       .eq('user_id', userId)
-      .eq('product_id', productId)
+      .in('product_id', Array.from(new Set([productId, productIdRaw].filter(Boolean))))
       .order('created_at', { ascending: false })
       .limit(5);
 

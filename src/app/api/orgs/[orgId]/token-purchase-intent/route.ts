@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
+import { normalizeTokenProductId } from '@/lib/pricing';
 
 const bodySchema = z.object({
   transactionId: z.string().min(1),
@@ -75,6 +76,7 @@ export async function POST(
   }
 
   const normalizedProvider = intentBody.data.provider?.trim() || 'revenuecat';
+  const normalizedProductId = normalizeTokenProductId(intentBody.data.productId);
   const { error } = await admin
     .from('token_purchase_intents')
     .upsert({
@@ -82,7 +84,7 @@ export async function POST(
       provider: normalizedProvider,
       org_id: parsedOrgId.data,
       user_id: userId,
-      product_id: intentBody.data.productId.trim(),
+      product_id: normalizedProductId || intentBody.data.productId.trim(),
     }, { onConflict: 'provider,provider_transaction_id' });
 
   if (error) {

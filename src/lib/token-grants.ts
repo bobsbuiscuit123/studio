@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readBalance, isMissingColumnError, isMissingFunctionError } from '@/lib/org-balance';
+import { normalizeTokenProductId } from '@/lib/pricing';
 
 type TokenGrantResult = {
   granted: boolean;
@@ -15,7 +16,7 @@ const PRODUCT_TOKEN_MAP: Record<string, number> = {
   tokens_enterprise: 65000,
 };
 
-const getMappedTokens = (productId: string) => PRODUCT_TOKEN_MAP[productId] ?? 0;
+const getMappedTokens = (productId: string) => PRODUCT_TOKEN_MAP[normalizeTokenProductId(productId)] ?? 0;
 
 async function loadOrgBalanceRow(admin: SupabaseClient, orgId: string) {
   const modern = await admin
@@ -119,9 +120,10 @@ export async function grantTokenPurchaseCompat({
   environment = null,
   metadata = {},
 }: GrantTokenPurchaseParams): Promise<TokenGrantResult> {
+  const normalizedProductId = normalizeTokenProductId(productId);
   const rpc = await admin.rpc('grant_token_purchase', {
     p_user_id: userId,
-    p_product_id: productId,
+    p_product_id: normalizedProductId || productId,
     p_provider_transaction_id: transactionId,
     p_provider: provider,
     p_environment: environment,
@@ -146,7 +148,7 @@ export async function grantTokenPurchaseCompat({
     throw rpc.error;
   }
 
-  const tokensGranted = getMappedTokens(productId);
+  const tokensGranted = getMappedTokens(normalizedProductId || productId);
   if (tokensGranted <= 0) {
     throw new Error(`Unknown token product id: ${productId}`);
   }
@@ -185,7 +187,7 @@ export async function grantTokenPurchaseCompat({
     provider,
     provider_transaction_id: transactionId,
     org_id: orgId,
-    product_id: productId,
+    product_id: normalizedProductId || productId,
     tokens_granted: tokensGranted,
     environment,
     metadata,
@@ -233,7 +235,7 @@ export async function grantTokenPurchaseCompat({
       ...metadata,
       provider,
       provider_transaction_id: transactionId,
-      product_id: productId,
+      product_id: normalizedProductId || productId,
       environment,
       organization_id: orgId,
     },

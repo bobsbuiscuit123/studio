@@ -171,6 +171,7 @@ export function TokenPackageDialog({
           new CustomEvent('org-token-purchase-complete', {
             detail: {
               orgId,
+              transactionId: resolvedResult.transactionId,
               tokenBalance: result.tokenBalance,
               tokensGranted: resolvedTokensGranted,
             },

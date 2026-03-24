@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { clearSelectedGroupId, clearSelectedOrgId, setSelectedOrgId } from '@/lib/selection';
 import { Logo } from '@/components/icons';
 import { Coins, Sparkles, Users } from 'lucide-react';
+import { calculateEstimatedDaysRemaining, getAiAvailability, getTokenHealth } from '@/lib/pricing';
 
 type OrgSummary = {
   id: string;
@@ -51,15 +52,66 @@ const healthVariant = (health: OrgStatus['tokenHealth']) => {
   return 'secondary' as const;
 };
 
+const applyOrgBalanceSnapshot = (status: OrgStatus, tokenBalance: number): OrgStatus => {
+  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
+    tokenBalance,
+    status.estimatedMonthlyTokens
+  );
+  return {
+    ...status,
+    tokenBalance,
+    estimatedDaysRemaining,
+    tokenHealth: getTokenHealth(estimatedDaysRemaining),
+    aiAvailability: getAiAvailability(tokenBalance, status.estimatedMonthlyTokens),
+  };
+};
+
 export default function OrgsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const processedTransactionsRef = useRef<Set<string>>(new Set());
+  const pendingTargetsRef = useRef<Map<string, number>>(new Map());
 
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgStatus>>({});
   const [loading, setLoading] = useState(true);
   const [signOutSubmitting, setSignOutSubmitting] = useState(false);
+
+  const loadOrgStatus = useCallback(async (orgId: string) => {
+    const statusResult = await safeFetchJson<{ ok: true; data: OrgStatus }>(`/api/orgs/${orgId}/status`, {
+      method: 'GET',
+    });
+    if (!statusResult.ok) {
+      return null;
+    }
+    const serverStatus = statusResult.data.data;
+    const pendingTarget = pendingTargetsRef.current.get(orgId);
+    const serverBalance = Number(serverStatus.tokenBalance ?? 0);
+    if (Number.isFinite(pendingTarget) && serverBalance < Number(pendingTarget)) {
+      return applyOrgBalanceSnapshot(serverStatus, Number(pendingTarget));
+    }
+    if (Number.isFinite(pendingTarget) && serverBalance >= Number(pendingTarget)) {
+      pendingTargetsRef.current.delete(orgId);
+    }
+    return serverStatus;
+  }, []);
+
+  const reconcileOrgStatus = useCallback(async (orgId: string, targetBalance: number) => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const nextStatus = await loadOrgStatus(orgId);
+      if (!nextStatus) {
+        continue;
+      }
+      const nextBalance = Number(nextStatus.tokenBalance ?? 0);
+      setStatusByOrg(prev => ({ ...prev, [orgId]: nextStatus }));
+      if (nextBalance >= targetBalance) {
+        pendingTargetsRef.current.delete(orgId);
+        return;
+      }
+    }
+  }, [loadOrgStatus]);
 
   useEffect(() => {
     const load = async () => {
@@ -83,18 +135,71 @@ export default function OrgsPage() {
       const statusEntries: Record<string, OrgStatus> = {};
       await Promise.all(
         mapped.map(async (org) => {
-          const statusResult = await safeFetchJson<{ ok: true; data: OrgStatus }>(`/api/orgs/${org.id}/status`, {
-            method: 'GET',
-          });
-          if (statusResult.ok) {
-            statusEntries[org.id] = statusResult.data.data;
+          const nextStatus = await loadOrgStatus(org.id);
+          if (nextStatus) {
+            statusEntries[org.id] = nextStatus;
           }
         })
       );
       setStatusByOrg(statusEntries);
     };
     void load();
-  }, [router, supabase, toast]);
+  }, [loadOrgStatus, router, supabase, toast]);
+
+  useEffect(() => {
+    const handleTokenPurchaseComplete = (event?: Event) => {
+      const detail =
+        event && 'detail' in event
+          ? (event as CustomEvent<{
+              orgId?: string | null;
+              transactionId?: string | null;
+              tokenBalance?: number | null;
+              tokensGranted?: number | null;
+            }>).detail
+          : undefined;
+      const orgId = String(detail?.orgId ?? '').trim();
+      if (!orgId) return;
+      const transactionId = String(detail?.transactionId ?? '').trim();
+      const transactionKey = `${orgId}:${transactionId}`;
+      if (transactionId && processedTransactionsRef.current.has(transactionKey)) {
+        return;
+      }
+      if (transactionId) {
+        processedTransactionsRef.current.add(transactionKey);
+      }
+
+      let targetBalance = Number(detail?.tokenBalance ?? NaN);
+      const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
+
+      setStatusByOrg(prev => {
+        const current = prev[orgId];
+        if (!current) {
+          return prev;
+        }
+        const optimisticBalance = Number.isFinite(targetBalance)
+          ? targetBalance
+          : Math.max(0, Number(current.tokenBalance ?? 0) + (Number.isFinite(purchasedTokens) ? purchasedTokens : 0));
+        if (!Number.isFinite(optimisticBalance)) {
+          return prev;
+        }
+        targetBalance = optimisticBalance;
+        pendingTargetsRef.current.set(orgId, optimisticBalance);
+        return {
+          ...prev,
+          [orgId]: applyOrgBalanceSnapshot(current, optimisticBalance),
+        };
+      });
+
+      if (Number.isFinite(targetBalance)) {
+        void reconcileOrgStatus(orgId, targetBalance);
+      }
+    };
+
+    window.addEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
+    return () => {
+      window.removeEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
+    };
+  }, [reconcileOrgStatus]);
 
   const handleSelectOrg = (orgId: string) => {
     setSelectedOrgId(orgId);

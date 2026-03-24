@@ -58,7 +58,7 @@ export default function OrgCreditsPage() {
   }
 
   const handleTokenPurchaseComplete = async (_result: AppleTokenPurchaseOutcome) => {
-    await refresh({ silent: true });
+    await refresh({ silent: true, force: true });
   };
 
   return (

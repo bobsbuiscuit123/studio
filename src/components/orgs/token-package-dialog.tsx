@@ -161,6 +161,17 @@ export function TokenPackageDialog({
 
     try {
       const result = await purchaseAppleTokenPackage(selectedPack, orgId);
+      if (typeof window !== 'undefined' && orgId) {
+        window.dispatchEvent(
+          new CustomEvent('org-token-purchase-complete', {
+            detail: {
+              orgId,
+              tokenBalance: result.tokenBalance,
+              tokensGranted: result.tokensGranted,
+            },
+          })
+        );
+      }
       await onPurchaseComplete?.(result);
 
       toast({

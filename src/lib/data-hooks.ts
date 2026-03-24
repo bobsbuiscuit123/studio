@@ -9,6 +9,7 @@ import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/lib/group-permissions';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { calculateEstimatedDaysRemaining, getAiAvailability, getTokenHealth } from '@/lib/pricing';
 
 type ClubData = {
     members: Member[];
@@ -808,15 +809,49 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
         void refresh();
     }, [refresh]);
 
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (shouldRefreshOnVisibility()) {
-                void refresh({ silent: true });
-            }
-        };
-        const handleUsageChanged = (event?: Event) => {
-            const detail =
-                event && 'detail' in event
+      useEffect(() => {
+          const handleVisibilityChange = () => {
+              if (shouldRefreshOnVisibility()) {
+                  void refresh({ silent: true });
+              }
+          };
+          const handleTokenPurchaseComplete = (event?: Event) => {
+              const detail =
+                  event && 'detail' in event
+                      ? (event as CustomEvent<{ orgId?: string | null; tokenBalance?: number | null }>).detail
+                      : undefined;
+              const changedOrgId = detail?.orgId ?? null;
+              if (changedOrgId && orgId && changedOrgId !== orgId) return;
+              const nextBalance = Number(detail?.tokenBalance ?? NaN);
+              if (Number.isFinite(nextBalance)) {
+                  setStatus(prev =>
+                      prev
+                          ? {
+                                ...prev,
+                                tokenBalance: nextBalance,
+                                estimatedDaysRemaining: calculateEstimatedDaysRemaining(
+                                    nextBalance,
+                                    prev.estimatedMonthlyTokens
+                                ),
+                                tokenHealth: getTokenHealth(
+                                    calculateEstimatedDaysRemaining(
+                                        nextBalance,
+                                        prev.estimatedMonthlyTokens
+                                    )
+                                ),
+                                aiAvailability: getAiAvailability(
+                                    nextBalance,
+                                    prev.estimatedMonthlyTokens
+                                ),
+                            }
+                          : prev
+                  );
+              }
+              void refresh({ silent: true, force: true });
+          };
+          const handleUsageChanged = (event?: Event) => {
+              const detail =
+                  event && 'detail' in event
                     ? (event as CustomEvent<{ orgId?: string | null; delta?: number }>).detail
                     : undefined;
             const changedOrgId = detail?.orgId ?? null;
@@ -836,18 +871,20 @@ export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
                 );
             }
             void refresh({ silent: true, force: true });
-        };
-        window.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-        window.addEventListener('focus', handleVisibilityChange);
-        window.addEventListener('online', handleVisibilityChange);
-        return () => {
-            window.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-            window.removeEventListener('focus', handleVisibilityChange);
-            window.removeEventListener('online', handleVisibilityChange);
-        };
-    }, [refresh]);
+          };
+          window.addEventListener('visibilitychange', handleVisibilityChange);
+          window.addEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
+          window.addEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
+          window.addEventListener('focus', handleVisibilityChange);
+          window.addEventListener('online', handleVisibilityChange);
+          return () => {
+              window.removeEventListener('visibilitychange', handleVisibilityChange);
+              window.removeEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
+              window.removeEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
+              window.removeEventListener('focus', handleVisibilityChange);
+              window.removeEventListener('online', handleVisibilityChange);
+          };
+      }, [refresh]);
 
     const used = status?.requestsUsedToday ?? 0;
     const limit = status?.dailyAiLimitPerUser ?? 0;

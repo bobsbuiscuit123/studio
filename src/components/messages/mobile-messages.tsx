@@ -564,10 +564,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         )}
       </div>
 
-      <div
-        className="header shrink-0 border-t bg-background px-4 pt-3"
-        style={{ paddingBottom: "calc(var(--safe-area-bottom, 0px) + 5rem)" }}
-      >
+      <div className="header shrink-0 border-t bg-background px-4 pb-20 pt-3">
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
           <Input
             {...messageForm.register("text")}

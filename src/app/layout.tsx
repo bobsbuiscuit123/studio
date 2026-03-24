@@ -46,15 +46,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${bodyFont.variable} font-body antialiased`} suppressHydrationWarning>
-        <NativeStatusBar />
-        <ClientTimeZoneSync />
-        <ErrorReporter />
-        <SecurityGuard />
-        <PwaRegister />
-        <NetworkStatusBanner />
-        <PolicyViolationToaster />
-        {children}
-        <Toaster />
+        <div className="app-root">
+          <NativeStatusBar />
+          <ClientTimeZoneSync />
+          <ErrorReporter />
+          <SecurityGuard />
+          <PwaRegister />
+          <NetworkStatusBanner />
+          <PolicyViolationToaster />
+          {children}
+          <Toaster />
+        </div>
       </body>
     </html>
   );

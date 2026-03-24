@@ -62,8 +62,7 @@ export function NetworkStatusBanner() {
 
   return (
     <div
-      className="fixed inset-x-0 top-0 z-50 flex items-center justify-center bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 shadow-md"
-      style={{ paddingTop: 'calc(env(safe-area-inset-top) + 0.5rem)' }}
+      className="absolute inset-x-0 top-0 z-50 flex items-center justify-center bg-amber-500 px-4 py-2 text-sm font-medium text-amber-950 shadow-md"
       role="status"
       aria-live="polite"
     >

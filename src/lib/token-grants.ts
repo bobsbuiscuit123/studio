@@ -120,6 +120,15 @@ export async function grantTokenPurchaseCompat({
   environment = null,
   metadata = {},
 }: GrantTokenPurchaseParams): Promise<TokenGrantResult> {
+  const readPersistedOrgBalance = async () => {
+    const persistedOrg = await loadOrgBalanceRow(admin, orgId);
+    if (persistedOrg.error) throw persistedOrg.error;
+    if (!persistedOrg.row) {
+      throw new Error('Organization not found after token purchase grant.');
+    }
+    return persistedOrg.row.balance;
+  };
+
   const normalizedProductId = normalizeTokenProductId(productId);
   const rpc = await admin.rpc('grant_token_purchase', {
     p_user_id: userId,
@@ -133,9 +142,10 @@ export async function grantTokenPurchaseCompat({
 
   if (!rpc.error) {
     const result = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+    const persistedBalance = await readPersistedOrgBalance();
     return {
       granted: Boolean(result?.granted),
-      tokenBalance: Number(result?.token_balance ?? 0),
+      tokenBalance: persistedBalance,
       tokensGranted: Number(result?.tokens_granted ?? 0),
     };
   }
@@ -245,9 +255,14 @@ export async function grantTokenPurchaseCompat({
     console.error('Token transaction activity insert failed', transactionInsert.error);
   }
 
+  const persistedBalance = await readPersistedOrgBalance();
+  if (persistedBalance < nextBalance) {
+    throw new Error('Token purchase was not persisted to the organization balance.');
+  }
+
   return {
     granted: true,
-    tokenBalance: nextBalance,
+    tokenBalance: persistedBalance,
     tokensGranted,
   };
 }

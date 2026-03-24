@@ -13,6 +13,12 @@ import {
   getTokenHealth,
 } from '@/lib/pricing';
 
+export const dynamic = 'force-dynamic';
+
+const noStoreHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+};
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ orgId: string }> }
@@ -22,7 +28,7 @@ export async function GET(
   if (!parsed.success) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Invalid org id.', source: 'app' }),
-      { status: 400 }
+      { status: 400, headers: noStoreHeaders }
     );
   }
 
@@ -32,7 +38,7 @@ export async function GET(
   if (!userId) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
-      { status: 401 }
+      { status: 401, headers: noStoreHeaders }
     );
   }
 
@@ -46,7 +52,7 @@ export async function GET(
   if (!membership) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Not a member.', source: 'app' }),
-      { status: 403 }
+      { status: 403, headers: noStoreHeaders }
     );
   }
 
@@ -91,7 +97,7 @@ export async function GET(
     if (legacyOrgResponse.error) {
       return NextResponse.json(
         err({ code: 'NETWORK_HTTP_ERROR', message: legacyOrgResponse.error.message, source: 'network' }),
-        { status: 500 }
+        { status: 500, headers: noStoreHeaders }
       );
     }
 
@@ -107,7 +113,7 @@ export async function GET(
   } else if (orgResponse.error) {
     return NextResponse.json(
       err({ code: 'NETWORK_HTTP_ERROR', message: orgResponse.error.message, source: 'network' }),
-      { status: 500 }
+      { status: 500, headers: noStoreHeaders }
     );
   }
 
@@ -181,5 +187,5 @@ export async function GET(
           }
         : {}),
     },
-  });
+  }, { headers: noStoreHeaders });
 }

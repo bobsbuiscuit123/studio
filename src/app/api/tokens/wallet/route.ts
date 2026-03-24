@@ -4,6 +4,12 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { isMissingColumnError, readBalance } from '@/lib/org-balance';
 
+export const dynamic = 'force-dynamic';
+
+const noStoreHeaders = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+};
+
 export async function GET(request: Request) {
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
@@ -11,7 +17,7 @@ export async function GET(request: Request) {
   if (!userId) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
-      { status: 401 }
+      { status: 401, headers: noStoreHeaders }
     );
   }
 
@@ -22,7 +28,7 @@ export async function GET(request: Request) {
   if (!orgId) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Organization id is required.', source: 'app' }),
-      { status: 400 }
+      { status: 400, headers: noStoreHeaders }
     );
   }
 
@@ -64,14 +70,14 @@ export async function GET(request: Request) {
   if (!normalizedOrg) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
-      { status: 404 }
+      { status: 404, headers: noStoreHeaders }
     );
   }
 
   if (normalizedOrg.owner_id !== userId) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Not the organization owner.', source: 'app' }),
-      { status: 403 }
+      { status: 403, headers: noStoreHeaders }
     );
   }
 
@@ -82,5 +88,5 @@ export async function GET(request: Request) {
       hasUsedTrial: Boolean(profile?.has_used_trial),
       recentTokenActivity: activity ?? [],
     },
-  });
+  }, { headers: noStoreHeaders });
 }

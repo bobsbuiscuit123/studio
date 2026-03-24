@@ -294,7 +294,7 @@ export function AppHeader() {
               {hasGroupContext ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation rounded-xl">
                       <ChevronDown className="h-4 w-4" />
                       <span className="sr-only">Group actions</span>
                     </Button>
@@ -333,7 +333,7 @@ export function AppHeader() {
             {hasGroupContext ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-xl">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 touch-manipulation rounded-xl">
                     <ChevronDown className="h-4 w-4" />
                     <span className="sr-only">Group actions</span>
                   </Button>
@@ -366,7 +366,7 @@ export function AppHeader() {
       
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 overflow-hidden rounded-2xl active:scale-95">
+          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 touch-manipulation overflow-hidden rounded-2xl active:scale-95">
              {isMounted && user ? (
                 <Avatar>
                   <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>

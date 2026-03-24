@@ -71,7 +71,7 @@
   html {
     height: 100%;
     min-height: 100%;
-    background-color: hsl(var(--background));
+    background-color: #e3f5e6;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     overflow-x: hidden;
@@ -81,6 +81,7 @@
     @apply bg-background text-foreground;
     height: 100%;
     min-height: 100dvh;
+    background-color: #e3f5e6;
     overscroll-behavior: none;
     overflow: hidden;
   }
@@ -212,13 +213,13 @@ main,
 }
 
 .app-header-inner {
-  padding-top: var(--safe-area-top);
+  padding-top: max(0.5rem, calc(var(--safe-area-top) + 0.1rem));
   padding-bottom: 0.4rem;
 }
 
 @media (min-width: 640px) {
   .app-header-inner {
-    padding-top: max(0.35rem, var(--safe-area-top));
+    padding-top: max(0.5rem, calc(var(--safe-area-top) + 0.1rem));
     padding-bottom: 0.5rem;
   }
 }

@@ -24,6 +24,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>CASPO uses your camera to capture images for posts, profiles, and other content in the app.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>CASPO saves generated and selected images to your photo library when you choose to export them.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CASPO uses your photo library so you can choose images for posts, profiles, and other content in the app.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

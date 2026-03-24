@@ -57,6 +57,18 @@ if (!podfile.includes("target 'App' do")) {
   throw new Error("ios/Podfile is not declaring the App target");
 }
 
+if (!podfile.includes('post_install do |installer|')) {
+  throw new Error('ios/Podfile is missing the post_install bundle-signing workaround');
+}
+
+if (!podfile.includes("config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'")) {
+  throw new Error("ios/Podfile is missing CODE_SIGNING_ALLOWED = 'NO' for pod targets");
+}
+
+if (!podfile.includes("config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'")) {
+  throw new Error("ios/Podfile is missing CODE_SIGNING_REQUIRED = 'NO' for pod targets");
+}
+
 const reactNativePackageJsonPath = requireFromRepo.resolve('react-native/package.json');
 const reactNativePackageJson = JSON.parse(readFileSync(reactNativePackageJsonPath, 'utf8'));
 
@@ -68,4 +80,4 @@ if (reactNativePackageJson.version !== '0.84.1') {
   throw new Error(`Resolved react-native shim version is ${reactNativePackageJson.version}, expected 0.84.1`);
 }
 
-console.log('Verified EAS iOS layout, Podfile, and react-native shim: root App.xcodeproj, shared App scheme, root Podfile, flat App/, flat CapApp-SPM/, react-native 0.84.1');
+console.log('Verified EAS iOS layout, Podfile signing workaround, and react-native shim: root App.xcodeproj, shared App scheme, root Podfile, flat App/, flat CapApp-SPM/, resource bundle signing disabled, react-native 0.84.1');

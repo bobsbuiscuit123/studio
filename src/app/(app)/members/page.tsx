@@ -211,8 +211,7 @@ export default function MembersPage() {
     router.refresh();
   };
   
-  const handleMessageClick = (member: Member) => {
-    localStorage.setItem('messageTarget', JSON.stringify(member));
+  const handleMessageClick = () => {
     router.push('/messages');
   }
 
@@ -275,7 +274,7 @@ export default function MembersPage() {
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
                    {member.email !== user?.email && (
-                     <Button variant="outline" className="w-full" onClick={() => handleMessageClick(member)}>
+                     <Button variant="outline" className="w-full" onClick={handleMessageClick}>
                         <MessageSquare className="mr-2" /> Message
                      </Button>
                    )}

@@ -69,23 +69,6 @@ export function MessagesListScreen() {
   });
 
   useEffect(() => {
-    if (!user || membersLoading || members.length === 0) return;
-    const targetMemberString = localStorage.getItem("messageTarget");
-    if (!targetMemberString) return;
-    try {
-      const targetMember: Member = JSON.parse(targetMemberString);
-      const fullMember = members.find(member => member.email === targetMember.email);
-      if (fullMember) {
-        router.replace(getConversationHref({ type: "dm", partner: fullMember }));
-      }
-    } catch (error) {
-      console.error("Failed to parse messageTarget from localStorage", error);
-    } finally {
-      localStorage.removeItem("messageTarget");
-    }
-  }, [members, membersLoading, router, user]);
-
-  useEffect(() => {
     const interval = window.setInterval(() => {
       void refreshMessages();
       void refreshGroupChats();
@@ -113,13 +96,6 @@ export function MessagesListScreen() {
     );
   });
   const availableDirectMessages = members.filter(member => member.email !== (user?.email ?? ""));
-
-  useEffect(() => {
-    if (searchTerm.trim()) return;
-    if (availableDirectMessages.length !== 1) return;
-    if (filteredConversations.length !== 1) return;
-    router.replace(getConversationHref({ type: "dm", partner: availableDirectMessages[0] }));
-  }, [availableDirectMessages, filteredConversations, router, searchTerm]);
 
   const handleCreateGroup = (values: z.infer<typeof newGroupFormSchema>) => {
     if (!user) return;

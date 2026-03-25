@@ -232,7 +232,7 @@ export function MessagesListScreen() {
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pb-24 pt-2">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pt-2">
         {filteredConversations.length === 0 ? (
           availableDirectMessages.length > 0 ? (
             <div className="space-y-2">
@@ -530,7 +530,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pb-24 pt-4">
+      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pt-4">
         {activeMessages.length === 0 ? (
           <div className="tab-empty-state text-sm text-muted-foreground">
             Start the conversation with {title}
@@ -564,7 +564,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         )}
       </div>
 
-      <div className="header shrink-0 border-t bg-background px-4 pb-20 pt-3">
+      <div className="header shrink-0 border-t bg-background px-4 py-3">
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
           <Input
             {...messageForm.register("text")}

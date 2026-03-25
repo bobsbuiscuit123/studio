@@ -37,11 +37,10 @@ export function AppMobileTabBar() {
   const { role } = useCurrentUserRole();
   const { unread, markTabViewed } = useNotificationsContext();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
-  const isMessagesRoute =
-    pathname === "/messages" ||
-    pathname.startsWith("/messages/") ||
-    pathname === "/demo/app/messages" ||
-    pathname.startsWith("/demo/app/messages/");
+  const isMessagesListRoute = pathname === "/messages" || pathname === "/demo/app/messages";
+  const isMessageThreadRoute =
+    pathname.startsWith("/messages/") || pathname.startsWith("/demo/app/messages/");
+  const isMessagesRoute = isMessagesListRoute || isMessageThreadRoute;
   const [navPage, setNavPage] = useState(0);
   const [isInputActive, setIsInputActive] = useState(false);
   const [showAssistantBubble, setShowAssistantBubble] = useState(false);
@@ -124,7 +123,7 @@ export function AppMobileTabBar() {
     return () => window.clearInterval(interval);
   }, [showAssistantBubble]);
 
-  if ((navSets.length === 0 && !assistantItem) || (isMessagesRoute && isInputActive)) {
+  if (isMessageThreadRoute || (navSets.length === 0 && !assistantItem) || (isMessagesListRoute && isInputActive)) {
     return null;
   }
 

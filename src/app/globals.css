@@ -30,10 +30,6 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-area-top: env(safe-area-inset-top, 0px);
-    --safe-area-right: env(safe-area-inset-right, 0px);
-    --safe-area-left: env(safe-area-inset-left, 0px);
   }
  
   .dark {
@@ -128,12 +124,12 @@ body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   box-sizing: border-box;
-  overflow-y: auto;
+  overflow: hidden;
   overflow-x: hidden;
-  padding-top: var(--safe-top);
-  padding-bottom: 0;
+  padding: 0;
   background: #ffffff;
 }
 

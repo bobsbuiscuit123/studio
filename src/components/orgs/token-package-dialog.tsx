@@ -14,12 +14,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { TOKEN_PACKAGES } from '@/lib/pricing';
+import { clearPendingOrgTokenBalance } from '@/lib/org-token-optimistic';
 import {
   ApplePurchaseCancelledError,
   getNativeApplePurchaseAvailability,
   loadAppleTokenPackages,
+  ORG_TOKEN_PURCHASE_BACKGROUND_EVENT,
   purchaseAppleTokenPackage,
   type AppleTokenPurchaseOutcome,
+  type OrgTokenPurchaseBackgroundDetail,
   type StoreBackedTokenPackage,
 } from '@/lib/token-purchases';
 
@@ -108,6 +111,94 @@ export function TokenPackageDialog({
       active = false;
     };
   }, [open]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleBackgroundSettlement = (event: Event) => {
+      const detail = (event as CustomEvent<OrgTokenPurchaseBackgroundDetail>).detail;
+      if (!detail || !orgId || detail.orgId !== orgId) {
+        return;
+      }
+
+      if (detail.status === 'corrected') {
+        const correctedBalance = Number(detail.tokenBalance ?? NaN);
+        if (!Number.isFinite(correctedBalance)) {
+          return;
+        }
+
+        clearPendingOrgTokenBalance(orgId);
+
+        const correctedResult: AppleTokenPurchaseOutcome = {
+          status: 'granted',
+          productId: detail.productId,
+          transactionId: detail.transactionId,
+          tokenBalance: correctedBalance,
+          tokensGranted: null,
+        };
+
+        window.dispatchEvent(
+          new CustomEvent('org-token-purchase-complete', {
+            detail: {
+              orgId,
+              transactionId: `${detail.transactionId}:corrected`,
+              tokenBalance: correctedBalance,
+              tokensGranted: null,
+            },
+          })
+        );
+
+        void onPurchaseComplete?.(correctedResult);
+        return;
+      }
+
+      clearPendingOrgTokenBalance(orgId);
+
+      const revertedBalance = Number(detail.startingBalance ?? detail.tokenBalance ?? NaN);
+      if (Number.isFinite(revertedBalance)) {
+        const revertedResult: AppleTokenPurchaseOutcome = {
+          status: 'pending',
+          productId: detail.productId,
+          transactionId: detail.transactionId,
+          tokenBalance: revertedBalance,
+          tokensGranted: null,
+        };
+
+        window.dispatchEvent(
+          new CustomEvent('org-token-purchase-complete', {
+            detail: {
+              orgId,
+              transactionId: `${detail.transactionId}:failed`,
+              tokenBalance: revertedBalance,
+              tokensGranted: null,
+            },
+          })
+        );
+
+        void onPurchaseComplete?.(revertedResult);
+      }
+
+      toast({
+        title: 'Token balance pending',
+        description: `Your Apple purchase for ${resolvedOrgName} succeeded, but we could not confirm the updated token balance yet. It will sync after backend confirmation.`,
+        variant: 'destructive',
+      });
+    };
+
+    window.addEventListener(
+      ORG_TOKEN_PURCHASE_BACKGROUND_EVENT,
+      handleBackgroundSettlement as EventListener
+    );
+
+    return () => {
+      window.removeEventListener(
+        ORG_TOKEN_PURCHASE_BACKGROUND_EVENT,
+        handleBackgroundSettlement as EventListener
+      );
+    };
+  }, [onPurchaseComplete, orgId, resolvedOrgName, toast]);
 
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {

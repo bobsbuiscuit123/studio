@@ -32,6 +32,20 @@ export type AppleTokenPurchaseOutcome = {
   tokensGranted: number | null;
 };
 
+export const ORG_TOKEN_PURCHASE_BACKGROUND_EVENT =
+  'org-token-purchase-background-settled';
+
+export type OrgTokenPurchaseBackgroundDetail = {
+  orgId: string;
+  productId: string;
+  transactionId: string;
+  status: 'corrected' | 'failed';
+  tokenBalance: number | null;
+  tokensGranted: number | null;
+  startingBalance: number | null;
+  optimisticBalance: number | null;
+};
+
 type WalletActivity = {
   id: string;
   amount: number;
@@ -47,6 +61,13 @@ type WalletResponse = {
     tokenBalance: number;
     hasUsedTrial: boolean;
     recentTokenActivity?: WalletActivity[];
+  };
+};
+
+type OrgStatusResponse = {
+  ok: boolean;
+  data?: {
+    tokenBalance?: number | null;
   };
 };
 
@@ -242,6 +263,58 @@ const getPackageForProductId = (
 const getProviderTransactionId = (metadata?: Record<string, unknown> | null) => {
   const direct = metadata?.provider_transaction_id;
   return typeof direct === 'string' ? direct : null;
+};
+
+const isFiniteBalance = (value: number | null | undefined): value is number =>
+  typeof value === 'number' && Number.isFinite(value);
+
+const dispatchPurchaseBackgroundSettlement = (
+  detail: OrgTokenPurchaseBackgroundDetail
+) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<OrgTokenPurchaseBackgroundDetail>(
+      ORG_TOKEN_PURCHASE_BACKGROUND_EVENT,
+      { detail }
+    )
+  );
+};
+
+const getOrgStartingBalance = async (orgId: string) => {
+  const walletResponse = await safeFetchJson<WalletResponse>(
+    `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`,
+    {
+      method: 'GET',
+      timeoutMs: 10_000,
+      retry: { retries: 1 },
+      treatOfflineAsError: false,
+    }
+  );
+
+  const walletBalance = Number(walletResponse.data?.data?.tokenBalance ?? NaN);
+  if (walletResponse.ok && Number.isFinite(walletBalance)) {
+    return walletBalance;
+  }
+
+  const statusResponse = await safeFetchJson<OrgStatusResponse>(
+    `/api/orgs/${encodeURIComponent(orgId)}/status`,
+    {
+      method: 'GET',
+      timeoutMs: 10_000,
+      retry: { retries: 1 },
+      treatOfflineAsError: false,
+    }
+  );
+
+  const statusBalance = Number(statusResponse.data?.data?.tokenBalance ?? NaN);
+  if (statusResponse.ok && Number.isFinite(statusBalance)) {
+    return statusBalance;
+  }
+
+  return null;
 };
 
 const registerTokenPurchaseIntent = async (
@@ -491,24 +564,76 @@ export const purchaseAppleTokenPackage = async (
       throw new Error('Organization context required to assign purchased tokens.');
     }
 
-    const initialWallet = await safeFetchJson<WalletResponse>(
-      `/api/tokens/wallet?orgId=${encodeURIComponent(orgId)}`,
-      { method: 'GET', timeoutMs: 10_000, retry: { retries: 1 }, treatOfflineAsError: false }
-    );
-    const startingBalance = initialWallet.ok
-      ? Number(initialWallet.data.data?.tokenBalance ?? 0)
+    const startingBalance = await getOrgStartingBalance(orgId);
+    const optimisticBalance = isFiniteBalance(startingBalance)
+      ? startingBalance + selectedPack.tokens
       : null;
 
     await registerTokenPurchaseIntent(orgId, transactionId, selectedPack.productId);
-    const grantResult = await waitForPersistedPurchaseGrant(transactionId, orgId, selectedPack.productId, {
-      startingBalance,
-      expectedTokens: selectedPack.tokens,
-    });
+
+    void waitForPersistedPurchaseGrant(
+      transactionId,
+      orgId,
+      selectedPack.productId,
+      {
+        startingBalance,
+        expectedTokens: selectedPack.tokens,
+      }
+    )
+      .then((grantResult) => {
+        const confirmedBalance = Number(grantResult.tokenBalance ?? NaN);
+
+        if (grantResult.status === 'granted') {
+          if (
+            !isFiniteBalance(optimisticBalance) ||
+            !Number.isFinite(confirmedBalance) ||
+            confirmedBalance !== optimisticBalance
+          ) {
+            dispatchPurchaseBackgroundSettlement({
+              orgId,
+              productId: selectedPack.productId,
+              transactionId,
+              status: 'corrected',
+              tokenBalance: Number.isFinite(confirmedBalance) ? confirmedBalance : null,
+              tokensGranted: grantResult.tokensGranted,
+              startingBalance,
+              optimisticBalance,
+            });
+          }
+          return;
+        }
+
+        dispatchPurchaseBackgroundSettlement({
+          orgId,
+          productId: selectedPack.productId,
+          transactionId,
+          status: 'failed',
+          tokenBalance: isFiniteBalance(startingBalance) ? startingBalance : null,
+          tokensGranted: null,
+          startingBalance,
+          optimisticBalance,
+        });
+      })
+      .catch((error) => {
+        console.warn('Background token purchase settlement failed.', error);
+        dispatchPurchaseBackgroundSettlement({
+          orgId,
+          productId: selectedPack.productId,
+          transactionId,
+          status: 'failed',
+          tokenBalance: isFiniteBalance(startingBalance) ? startingBalance : null,
+          tokensGranted: null,
+          startingBalance,
+          optimisticBalance,
+        });
+      });
 
     return {
       productId: selectedPack.productId,
       transactionId,
-      ...grantResult,
+      status: 'granted',
+      tokenBalance: optimisticBalance,
+      tokensGranted: selectedPack.tokens,
     };
   } catch (error) {
     if (purchaseWasCancelled(error)) {

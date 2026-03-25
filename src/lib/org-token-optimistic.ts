@@ -41,6 +41,11 @@ const writeState = (orgId: string, state: PendingOrgBalanceState) => {
   window.localStorage.setItem(getStorageKey(orgId), JSON.stringify(state));
 };
 
+export const clearPendingOrgTokenBalance = (orgId?: string | null) => {
+  if (!orgId || !canUseStorage()) return;
+  window.localStorage.removeItem(getStorageKey(orgId));
+};
+
 export const getPendingOrgTokenBalanceTarget = (orgId?: string | null) => {
   if (!orgId) return null;
   return readState(orgId)?.targetBalance ?? null;
@@ -105,6 +110,6 @@ export const clearSatisfiedPendingOrgTokenBalance = (orgId?: string | null, actu
   if (!existing) return;
   const normalizedActualBalance = Number(actualBalance);
   if (Number.isFinite(normalizedActualBalance) && normalizedActualBalance >= existing.targetBalance) {
-    window.localStorage.removeItem(getStorageKey(orgId));
+    clearPendingOrgTokenBalance(orgId);
   }
 };

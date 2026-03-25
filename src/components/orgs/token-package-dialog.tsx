@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Coins, Loader2 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
 import {
   Dialog,
   DialogContent,
@@ -18,7 +17,6 @@ import { TOKEN_PACKAGES } from '@/lib/pricing';
 import {
   ApplePurchaseCancelledError,
   getNativeApplePurchaseAvailability,
-  isRevenueCatReady,
   loadAppleTokenPackages,
   purchaseAppleTokenPackage,
   type AppleTokenPurchaseOutcome,
@@ -32,6 +30,7 @@ export function TokenPackageDialog({
   description,
   onPurchaseComplete,
   orgId,
+  orgName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,6 +38,7 @@ export function TokenPackageDialog({
   description?: string;
   onPurchaseComplete?: (result: AppleTokenPurchaseOutcome) => Promise<void> | void;
   orgId: string | null;
+  orgName?: string | null;
 }) {
   const { toast } = useToast();
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -59,11 +59,7 @@ export function TokenPackageDialog({
     [packages, selectedProductId]
   );
   const selectedRevenueCatPackage = selectedPack?.revenueCatPackage ?? null;
-
-  useEffect(() => {
-    console.log('selectedPack', selectedPack);
-    console.log('selectedRevenueCatPackage', selectedRevenueCatPackage);
-  }, [selectedPack, selectedRevenueCatPackage]);
+  const resolvedOrgName = orgName?.trim() || 'this organization';
 
   useEffect(() => {
     if (!open) {
@@ -74,16 +70,6 @@ export function TokenPackageDialog({
     const availability = getNativeApplePurchaseAvailability();
     setAvailabilityMessage(availability.supported ? null : availability.reason ?? null);
     setPurchaseError(null);
-    console.log('Capacitor.isNativePlatform()', Capacitor.isNativePlatform());
-    console.log(
-      'env key present',
-      !!process.env.NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY
-    );
-    console.log('availabilityMessage', availabilityMessage);
-    console.log(
-      'TOKEN_PACKAGES',
-      TOKEN_PACKAGES.map((p) => ({ id: p.productId, productId: p.productId }))
-    );
 
     if (!availability.supported) {
       setPackages(
@@ -103,13 +89,6 @@ export function TokenPackageDialog({
       .then((nextPackages) => {
         if (!active) return;
         setPackages(nextPackages);
-        console.log('Packages available', nextPackages.filter((pack) => pack.revenueCatPackage).length);
-        const offerings = nextPackages.map((pack) => ({
-          pkgIdentifier: pack.revenueCatPackage?.identifier,
-          productIdentifier: pack.revenueCatPackage?.product.identifier,
-          productId: pack.productId,
-        }));
-        console.log('available packages details', offerings);
       })
       .catch((error) => {
         if (!active) return;
@@ -189,8 +168,8 @@ export function TokenPackageDialog({
           result.status === 'granted'
             ? `${selectedPack.displayName} added ${Number(
                 resolvedTokensGranted ?? selectedPack.tokens
-              ).toLocaleString()} tokens to your balance.`
-            : 'Your Apple purchase succeeded. Tokens should appear in your balance shortly.',
+              ).toLocaleString()} tokens to ${resolvedOrgName}.`
+            : `Your Apple purchase for ${resolvedOrgName} succeeded. Tokens should appear for that organization shortly.`,
       });
 
       handleOpenChange(false);
@@ -220,9 +199,10 @@ export function TokenPackageDialog({
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-xl rounded-3xl border-0 bg-white p-0 shadow-2xl">
           <DialogHeader className="border-b border-slate-100 px-6 pb-4 pt-6 text-left">
-            <DialogTitle className="text-2xl">{title ?? 'Buy tokens'}</DialogTitle>
+            <DialogTitle className="text-2xl">{title ?? `Buy tokens for ${resolvedOrgName}`}</DialogTitle>
             <DialogDescription className="text-sm text-slate-600">
-              {description ?? 'Choose a fixed token package for your organization owner account.'}
+              {description ??
+                `Choose a fixed token package for ${resolvedOrgName}. Tokens purchased here are added only to that organization.`}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 px-6 py-6">
@@ -240,7 +220,11 @@ export function TokenPackageDialog({
               <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 Token purchases require an organization context. Open the organization billing page to continue.
               </div>
-            ) : null}
+            ) : (
+              <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                Tokens purchased here will be added only to <span className="font-semibold">{resolvedOrgName}</span>.
+              </div>
+            )}
             {loadingPackages ? (
               <div className="flex items-center gap-2 rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -285,9 +269,9 @@ export function TokenPackageDialog({
       >
         <DialogContent className="max-w-md rounded-3xl border-0 bg-white shadow-2xl">
           <DialogHeader className="text-left">
-            <DialogTitle>Confirm purchase</DialogTitle>
+            <DialogTitle>{`Confirm purchase for ${resolvedOrgName}`}</DialogTitle>
             <DialogDescription>
-              Review this token package before continuing.
+              Review this token package for {resolvedOrgName} before continuing.
             </DialogDescription>
           </DialogHeader>
           {selectedPack ? (
@@ -302,7 +286,7 @@ export function TokenPackageDialog({
                 </div>
               </div>
               <p className="mt-4 text-sm text-slate-600">
-                You will finish this purchase with Apple, then CASPO will update your token balance automatically.
+                You will finish this purchase with Apple, and CASPO will add the tokens to {resolvedOrgName}.
               </p>
             </div>
           ) : null}
@@ -320,16 +304,16 @@ export function TokenPackageDialog({
             >
               Cancel
             </Button>
-          <Button
-            className="rounded-2xl"
-            onClick={() => void handlePurchase()}
-            disabled={
-              purchaseSubmitting ||
-              Boolean(availabilityMessage) ||
-              loadingPackages ||
-              !selectedRevenueCatPackage
-            }
-          >
+            <Button
+              className="rounded-2xl"
+              onClick={() => void handlePurchase()}
+              disabled={
+                purchaseSubmitting ||
+                Boolean(availabilityMessage) ||
+                loadingPackages ||
+                !selectedRevenueCatPackage
+              }
+            >
               {purchaseSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

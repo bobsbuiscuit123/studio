@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const [{ data: profile }, { data: org }, { data: activity }] = await Promise.all([
+  const [{ data: profile }, orgResponse, { data: activity }] = await Promise.all([
     admin
       .from('profiles')
       .select('has_used_trial')
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       .maybeSingle(),
     admin
       .from('orgs')
-      .select('token_balance, owner_id')
+      .select('token_balance, credit_balance, owner_id')
       .eq('id', orgId)
       .maybeSingle(),
     admin
@@ -51,7 +51,38 @@ export async function GET(request: Request) {
       .limit(10),
   ]);
 
-  let normalizedOrg = org;
+  let normalizedOrg = orgResponse.data;
+  let orgError = orgResponse.error;
+  if (orgError && isMissingColumnError(orgError, 'credit_balance')) {
+    const modernWithoutCredit = await admin
+      .from('orgs')
+      .select('token_balance, owner_id')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (modernWithoutCredit.error) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: modernWithoutCredit.error.message, source: 'network' }),
+        { status: 500, headers: noStoreHeaders }
+      );
+    }
+
+    normalizedOrg = modernWithoutCredit.data
+      ? {
+          ...modernWithoutCredit.data,
+          credit_balance: null,
+        }
+      : null;
+    orgError = null;
+  }
+
+  if (orgError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgError.message, source: 'network' }),
+      { status: 500, headers: noStoreHeaders }
+    );
+  }
+
   if (!normalizedOrg) {
     const legacyOrgResponse = await admin
       .from('orgs')
@@ -62,6 +93,7 @@ export async function GET(request: Request) {
       normalizedOrg = {
         ...legacyOrgResponse.data,
         token_balance: legacyOrgResponse.data.credit_balance,
+        credit_balance: legacyOrgResponse.data.credit_balance,
         owner_id: legacyOrgResponse.data.owner_user_id,
       };
     }

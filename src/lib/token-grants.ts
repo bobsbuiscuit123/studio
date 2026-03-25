@@ -19,29 +19,68 @@ const PRODUCT_TOKEN_MAP: Record<string, number> = {
 const getMappedTokens = (productId: string) => PRODUCT_TOKEN_MAP[normalizeTokenProductId(productId)] ?? 0;
 
 async function loadOrgBalanceRow(admin: SupabaseClient, orgId: string) {
+  const buildModernRow = (data: {
+    id: string;
+    owner_id?: string | null;
+    token_balance?: unknown;
+    credit_balance?: unknown;
+  }) => {
+    const resolved = readBalance(data);
+    return {
+      id: data.id,
+      ownerId: data.owner_id ?? null,
+      balance: resolved.balance,
+      balanceSource: resolved.source,
+      tokenBalance: resolved.tokenBalance,
+      creditBalance: resolved.creditBalance,
+      legacyOnly: false,
+    };
+  };
+
   const modern = await admin
     .from('orgs')
-    .select('id, owner_id, token_balance')
+    .select('id, owner_id, token_balance, credit_balance')
     .eq('id', orgId)
     .maybeSingle();
 
   if (!modern.error) {
     return {
-      row: modern.data
-        ? {
-            id: modern.data.id,
-            ownerId: modern.data.owner_id,
-            balance: Number(modern.data.token_balance ?? 0),
-            balanceColumn: 'token_balance' as const,
-          }
-        : null,
+      row: modern.data ? buildModernRow(modern.data) : null,
       error: null,
     };
   }
 
+  if (isMissingColumnError(modern.error, 'credit_balance')) {
+    const modernWithoutCredit = await admin
+      .from('orgs')
+      .select('id, owner_id, token_balance')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (!modernWithoutCredit.error) {
+      return {
+        row: modernWithoutCredit.data
+          ? buildModernRow({
+              ...modernWithoutCredit.data,
+              credit_balance: null,
+            })
+          : null,
+        error: null,
+      };
+    }
+
+    if (
+      !isMissingColumnError(modernWithoutCredit.error, 'owner_id') &&
+      !isMissingColumnError(modernWithoutCredit.error, 'token_balance')
+    ) {
+      return { row: null, error: modernWithoutCredit.error };
+    }
+  }
+
   if (
     !isMissingColumnError(modern.error, 'owner_id') &&
-    !isMissingColumnError(modern.error, 'token_balance')
+    !isMissingColumnError(modern.error, 'token_balance') &&
+    !isMissingColumnError(modern.error, 'credit_balance')
   ) {
     return { row: null, error: modern.error };
   }
@@ -62,7 +101,10 @@ async function loadOrgBalanceRow(admin: SupabaseClient, orgId: string) {
           id: legacy.data.id,
           ownerId: legacy.data.owner_user_id,
           balance: Number(legacy.data.credit_balance ?? 0),
-          balanceColumn: 'credit_balance' as const,
+          balanceSource: 'credit' as const,
+          tokenBalance: null,
+          creditBalance: Number(legacy.data.credit_balance ?? 0),
+          legacyOnly: true,
         }
       : null,
     error: null,
@@ -71,17 +113,25 @@ async function loadOrgBalanceRow(admin: SupabaseClient, orgId: string) {
 
 async function updateOrgBalance(
   admin: SupabaseClient,
-  orgId: string,
-  balanceColumn: 'token_balance' | 'credit_balance',
+  org: NonNullable<Awaited<ReturnType<typeof loadOrgBalanceRow>>['row']>,
   nextBalance: number
 ) {
+  const writeToTokenBalance = !org.legacyOnly && org.balanceSource === 'credit';
+  const balanceColumn =
+    writeToTokenBalance || org.balanceSource === 'token' ? 'token_balance' : 'credit_balance';
+  const currentStoredBalance =
+    balanceColumn === 'token_balance'
+      ? Number(org.tokenBalance ?? 0)
+      : Number(org.creditBalance ?? 0);
+
   const withTimestamp = await admin
     .from('orgs')
     .update({
       [balanceColumn]: nextBalance,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', orgId);
+    .eq('id', org.id)
+    .eq(balanceColumn, currentStoredBalance);
 
   if (!withTimestamp.error) {
     return withTimestamp;
@@ -96,7 +146,8 @@ async function updateOrgBalance(
     .update({
       [balanceColumn]: nextBalance,
     })
-    .eq('id', orgId);
+    .eq('id', org.id)
+    .eq(balanceColumn, currentStoredBalance);
 }
 
 type GrantTokenPurchaseParams = {
@@ -130,32 +181,44 @@ export async function grantTokenPurchaseCompat({
   };
 
   const normalizedProductId = normalizeTokenProductId(productId);
-  const rpc = await admin.rpc('grant_token_purchase', {
-    p_user_id: userId,
-    p_product_id: normalizedProductId || productId,
-    p_provider_transaction_id: transactionId,
-    p_provider: provider,
-    p_environment: environment,
-    p_metadata: metadata,
-    p_org_id: orgId,
-  });
-
-  if (!rpc.error) {
-    const result = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
-    const persistedBalance = await readPersistedOrgBalance();
-    return {
-      granted: Boolean(result?.granted),
-      tokenBalance: persistedBalance,
-      tokensGranted: Number(result?.tokens_granted ?? 0),
-    };
+  const initialOrg = await loadOrgBalanceRow(admin, orgId);
+  if (initialOrg.error) {
+    throw initialOrg.error;
   }
+  const shouldBypassRpc =
+    Boolean(initialOrg.row) &&
+    !initialOrg.row.legacyOnly &&
+    initialOrg.row.balanceSource === 'credit' &&
+    initialOrg.row.balance > 0;
 
-  if (
-    !isMissingColumnError(rpc.error, 'token_balance') &&
-    !isMissingColumnError(rpc.error, 'owner_id') &&
-    !isMissingFunctionError(rpc.error, 'grant_token_purchase')
-  ) {
-    throw rpc.error;
+  if (!shouldBypassRpc) {
+    const rpc = await admin.rpc('grant_token_purchase', {
+      p_user_id: userId,
+      p_product_id: normalizedProductId || productId,
+      p_provider_transaction_id: transactionId,
+      p_provider: provider,
+      p_environment: environment,
+      p_metadata: metadata,
+      p_org_id: orgId,
+    });
+
+    if (!rpc.error) {
+      const result = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+      const persistedBalance = await readPersistedOrgBalance();
+      return {
+        granted: Boolean(result?.granted),
+        tokenBalance: persistedBalance,
+        tokensGranted: Number(result?.tokens_granted ?? 0),
+      };
+    }
+
+    if (
+      !isMissingColumnError(rpc.error, 'token_balance') &&
+      !isMissingColumnError(rpc.error, 'owner_id') &&
+      !isMissingFunctionError(rpc.error, 'grant_token_purchase')
+    ) {
+      throw rpc.error;
+    }
   }
 
   const tokensGranted = getMappedTokens(normalizedProductId || productId);
@@ -183,7 +246,7 @@ export async function grantTokenPurchaseCompat({
     throw existingGrant.error;
   }
 
-  const orgResult = await loadOrgBalanceRow(admin, orgId);
+  const orgResult = initialOrg.row ? initialOrg : await loadOrgBalanceRow(admin, orgId);
   if (orgResult.error) throw orgResult.error;
   if (!orgResult.row?.ownerId) {
     throw new Error('Organization not found for this purchase.');
@@ -219,8 +282,7 @@ export async function grantTokenPurchaseCompat({
   const nextBalance = orgResult.row.balance + tokensGranted;
   const balanceUpdate = await updateOrgBalance(
     admin,
-    orgId,
-    orgResult.row.balanceColumn,
+    orgResult.row,
     nextBalance
   );
 

@@ -13,11 +13,13 @@ export function OrgAiQuotaBadge({
   className?: string;
   compact?: boolean;
 }) {
-  const { loading, status, used, limit, percent } = useOrgAiQuotaStatus(orgId);
+  const { loading, status, limit, remaining, percent } = useOrgAiQuotaStatus(orgId);
   const paused = status?.aiAvailability === 'paused';
-  const limited = status?.aiAvailability === 'limited';
-  const clampedPercent = Math.max(0, Math.min(100, percent));
-  const hue = paused ? 0 : limited ? 38 : 145 - (145 * clampedPercent) / 100;
+  const safeLimit = Math.max(0, limit);
+  const safeRemaining = paused ? 0 : Math.max(0, Math.min(remaining, safeLimit));
+  const remainingPercent = safeLimit > 0 ? (safeRemaining / safeLimit) * 100 : 0;
+  const clampedPercent = Math.max(0, Math.min(100, remainingPercent));
+  const hue = clampedPercent <= 25 ? 18 : 145 - (145 * clampedPercent) / 100;
   const accent = `hsl(${hue} 78% 42%)`;
   const accentSoft = `hsl(${hue} 85% 94%)`;
   const accentBorder = `hsl(${hue} 75% 82%)`;
@@ -67,15 +69,13 @@ export function OrgAiQuotaBadge({
         </div>
       </div>
       <div className="leading-tight">
-        <div className="font-semibold">{paused ? 'AI temporarily unavailable' : 'AI availability'}</div>
+        <div className="font-semibold">Daily AI left</div>
         <div className="opacity-80">
           {loading
             ? "Loading..."
-            : paused
-              ? "Your organization has run out of credits"
-              : limited
-                ? "AI availability may be limited soon"
-                : `${used}/${limit} requests used today`}
+            : safeLimit <= 0
+              ? "0 requests left today"
+              : `${safeRemaining}/${safeLimit} requests left today`}
         </div>
       </div>
     </div>

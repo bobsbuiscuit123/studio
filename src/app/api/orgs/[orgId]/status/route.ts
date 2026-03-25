@@ -64,7 +64,7 @@ export async function GET(
   ] = await Promise.all([
     admin
       .from('orgs')
-      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
+      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, credit_balance, created_at, updated_at')
       .eq('id', parsed.data)
       .maybeSingle(),
     admin
@@ -82,11 +82,35 @@ export async function GET(
   ]);
 
   let org = orgResponse.data;
-  if (orgResponse.error && (
-    isMissingColumnError(orgResponse.error, 'token_balance') ||
-    isMissingColumnError(orgResponse.error, 'owner_id') ||
-    isMissingColumnError(orgResponse.error, 'member_cap') ||
-    isMissingColumnError(orgResponse.error, 'daily_ai_limit')
+  let orgError = orgResponse.error;
+  if (orgError && isMissingColumnError(orgError, 'credit_balance')) {
+    const modernWithoutCredit = await admin
+      .from('orgs')
+      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
+      .eq('id', parsed.data)
+      .maybeSingle();
+
+    if (modernWithoutCredit.error) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: modernWithoutCredit.error.message, source: 'network' }),
+        { status: 500, headers: noStoreHeaders }
+      );
+    }
+
+    org = modernWithoutCredit.data
+      ? {
+          ...modernWithoutCredit.data,
+          credit_balance: null,
+        }
+      : null;
+    orgError = null;
+  }
+
+  if (orgError && (
+    isMissingColumnError(orgError, 'token_balance') ||
+    isMissingColumnError(orgError, 'owner_id') ||
+    isMissingColumnError(orgError, 'member_cap') ||
+    isMissingColumnError(orgError, 'daily_ai_limit')
   )) {
     const legacyOrgResponse = await admin
       .from('orgs')
@@ -108,11 +132,12 @@ export async function GET(
           member_cap: legacyOrgResponse.data.member_limit,
           daily_ai_limit: legacyOrgResponse.data.ai_daily_limit_per_user,
           token_balance: legacyOrgResponse.data.credit_balance,
+          credit_balance: legacyOrgResponse.data.credit_balance,
         }
       : null;
-  } else if (orgResponse.error) {
+  } else if (orgError) {
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: orgResponse.error.message, source: 'network' }),
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgError.message, source: 'network' }),
       { status: 500, headers: noStoreHeaders }
     );
   }

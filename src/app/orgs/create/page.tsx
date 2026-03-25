@@ -434,9 +434,10 @@ export default function OrgCreatePage() {
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
         title={`Buy tokens for ${createdOrg?.orgName ?? 'this organization'}`}
-        description="Buy tokens for this organization now, then complete the required setup to continue."
+        description={`Buy tokens for ${createdOrg?.orgName ?? 'this organization'} now. Tokens purchased here are added only to that organization.`}
         onPurchaseComplete={handleTokenPurchaseComplete}
         orgId={createdOrg?.orgId ?? null}
+        orgName={createdOrg?.orgName ?? null}
       />
     </div>
   );

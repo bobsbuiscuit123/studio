@@ -1,6 +1,8 @@
 type BalanceSource = {
   balance: number;
   source: 'token' | 'credit' | 'none';
+  tokenBalance: number | null;
+  creditBalance: number | null;
 };
 
 const MISSING_COLUMN_CODES = new Set(['42703', 'PGRST204']);
@@ -28,12 +30,31 @@ export const isMissingFunctionError = (error: unknown, fnName: string) => {
   );
 };
 
+const normalizeBalance = (value: unknown) => {
+  if (value == null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export const readBalance = (row?: { token_balance?: unknown; credit_balance?: unknown } | null): BalanceSource => {
-  if (row && row.token_balance != null) {
-    return { balance: Number(row.token_balance ?? 0), source: 'token' };
+  const tokenBalance = normalizeBalance(row?.token_balance);
+  const creditBalance = normalizeBalance(row?.credit_balance);
+
+  if (tokenBalance != null && tokenBalance > 0) {
+    return { balance: tokenBalance, source: 'token', tokenBalance, creditBalance };
   }
-  if (row && row.credit_balance != null) {
-    return { balance: Number(row.credit_balance ?? 0), source: 'credit' };
+
+  if ((tokenBalance == null || tokenBalance <= 0) && creditBalance != null && creditBalance > 0) {
+    return { balance: creditBalance, source: 'credit', tokenBalance, creditBalance };
   }
-  return { balance: 0, source: 'none' };
+
+  if (tokenBalance != null) {
+    return { balance: tokenBalance, source: 'token', tokenBalance, creditBalance };
+  }
+
+  if (creditBalance != null) {
+    return { balance: creditBalance, source: 'credit', tokenBalance, creditBalance };
+  }
+
+  return { balance: 0, source: 'none', tokenBalance, creditBalance };
 };

@@ -307,6 +307,16 @@ export function ProfileDialog({
                     {tokensUsed.toLocaleString()} / {tokensPurchased.toLocaleString()}
                   </span>
                 </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <span>Organization token balance</span>
+                  {tokenLoading ? (
+                    <span className="text-xs">Loading...</span>
+                  ) : (
+                    <span className="font-semibold text-slate-900">
+                      {tokenBalance !== null ? tokenBalance.toLocaleString() : "—"} tokens
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {tokensLeft.toLocaleString()} tokens available for this organization.
                 </p>
@@ -325,6 +335,7 @@ export function ProfileDialog({
                 </Button>
               </div>
             ) : null}
+            {false ? (
             <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
               <div className="flex items-center justify-between">
                 <span>Organization token balance</span>
@@ -340,6 +351,7 @@ export function ProfileDialog({
                 This balance is stored on the organization and updates after purchases or AI usage.
               </p>
             </div>
+            ) : null}
             <div className="overflow-hidden rounded-xl border">
               <button
                 type="button"

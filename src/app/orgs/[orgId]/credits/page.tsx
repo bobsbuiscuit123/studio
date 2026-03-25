@@ -70,7 +70,7 @@ export default function OrgCreditsPage() {
           </div>
           <Button className="rounded-2xl" onClick={() => setTokenDialogOpen(true)}>
             <Sparkles className="mr-2 h-4 w-4" />
-            Buy Tokens
+            Buy tokens for {status?.orgName ?? 'this organization'}
           </Button>
         </div>
 
@@ -182,9 +182,10 @@ export default function OrgCreditsPage() {
       <TokenPackageDialog
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
-        title="Buy tokens"
-        description="Choose a token package, then confirm your purchase with Apple on the next step."
+        title={`Buy tokens for ${status?.orgName ?? 'this organization'}`}
+        description={`Choose a token package for ${status?.orgName ?? 'this organization'}. Tokens purchased here are added only to that organization after Apple confirms the purchase.`}
         orgId={orgId}
+        orgName={status?.orgName ?? null}
       />
     </div>
   );

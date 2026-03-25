@@ -600,7 +600,7 @@ export default function ClubsPage() {
                     className="mt-2 w-full rounded-2xl border border-blue-200 px-3 py-2 text-sm text-blue-800"
                     onClick={handleBuyTokensFromDialog}
                   >
-                    Buy tokens
+                    Buy tokens for {orgStatus?.orgName ?? 'this organization'}
                   </Button>
                 </div>
                 <DialogFooter className="gap-2">
@@ -702,7 +702,7 @@ export default function ClubsPage() {
         {isOrgOwner ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Button variant="outline" onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)} className="w-full">
-              <Coins className="mr-2" /> Manage Tokens
+              <Coins className="mr-2" /> Manage tokens for {orgStatus?.orgName ?? 'this organization'}
             </Button>
             <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
               <Trash2 className="mr-2" /> Delete Organization

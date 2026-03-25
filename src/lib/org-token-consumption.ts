@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isMissingColumnError } from '@/lib/org-balance';
+import { isMissingColumnError, readBalance } from '@/lib/org-balance';
 
 type ConsumeOrgTokenResult = {
   success: boolean;
@@ -13,33 +13,73 @@ type OrgRow = {
   ownerId: string | null;
   dailyLimit: number;
   currentBalance: number;
-  balanceColumn: 'token_balance' | 'credit_balance';
+  balanceSource: 'token' | 'credit' | 'none';
+  tokenBalance: number | null;
+  creditBalance: number | null;
+  legacyOnly: boolean;
 };
 
 const MAX_RETRIES = 3;
 
 async function loadOrgRow(admin: SupabaseClient, orgId: string): Promise<OrgRow | null> {
+  const buildModernRow = (data: {
+    owner_id?: string | null;
+    daily_ai_limit?: number | null;
+    token_balance?: unknown;
+    credit_balance?: unknown;
+  }): OrgRow => {
+    const resolved = readBalance(data);
+    return {
+      ownerId: data.owner_id ?? null,
+      dailyLimit: Number(data.daily_ai_limit ?? 0),
+      currentBalance: resolved.balance,
+      balanceSource: resolved.source,
+      tokenBalance: resolved.tokenBalance,
+      creditBalance: resolved.creditBalance,
+      legacyOnly: false,
+    };
+  };
+
   const modern = await admin
     .from('orgs')
-    .select('owner_id, daily_ai_limit, token_balance')
+    .select('owner_id, daily_ai_limit, token_balance, credit_balance')
     .eq('id', orgId)
     .maybeSingle();
 
   if (!modern.error) {
-    return modern.data
-      ? {
-          ownerId: modern.data.owner_id ?? null,
-          dailyLimit: Number(modern.data.daily_ai_limit ?? 0),
-          currentBalance: Number(modern.data.token_balance ?? 0),
-          balanceColumn: 'token_balance',
-        }
-      : null;
+    return modern.data ? buildModernRow(modern.data) : null;
+  }
+
+  if (isMissingColumnError(modern.error, 'credit_balance')) {
+    const modernWithoutCredit = await admin
+      .from('orgs')
+      .select('owner_id, daily_ai_limit, token_balance')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (!modernWithoutCredit.error) {
+      return modernWithoutCredit.data
+        ? buildModernRow({
+            ...modernWithoutCredit.data,
+            credit_balance: null,
+          })
+        : null;
+    }
+
+    if (
+      !isMissingColumnError(modernWithoutCredit.error, 'owner_id') &&
+      !isMissingColumnError(modernWithoutCredit.error, 'daily_ai_limit') &&
+      !isMissingColumnError(modernWithoutCredit.error, 'token_balance')
+    ) {
+      throw modernWithoutCredit.error;
+    }
   }
 
   if (
     !isMissingColumnError(modern.error, 'owner_id') &&
     !isMissingColumnError(modern.error, 'daily_ai_limit') &&
-    !isMissingColumnError(modern.error, 'token_balance')
+    !isMissingColumnError(modern.error, 'token_balance') &&
+    !isMissingColumnError(modern.error, 'credit_balance')
   ) {
     throw modern.error;
   }
@@ -59,7 +99,10 @@ async function loadOrgRow(admin: SupabaseClient, orgId: string): Promise<OrgRow 
         ownerId: legacy.data.owner_user_id ?? null,
         dailyLimit: Number(legacy.data.ai_daily_limit_per_user ?? 0),
         currentBalance: Number(legacy.data.credit_balance ?? 0),
-        balanceColumn: 'credit_balance',
+        balanceSource: 'credit',
+        tokenBalance: null,
+        creditBalance: Number(legacy.data.credit_balance ?? 0),
+        legacyOnly: true,
       }
     : null;
 }
@@ -129,8 +172,7 @@ async function upsertDailyUsage(
 
 async function decrementBalance(
   admin: SupabaseClient,
-  orgId: string,
-  balanceColumn: 'token_balance' | 'credit_balance'
+  orgId: string
 ) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
     const org = await loadOrgRow(admin, orgId);
@@ -147,21 +189,28 @@ async function decrementBalance(
       };
     }
 
+    const nextBalance = org.currentBalance - 1;
+    const writeToTokenBalance = !org.legacyOnly && org.balanceSource === 'credit';
+    const updateColumn =
+      writeToTokenBalance || org.balanceSource === 'token' ? 'token_balance' : 'credit_balance';
+    const currentTokenBalance = Number(org.tokenBalance ?? 0);
+    const currentCreditBalance = Number(org.creditBalance ?? 0);
+
     const updated = await admin
       .from('orgs')
       .update({
-        [balanceColumn]: org.currentBalance - 1,
+        [updateColumn]: nextBalance,
         updated_at: new Date().toISOString(),
       })
       .eq('id', orgId)
-      .eq(balanceColumn, org.currentBalance)
-      .select(balanceColumn)
+      .eq(updateColumn, updateColumn === 'token_balance' ? currentTokenBalance : currentCreditBalance)
+      .select(updateColumn)
       .maybeSingle();
 
     if (!updated.error && updated.data) {
       return {
         ok: true as const,
-        remainingTokens: Number(updated.data[balanceColumn] ?? 0),
+        remainingTokens: Number(updated.data[updateColumn] ?? 0),
         ownerId: org.ownerId,
       };
     }
@@ -241,7 +290,7 @@ export async function consumeOrgTokenCompat({
     };
   }
 
-  const balanceResult = await decrementBalance(admin, orgId, org.balanceColumn);
+  const balanceResult = await decrementBalance(admin, orgId);
   if (!balanceResult.ok) {
     return {
       success: false,

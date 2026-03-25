@@ -31,7 +31,7 @@ import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
-import { useCurrentUserRole, useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
+import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
 import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
@@ -92,10 +92,9 @@ export function AppHeader() {
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
   const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
-  const { role } = useCurrentUserRole();
+  const { role, canEditContent } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const selectedOrgId = !useDemo ? getSelectedOrgId() : null;
-  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
@@ -198,8 +197,8 @@ export function AppHeader() {
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
-  const showQuotaBadge = orgStatus?.role === 'owner';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
+  const showQuotaBadge = Boolean(!useDemo && selectedOrgId && hasGroupContext && canEditContent);
   const mobileTitle = title;
 
   const loadTransferCandidates = async () => {
@@ -358,7 +357,7 @@ export function AppHeader() {
           ) : null}
         </div>
 
-        {!useDemo && selectedOrgId && showQuotaBadge ? (
+        {showQuotaBadge ? (
           <div className="shrink-0">
             <OrgAiQuotaBadge compact />
           </div>

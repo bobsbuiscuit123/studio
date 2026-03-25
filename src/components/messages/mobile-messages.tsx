@@ -163,7 +163,7 @@ export function MessagesListScreen() {
   }
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
+    <div className="messages-screen messages-list-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
       <div className="header tab-page-header relative space-y-3 px-4">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
@@ -513,7 +513,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
 
   return (
-    <div className="messages-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
+    <div className="messages-screen messages-thread-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
       <div className="header tab-page-header flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />

@@ -65,7 +65,7 @@ export default function DemoAppLayout({
     <DemoDataProvider initialSession={session}>
       <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
         <AppSidebar />
-        <div className="relative flex h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+        <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
           <div className="shrink-0">
             <AppHeader />
           </div>

@@ -54,7 +54,7 @@ export default function AppLayout({
         <div className="print:hidden">
           <AppSidebar />
         </div>
-        <div className="relative flex h-[100dvh] min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+        <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
           <div className="shrink-0 print:hidden">
             <AppHeader />
           </div>

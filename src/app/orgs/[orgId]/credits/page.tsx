@@ -39,7 +39,7 @@ export default function OrgCreditsPage() {
   if (!loading && status?.role !== 'owner') {
     return (
       <div className="viewport-page bg-background">
-        <div className="viewport-scroll mx-auto flex min-h-[100dvh] max-w-3xl items-center justify-center px-4 py-8">
+        <div className="viewport-scroll mx-auto flex w-full max-w-3xl items-center justify-center px-4 py-8">
           <Card className="w-full rounded-[28px]">
             <CardHeader>
               <CardTitle>Token billing unavailable</CardTitle>

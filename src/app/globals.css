@@ -30,6 +30,10 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
   }
  
   .dark {
@@ -92,11 +96,11 @@
 }
 
 .min-h-screen {
-  min-height: 100%;
+  min-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
 }
 
 .h-screen {
-  height: 100%;
+  height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom));
 }
 
 body {
@@ -112,25 +116,13 @@ body {
   position: relative;
   display: flex;
   width: 100%;
-  height: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
   flex-direction: column;
   box-sizing: border-box;
   padding-bottom: 0;
   background: #ffffff;
   overflow: hidden;
-}
-
-.main-content {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-  overflow: hidden;
-  overflow-x: hidden;
-  padding: 0;
-  background: #ffffff;
 }
 
 main,
@@ -142,11 +134,12 @@ main,
 }
 
 .app-shell {
-  flex: 1 1 auto;
+  position: fixed;
+  inset: 0;
   box-sizing: border-box;
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: 100dvh;
+  min-height: 100dvh;
   background: #ffffff;
   padding-top: 0;
   padding-right: 0;
@@ -155,21 +148,10 @@ main,
   overflow: hidden;
 }
 
-.app-safe-frame {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  box-sizing: border-box;
-  padding-top: 0;
-  padding-bottom: 0;
-  background: #ffffff;
-}
-
 .main-container {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   flex: 1 1 auto;
   background: #ffffff;
@@ -215,7 +197,6 @@ main,
   background: #ffffff;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 0;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -249,13 +230,13 @@ main,
 }
 
 .app-header-inner {
-  padding-top: 0;
+  padding-top: calc(min(var(--safe-area-top), 1.1rem) + 0.125rem);
   padding-bottom: 0.25rem;
 }
 
 @media (min-width: 640px) {
   .app-header-inner {
-    padding-top: 0;
+    padding-top: calc(min(var(--safe-area-top), 1.25rem) + 0.25rem);
     padding-bottom: 0.375rem;
   }
 }
@@ -269,7 +250,7 @@ main,
   background: #ffffff;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 0;
+  padding-bottom: 4.5rem;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -289,20 +270,18 @@ main,
 }
 
 .viewport-page {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
+  position: fixed;
+  inset: 0;
   width: 100%;
-  height: 100%;
-  min-height: 0;
+  height: 100dvh;
+  min-height: 100dvh;
   background: #ffffff;
   padding: 0;
   overflow: hidden;
 }
 
 .viewport-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
+  height: 100%;
   background: #ffffff;
   overflow-y: auto;
   overflow-x: hidden;
@@ -318,7 +297,7 @@ main,
 }
 
 .auth-card-shell {
-  max-height: calc(100% - 2rem);
+  max-height: calc(100dvh - var(--safe-area-top) - var(--safe-area-bottom) - 2rem);
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-overflow-scrolling: auto;
@@ -393,7 +372,7 @@ main,
   align-items: center;
   width: 100%;
   height: 100%;
-  padding: 0 8px 0;
+  padding: 0 8px 2px;
   column-gap: 6px;
 }
 

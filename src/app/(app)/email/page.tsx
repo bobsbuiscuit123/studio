@@ -195,8 +195,8 @@ function EmailPageInner() {
           </p>
         </div>
       </div>
-      <div className="tab-page-content pt-2">
-    <div className="grid gap-6">
+      <div className="tab-page-content">
+    <div className="grid gap-6 pt-2">
       <Card>
         <CardHeader className="flex items-center justify-between">
           <div>

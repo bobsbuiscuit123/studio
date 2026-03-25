@@ -213,8 +213,8 @@ function FormsPageInner() {
         </div>
       </header>
 
-      <div className="tab-page-content pt-3">
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="tab-page-content">
+      <div className="grid gap-3 pt-3 lg:grid-cols-3">
         {canEditContent && (
           <Card className="lg:col-span-1">
             <CardHeader>

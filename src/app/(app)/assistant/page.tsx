@@ -295,8 +295,8 @@ export default function AssistantPage() {
       <div className="tab-page-header">
         <h1 className="text-2xl font-semibold">Assistant</h1>
       </div>
-      <div className="tab-page-content pt-2">
-    <div className="space-y-6">
+      <div className="tab-page-content">
+    <div className="space-y-6 pt-2">
       <Card>
         <CardHeader>
           <CardTitle>Assistant</CardTitle>

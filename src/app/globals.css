@@ -207,7 +207,7 @@ main,
   background: #ffffff;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -261,7 +261,7 @@ main,
   background: #ffffff;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;

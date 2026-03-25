@@ -513,8 +513,8 @@ function AnnouncementsPageInner() {
           </p>
         </div>
       </div>
-      <div className="tab-page-content pt-2">
-    <div className="grid gap-4 md:grid-cols-3 md:gap-6">
+      <div className="tab-page-content">
+    <div className="grid gap-4 pt-2 md:grid-cols-3 md:gap-6">
       {canEditContent && (
         <div className="md:col-span-1">
             <Card>

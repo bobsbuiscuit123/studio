@@ -241,8 +241,8 @@ export default function SlidesPage() {
             </p>
           </div>
         </div>
-        <div className="tab-page-content pt-2">
-      <div id="interactive-content">
+        <div className="tab-page-content">
+      <div id="interactive-content" className="pt-2">
         <div className="grid gap-4 md:grid-cols-3 md:gap-6">
           <div className="md:col-span-1 space-y-6">
             <Card>

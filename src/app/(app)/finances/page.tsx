@@ -168,8 +168,8 @@ export default function FinancesPage() {
           </p>
         </div>
       </div>
-      <div className="tab-page-content pt-2">
-    <div className="grid gap-4 md:grid-cols-3 md:gap-6">
+      <div className="tab-page-content">
+    <div className="grid gap-4 pt-2 md:grid-cols-3 md:gap-6">
         <div className="md:col-span-2 space-y-8">
             <div className="grid gap-4 md:grid-cols-3">
                 <Card>

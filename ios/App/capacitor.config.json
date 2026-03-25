@@ -13,6 +13,11 @@
 		"zoomEnabled": false,
 		"backgroundColor": "#ffffff"
 	},
+	"plugins": {
+		"StatusBar": {
+			"overlaysWebView": false
+		}
+	},
 	"packageClassList": [
 		"AppPlugin",
 		"CAPCameraPlugin",

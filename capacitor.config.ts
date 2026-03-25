@@ -15,6 +15,11 @@ const config: CapacitorConfig = {
     zoomEnabled: false,
     backgroundColor: '#ffffff',
   },
+  plugins: {
+    StatusBar: {
+      overlaysWebView: false,
+    },
+  },
 };
 
 export default config;

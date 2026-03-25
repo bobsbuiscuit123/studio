@@ -21,7 +21,7 @@ import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-lim
 import { isResult } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
 import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
-import { readBalance } from '@/lib/org-balance';
+import { isMissingColumnError, isMissingFunctionError } from '@/lib/org-balance';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
@@ -150,28 +150,35 @@ export async function POST(request: Request) {
       p_usage_date: usageDate,
     });
 
-    if (consumeError) {
-      return errorResponse(new Error(consumeError.message), 500);
-    }
-
     let consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
-    const initialReason = String(consumeResult?.reason ?? '');
 
-    if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
-      const orgBalanceResponse = await admin
-        .from('orgs')
-        .select('token_balance, credit_balance')
-        .eq('id', orgId)
-        .maybeSingle();
-
-      if (!orgBalanceResponse.error && readBalance(orgBalanceResponse.data).balance > 0) {
+    if (consumeError) {
+      if (
+        isMissingFunctionError(consumeError, 'consume_owner_token_for_org_ai') ||
+        isMissingColumnError(consumeError, 'token_balance') ||
+        isMissingColumnError(consumeError, 'credit_balance') ||
+        isMissingColumnError(consumeError, 'owner_id')
+      ) {
         consumeResult = await consumeOrgTokenCompat({
           admin,
           orgId,
           userId,
           usageDate,
         });
+      } else {
+        return errorResponse(new Error(consumeError.message), 500);
       }
+    }
+
+    const initialReason = String(consumeResult?.reason ?? '');
+
+    if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
+      consumeResult = await consumeOrgTokenCompat({
+        admin,
+        orgId,
+        userId,
+        usageDate,
+      });
     }
 
     const reason = String(consumeResult?.reason ?? '');

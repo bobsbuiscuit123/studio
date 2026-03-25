@@ -6,7 +6,7 @@ import { getRequestDayKey } from '@/lib/day-key';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
-import { readBalance } from '@/lib/org-balance';
+import { isMissingColumnError, isMissingFunctionError } from '@/lib/org-balance';
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -65,35 +65,42 @@ export async function POST(request: Request) {
     p_usage_date: usageDate,
   });
 
-  if (consumeError) {
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: consumeError.message,
-        source: 'network',
-      }),
-      { status: 500 }
-    );
-  }
-
   let consumeResult = Array.isArray(result) ? result[0] : result;
-  const initialReason = String(consumeResult?.reason ?? '');
 
-  if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
-    const orgBalanceResponse = await admin
-      .from('orgs')
-      .select('token_balance, credit_balance')
-      .eq('id', orgId)
-      .maybeSingle();
-
-    if (!orgBalanceResponse.error && readBalance(orgBalanceResponse.data).balance > 0) {
+  if (consumeError) {
+    if (
+      isMissingFunctionError(consumeError, 'consume_owner_token_for_org_ai') ||
+      isMissingColumnError(consumeError, 'token_balance') ||
+      isMissingColumnError(consumeError, 'credit_balance') ||
+      isMissingColumnError(consumeError, 'owner_id')
+    ) {
       consumeResult = await consumeOrgTokenCompat({
         admin,
         orgId,
         userId,
         usageDate,
       });
+    } else {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: consumeError.message,
+          source: 'network',
+        }),
+        { status: 500 }
+      );
     }
+  }
+
+  const initialReason = String(consumeResult?.reason ?? '');
+
+  if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
+    consumeResult = await consumeOrgTokenCompat({
+      admin,
+      orgId,
+      userId,
+      usageDate,
+    });
   }
 
   const reason = String(consumeResult?.reason ?? '');

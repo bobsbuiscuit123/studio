@@ -50,8 +50,8 @@ export default function AppLayout({
   return (
     <NotificationsProvider>
       <PushNotificationClient />
-      <div className="app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
-        <div className="print:hidden">
+      <div className="app-shell w-full md:grid md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
+        <div className="hidden print:hidden md:block">
           <AppSidebar />
         </div>
         <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">

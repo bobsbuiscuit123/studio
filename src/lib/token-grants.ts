@@ -150,6 +150,83 @@ async function updateOrgBalance(
     .eq(balanceColumn, currentStoredBalance);
 }
 
+async function findPurchaseTransaction(
+  admin: SupabaseClient,
+  orgId: string,
+  transactionId: string
+) {
+  const transactions = await admin
+    .from('token_transactions')
+    .select('id, metadata')
+    .eq('organization_id', orgId)
+    .eq('type', 'purchase')
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  if (transactions.error) {
+    console.error('Failed to inspect existing token purchase transactions', transactions.error);
+    return null;
+  }
+
+  return (
+    transactions.data?.find((row) => {
+      const metadata =
+        row.metadata && typeof row.metadata === 'object'
+          ? (row.metadata as Record<string, unknown>)
+          : null;
+      return String(metadata?.provider_transaction_id ?? '').trim() === transactionId;
+    }) ?? null
+  );
+}
+
+async function insertPurchaseTransaction(
+  admin: SupabaseClient,
+  {
+    userId,
+    orgId,
+    transactionId,
+    provider,
+    productId,
+    environment,
+    tokensGranted,
+    balanceAfter,
+    metadata,
+  }: {
+    userId: string;
+    orgId: string;
+    transactionId: string;
+    provider: string;
+    productId: string;
+    environment?: string | null;
+    tokensGranted: number;
+    balanceAfter: number;
+    metadata: Record<string, unknown>;
+  }
+) {
+  const existingTransaction = await findPurchaseTransaction(admin, orgId, transactionId);
+  if (existingTransaction) {
+    return { error: null };
+  }
+
+  return admin.from('token_transactions').insert({
+    user_id: userId,
+    organization_id: orgId,
+    actor_user_id: userId,
+    type: 'purchase',
+    amount: tokensGranted,
+    balance_after: balanceAfter,
+    description: 'Apple token purchase',
+    metadata: {
+      ...metadata,
+      provider,
+      provider_transaction_id: transactionId,
+      product_id: productId,
+      environment,
+      organization_id: orgId,
+    },
+  });
+}
+
 type GrantTokenPurchaseParams = {
   admin: SupabaseClient;
   userId: string;
@@ -185,6 +262,7 @@ export async function grantTokenPurchaseCompat({
   if (initialOrg.error) {
     throw initialOrg.error;
   }
+  const initialBalance = Number(initialOrg.row?.balance ?? 0);
   const shouldBypassRpc =
     Boolean(initialOrg.row) &&
     !initialOrg.row.legacyOnly &&
@@ -205,11 +283,32 @@ export async function grantTokenPurchaseCompat({
     if (!rpc.error) {
       const result = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
       const persistedBalance = await readPersistedOrgBalance();
-      return {
-        granted: Boolean(result?.granted),
-        tokenBalance: persistedBalance,
-        tokensGranted: Number(result?.tokens_granted ?? 0),
-      };
+      const rpcGranted = Boolean(result?.granted);
+      const rpcTokensGranted = Number(result?.tokens_granted ?? 0);
+      const expectedPersistedBalance =
+        rpcGranted && rpcTokensGranted > 0 ? initialBalance + rpcTokensGranted : null;
+
+      if (
+        !rpcGranted ||
+        !Number.isFinite(expectedPersistedBalance) ||
+        persistedBalance >= Number(expectedPersistedBalance)
+      ) {
+        return {
+          granted: rpcGranted,
+          tokenBalance: persistedBalance,
+          tokensGranted: rpcTokensGranted,
+        };
+      }
+
+      console.warn(
+        'grant_token_purchase reported success without persisting the org balance; repairing with direct grant logic.',
+        {
+          orgId,
+          transactionId,
+          persistedBalance,
+          expectedPersistedBalance,
+        }
+      );
     }
 
     if (
@@ -234,12 +333,52 @@ export async function grantTokenPurchaseCompat({
     .maybeSingle();
 
   if (existingGrant.data) {
+    const existingTokensGranted = Number(existingGrant.data.tokens_granted ?? 0);
     const existingOrg = await loadOrgBalanceRow(admin, existingGrant.data.org_id);
     if (existingOrg.error) throw existingOrg.error;
+    const shouldRepairExistingGrant =
+      existingGrant.data.org_id === orgId &&
+      Boolean(initialOrg.row) &&
+      Boolean(existingOrg.row) &&
+      existingTokensGranted > 0 &&
+      Number(existingOrg.row?.balance ?? 0) === initialBalance &&
+      !(await findPurchaseTransaction(admin, orgId, transactionId));
+
+    if (shouldRepairExistingGrant && existingOrg.row) {
+      const repairedBalance = existingOrg.row.balance + existingTokensGranted;
+      const balanceUpdate = await updateOrgBalance(admin, existingOrg.row, repairedBalance);
+
+      if (balanceUpdate.error) {
+        throw balanceUpdate.error;
+      }
+
+      const transactionInsert = await insertPurchaseTransaction(admin, {
+        userId,
+        orgId,
+        transactionId,
+        provider,
+        productId: normalizedProductId || productId,
+        environment,
+        tokensGranted: existingTokensGranted,
+        balanceAfter: repairedBalance,
+        metadata,
+      });
+
+      if (transactionInsert.error) {
+        console.error('Token purchase repair transaction insert failed', transactionInsert.error);
+      }
+
+      return {
+        granted: true,
+        tokenBalance: await readPersistedOrgBalance(),
+        tokensGranted: existingTokensGranted,
+      };
+    }
+
     return {
       granted: false,
       tokenBalance: existingOrg.row?.balance ?? 0,
-      tokensGranted: Number(existingGrant.data.tokens_granted ?? 0),
+      tokensGranted: existingTokensGranted,
     };
   }
   if (existingGrant.error && !isMissingColumnError(existingGrant.error, 'tokens_granted')) {
@@ -295,22 +434,16 @@ export async function grantTokenPurchaseCompat({
     throw balanceUpdate.error;
   }
 
-  const transactionInsert = await admin.from('token_transactions').insert({
-    user_id: userId,
-    organization_id: orgId,
-    actor_user_id: userId,
-    type: 'purchase',
-    amount: tokensGranted,
-    balance_after: nextBalance,
-    description: 'Apple token purchase',
-    metadata: {
-      ...metadata,
-      provider,
-      provider_transaction_id: transactionId,
-      product_id: normalizedProductId || productId,
-      environment,
-      organization_id: orgId,
-    },
+  const transactionInsert = await insertPurchaseTransaction(admin, {
+    userId,
+    orgId,
+    transactionId,
+    provider,
+    productId: normalizedProductId || productId,
+    environment,
+    tokensGranted,
+    balanceAfter: nextBalance,
+    metadata,
   });
 
   if (transactionInsert.error) {

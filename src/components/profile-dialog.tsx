@@ -126,6 +126,16 @@ export function ProfileDialog({
     };
   }, [isOpen, orgStatus?.role, selectedOrgId]);
 
+  useEffect(() => {
+    if (!isOpen || !selectedOrgId || orgStatus?.role !== "owner") {
+      return;
+    }
+    const nextBalance = Number(orgStatus?.tokenBalance ?? NaN);
+    if (Number.isFinite(nextBalance)) {
+      setTokenBalance(nextBalance);
+    }
+  }, [isOpen, orgStatus?.role, orgStatus?.tokenBalance, selectedOrgId]);
+
   const tokensPurchased = Math.max(0, orgStatus?.tokensPurchased ?? 0);
   const tokensUsed = Math.max(0, Math.min(orgStatus?.tokensUsed ?? 0, tokensPurchased));
   const tokensLeft = Math.max(tokensPurchased - tokensUsed, 0);

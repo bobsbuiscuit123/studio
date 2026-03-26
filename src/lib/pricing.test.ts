@@ -26,13 +26,13 @@ describe('token billing helpers', () => {
       dailyAiLimitPerUser: 4,
       estimatedMonthlyTokens: 3000,
       estimatedDailyTokens: 100,
-      trialTokens: 2500,
-      daysCovered: 25,
+      trialTokens: 30,
+      daysCovered: 0,
     });
   });
 
   it('estimates days remaining from balance and monthly usage', () => {
     expect(calculateEstimatedDaysRemaining(0, 3000)).toBe(0);
-    expect(calculateEstimatedDaysRemaining(2500, 12_000)).toBe(6);
+    expect(calculateEstimatedDaysRemaining(30, 12_000)).toBe(0);
   });
 });

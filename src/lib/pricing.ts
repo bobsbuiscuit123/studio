@@ -29,7 +29,7 @@ export const normalizeTokenProductId = (productId?: string | null) => {
 };
 
 export const TOKEN_VALUE_ANCHOR = 0.0011;
-export const TRIAL_TOKENS = 2500;
+export const TRIAL_TOKENS = 30;
 
 export const TOKEN_PACKAGES: TokenPackage[] = [
   {

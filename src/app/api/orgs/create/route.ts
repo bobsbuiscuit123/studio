@@ -9,7 +9,7 @@ import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 
 const JOIN_CODE_LENGTH = 6;
 const JOIN_CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const TRIAL_TOKENS = 2500;
+const TRIAL_TOKENS = 30;
 
 const generateJoinCode = () =>
   Array.from({ length: JOIN_CODE_LENGTH }, () =>

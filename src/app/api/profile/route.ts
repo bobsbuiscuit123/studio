@@ -33,8 +33,29 @@ export async function PATCH(request: Request) {
     (user.user_metadata?.display_name as string | undefined) ||
     user.email ||
     'Member';
+  const { data: existingProfile, error: existingProfileError } = await supabase
+    .from('profiles')
+    .select('avatar_url')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (existingProfileError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: existingProfileError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
+  const requestedAvatar =
+    typeof parsed.data.avatar === 'string' && parsed.data.avatar.trim().length > 0
+      ? parsed.data.avatar
+      : null;
+  const existingAvatar =
+    typeof existingProfile?.avatar_url === 'string' && existingProfile.avatar_url.trim().length > 0
+      ? existingProfile.avatar_url
+      : null;
   const avatarUrl =
-    parsed.data.avatar ||
+    requestedAvatar ||
+    existingAvatar ||
     getPlaceholderImageUrl({ label: displayName.charAt(0) });
 
   const { error } = await supabase.from('profiles').upsert({

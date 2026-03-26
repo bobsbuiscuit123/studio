@@ -166,9 +166,25 @@ export async function GET(request: Request) {
     const fromState =
       stateById.get(member.user_id) ??
       (profile?.email ? stateByEmail.get(profile.email.toLowerCase()) : undefined);
+    const profileDisplayName =
+      typeof profile?.display_name === 'string' && profile.display_name.trim().length > 0
+        ? profile.display_name
+        : null;
+    const stateDisplayName =
+      typeof fromState?.name === 'string' && fromState.name.trim().length > 0
+        ? fromState.name
+        : null;
+    const profileAvatar =
+      typeof profile?.avatar_url === 'string' && profile.avatar_url.trim().length > 0
+        ? profile.avatar_url
+        : null;
+    const stateAvatar =
+      typeof fromState?.avatar === 'string' && fromState.avatar.trim().length > 0
+        ? fromState.avatar
+        : null;
     const displayName =
-      (typeof fromState?.name === 'string' && fromState.name) ||
-      profile?.display_name ||
+      profileDisplayName ||
+      stateDisplayName ||
       profile?.email ||
       'Member';
     return {
@@ -180,8 +196,8 @@ export async function GET(request: Request) {
         '',
       role: displayGroupRole(member.role),
       avatar:
-        (typeof fromState?.avatar === 'string' && fromState.avatar) ||
-        profile?.avatar_url ||
+        profileAvatar ||
+        stateAvatar ||
         getPlaceholderImageUrl({ label: displayName.charAt(0) }),
       dataAiHint:
         typeof fromState?.dataAiHint === 'string' ? fromState.dataAiHint : undefined,

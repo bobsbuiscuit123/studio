@@ -92,6 +92,29 @@ let currentUserHydrationPromise: Promise<User | null> | null = null;
 const ORG_AI_STATUS_REFRESH_TTL_MS = 60_000;
 const ORG_AI_PURCHASE_RECONCILE_ATTEMPTS = 6;
 const ORG_AI_PURCHASE_RECONCILE_DELAY_MS = 1_500;
+const CURRENT_USER_STORAGE_KEY = 'currentUser';
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const getResolvedAvatar = (displayName: string, avatar?: string | null) =>
+  isNonEmptyString(avatar)
+    ? avatar
+    : getPlaceholderImageUrl({ label: displayName.charAt(0) });
+
+const persistCurrentUserCache = (nextUser: User | null) => {
+  currentUserCache = nextUser;
+  if (typeof window === 'undefined') return;
+  if (!nextUser) {
+    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    return;
+  }
+  try {
+    localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(nextUser));
+  } catch (error) {
+    console.error('Failed to cache current user locally', error);
+  }
+};
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
 const shouldRefreshOnVisibility = () =>
@@ -598,10 +621,8 @@ export function useCurrentUser() {
       return;
     }
     const supabase = createSupabaseBrowserClient();
-    const getDefaultAvatar = (displayName: string) =>
-      getPlaceholderImageUrl({ label: displayName.charAt(0) });
     const hydrate = async () => {
-      const storedUser = localStorage.getItem('currentUser');
+      const storedUser = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
       if (storedUser) {
         try {
           const parsedUser = JSON.parse(storedUser) as User;
@@ -609,7 +630,7 @@ export function useCurrentUser() {
           setUser(parsedUser);
           setLoading(false);
         } catch {
-          localStorage.removeItem('currentUser');
+          localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
         }
       } else if (currentUserCache) {
         setUser(currentUserCache);
@@ -641,13 +662,12 @@ export function useCurrentUser() {
           const hydratedUser = {
             name: displayName,
             email: profile?.email || sessionUser.email || '',
-            avatar: profile?.avatar_url || getDefaultAvatar(displayName),
+            avatar: getResolvedAvatar(displayName, profile?.avatar_url),
           } as User;
-          currentUserCache = hydratedUser;
-          localStorage.setItem('currentUser', JSON.stringify(hydratedUser));
+          persistCurrentUserCache(hydratedUser);
           return hydratedUser;
         }
-        currentUserCache = null;
+        persistCurrentUserCache(null);
         return null;
       } catch (error) {
         console.error('Error reading user from storage on init', error);
@@ -672,13 +692,7 @@ export function useCurrentUser() {
       return;
     }
     setUser(nextUser);
-    if (nextUser) {
-      currentUserCache = nextUser;
-      localStorage.setItem('currentUser', JSON.stringify(nextUser));
-    } else {
-      currentUserCache = null;
-      localStorage.removeItem('currentUser');
-    }
+    persistCurrentUserCache(nextUser);
   }, [useDemo]);
 
   useEffect(() => {
@@ -696,12 +710,12 @@ export function useCurrentUser() {
       );
       return;
     }
+    const previousUser = user;
     const updatedUser =
       typeof newUser === 'function'
         ? (newUser as (currentUser: User | null) => User)(user)
         : ({ ...(user || {}), ...newUser } as User);
-    localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-    currentUserCache = updatedUser;
+    persistCurrentUserCache(updatedUser);
     setUser(updatedUser);
     const response = await safeFetchJson<{ ok: boolean; data?: User }>('/api/profile', {
       method: 'PATCH',
@@ -712,12 +726,14 @@ export function useCurrentUser() {
       }),
     });
     if (response.ok && response.data?.data) {
-      localStorage.setItem('currentUser', JSON.stringify(response.data.data));
-      currentUserCache = response.data.data;
+      persistCurrentUserCache(response.data.data);
       setUser(response.data.data);
       return;
     }
     console.error('Failed to persist profile', response.ok ? response.data : response.error);
+    persistCurrentUserCache(previousUser);
+    setUser(previousUser);
+    throw new Error(response.ok ? 'Failed to persist profile.' : response.error.message);
   }, [demoCtx, useDemo, user]);
   
   const clearUser = useCallback(() => {
@@ -726,8 +742,7 @@ export function useCurrentUser() {
       return;
     }
     setUser(null);
-    currentUserCache = null;
-    localStorage.removeItem('currentUser');
+    persistCurrentUserCache(null);
   }, [useDemo]);
 
   return { user: isMounted ? user : null, loading, saveUser, clearUser, setLocalUser };

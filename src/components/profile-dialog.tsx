@@ -58,6 +58,67 @@ type PlanItem = {
   newAdminUserId?: string;
 };
 
+const AVATAR_MAX_DIMENSION = 512;
+const AVATAR_JPEG_QUALITY = 0.82;
+
+const readBlobAsDataUrl = (blob: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to read avatar data."));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read avatar file."));
+    reader.readAsDataURL(blob);
+  });
+
+const loadImageFromFile = (file: File) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Failed to load avatar image."));
+    };
+    image.src = objectUrl;
+  });
+
+const convertAvatarFileToDataUrl = async (file: File) => {
+  const image = await loadImageFromFile(file);
+  const sourceWidth = image.naturalWidth || image.width || 1;
+  const sourceHeight = image.naturalHeight || image.height || 1;
+  const scale = Math.min(1, AVATAR_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * scale));
+  const height = Math.max(1, Math.round(sourceHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return readBlobAsDataUrl(file);
+  }
+  context.drawImage(image, 0, 0, width, height);
+  const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const blob = await new Promise<Blob | null>((resolve) => {
+    if (outputType === "image/png") {
+      canvas.toBlob(resolve, outputType);
+      return;
+    }
+    canvas.toBlob(resolve, outputType, AVATAR_JPEG_QUALITY);
+  });
+  if (!blob) {
+    return readBlobAsDataUrl(file);
+  }
+  return readBlobAsDataUrl(blob);
+};
+
 export function ProfileDialog({
   isOpen,
   onOpenChange,
@@ -146,24 +207,46 @@ export function ProfileDialog({
     router.push(`/orgs/${selectedOrgId}/credits`);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAvatarPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) {
+      return;
+    }
+    try {
+      const nextAvatar = await convertAvatarFileToDataUrl(file);
+      setAvatarPreview(nextAvatar);
+    } catch (error) {
+      console.error("Failed to process avatar image", error);
+      toast({
+        title: "Couldn't update picture",
+        description: "Try a different image and save again.",
+        variant: "destructive",
+      });
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   };
 
   const handleSave = async () => {
     if (user) {
       setIsSaving(true);
-      await onSave({
-        name,
-        avatar: avatarPreview || avatar,
-      });
+      try {
+        await onSave({
+          name,
+          avatar: avatarPreview || avatar,
+        });
+      } catch (error) {
+        console.error("Failed to save profile", error);
+        toast({
+          title: "Couldn't save profile",
+          description: "Your picture was not saved. Please try again.",
+          variant: "destructive",
+        });
+        setIsSaving(false);
+        return;
+      }
       setIsSaving(false);
     }
     onOpenChange(false);

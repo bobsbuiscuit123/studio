@@ -30,6 +30,30 @@ const getConversationId = (email1: string, email2: string) => [email1, email2].s
 const getMessagePreview = (value: string) =>
   value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
 
+const buildMessageAuditEnvelope = ({
+  conversationType,
+  conversationKey,
+  chatId,
+  message,
+}: {
+  conversationType: 'dm' | 'group';
+  conversationKey?: string;
+  chatId?: string;
+  message: {
+    sender: string;
+    text: string;
+    timestamp: string;
+    readBy: string[];
+  };
+}) =>
+  JSON.stringify({
+    version: 1,
+    conversationType,
+    conversationKey,
+    chatId,
+    message,
+  });
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
@@ -99,6 +123,7 @@ export async function POST(request: Request) {
   }
 
   let pushJob: Parameters<typeof sendPushToUsers>[0] | null = null;
+  let messageAuditContent = '';
 
   if (parsed.data.conversationType === 'dm') {
     const partnerEmail = normalizeEmail(parsed.data.partnerEmail);
@@ -121,6 +146,11 @@ export async function POST(request: Request) {
       ...existingMessages,
       [conversationKey]: [...(Array.isArray(existingMessages[conversationKey]) ? existingMessages[conversationKey] : []), newMessage],
     };
+    messageAuditContent = buildMessageAuditEnvelope({
+      conversationType: 'dm',
+      conversationKey,
+      message: newMessage,
+    });
 
     const { data: profiles, error: profilesError } = await admin
       .from('profiles')
@@ -178,6 +208,11 @@ export async function POST(request: Request) {
       messages: [...(Array.isArray(chat.messages) ? chat.messages : []), newMessage],
     };
     nextData.groupChats = updatedChats;
+    messageAuditContent = buildMessageAuditEnvelope({
+      conversationType: 'group',
+      chatId,
+      message: newMessage,
+    });
 
     const recipientEmails = memberEmails.filter((email: string) => email !== normalizedActorEmail);
     if (recipientEmails.length > 0) {
@@ -233,6 +268,19 @@ export async function POST(request: Request) {
       err({ code: 'NETWORK_HTTP_ERROR', message: upsertError.message, source: 'network' }),
       { status: 500 }
     );
+  }
+
+  if (messageAuditContent) {
+    const { error: auditInsertError } = await admin.from('messages').insert({
+      org_id: parsed.data.orgId,
+      group_id: parsed.data.groupId,
+      sender_id: actingUser.id,
+      content: messageAuditContent,
+      created_at: newMessage.timestamp,
+    });
+    if (auditInsertError) {
+      console.error('Message audit insert failed', auditInsertError);
+    }
   }
 
   if (pushJob) {

@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser, useGroupChats, useMembers, useMessages } from "@/lib/data-hooks";
 import type { GroupChat, Member, Message } from "@/lib/mock-data";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 type Conversation =
@@ -53,15 +54,90 @@ const messageFormSchema = z.object({
   text: z.string().min(1, "Message cannot be empty").max(500, "Message too long"),
 });
 
+function useLiveGroupStateMessages({
+  orgId,
+  groupId,
+  refreshMessages,
+  refreshGroupChats,
+}: {
+  orgId?: string | null;
+  groupId?: string | null;
+  refreshMessages: () => Promise<boolean>;
+  refreshGroupChats: () => Promise<boolean>;
+}) {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+
+  useEffect(() => {
+    if (!orgId || !groupId) {
+      return;
+    }
+
+    let active = true;
+    let refreshTimer: ReturnType<typeof window.setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (!active) return;
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void refreshMessages();
+        void refreshGroupChats();
+      }, 40);
+    };
+
+    const channel = supabase
+      .channel(`group-state-messages:${orgId}:${groupId}`)
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "group_state",
+        filter: `group_id=eq.${groupId}`,
+      }, scheduleRefresh)
+      .on("postgres_changes", {
+        event: "UPDATE",
+        schema: "public",
+        table: "group_state",
+        filter: `group_id=eq.${groupId}`,
+      }, scheduleRefresh)
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") {
+          console.error("Realtime message sync channel failed", { orgId, groupId });
+        }
+      });
+
+    return () => {
+      active = false;
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [groupId, orgId, refreshGroupChats, refreshMessages, supabase]);
+}
+
 export function MessagesListScreen() {
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
-  const { data: allMessages, loading: messagesLoading, refreshData: refreshMessages } = useMessages();
+  const {
+    data: allMessages,
+    loading: messagesLoading,
+    refreshData: refreshMessages,
+    clubId,
+    orgId,
+  } = useMessages();
   const { data: groupChats, updateData: setGroupChats, loading: groupsLoading, refreshData: refreshGroupChats } = useGroupChats();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
+
+  useLiveGroupStateMessages({
+    orgId,
+    groupId: clubId,
+    refreshMessages,
+    refreshGroupChats,
+  });
 
   const newGroupForm = useForm<z.infer<typeof newGroupFormSchema>>({
     resolver: zodResolver(newGroupFormSchema),
@@ -72,7 +148,7 @@ export function MessagesListScreen() {
     const interval = window.setInterval(() => {
       void refreshMessages();
       void refreshGroupChats();
-    }, 4000);
+    }, 20000);
     return () => window.clearInterval(interval);
   }, [refreshGroupChats, refreshMessages]);
 
@@ -278,6 +354,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     setLocalData: setLocalMessages,
     refreshData: refreshMessages,
     loading: messagesLoading,
+    clubId,
+    orgId,
   } = useMessages();
   const {
     data: groupChats,
@@ -290,6 +368,13 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const [lastMessageAt, setLastMessageAt] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useLiveGroupStateMessages({
+    orgId,
+    groupId: clubId,
+    refreshMessages,
+    refreshGroupChats,
+  });
 
   const conversation = useMemo(
     () => resolveConversationFromRoute(conversationId, members, groupChats),
@@ -359,7 +444,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     const interval = window.setInterval(() => {
       void refreshMessages();
       void refreshGroupChats();
-    }, 4000);
+    }, 20000);
     return () => window.clearInterval(interval);
   }, [refreshGroupChats, refreshMessages]);
 

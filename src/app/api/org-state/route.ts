@@ -32,6 +32,123 @@ const uniqueStrings = (values: unknown[]) =>
     )
   );
 
+const getMessageKey = (message: Record<string, any>) => {
+  const sender = typeof message.sender === 'string' ? normalizeEmail(message.sender) : '';
+  const text = typeof message.text === 'string' ? message.text.trim() : '';
+  const timestamp = typeof message.timestamp === 'string' ? message.timestamp : '';
+  if (!sender || !text || !timestamp) return '';
+  return `${sender}__${timestamp}__${text}`;
+};
+
+const normalizeMessage = (message: Record<string, any>) => ({
+  ...message,
+  sender: typeof message.sender === 'string' ? message.sender.trim() : '',
+  text: typeof message.text === 'string' ? message.text.trim() : '',
+  timestamp: typeof message.timestamp === 'string' ? message.timestamp : '',
+  readBy: uniqueStrings(Array.isArray(message.readBy) ? message.readBy : []).map(normalizeEmail),
+});
+
+const mergeMessageLists = (currentMessages: unknown, nextMessages: unknown) => {
+  const currentList = Array.isArray(currentMessages) ? currentMessages : [];
+  const nextList = Array.isArray(nextMessages) ? nextMessages : [];
+  const mergedByKey = new Map<string, Record<string, any>>();
+
+  const ingest = (item: unknown) => {
+    if (!item || typeof item !== 'object') return;
+    const normalized = normalizeMessage(item as Record<string, any>);
+    const key = getMessageKey(normalized);
+    if (!key) return;
+    const existing = mergedByKey.get(key);
+    if (!existing) {
+      mergedByKey.set(key, normalized);
+      return;
+    }
+    mergedByKey.set(key, {
+      ...existing,
+      ...normalized,
+      readBy: uniqueStrings([
+        ...(Array.isArray(existing.readBy) ? existing.readBy : []),
+        ...(Array.isArray(normalized.readBy) ? normalized.readBy : []),
+      ]).map(normalizeEmail),
+    });
+  };
+
+  currentList.forEach(ingest);
+  nextList.forEach(ingest);
+
+  return Array.from(mergedByKey.values()).sort((left, right) => {
+    const leftTime = new Date(left.timestamp).getTime();
+    const rightTime = new Date(right.timestamp).getTime();
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+    return getMessageKey(left).localeCompare(getMessageKey(right));
+  });
+};
+
+const mergeDirectMessages = (currentMessages: unknown, nextMessages: unknown) => {
+  const currentMap =
+    currentMessages && typeof currentMessages === 'object' ? (currentMessages as Record<string, unknown>) : {};
+  const nextMap =
+    nextMessages && typeof nextMessages === 'object' ? (nextMessages as Record<string, unknown>) : {};
+  const merged: Record<string, ReturnType<typeof mergeMessageLists>> = {};
+  const keys = Array.from(new Set([...Object.keys(currentMap), ...Object.keys(nextMap)]));
+
+  keys.forEach(key => {
+    merged[key] = mergeMessageLists(currentMap[key], nextMap[key]);
+  });
+
+  return merged;
+};
+
+const mergeGroupChats = (currentChats: unknown, nextChats: unknown) => {
+  const currentList = Array.isArray(currentChats) ? currentChats : [];
+  const nextList = Array.isArray(nextChats) ? nextChats : [];
+  const currentById = new Map<string, Record<string, any>>();
+  const nextById = new Map<string, Record<string, any>>();
+
+  currentList.forEach(chat => {
+    if (!chat || typeof chat !== 'object' || typeof (chat as { id?: unknown }).id !== 'string') return;
+    currentById.set((chat as { id: string }).id, chat as Record<string, any>);
+  });
+  nextList.forEach(chat => {
+    if (!chat || typeof chat !== 'object' || typeof (chat as { id?: unknown }).id !== 'string') return;
+    nextById.set((chat as { id: string }).id, chat as Record<string, any>);
+  });
+
+  const orderedIds = [
+    ...nextList
+      .map(chat => (chat && typeof chat === 'object' && typeof (chat as { id?: unknown }).id === 'string'
+        ? (chat as { id: string }).id
+        : ''))
+      .filter(Boolean),
+    ...currentList
+      .map(chat => (chat && typeof chat === 'object' && typeof (chat as { id?: unknown }).id === 'string'
+        ? (chat as { id: string }).id
+        : ''))
+      .filter(Boolean),
+  ];
+
+  return Array.from(new Set(orderedIds)).map(chatId => {
+    const currentChat = currentById.get(chatId) ?? {};
+    const nextChat = nextById.get(chatId) ?? {};
+    const currentMembers = uniqueStrings(Array.isArray(currentChat.members) ? currentChat.members : []);
+    const nextMembers = uniqueStrings(Array.isArray(nextChat.members) ? nextChat.members : []);
+
+    return {
+      ...currentChat,
+      ...nextChat,
+      id: chatId,
+      name:
+        (typeof nextChat.name === 'string' && nextChat.name.trim()) ||
+        (typeof currentChat.name === 'string' && currentChat.name.trim()) ||
+        'Group chat',
+      members: uniqueStrings([...currentMembers, ...nextMembers]),
+      messages: mergeMessageLists(currentChat.messages, nextChat.messages),
+    };
+  });
+};
+
 const mergeAnnouncements = (
   currentAnnouncements: unknown,
   nextAnnouncements: unknown,
@@ -611,6 +728,8 @@ export async function POST(request: Request) {
   const nextData = parsed.data.data as Record<string, any>;
   const mergedData = {
     ...nextData,
+    messages: mergeDirectMessages(currentData.messages, nextData.messages),
+    groupChats: mergeGroupChats(currentData.groupChats, nextData.groupChats),
     announcements: mergeAnnouncements(currentData.announcements, nextData.announcements, userData.user.email),
     events: mergeEvents(currentData.events, nextData.events, userData.user.email),
   };

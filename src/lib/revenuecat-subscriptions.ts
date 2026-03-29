@@ -191,6 +191,7 @@ export const loadRevenueCatPlanPackages = async (): Promise<RevenueCatPlanPackag
 
 export const getCurrentRevenueCatCustomerInfo = async (): Promise<CustomerInfo> => {
   await ensureRevenueCatConfigured();
+  await Purchases.invalidateCustomerInfoCache();
   const { customerInfo } = await Purchases.getCustomerInfo();
   console.log('RC_USER_ID [getCustomerInfo]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;

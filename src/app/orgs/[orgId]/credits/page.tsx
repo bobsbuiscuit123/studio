@@ -59,6 +59,9 @@ type PurchaseDebugInfo = {
   packageId: string | null;
   availablePackages: string[];
   currentActiveProductId: PaidPlanId | null;
+  statusActiveProductId: PaidPlanId | null;
+  selectedPlanSource: 'none' | 'auto-active' | 'auto-recommended' | 'user';
+  lastClickedPlanId: PaidPlanId | null;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -72,8 +75,16 @@ export default function OrgCreditsPage() {
   const { status, loading, refresh } = useOrgSubscriptionStatus(orgId);
 
   const [userSubscription, setUserSubscription] = useState<UserSubscriptionSummary | null>(null);
+  const [liveCustomerActiveProductId, setLiveCustomerActiveProductId] = useState<PaidPlanId | null>(
+    null
+  );
   const [planPackages, setPlanPackages] = useState<Record<string, RevenueCatPlanPackage>>({});
   const [selectedPlanId, setSelectedPlanId] = useState<PaidPlanId | null>(null);
+  const [hasUserSelectedPlan, setHasUserSelectedPlan] = useState(false);
+  const [selectedPlanSource, setSelectedPlanSource] = useState<
+    'none' | 'auto-active' | 'auto-recommended' | 'user'
+  >('none');
+  const [lastClickedPlanId, setLastClickedPlanId] = useState<PaidPlanId | null>(null);
   const [managementUrl, setManagementUrl] = useState<string | null>(null);
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -83,8 +94,11 @@ export default function OrgCreditsPage() {
     () => getPlanRecommendation(status?.usageEstimateMonthlyTokens ?? 0),
     [status?.usageEstimateMonthlyTokens]
   );
-  const activeProductId =
+  const backendActiveProductId =
     userSubscription?.activeProductId ?? status?.subscriptionProductId ?? null;
+  const activeProductId = backendActiveProductId ?? liveCustomerActiveProductId ?? null;
+  const ownerHasKnownActiveSubscription =
+    Boolean(activeProductId) || Boolean(status?.ownerHasActiveSubscription);
 
   useEffect(() => {
     if (!orgId || !status?.canManageBilling) {
@@ -93,13 +107,26 @@ export default function OrgCreditsPage() {
 
     let active = true;
     const loadContext = async () => {
-      const [reconcileResult, packageList, rcManagementUrl] = await Promise.all([
-        safeFetchJson<ReconcileResponse>('/api/orgs/subscription/reconcile', {
-          method: 'POST',
-        }),
-        purchaseAvailability.supported ? loadRevenueCatPlanPackages().catch(() => []) : Promise.resolve([]),
-        purchaseAvailability.supported ? getRevenueCatManagementUrl().catch(() => null) : Promise.resolve(null),
-      ]);
+      const [reconcileResult, packageList, rcManagementUrl, liveRevenueCatProductId] =
+        await Promise.all([
+          safeFetchJson<ReconcileResponse>('/api/orgs/subscription/reconcile', {
+            method: 'POST',
+          }),
+          purchaseAvailability.supported
+            ? loadRevenueCatPlanPackages().catch(() => [])
+            : Promise.resolve([]),
+          purchaseAvailability.supported
+            ? getRevenueCatManagementUrl().catch(() => null)
+            : Promise.resolve(null),
+          purchaseAvailability.supported
+            ? getCurrentRevenueCatCustomerInfo()
+                .then((customerInfo) => extractActiveProductIdFromCustomerInfo(customerInfo))
+                .catch((error) => {
+                  console.warn('Failed to load live RevenueCat customer info for billing page', error);
+                  return null;
+                })
+            : Promise.resolve(null),
+        ]);
 
       if (!active) return;
 
@@ -107,6 +134,7 @@ export default function OrgCreditsPage() {
         setUserSubscription(reconcileResult.data.data ?? null);
       }
 
+      setLiveCustomerActiveProductId(liveRevenueCatProductId);
       setPlanPackages(
         packageList.reduce<Record<string, RevenueCatPlanPackage>>((acc, item) => {
           acc[item.id] = item;
@@ -125,17 +153,32 @@ export default function OrgCreditsPage() {
   }, [orgId, purchaseAvailability.supported, status?.canManageBilling]);
 
   useEffect(() => {
-    if (selectedPlanId) {
+    if (hasUserSelectedPlan) {
       return;
     }
 
     if (activeProductId) {
       setSelectedPlanId(activeProductId);
+      setSelectedPlanSource('auto-active');
+      return;
+    }
+
+    if (ownerHasKnownActiveSubscription) {
+      setSelectedPlanId(null);
+      setSelectedPlanSource('none');
       return;
     }
 
     setSelectedPlanId(recommendedPlan.id as PaidPlanId);
-  }, [activeProductId, recommendedPlan.id, selectedPlanId]);
+    setSelectedPlanSource('auto-recommended');
+  }, [activeProductId, hasUserSelectedPlan, ownerHasKnownActiveSubscription, recommendedPlan.id]);
+
+  useEffect(() => {
+    setHasUserSelectedPlan(false);
+    setSelectedPlanSource('none');
+    setLastClickedPlanId(null);
+    setSelectedPlanId(null);
+  }, [orgId]);
 
   if (!orgId) {
     return null;
@@ -273,7 +316,7 @@ export default function OrgCreditsPage() {
             extractActiveProductIdFromCustomerInfo(customerInfo) ?? liveActiveProductId;
           console.log('RC_PLAN_PREFLIGHT [billing]:', {
             selectedPlanId,
-            backendActiveProductId: activeProductId,
+            backendActiveProductId,
             liveActiveProductId: resolvedLiveProductId,
             activeSubscriptions: customerInfo.activeSubscriptions,
             subscriptionKeys: Object.keys(customerInfo.subscriptionsByProductIdentifier ?? {}),
@@ -337,6 +380,9 @@ export default function OrgCreditsPage() {
           packageId: selectedPackage?.product?.identifier ?? null,
           availablePackages: availableProductIds,
           currentActiveProductId: liveActiveProductId,
+          statusActiveProductId: backendActiveProductId,
+          selectedPlanSource,
+          lastClickedPlanId,
         });
         console.log('SELECTED PLAN:', selectedPlanId);
         console.log('PACKAGE IDENTIFIER:', selectedPackage?.product?.identifier ?? null);
@@ -552,7 +598,13 @@ export default function OrgCreditsPage() {
                 <button
                   key={plan.id}
                   type="button"
-                  onClick={() => setSelectedPlanId(plan.id as PaidPlanId)}
+                  onClick={() => {
+                    console.log('CLICKED PLAN:', plan);
+                    setHasUserSelectedPlan(true);
+                    setSelectedPlanSource('user');
+                    setLastClickedPlanId(plan.id as PaidPlanId);
+                    setSelectedPlanId(plan.id as PaidPlanId);
+                  }}
                   className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
                     isSelected
                       ? 'border-emerald-400 bg-emerald-50 shadow-sm'

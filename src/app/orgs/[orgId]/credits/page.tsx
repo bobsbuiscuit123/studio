@@ -22,6 +22,7 @@ import {
   extractActiveProductIdFromCustomerInfo,
   getCurrentRevenueCatCustomerInfo,
   getRevenueCatManagementUrl,
+  resolveRevenueCatPackageForPlan,
   getSubscriptionPurchaseAvailability,
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
@@ -30,6 +31,7 @@ import {
 } from '@/lib/revenuecat-subscriptions';
 import {
   SUBSCRIPTION_PLANS,
+  getPaidPlanByProductId,
   getPlanById,
   getPlanRecommendation,
   type PaidPlanId,
@@ -154,7 +156,6 @@ export default function OrgCreditsPage() {
 
   const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
   const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
-  const selectedPackage = selectedPlanId ? planPackages[selectedPlanId]?.revenueCatPackage ?? null : null;
   const userSubscribedOrg = userSubscription?.subscribedOrgId ?? status?.subscribedOrgId ?? null;
   const hasActiveSubscription =
     Boolean(userSubscription?.activeProductId) ||
@@ -318,8 +319,29 @@ export default function OrgCreditsPage() {
         if (!purchaseAvailability.supported) {
           throw new Error(purchaseAvailability.reason || 'Purchases are unavailable on this device.');
         }
+        const { selectedPackage, availableProductIds } = await resolveRevenueCatPackageForPlan(
+          selectedPlanId
+        );
+        console.log('SELECTED PLAN:', selectedPlanId);
+        console.log('PACKAGE IDENTIFIER:', selectedPackage?.product?.identifier ?? null);
+        console.log('AVAILABLE PACKAGES:', availableProductIds);
         if (!selectedPackage) {
           throw new Error('The selected subscription plan is not available from RevenueCat.');
+        }
+        const selectedPackageProductId =
+          getPaidPlanByProductId(selectedPackage.product.identifier)?.id ?? null;
+        if (selectedPackageProductId === liveActiveProductId) {
+          console.warn('Attempted to repurchase same product — blocking', {
+            selectedPlanId,
+            selectedPackageProductId,
+            liveActiveProductId,
+          });
+          await syncCurrentOrg(selectedPlanId);
+          toast({
+            title: 'Current plan active',
+            description: `${selectedPlan.name} is already the active subscription for ${status?.orgName ?? 'this organization'}.`,
+          });
+          return;
         }
         await purchaseRevenueCatPlan(selectedPackage);
       }

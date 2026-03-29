@@ -39,6 +39,7 @@ import {
 import {
   extractActiveProductIdFromCustomerInfo,
   getCurrentRevenueCatCustomerInfo,
+  resolveRevenueCatPackageForPlan,
   getSubscriptionPurchaseAvailability,
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
@@ -50,6 +51,7 @@ import {
   ONE_TIME_FREE_TRIAL_TOKENS,
   SUBSCRIPTION_PLANS,
   calculateUsageEstimate,
+  getPaidPlanByProductId,
   getPlanById,
   getPlanRecommendation,
   type PaidPlanId,
@@ -419,9 +421,24 @@ export default function OrgCreatePage() {
           throw new Error(purchaseAvailability.reason || 'Purchases are unavailable on this device.');
         }
 
-        const packageForPlan = planPackages[resolvedPlan.id]?.revenueCatPackage ?? null;
+        const { selectedPackage: packageForPlan, availableProductIds } =
+          await resolveRevenueCatPackageForPlan(resolvedPlan.id as PaidPlanId);
+        console.log('SELECTED PLAN:', resolvedPlan.id);
+        console.log('PACKAGE IDENTIFIER:', packageForPlan?.product?.identifier ?? null);
+        console.log('AVAILABLE PACKAGES:', availableProductIds);
         if (!packageForPlan) {
           throw new Error('The selected subscription plan is not available from RevenueCat.');
+        }
+        const selectedPackageProductId =
+          getPaidPlanByProductId(packageForPlan.product.identifier)?.id ?? null;
+        if (selectedPackageProductId === liveActiveProductId) {
+          console.warn('Attempted to repurchase same product — blocking', {
+            selectedPlanId: resolvedPlan.id,
+            selectedPackageProductId,
+            liveActiveProductId,
+          });
+          await finalizeDraft(liveActiveProductId ?? undefined);
+          return;
         }
 
         const outcome = await purchaseRevenueCatPlan(packageForPlan);

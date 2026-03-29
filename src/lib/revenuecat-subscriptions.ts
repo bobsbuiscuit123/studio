@@ -35,6 +35,11 @@ export type SubscriptionPurchaseOutcome = {
   customerInfo: CustomerInfo;
 };
 
+export type RevenueCatPackageSelection = {
+  selectedPackage: PurchasesPackage | null;
+  availableProductIds: string[];
+};
+
 let configuredAppUserId: string | null = null;
 let configurePromise: Promise<string> | null = null;
 let offeringsPromise: Promise<PurchasesOfferings | null> | null = null;
@@ -187,6 +192,22 @@ export const loadRevenueCatPlanPackages = async (): Promise<RevenueCatPlanPackag
       resolvedPriceLabel: revenueCatPackage?.product.priceString ?? plan.priceLabel,
     };
   });
+};
+
+export const resolveRevenueCatPackageForPlan = async (
+  planId: PaidPlanId
+): Promise<RevenueCatPackageSelection> => {
+  const offerings = await loadRevenueCatOfferings();
+  const availablePackages = getDefaultOfferingPackages(offerings);
+  const selectedPackage =
+    availablePackages.find(
+      (pkg) => getPaidPlanByProductId(pkg.product.identifier)?.id === planId
+    ) ?? null;
+
+  return {
+    selectedPackage,
+    availableProductIds: availablePackages.map((pkg) => pkg.product.identifier),
+  };
 };
 
 export const getCurrentRevenueCatCustomerInfo = async (): Promise<CustomerInfo> => {

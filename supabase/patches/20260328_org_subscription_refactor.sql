@@ -752,8 +752,8 @@ begin
     generated_join_code := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 6));
     exit when not exists (
       select 1
-      from public.orgs
-      where join_code = generated_join_code
+      from public.orgs o
+      where o.join_code = generated_join_code
     );
   end loop;
 

@@ -19,6 +19,8 @@ import { safeFetchJson } from '@/lib/network';
 import { useOrgSubscriptionStatus, notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
 import type { Result } from '@/lib/result';
 import {
+  extractActiveProductIdFromCustomerInfo,
+  getCurrentRevenueCatCustomerInfo,
   getRevenueCatManagementUrl,
   getSubscriptionPurchaseAvailability,
   loadRevenueCatPlanPackages,
@@ -238,8 +240,19 @@ export default function OrgCreditsPage() {
 
     setSubmitting(true);
     try {
-      const isSameActivePlan = activeProductId === selectedPlanId;
-      const needsPurchase = !isSameActivePlan || !activeProductId;
+      let liveActiveProductId = activeProductId;
+      if (purchaseAvailability.supported) {
+        try {
+          const customerInfo = await getCurrentRevenueCatCustomerInfo();
+          liveActiveProductId =
+            extractActiveProductIdFromCustomerInfo(customerInfo) ?? liveActiveProductId;
+        } catch (error) {
+          console.warn('Unable to load live RevenueCat customer info before applying plan', error);
+        }
+      }
+
+      const isSameActivePlan = liveActiveProductId === selectedPlanId;
+      const needsPurchase = !isSameActivePlan || !liveActiveProductId;
 
       if (needsPurchase) {
         if (!purchaseAvailability.supported) {

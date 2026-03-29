@@ -33,6 +33,8 @@ import { safeFetchJson } from '@/lib/network';
 import { notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
 import type { OrgBillingMode, UserSubscriptionSummary } from '@/lib/org-subscription';
 import {
+  extractActiveProductIdFromCustomerInfo,
+  getCurrentRevenueCatCustomerInfo,
   getSubscriptionPurchaseAvailability,
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
@@ -328,6 +330,24 @@ export default function OrgCreatePage() {
 
     setFinalizing(true);
     try {
+      let liveActiveProductId = subscription?.activeProductId ?? null;
+      if (purchaseAvailability.supported) {
+        try {
+          const customerInfo = await getCurrentRevenueCatCustomerInfo();
+          liveActiveProductId =
+            extractActiveProductIdFromCustomerInfo(customerInfo) ?? liveActiveProductId;
+        } catch (error) {
+          console.warn('Unable to load live RevenueCat customer info before finalizing org', error);
+        }
+      }
+
+      if (creationMode !== 'free' && creationMode !== 'keep_current_paid') {
+        if (liveActiveProductId === resolvedPlan.id) {
+          await finalizeDraft(liveActiveProductId);
+          return;
+        }
+      }
+
       if (creationMode === 'purchase') {
         if (!purchaseAvailability.supported) {
           throw new Error(purchaseAvailability.reason || 'Purchases are unavailable on this device.');
@@ -341,10 +361,10 @@ export default function OrgCreatePage() {
         const outcome = await purchaseRevenueCatPlan(packageForPlan);
         await finalizeDraft(outcome.productId);
       } else if (creationMode === 'transfer_subscription') {
-        if (!subscription?.activeProductId) {
+        if (!liveActiveProductId) {
           throw new Error('No active subscription is available to transfer.');
         }
-        await finalizeDraft(subscription.activeProductId);
+        await finalizeDraft(liveActiveProductId);
       } else {
         await finalizeDraft(undefined);
       }

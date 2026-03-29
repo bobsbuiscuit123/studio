@@ -101,6 +101,22 @@ export async function sendPushToUsers({
         type,
         entityId,
       },
+      android: {
+        priority: 'high' as const,
+        notification: {
+          sound: 'default',
+        },
+      },
+      apns: {
+        headers: {
+          'apns-priority': '10',
+        },
+        payload: {
+          aps: {
+            sound: 'default',
+          },
+        },
+      },
     };
 
     const results = await Promise.allSettled(

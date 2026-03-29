@@ -30,6 +30,7 @@ Then apply `supabase/patches/20260214_groups.sql` for the org -> clubs (groups) 
 Then apply `supabase/migrations/20260304_org_billing_quota.sql` for quotas + IAP-ready billing metadata.
 If you already applied an older billing migration, also apply `supabase/patches/20260313_iap_billing.sql`.
 Then apply `supabase/patches/20260328_org_subscription_refactor.sql` for the subscription-to-organization refactor.
+Then apply `supabase/patches/20260329_processed_webhooks_rls.sql` to lock down `processed_webhooks` with RLS.
 
 ## Development
 ```

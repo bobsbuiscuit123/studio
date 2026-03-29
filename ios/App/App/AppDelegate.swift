@@ -1,12 +1,28 @@
 import UIKit
 import Capacitor
+import FirebaseCore
+import FirebaseMessaging
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     var window: UIWindow?
 
+    private func publishPushToken(_ token: String) {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: trimmed)
+    }
+
+    private func publishPushError(_ error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        Messaging.messaging().delegate = self
         window?.backgroundColor = .white
         window?.rootViewController?.view.backgroundColor = .white
         return true
@@ -48,11 +64,40 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+        Messaging.messaging().apnsToken = deviceToken
+
+        if let currentToken = Messaging.messaging().fcmToken, !currentToken.isEmpty {
+            publishPushToken(currentToken)
+            return
+        }
+
+        Messaging.messaging().token { token, error in
+            if let error = error {
+                self.publishPushError(error)
+                return
+            }
+
+            guard let token = token, !token.isEmpty else {
+                let tokenError = NSError(
+                    domain: "CASPOPush",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Firebase Messaging returned an empty registration token."]
+                )
+                self.publishPushError(tokenError)
+                return
+            }
+
+            self.publishPushToken(token)
+        }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+        publishPushError(error)
+    }
+
+    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+        guard let fcmToken = fcmToken else { return }
+        publishPushToken(fcmToken)
     }
 
 }

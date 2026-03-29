@@ -4,6 +4,8 @@ platform :ios, '15.0'
 project 'App.xcodeproj'
 
 target 'App' do
+  pod 'FirebaseCore'
+  pod 'FirebaseMessaging'
 end
 
 post_install do |installer|

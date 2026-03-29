@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     err({
       code: 'VALIDATION',
-      message: 'External billing portals are not used. Token packages are handled in-app.',
+      message: 'App Store subscriptions are managed by Apple. Open organization billing in the iOS app to restore or change your plan.',
       source: 'app',
     }),
     { status: 501 }

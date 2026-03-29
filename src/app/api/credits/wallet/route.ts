@@ -5,7 +5,7 @@ export async function GET() {
   return NextResponse.json(
     err({
       code: 'VALIDATION',
-      message: 'This credit wallet endpoint has been retired. Use /api/tokens/wallet instead.',
+      message: 'Credit wallets were removed. Use organization subscription status instead.',
       source: 'app',
     }),
     { status: 410 }

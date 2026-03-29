@@ -1,38 +1,88 @@
 import { describe, expect, it } from 'vitest';
+
 import {
-  TRIAL_TOKENS,
-  calculateDailyTokenEstimate,
-  calculateEstimatedDaysRemaining,
-  calculateMonthlyTokenEstimate,
-  calculateTokenUsageEstimate,
-  calculateTrialDaysCovered,
+  FREE_PLAN_ID,
+  ONE_TIME_FREE_TRIAL_TOKENS,
+  calculateUsageEstimate,
+  getEffectiveAvailableTokens,
+  getPaidPlanByPackageId,
+  getPaidPlanByProductId,
+  getPlanById,
+  getPlanRecommendation,
+  planSupportsAi,
 } from '@/lib/pricing';
 
-describe('token billing helpers', () => {
-  it('calculates monthly and daily token estimates', () => {
-    expect(calculateMonthlyTokenEstimate(200, 2)).toBe(12_000);
-    expect(calculateDailyTokenEstimate(200, 2)).toBe(400);
+describe('subscription pricing helpers', () => {
+  it('maps paid products and package identifiers to the correct plans', () => {
+    expect(getPaidPlanByProductId('starter_org')?.monthlyTokenLimit).toBe(2_200);
+    expect(getPaidPlanByProductId('elite_org')?.monthlyTokenLimit).toBe(65_000);
+    expect(getPaidPlanByPackageId('growth')?.id).toBe('growth_org');
+    expect(getPaidPlanByPackageId('free')).toBeNull();
   });
 
-  it('calculates trial coverage in days', () => {
-    expect(calculateTrialDaysCovered(200, 2)).toBe(Math.floor(TRIAL_TOKENS / 400));
-    expect(calculateTrialDaysCovered(0, 2)).toBe(0);
-    expect(calculateTrialDaysCovered(200, 0)).toBe(0);
-  });
-
-  it('builds a combined usage estimate', () => {
-    expect(calculateTokenUsageEstimate(25, 4)).toEqual({
-      memberCap: 25,
-      dailyAiLimitPerUser: 4,
-      estimatedMonthlyTokens: 3000,
-      estimatedDailyTokens: 100,
-      trialTokens: 30,
-      daysCovered: 0,
+  it('keeps free plan at zero recurring tokens', () => {
+    expect(getPlanById(FREE_PLAN_ID)).toMatchObject({
+      monthlyTokenLimit: 0,
+      isFree: true,
     });
   });
 
-  it('estimates days remaining from balance and monthly usage', () => {
-    expect(calculateEstimatedDaysRemaining(0, 3000)).toBe(0);
-    expect(calculateEstimatedDaysRemaining(30, 12_000)).toBe(0);
+  it('calculates usage estimates from the setup sliders', () => {
+    expect(calculateUsageEstimate(25, 4)).toEqual({
+      members: 25,
+      requestsPerMemberPerDay: 4,
+      estimatedDailyTokens: 100,
+      estimatedMonthlyTokens: 3_000,
+    });
+  });
+
+  it('calculates effective availability using monthly limit plus one-time bonus', () => {
+    expect(
+      getEffectiveAvailableTokens({
+        monthlyTokenLimit: 0,
+        bonusTokensThisPeriod: ONE_TIME_FREE_TRIAL_TOKENS,
+        tokensUsedThisPeriod: 0,
+      })
+    ).toBe(30);
+
+    expect(
+      getEffectiveAvailableTokens({
+        monthlyTokenLimit: 0,
+        bonusTokensThisPeriod: 0,
+        tokensUsedThisPeriod: 10,
+      })
+    ).toBe(0);
+
+    expect(
+      getEffectiveAvailableTokens({
+        monthlyTokenLimit: 2_200,
+        bonusTokensThisPeriod: 0,
+        tokensUsedThisPeriod: 200,
+      })
+    ).toBe(2_000);
+  });
+
+  it('derives AI availability from remaining effective tokens', () => {
+    expect(
+      planSupportsAi({
+        monthlyTokenLimit: 0,
+        bonusTokensThisPeriod: ONE_TIME_FREE_TRIAL_TOKENS,
+        tokensUsedThisPeriod: 29,
+      })
+    ).toBe(true);
+
+    expect(
+      planSupportsAi({
+        monthlyTokenLimit: 0,
+        bonusTokensThisPeriod: 0,
+        tokensUsedThisPeriod: 0,
+      })
+    ).toBe(false);
+  });
+
+  it('recommends the smallest paid plan that covers the estimate', () => {
+    expect(getPlanRecommendation(0).id).toBe('starter_org');
+    expect(getPlanRecommendation(6_001).id).toBe('growth_org');
+    expect(getPlanRecommendation(90_000).id).toBe('elite_org');
   });
 });

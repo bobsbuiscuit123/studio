@@ -2,7 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useOrgAiQuotaStatus } from "@/lib/data-hooks";
+import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 
 export function OrgAiQuotaBadge({
   orgId,
@@ -13,13 +13,12 @@ export function OrgAiQuotaBadge({
   className?: string;
   compact?: boolean;
 }) {
-  const { loading, status, limit, remaining, percent } = useOrgAiQuotaStatus(orgId);
-  const paused = status?.aiAvailability === 'paused';
+  const { loading, status, used, limit, percent } = useOrgSubscriptionStatus(orgId);
+  const paused = !status?.aiAvailable;
   const safeLimit = Math.max(0, limit);
-  const safeRemaining = paused ? 0 : Math.max(0, Math.min(remaining, safeLimit));
-  const remainingPercent = safeLimit > 0 ? (safeRemaining / safeLimit) * 100 : 0;
-  const clampedPercent = Math.max(0, Math.min(100, remainingPercent));
-  const hue = clampedPercent <= 25 ? 18 : 145 - (145 * clampedPercent) / 100;
+  const safeUsed = safeLimit > 0 ? Math.max(0, Math.min(used, safeLimit)) : 0;
+  const usedPercent = safeLimit > 0 ? Math.max(0, Math.min(100, percent)) : 0;
+  const hue = 145 - ((145 - 18) * usedPercent) / 100;
   const accent = `hsl(${hue} 78% 42%)`;
   const accentSoft = `hsl(${hue} 85% 94%)`;
   const accentBorder = `hsl(${hue} 75% 82%)`;
@@ -27,7 +26,12 @@ export function OrgAiQuotaBadge({
 
   const radius = compact ? 16 : 18;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clampedPercent / 100) * circumference;
+  const offset = circumference - (usedPercent / 100) * circumference;
+  const usageLabel = loading
+    ? "..."
+    : safeLimit <= 0
+      ? "AI unavailable"
+      : `${safeUsed}/${safeLimit} used`;
 
   return (
     <div
@@ -37,13 +41,13 @@ export function OrgAiQuotaBadge({
         color: accent,
       }}
       className={cn(
-        "inline-flex items-center gap-3 rounded-full border px-3 py-2",
+        "inline-flex items-center gap-2 rounded-full border px-2.5 py-1.5",
         compact ? "text-xs" : "text-sm",
         className
       )}
     >
-      <div className="relative h-10 w-10 shrink-0">
-        <svg viewBox="0 0 44 44" className="h-10 w-10 -rotate-90">
+      <div className="relative h-9 w-9 shrink-0">
+        <svg viewBox="0 0 44 44" className="h-9 w-9 -rotate-90">
           <circle
             cx="22"
             cy="22"
@@ -68,16 +72,9 @@ export function OrgAiQuotaBadge({
           <Sparkles className="h-4 w-4" />
         </div>
       </div>
-      <div className="leading-tight">
-        <div className="font-semibold">Daily AI left</div>
-        <div className="opacity-80">
-          {loading
-            ? "Loading..."
-            : safeLimit <= 0
-              ? "0 requests left today"
-              : `${safeRemaining}/${safeLimit} requests left today`}
-        </div>
-      </div>
+      <span className="font-semibold tabular-nums">
+        {paused && safeLimit <= 0 ? "AI unavailable" : usageLabel}
+      </span>
     </div>
   );
 }

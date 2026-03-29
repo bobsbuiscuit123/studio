@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Capacitor } from "@capacitor/core";
-import { initializeRevenueCat } from "@/lib/token-purchases";
+import { initializeRevenueCat } from "@/lib/revenuecat-subscriptions";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppHeader } from "@/components/app-header";

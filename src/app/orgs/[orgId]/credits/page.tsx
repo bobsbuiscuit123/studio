@@ -1,36 +1,116 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Coins, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowLeft, ExternalLink, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { useOrgAiQuotaStatus } from '@/lib/data-hooks';
-import { TokenPackageDialog } from '@/components/orgs/token-package-dialog';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { safeFetchJson } from '@/lib/network';
+import { useOrgSubscriptionStatus, notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
+import {
+  getRevenueCatManagementUrl,
+  getSubscriptionPurchaseAvailability,
+  loadRevenueCatPlanPackages,
+  purchaseRevenueCatPlan,
+  restoreRevenueCatPurchases,
+  RevenueCatPurchaseCancelledError,
+  type RevenueCatPlanPackage,
+} from '@/lib/revenuecat-subscriptions';
+import {
+  SUBSCRIPTION_PLANS,
+  getPlanById,
+  getPlanRecommendation,
+  type PaidPlanId,
+} from '@/lib/pricing';
+import type { UserSubscriptionSummary } from '@/lib/org-subscription';
 
-const healthLabel = {
-  healthy: 'Healthy',
-  low: 'Low',
-  urgent: 'Urgent',
-  depleted: 'Depleted',
-} as const;
-
-const healthVariant = {
-  healthy: 'default',
-  low: 'secondary',
-  urgent: 'secondary',
-  depleted: 'destructive',
-} as const;
+type ReconcileResponse = {
+  ok: boolean;
+  data?: UserSubscriptionSummary;
+};
 
 export default function OrgCreditsPage() {
   const params = useParams<{ orgId: string }>();
   const router = useRouter();
+  const { toast } = useToast();
   const orgId = typeof params.orgId === 'string' ? params.orgId : null;
-  const { status, loading } = useOrgAiQuotaStatus(orgId);
-  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const purchaseAvailability = useMemo(() => getSubscriptionPurchaseAvailability(), []);
+  const { status, loading, refresh } = useOrgSubscriptionStatus(orgId);
 
-  const recentActivity = useMemo(() => status?.recentTokenActivity ?? [], [status?.recentTokenActivity]);
+  const [userSubscription, setUserSubscription] = useState<UserSubscriptionSummary | null>(null);
+  const [planPackages, setPlanPackages] = useState<Record<string, RevenueCatPlanPackage>>({});
+  const [selectedPlanId, setSelectedPlanId] = useState<PaidPlanId | null>(null);
+  const [managementUrl, setManagementUrl] = useState<string | null>(null);
+  const [loadingPackages, setLoadingPackages] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const recommendedPlan = useMemo(
+    () => getPlanRecommendation(status?.usageEstimateMonthlyTokens ?? 0),
+    [status?.usageEstimateMonthlyTokens]
+  );
+  const activeProductId =
+    userSubscription?.activeProductId ?? status?.subscriptionProductId ?? null;
+
+  useEffect(() => {
+    if (!orgId || !status?.canManageBilling) {
+      return;
+    }
+
+    let active = true;
+    const loadContext = async () => {
+      const [reconcileResult, packageList, rcManagementUrl] = await Promise.all([
+        safeFetchJson<ReconcileResponse>('/api/orgs/subscription/reconcile', {
+          method: 'POST',
+        }),
+        purchaseAvailability.supported ? loadRevenueCatPlanPackages().catch(() => []) : Promise.resolve([]),
+        purchaseAvailability.supported ? getRevenueCatManagementUrl().catch(() => null) : Promise.resolve(null),
+      ]);
+
+      if (!active) return;
+
+      if (reconcileResult.ok) {
+        setUserSubscription(reconcileResult.data.data ?? null);
+      }
+
+      setPlanPackages(
+        packageList.reduce<Record<string, RevenueCatPlanPackage>>((acc, item) => {
+          acc[item.id] = item;
+          return acc;
+        }, {})
+      );
+      setManagementUrl(rcManagementUrl);
+      setLoadingPackages(false);
+    };
+
+    setLoadingPackages(true);
+    void loadContext();
+    return () => {
+      active = false;
+    };
+  }, [orgId, purchaseAvailability.supported, status?.canManageBilling]);
+
+  useEffect(() => {
+    if (selectedPlanId) {
+      return;
+    }
+
+    if (activeProductId) {
+      setSelectedPlanId(activeProductId);
+      return;
+    }
+
+    setSelectedPlanId(recommendedPlan.id as PaidPlanId);
+  }, [activeProductId, recommendedPlan.id, selectedPlanId]);
 
   if (!orgId) {
     return null;
@@ -42,19 +122,137 @@ export default function OrgCreditsPage() {
         <div className="viewport-scroll mx-auto flex w-full max-w-3xl items-center justify-center px-4 py-8">
           <Card className="w-full rounded-[28px]">
             <CardHeader>
-              <CardTitle>Token billing unavailable</CardTitle>
-              <CardDescription>Only the organization owner can view token balance and billing activity.</CardDescription>
+              <CardTitle>Billing unavailable</CardTitle>
+              <CardDescription>
+                Only the organization owner can manage subscription settings.
+              </CardDescription>
             </CardHeader>
-            <CardFooter>
+            <CardContent>
               <Button onClick={() => router.push('/orgs')} className="rounded-2xl">
                 Back to organizations
               </Button>
-            </CardFooter>
+            </CardContent>
           </Card>
         </div>
       </div>
     );
   }
+
+  const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
+  const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
+  const selectedPackage = selectedPlanId ? planPackages[selectedPlanId]?.revenueCatPackage ?? null : null;
+
+  const actionLabel = (() => {
+    if (!selectedPlanId) return 'Select a plan';
+    if (activeProductId && status?.isSubscribedOrg && activeProductId === selectedPlanId) {
+      return 'Current plan active';
+    }
+    if (activeProductId && activeProductId === selectedPlanId && !status?.isSubscribedOrg) {
+      return 'Transfer subscription here';
+    }
+    if (activeProductId && !status?.isSubscribedOrg) {
+      return 'Change plan and transfer here';
+    }
+    if (activeProductId) {
+      return 'Change plan';
+    }
+    return 'Activate subscription on this organization';
+  })();
+
+  const syncCurrentOrg = async () => {
+    const response = await safeFetchJson<{ ok: true; data: { subscribedOrgId: string | null } }>(
+      '/api/orgs/subscription/transfer',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetOrgId: orgId }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(response.error.message);
+    }
+
+    notifyOrgSubscriptionChanged();
+    await refresh({ force: true });
+    return response.data.data?.subscribedOrgId ?? null;
+  };
+
+  const handleApplyPlan = async () => {
+    if (!selectedPlanId) {
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const isSameActivePlan = activeProductId === selectedPlanId;
+      const needsPurchase = !isSameActivePlan || !activeProductId;
+
+      if (needsPurchase) {
+        if (!purchaseAvailability.supported) {
+          throw new Error(purchaseAvailability.reason || 'Purchases are unavailable on this device.');
+        }
+        if (!selectedPackage) {
+          throw new Error('The selected subscription plan is not available from RevenueCat.');
+        }
+        await purchaseRevenueCatPlan(selectedPackage);
+      }
+
+      await syncCurrentOrg();
+      toast({
+        title: 'Subscription updated',
+        description: `${selectedPlan.name} is now linked to ${status?.orgName ?? 'this organization'}.`,
+      });
+    } catch (error) {
+      if (error instanceof RevenueCatPurchaseCancelledError) {
+        toast({
+          title: 'Purchase cancelled',
+          description: 'The subscription purchase was cancelled before completion.',
+        });
+      } else {
+        toast({
+          title: 'Unable to update subscription',
+          description: error instanceof Error ? error.message : 'Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setSubmitting(true);
+    try {
+      await restoreRevenueCatPurchases();
+      await syncCurrentOrg();
+      toast({
+        title: 'Purchases restored',
+        description: 'RevenueCat restored your App Store subscription and synced this organization.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Restore failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenManagement = () => {
+    if (!managementUrl) {
+      toast({
+        title: 'Manage in Apple Settings',
+        description:
+          'Open Apple ID subscription settings on your device to cancel or manage renewal.',
+      });
+      return;
+    }
+
+    window.open(managementUrl, '_blank', 'noopener,noreferrer');
+  };
 
   return (
     <div className="viewport-page bg-background text-slate-900">
@@ -65,85 +263,111 @@ export default function OrgCreditsPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to organizations
             </Button>
-            <h1 className="text-3xl font-semibold">{status?.orgName ?? 'Organization token billing'}</h1>
-            <p className="text-sm text-slate-600">Manage owner tokens, projected usage, and recent activity.</p>
+            <h1 className="text-3xl font-semibold">{status?.orgName ?? 'Organization billing'}</h1>
+            <p className="text-sm text-slate-600">
+              Manage the subscription assigned to this organization and review current-period usage.
+            </p>
           </div>
-          <Button className="rounded-2xl" onClick={() => setTokenDialogOpen(true)}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Buy tokens for {status?.orgName ?? 'this organization'}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="rounded-2xl" onClick={() => void handleRestore()} disabled={submitting}>
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Restore purchases
+            </Button>
+            <Button variant="outline" className="rounded-2xl" onClick={handleOpenManagement}>
+              Manage in Apple
+              <ExternalLink className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
+
+        {status?.ownerHasActiveSubscription && !status?.isSubscribedOrg ? (
+          <Alert className="rounded-[24px] border-amber-200 bg-amber-50 text-amber-950">
+            <AlertTitle>Subscription assigned elsewhere</AlertTitle>
+            <AlertDescription>
+              Your account already has an active subscription linked to another organization. You can transfer it here or leave this organization on the free plan.
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Current token balance</CardDescription>
-              <CardTitle className="text-3xl">{Number(status?.tokenBalance ?? 0).toLocaleString()}</CardTitle>
+              <CardDescription>Current plan</CardDescription>
+              <CardTitle className="text-3xl">{status?.planName ?? 'Free'}</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">Tokens remaining</CardContent>
+            <CardContent className="text-sm text-slate-600">
+              {status?.subscriptionStatus === 'free' ? 'No paid subscription assigned' : status?.subscriptionStatus}
+            </CardContent>
           </Card>
 
           <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Estimated monthly usage</CardDescription>
-              <CardTitle className="text-3xl">{Number(status?.estimatedMonthlyTokens ?? 0).toLocaleString()}</CardTitle>
+              <CardDescription>Monthly allowance</CardDescription>
+              <CardTitle className="text-3xl">
+                {Number(status?.monthlyTokenLimit ?? 0).toLocaleString()}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">Tokens per month</CardContent>
+            <CardContent className="text-sm text-slate-600">Tokens per billing period</CardContent>
           </Card>
 
           <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Estimated daily usage</CardDescription>
-              <CardTitle className="text-3xl">{Number(status?.estimatedDailyTokens ?? 0).toLocaleString()}</CardTitle>
+              <CardDescription>Used this period</CardDescription>
+              <CardTitle className="text-3xl">
+                {Number(status?.tokensUsedThisPeriod ?? 0).toLocaleString()}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">Tokens per day</CardContent>
+            <CardContent className="text-sm text-slate-600">Consumed in the current period</CardContent>
           </Card>
 
           <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
             <CardHeader className="pb-2">
-              <CardDescription>Estimated days remaining</CardDescription>
-              <CardTitle className="text-3xl">{Number(status?.estimatedDaysRemaining ?? 0)}</CardTitle>
+              <CardDescription>Remaining</CardDescription>
+              <CardTitle className="text-3xl">
+                {Number(status?.effectiveAvailableTokens ?? 0).toLocaleString()}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">At current usage</CardContent>
+            <CardContent className="text-sm text-slate-600">
+              {status?.bonusTokensThisPeriod
+                ? `${status.bonusTokensThisPeriod} bonus token(s) included this period`
+                : 'Available before the next reset'}
+            </CardContent>
           </Card>
         </div>
 
         <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle>Token health</CardTitle>
-              <CardDescription>
-                {status?.tokenHealth === 'depleted'
-                  ? 'AI is paused for members until more tokens are added.'
-                  : status?.tokenHealth === 'urgent'
-                    ? 'Your organization may run out of AI tokens soon.'
-                    : status?.tokenHealth === 'low'
-                      ? 'Your organization tokens are running low.'
-                      : 'Your organization has a healthy token runway.'}
-              </CardDescription>
-            </div>
-            <Badge variant={healthVariant[status?.tokenHealth ?? 'healthy']}>
-              {healthLabel[status?.tokenHealth ?? 'healthy']}
-            </Badge>
+          <CardHeader>
+            <CardTitle>Current period</CardTitle>
+            <CardDescription>
+              Backend-synced usage for the organization currently assigned to this subscription.
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
             <div className="rounded-[24px] bg-slate-50 px-4 py-4 text-sm text-slate-600">
               <div className="flex items-center justify-between">
-                <span>Daily AI requests per member</span>
-                <span className="font-semibold text-slate-900">{status?.dailyAiLimitPerUser ?? 0}</span>
+                <span>Period start</span>
+                <span className="font-semibold text-slate-900">
+                  {status?.currentPeriodStart
+                    ? new Date(status.currentPeriodStart).toLocaleDateString()
+                    : '—'}
+                </span>
               </div>
               <div className="mt-3 flex items-center justify-between">
-                <span>Members using this org</span>
-                <span className="font-semibold text-slate-900">{status?.activeUsers ?? 0}</span>
+                <span>Period end</span>
+                <span className="font-semibold text-slate-900">
+                  {status?.currentPeriodEnd
+                    ? new Date(status.currentPeriodEnd).toLocaleDateString()
+                    : '—'}
+                </span>
               </div>
             </div>
             <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
               <div className="flex items-center gap-2 font-medium">
-                <Coins className="h-4 w-4" />
-                {Number(status?.tokenBalance ?? 0).toLocaleString()} tokens remaining
+                <Sparkles className="h-4 w-4" />
+                {status?.aiAvailable ? 'AI is available for members.' : 'AI is unavailable for members.'}
               </div>
               <p className="mt-2 text-xs text-emerald-800">
-                At current usage, you have about {Number(status?.estimatedDaysRemaining ?? 0)} day(s) remaining.
+                Free organizations do not receive recurring tokens. The one-time 30 token trial only applies to the first eligible free organization period.
               </p>
             </div>
           </CardContent>
@@ -151,42 +375,82 @@ export default function OrgCreditsPage() {
 
         <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
           <CardHeader>
-            <CardTitle>Recent token activity</CardTitle>
-            <CardDescription>Trial grants and AI usage across this organization.</CardDescription>
+            <CardTitle>Choose a paid plan</CardTitle>
+            <CardDescription>
+              {loadingPackages
+                ? 'Loading live App Store pricing...'
+                : 'Select a monthly subscription plan to activate, transfer, upgrade, or downgrade.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentActivity.length > 0 ? (
-              recentActivity.map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-3 rounded-[24px] border border-slate-200 px-4 py-3 text-sm">
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-900">{item.description}</p>
-                    <p className="text-xs text-slate-500">
-                      {new Date(item.created_at).toLocaleString()}
-                    </p>
+            {paidPlans.map((plan) => {
+              const resolvedPrice = planPackages[plan.id]?.resolvedPriceLabel ?? plan.priceLabel;
+              const isSelected = selectedPlanId === plan.id;
+              const isCurrent = activeProductId === plan.id;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => setSelectedPlanId(plan.id as PaidPlanId)}
+                  className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
+                    isSelected
+                      ? 'border-emerald-400 bg-emerald-50 shadow-sm'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-slate-900">{plan.name}</p>
+                        {plan.id === recommendedPlan.id ? <Badge variant="secondary">Recommended</Badge> : null}
+                        {isCurrent ? <Badge variant="secondary">Current subscription</Badge> : null}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">{plan.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-900">{resolvedPrice}</p>
+                      <p className="text-xs text-slate-500">
+                        {plan.monthlyTokenLimit.toLocaleString()} tokens/month
+                      </p>
+                    </div>
                   </div>
-                  <div className={`shrink-0 font-semibold ${item.amount >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {item.amount >= 0 ? '+' : ''}
-                    {Number(item.amount).toLocaleString()} tokens
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-[24px] border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-                No token activity yet.
-              </div>
-            )}
+                </button>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
+          <CardHeader>
+            <CardTitle>Apply to this organization</CardTitle>
+            <CardDescription>
+              {selectedPlan.name} will be assigned to {status?.orgName ?? 'this organization'} after the backend confirms the subscription state.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-600">
+            {!purchaseAvailability.supported ? (
+              <p>{purchaseAvailability.reason ?? 'Paid subscriptions require the iOS app.'}</p>
+            ) : null}
+            <p>Upgrades and downgrades are handled by RevenueCat and Apple for your single active subscription.</p>
+            <p>Cancellation is managed in Apple subscription settings. Restores and transfers stay tied to your user account.</p>
+          </CardContent>
+          <CardContent>
+            <Button
+              className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => void handleApplyPlan()}
+              disabled={
+                submitting ||
+                !selectedPlanId ||
+                (activeProductId === selectedPlanId && Boolean(status?.isSubscribedOrg)) ||
+                (!purchaseAvailability.supported && (!activeProductId || activeProductId !== selectedPlanId))
+              }
+            >
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {actionLabel}
+            </Button>
           </CardContent>
         </Card>
       </div>
-
-      <TokenPackageDialog
-        open={tokenDialogOpen}
-        onOpenChange={setTokenDialogOpen}
-        title={`Buy tokens for ${status?.orgName ?? 'this organization'}`}
-        description={`Choose a token package for ${status?.orgName ?? 'this organization'}. Tokens purchased here are added only to that organization after Apple confirms the purchase.`}
-        orgId={orgId}
-        orgName={status?.orgName ?? null}
-      />
     </div>
   );
 }

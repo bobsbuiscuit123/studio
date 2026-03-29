@@ -8,14 +8,14 @@ import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/lib/group-permissions';
-import { getPlaceholderImageUrl } from '@/lib/placeholders';
-import { calculateEstimatedDaysRemaining, getAiAvailability, getTokenHealth } from '@/lib/pricing';
 import {
-    clearSatisfiedPendingOrgTokenBalance,
-    getPendingOrgTokenBalanceTarget,
-    registerPendingOrgTokenBalance,
-    wasOrgTokenPurchaseProcessed,
-} from '@/lib/org-token-optimistic';
+    isMessageFromActor,
+    markMessageReadByActor,
+    messageIncludesReader,
+    normalizeGroupChats,
+    normalizeMessageMap,
+} from '@/lib/message-state';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 type ClubData = {
     members: Member[];
@@ -85,13 +85,8 @@ const writeTabLastViewed = (userEmail: string, orgId: string, groupId: string, k
 
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
-const orgAiStatusCache = new Map<string, OrgAiQuotaStatus>();
-const orgAiStatusLoadedAt = new Map<string, number>();
 let currentUserCache: User | null = null;
 let currentUserHydrationPromise: Promise<User | null> | null = null;
-const ORG_AI_STATUS_REFRESH_TTL_MS = 60_000;
-const ORG_AI_PURCHASE_RECONCILE_ATTEMPTS = 6;
-const ORG_AI_PURCHASE_RECONCILE_DELAY_MS = 1_500;
 const CURRENT_USER_STORAGE_KEY = 'currentUser';
 
 const isNonEmptyString = (value: unknown): value is string =>
@@ -122,13 +117,15 @@ const shouldRefreshOnVisibility = () =>
   document.visibilityState === 'visible' &&
   (typeof navigator === 'undefined' || navigator.onLine !== false);
 
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 const normalizeClubData = (data: ClubData): ClubData => {
     const defaults = getDefaultClubData();
+    const source = data && typeof data === 'object' ? data : defaults;
     const normalized = {
-        ...data,
-        mindmap: data.mindmap ?? defaults.mindmap,
+        ...defaults,
+        ...source,
+        messages: normalizeMessageMap(source.messages),
+        groupChats: normalizeGroupChats(source.groupChats),
+        mindmap: source.mindmap ?? defaults.mindmap,
     };
     if (Array.isArray(normalized.events)) {
         normalized.events = normalized.events.map((event: any) => ({
@@ -808,247 +805,19 @@ export function useCurrentUserRole() {
 
 export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance' | 'forms';
 
-export type OrgAiQuotaStatus = {
-    orgId: string;
-    orgName: string;
-    role: string;
-    joinCode?: string;
-    memberLimit: number;
-    dailyAiLimitPerUser: number;
-    activeUsers: number;
-    requestsUsedToday: number;
-    aiAvailability: 'available' | 'limited' | 'paused';
-    estimatedMonthlyTokens: number;
-    estimatedDailyTokens: number;
-    tokenHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
-    tokenBalance?: number;
-    estimatedDaysRemaining?: number;
-    recentTokenActivity?: Array<{
-        id: string;
-        amount: number;
-        type: string;
-        description: string;
-        metadata?: Record<string, unknown> | null;
-        created_at: string;
-    }>;
-    createdAt: string | null;
-    updatedAt: string | null;
-    tokensPurchased: number;
-    tokensUsed: number;
-};
-
 export const notifyOrgAiUsageChanged = (
     orgId?: string | null,
     delta: number = 0
 ) => {
     if (typeof window === 'undefined') return;
-    window.dispatchEvent(
-        new CustomEvent('org-ai-usage-changed', {
-            detail: {
-                orgId: orgId ?? getSelectedOrgId() ?? null,
-                delta,
-            },
-        })
-    );
-};
-
-const applyOrgBalanceSnapshot = (
-    base: OrgAiQuotaStatus,
-    tokenBalance: number
-): OrgAiQuotaStatus => {
-    const estimatedDaysRemaining = calculateEstimatedDaysRemaining(
-        tokenBalance,
-        base.estimatedMonthlyTokens
-    );
-    return {
-        ...base,
-        tokenBalance,
-        estimatedDaysRemaining,
-        tokenHealth: getTokenHealth(estimatedDaysRemaining),
-        aiAvailability: getAiAvailability(tokenBalance, base.estimatedMonthlyTokens),
+    const detail = {
+        orgId: orgId ?? getSelectedOrgId() ?? null,
+        delta,
     };
+    window.dispatchEvent(new CustomEvent('org-ai-usage-changed', { detail }));
+    window.dispatchEvent(new CustomEvent('org-subscription-changed', { detail }));
 };
 
-export function useOrgAiQuotaStatus(orgIdOverride?: string | null) {
-    const [status, setStatus] = useState<OrgAiQuotaStatus | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [lastLoadedAt, setLastLoadedAt] = useState(0);
-    const orgId = orgIdOverride ?? getSelectedOrgId();
-
-    const refresh = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
-        if (!orgId) {
-            setStatus(null);
-            setLoading(false);
-            return;
-        }
-        const cachedStatus = orgAiStatusCache.get(orgId) ?? null;
-        const lastLoaded = orgAiStatusLoadedAt.get(orgId) ?? lastLoadedAt;
-        const isFresh = Date.now() - lastLoaded < ORG_AI_STATUS_REFRESH_TTL_MS;
-        if (!options?.force && cachedStatus && isFresh) {
-            setStatus(cachedStatus);
-            setLoading(false);
-            return;
-        }
-        if (!options?.silent) {
-            setLoading(true);
-        }
-        const response = await safeFetchJson<{ ok: true; data: OrgAiQuotaStatus }>(
-            `/api/orgs/${orgId}/status`,
-            { method: 'GET' }
-        );
-        if (response.ok) {
-            const serverStatus = response.data.data;
-            const pendingTarget = getPendingOrgTokenBalanceTarget(orgId);
-            const serverBalance = Number(serverStatus.tokenBalance ?? 0);
-            const nextStatus =
-                Number.isFinite(pendingTarget) && serverBalance < Number(pendingTarget)
-                    ? applyOrgBalanceSnapshot(serverStatus, Number(pendingTarget))
-                    : serverStatus;
-            clearSatisfiedPendingOrgTokenBalance(orgId, serverBalance);
-            setStatus(nextStatus);
-            orgAiStatusCache.set(orgId, nextStatus);
-            const loadedAt = Date.now();
-            orgAiStatusLoadedAt.set(orgId, loadedAt);
-            setLastLoadedAt(loadedAt);
-        } else {
-            console.error('Failed to load org AI status', response.error);
-            setStatus(cachedStatus);
-        }
-        setLoading(false);
-    }, [lastLoadedAt, orgId]);
-
-    useEffect(() => {
-        void refresh();
-    }, [refresh]);
-
-      useEffect(() => {
-          let cancelled = false;
-          const handleVisibilityChange = () => {
-              if (shouldRefreshOnVisibility()) {
-                  void refresh({ silent: true });
-              }
-          };
-          const reconcilePurchaseBalance = async (targetBalance: number) => {
-              if (!orgId || !Number.isFinite(targetBalance)) return;
-              for (let attempt = 0; attempt < ORG_AI_PURCHASE_RECONCILE_ATTEMPTS; attempt += 1) {
-                  await wait(ORG_AI_PURCHASE_RECONCILE_DELAY_MS);
-                  if (cancelled) return;
-                  const response = await safeFetchJson<{ ok: true; data: OrgAiQuotaStatus }>(
-                      `/api/orgs/${orgId}/status`,
-                      { method: 'GET' }
-                  );
-                  if (!response.ok) {
-                      continue;
-                  }
-                  const serverStatus = response.data.data;
-                  const serverBalance = Number(serverStatus.tokenBalance ?? 0);
-                  if (serverBalance < targetBalance) {
-                      continue;
-                  }
-                  clearSatisfiedPendingOrgTokenBalance(orgId, serverBalance);
-                  orgAiStatusCache.set(orgId, serverStatus);
-                  const loadedAt = Date.now();
-                  orgAiStatusLoadedAt.set(orgId, loadedAt);
-                  setLastLoadedAt(loadedAt);
-                  if (!cancelled) {
-                      setStatus(serverStatus);
-                  }
-                  return;
-              }
-          };
-          const handleTokenPurchaseComplete = (event?: Event) => {
-              const detail =
-                  event && 'detail' in event
-                      ? (event as CustomEvent<{ orgId?: string | null; transactionId?: string | null; tokenBalance?: number | null; tokensGranted?: number | null }>).detail
-                      : undefined;
-                const changedOrgId = detail?.orgId ?? null;
-                if (changedOrgId && orgId && changedOrgId !== orgId) return;
-                const resolvedOrgId = orgId ?? changedOrgId ?? null;
-                if (!resolvedOrgId) return;
-                const transactionId = String(detail?.transactionId ?? '').trim();
-                if (wasOrgTokenPurchaseProcessed(resolvedOrgId, transactionId)) {
-                    return;
-                }
-                const nextBalance = Number(detail?.tokenBalance ?? NaN);
-                const purchasedTokens = Number(detail?.tokensGranted ?? NaN);
-                const cachedStatus = orgAiStatusCache.get(resolvedOrgId) ?? null;
-                const currentKnownBalance = Number(
-                    status?.tokenBalance ?? cachedStatus?.tokenBalance ?? 0
-                );
-                const pendingTarget = registerPendingOrgTokenBalance({
-                    orgId: resolvedOrgId,
-                    transactionId,
-                    currentBalance: currentKnownBalance,
-                    tokenBalance: nextBalance,
-                    tokensGranted: purchasedTokens,
-                });
-                if (Number.isFinite(nextBalance)) {
-                    setStatus(prev => {
-                        const base = prev ?? cachedStatus;
-                        if (!base) return prev;
-                        const nextStatus = applyOrgBalanceSnapshot(base, nextBalance);
-                        orgAiStatusCache.set(resolvedOrgId, nextStatus);
-                        return nextStatus;
-                    });
-                    void reconcilePurchaseBalance(nextBalance);
-                } else if (Number.isFinite(pendingTarget)) {
-                    setStatus(prev => {
-                        const base = prev ?? cachedStatus;
-                        if (!base) return prev;
-                        const nextStatus = applyOrgBalanceSnapshot(base, Number(pendingTarget));
-                        orgAiStatusCache.set(resolvedOrgId, nextStatus);
-                        return nextStatus;
-                    });
-                    void reconcilePurchaseBalance(Number(pendingTarget));
-                } else {
-                    void refresh({ silent: true, force: true });
-                }
-            };
-          const handleUsageChanged = (event?: Event) => {
-              const detail =
-                  event && 'detail' in event
-                    ? (event as CustomEvent<{ orgId?: string | null; delta?: number }>).detail
-                    : undefined;
-            const changedOrgId = detail?.orgId ?? null;
-            if (changedOrgId && orgId && changedOrgId !== orgId) return;
-            const delta = Math.max(0, Number(detail?.delta ?? 0));
-            if (delta > 0) {
-                setStatus(prev =>
-                    prev
-                        ? {
-                              ...prev,
-                              requestsUsedToday: Math.min(
-                                  prev.dailyAiLimitPerUser,
-                                  prev.requestsUsedToday + delta
-                              ),
-                          }
-                        : prev
-                );
-            }
-            void refresh({ silent: true, force: true });
-          };
-          window.addEventListener('visibilitychange', handleVisibilityChange);
-          window.addEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
-          window.addEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-          window.addEventListener('focus', handleVisibilityChange);
-          window.addEventListener('online', handleVisibilityChange);
-          return () => {
-              cancelled = true;
-              window.removeEventListener('visibilitychange', handleVisibilityChange);
-              window.removeEventListener('org-token-purchase-complete', handleTokenPurchaseComplete as EventListener);
-              window.removeEventListener('org-ai-usage-changed', handleUsageChanged as EventListener);
-              window.removeEventListener('focus', handleVisibilityChange);
-              window.removeEventListener('online', handleVisibilityChange);
-          };
-      }, [orgId, refresh, status?.tokenBalance]);
-
-    const used = status?.requestsUsedToday ?? 0;
-    const limit = status?.dailyAiLimitPerUser ?? 0;
-    const remaining = Math.max(0, limit - used);
-    const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
-
-    return { status, loading, refresh, used, limit, remaining, percent };
-}
 
 export function useNotifications() {
     const { data: announcements, loading: announcementsLoading } = useAnnouncements();
@@ -1115,8 +884,8 @@ export function useNotifications() {
         const safeSocialPosts = Array.isArray(socialPosts) ? socialPosts : [];
         const safeEvents = Array.isArray(events) ? events : [];
         const safeGalleryImages = Array.isArray(galleryImages) ? galleryImages : [];
-        const safeGroupChats = Array.isArray(groupChats) ? groupChats : [];
-        const safeAllMessages = allMessages && typeof allMessages === 'object' ? allMessages : {};
+        const safeGroupChats = normalizeGroupChats(groupChats);
+        const safeAllMessages = normalizeMessageMap(allMessages);
         const safeForms = Array.isArray(forms) ? forms : [];
         const currentUserEmail = normalizeActivityActor(user.email);
         const currentUserName = normalizeActivityActor(user.name);
@@ -1140,18 +909,18 @@ export function useNotifications() {
         }, 0);
         const latestDmTimestamp = Object.values(safeAllMessages)
             .flat()
-            .filter((m: Message) => normalizeActivityActor(m.sender) !== currentUserEmail)
+            .filter((m: Message) => !isMessageFromActor(m, currentUserEmail))
             .reduce((latest, message) => {
-                if (message.readBy.some(email => normalizeActivityActor(email) === currentUserEmail)) {
+                if (messageIncludesReader(message, currentUserEmail)) {
                     return latest;
                 }
                 return Math.max(latest, getActivityTimestamp(message.timestamp));
             }, 0);
         const latestGroupTimestamp = safeGroupChats.reduce((latestChatTimestamp: number, chat: GroupChat) => {
             const chatLatest = chat.messages
-                .filter(message => normalizeActivityActor(message.sender) !== currentUserEmail)
+                .filter(message => !isMessageFromActor(message, currentUserEmail))
                 .reduce((latestMessageTimestamp, message) => {
-                    if (message.readBy.some(email => normalizeActivityActor(email) === currentUserEmail)) {
+                    if (messageIncludesReader(message, currentUserEmail)) {
                         return latestMessageTimestamp;
                     }
                     return Math.max(latestMessageTimestamp, getActivityTimestamp(message.timestamp));
@@ -1252,25 +1021,15 @@ export function useNotifications() {
                 break;
             case 'messages':
                 messagesHook.updateData(prev => {
-                    const newMessages = { ...(prev || {}) };
+                    const newMessages = normalizeMessageMap(prev);
                     for (const convoId in newMessages) {
-                        newMessages[convoId] = newMessages[convoId].map(msg => {
-                            if (!msg.readBy.includes(userEmail)) {
-                                return { ...msg, readBy: [...msg.readBy, userEmail] };
-                            }
-                            return msg;
-                        });
+                        newMessages[convoId] = newMessages[convoId].map(msg => markMessageReadByActor(msg, userEmail));
                     }
                     return newMessages;
                 });
-                groupChatsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(g => ({
+                groupChatsHook.updateData(prev => normalizeGroupChats(prev).map(g => ({
                     ...g,
-                    messages: g.messages.map(msg => {
-                        if (!msg.readBy.includes(userEmail)) {
-                            return { ...msg, readBy: [...msg.readBy, userEmail] };
-                        }
-                        return msg;
-                    })
+                    messages: g.messages.map(msg => markMessageReadByActor(msg, userEmail)),
                 })));
                 break;
             case 'calendar':

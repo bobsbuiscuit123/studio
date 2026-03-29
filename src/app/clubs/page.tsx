@@ -1,13 +1,12 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Coins, Copy, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, Copy, CreditCard, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,14 +24,12 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId, clearSelectedOrgId, getSelectedOrgId, setSelectedGroupId } from "@/lib/selection";
 import { safeFetchJson } from "@/lib/network";
 import { faker } from "@faker-js/faker";
-import { useCurrentUser, useOrgAiQuotaStatus } from "@/lib/data-hooks";
+import { useCurrentUser } from "@/lib/data-hooks";
+import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
-
-const MAX_MEMBER_LIMIT = 10_000;
-const MAX_DAILY_AI_LIMIT = 200;
 
 type Group = {
   id: string;
@@ -74,7 +71,7 @@ export default function ClubsPage() {
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
 
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+  const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
   const formatDate = (value?: string | null) =>
@@ -110,7 +107,7 @@ export default function ClubsPage() {
     clearSelectedGroupId();
     toast({
       title: "Organization deleted",
-      description: "The organization and its token balance were removed.",
+      description: "The organization and its subscription mapping were removed.",
     });
     router.push("/orgs");
   };
@@ -251,59 +248,6 @@ export default function ClubsPage() {
   const canShowCreate = true;
   const createDisabled = false;
 
-  const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
-  const [editMemberLimit, setEditMemberLimit] = useState(0);
-  const [editDailyLimit, setEditDailyLimit] = useState(0);
-  const [editOrgSubmitting, setEditOrgSubmitting] = useState(false);
-
-  const clampMemberLimit = (value: number) => {
-    const parsed = Number.isFinite(value) ? Math.round(value) : 0;
-    return Math.min(MAX_MEMBER_LIMIT, Math.max(1, parsed));
-  };
-
-  const clampDailyLimit = (value: number) => {
-    const parsed = Number.isFinite(value) ? Math.round(value) : 0;
-    return Math.min(MAX_DAILY_AI_LIMIT, Math.max(0, parsed));
-  };
-
-  useEffect(() => {
-    if (!isEditOrgOpen && orgStatus) {
-      setEditMemberLimit(orgStatus.memberLimit);
-      setEditDailyLimit(orgStatus.dailyAiLimitPerUser);
-    }
-  }, [isEditOrgOpen, orgStatus]);
-
-  const handleUpdateOrgLimits = async () => {
-    if (!selectedOrgId || !isOrgOwner) return;
-    setEditOrgSubmitting(true);
-    try {
-      const response = await safeFetchJson<{ ok: true }>(`/api/orgs/${selectedOrgId}/update`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          memberLimit: editMemberLimit,
-          dailyAiLimitPerUser: editDailyLimit,
-        }),
-      });
-      if (!response.ok) {
-        const message = response.error?.message || "Unable to update organization settings.";
-        toast({ title: "Update failed", description: message, variant: "destructive" });
-        return;
-      }
-      setIsEditOrgOpen(false);
-      toast({ title: "Organization updated", description: "Limits saved." });
-      void refreshOrgStatus();
-    } finally {
-      setEditOrgSubmitting(false);
-    }
-  };
-
-  const handleBuyTokensFromDialog = () => {
-    if (!selectedOrgId) return;
-    setIsEditOrgOpen(false);
-    router.push(`/orgs/${selectedOrgId}/credits`);
-  };
-
   const handleBackToOrgs = () => {
     clearSelectedGroupId();
     router.push("/orgs");
@@ -318,12 +262,6 @@ export default function ClubsPage() {
     if (!createdGroupPrompt?.joinCode) return;
     await navigator.clipboard.writeText(createdGroupPrompt.joinCode);
     toast({ title: "Copied", description: "Join code copied to clipboard." });
-  };
-
-  const handleCopyOrgJoinCode = async () => {
-    if (!orgStatus?.joinCode) return;
-    await navigator.clipboard.writeText(orgStatus.joinCode);
-    toast({ title: "Copied", description: "Organization join code copied." });
   };
 
   const handleOpenEditGroup = (group: Group) => {
@@ -499,121 +437,15 @@ export default function ClubsPage() {
             </Dialog>
           )}
 
-          {isOrgOwner && (
-            <Dialog open={isEditOrgOpen} onOpenChange={setIsEditOrgOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="w-full">
-                  <Pencil className="mr-2" /> Edit Organization
-                </Button>
-              </DialogTrigger>
-                <DialogContent className="max-w-lg rounded-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Edit organization limits</DialogTitle>
-                    <DialogDescription>
-                      Adjust the maximum number of members and the daily AI request cap per person.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-6 py-2">
-                    {orgStatus?.joinCode ? (
-                      <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-emerald-950">Organization join code</p>
-                            <p className="text-xs text-emerald-800">
-                              Share this code if you need to invite someone again.
-                            </p>
-                          </div>
-                          <Button type="button" variant="outline" size="icon" onClick={handleCopyOrgJoinCode}>
-                            <Copy className="h-4 w-4" />
-                            <span className="sr-only">Copy organization join code</span>
-                          </Button>
-                        </div>
-                        <div className="mt-3 rounded-2xl bg-white px-4 py-3 text-center text-xl font-semibold tracking-[0.35em] text-emerald-950">
-                          {orgStatus.joinCode}
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <Label className="text-base">Member limit</Label>
-                      <span className="text-sm font-semibold">{editMemberLimit.toLocaleString()}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={MAX_MEMBER_LIMIT}
-                        value={editMemberLimit}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setEditMemberLimit(clampMemberLimit(Number(event.target.value)))
-                        }
-                        className="w-24 text-right"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Up to {MAX_MEMBER_LIMIT.toLocaleString()} members
-                      </p>
-                    </div>
-                    <Slider
-                      value={[editMemberLimit]}
-                      min={1}
-                      max={MAX_MEMBER_LIMIT}
-                      step={1}
-                      onValueChange={(values) => setEditMemberLimit(clampMemberLimit(values[0]))}
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <Label className="text-base">Daily AI requests per member</Label>
-                      <span className="text-sm font-semibold">{editDailyLimit}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min={0}
-                        max={MAX_DAILY_AI_LIMIT}
-                        value={editDailyLimit}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setEditDailyLimit(clampDailyLimit(Number(event.target.value)))
-                        }
-                        className="w-24 text-right"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Max {MAX_DAILY_AI_LIMIT} requests per day
-                      </p>
-                    </div>
-                    <Slider
-                      value={[editDailyLimit]}
-                      min={0}
-                      max={MAX_DAILY_AI_LIMIT}
-                      step={1}
-                      onValueChange={(values) => setEditDailyLimit(clampDailyLimit(values[0]))}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Limits help keep token usage predictable for everyone.
-                    </p>
-                  </div>
-                </div>
-                <div className="rounded-[24px] border border-slate-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-900">
-                  <p className="text-xs">Need more tokens for this organization?</p>
-                  <Button
-                    variant="ghost"
-                    className="mt-2 w-full rounded-2xl border border-blue-200 px-3 py-2 text-sm text-blue-800"
-                    onClick={handleBuyTokensFromDialog}
-                  >
-                    Buy tokens for {orgStatus?.orgName ?? 'this organization'}
-                  </Button>
-                </div>
-                <DialogFooter className="gap-2">
-                  <Button variant="outline" onClick={() => setIsEditOrgOpen(false)} disabled={editOrgSubmitting}>
-                    Cancel
-                  </Button>
-                  <Button className="flex-1" onClick={handleUpdateOrgLimits} disabled={editOrgSubmitting}>
-                    {editOrgSubmitting ? "Saving..." : "Save changes"}
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
+          {isOrgOwner ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)}
+            >
+              <CreditCard className="mr-2" /> Manage Organization Billing
+            </Button>
+          ) : null}
 
           <div className="grid grid-cols-2 gap-3">
             <Button variant="outline" onClick={handleBackToOrgs} className="w-full">
@@ -702,7 +534,7 @@ export default function ClubsPage() {
         {isOrgOwner ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <Button variant="outline" onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)} className="w-full">
-              <Coins className="mr-2" /> Manage tokens for {orgStatus?.orgName ?? 'this organization'}
+              <CreditCard className="mr-2" /> Manage billing for {orgStatus?.orgName ?? 'this organization'}
             </Button>
             <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
               <Trash2 className="mr-2" /> Delete Organization
@@ -720,7 +552,7 @@ export default function ClubsPage() {
             </AlertDialogHeader>
             <div className="space-y-3 text-sm text-slate-600">
               <p>Organization created: {formatDate(orgStatus?.createdAt)}</p>
-              <p>Current owner token balance: {Number(orgStatus?.tokenBalance ?? 0).toLocaleString()} tokens.</p>
+              <p>Current plan: {orgStatus?.planName ?? 'Free'}.</p>
               <p>AI will stop for members immediately because the organization will no longer exist.</p>
             </div>
             <AlertDialogFooter>

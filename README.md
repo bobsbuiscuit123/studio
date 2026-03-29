@@ -21,12 +21,15 @@ Server:
 - `AI_PROVIDER`
 - `AI_ENABLED`
 - `GEMINI_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY`
+- `REVENUECAT_WEBHOOK_AUTH`
+- `REVENUECAT_SECRET_API_KEY`
 
 ## Migrations
 Apply SQL in `supabase/migrations/20260201_init.sql` in your Supabase SQL editor.
 Then apply `supabase/patches/20260214_groups.sql` for the org -> clubs (groups) split.
 Then apply `supabase/migrations/20260304_org_billing_quota.sql` for quotas + IAP-ready billing metadata.
 If you already applied an older billing migration, also apply `supabase/patches/20260313_iap_billing.sql`.
+Then apply `supabase/patches/20260328_org_subscription_refactor.sql` for the subscription-to-organization refactor.
 
 ## Development
 ```
@@ -62,7 +65,8 @@ Rotate leaked keys before public launch.
 - `SUPABASE_SERVICE_ROLE_KEY` must be set for `/api/auth/signup` to work.
 - trigger ios pipeline
 
-## RevenueCat / Apple IAP config
-- Create the production secret with `eas secret:create --env production REV_CAT_APPLE_API_KEY --value <your key>`.
-- The production iOS build profile injects this secret as `NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY`, so you must keep the secret in EAS rather than committing it.
+## RevenueCat / Apple subscription config
+- Create the EAS secret `NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY` for the `caspo_ios` RevenueCat app.
+- Set `REVENUECAT_WEBHOOK_AUTH` on the server to match the RevenueCat webhook authorization header.
+- Set `REVENUECAT_SECRET_API_KEY` on the server so webhook processing and restore reconciliation can call `GET /v1/subscribers/{app_user_id}`.
 

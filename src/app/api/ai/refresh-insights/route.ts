@@ -5,8 +5,6 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestDayKey } from '@/lib/day-key';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
-import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
-import { isMissingColumnError, isMissingFunctionError } from '@/lib/org-balance';
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -59,54 +57,28 @@ export async function POST(request: Request) {
 
   const admin = createSupabaseAdmin();
   const usageDate = getRequestDayKey(request);
-  const { data: result, error: consumeError } = await admin.rpc('consume_owner_token_for_org_ai', {
+  const { data: result, error: consumeError } = await admin.rpc('consume_org_subscription_token', {
     p_org_id: orgId,
     p_user_id: userId,
     p_usage_date: usageDate,
   });
 
-  let consumeResult = Array.isArray(result) ? result[0] : result;
+  const consumeResult = Array.isArray(result) ? result[0] : result;
 
   if (consumeError) {
-    if (
-      isMissingFunctionError(consumeError, 'consume_owner_token_for_org_ai') ||
-      isMissingColumnError(consumeError, 'token_balance') ||
-      isMissingColumnError(consumeError, 'credit_balance') ||
-      isMissingColumnError(consumeError, 'owner_id')
-    ) {
-      consumeResult = await consumeOrgTokenCompat({
-        admin,
-        orgId,
-        userId,
-        usageDate,
-      });
-    } else {
-      return NextResponse.json(
-        err({
-          code: 'NETWORK_HTTP_ERROR',
-          message: consumeError.message,
-          source: 'network',
-        }),
-        { status: 500 }
-      );
-    }
-  }
-
-  const initialReason = String(consumeResult?.reason ?? '');
-
-  if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
-    consumeResult = await consumeOrgTokenCompat({
-      admin,
-      orgId,
-      userId,
-      usageDate,
-    });
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: consumeError.message,
+        source: 'network',
+      }),
+      { status: 500 }
+    );
   }
 
   const reason = String(consumeResult?.reason ?? '');
-  const usedToday = Number(consumeResult?.used_today ?? 0);
-  const remainingToday = Number(consumeResult?.remaining_today ?? 0);
-  const remainingTokens = Number(consumeResult?.remaining_tokens ?? 0);
+  const usedThisPeriod = Number(consumeResult?.tokens_used_this_period ?? 0);
+  const remainingTokens = Number(consumeResult?.effective_available_tokens ?? 0);
 
   if (!consumeResult?.success) {
     if (reason === 'not_member') {
@@ -116,21 +88,10 @@ export async function POST(request: Request) {
       );
     }
 
-    if (reason === 'daily_limit_reached') {
-      return NextResponse.json(
-        err({
-          code: 'DAILY_LIMIT_REACHED',
-          message: 'Daily limit reached.',
-          source: 'ai',
-        }),
-        { status: 429 }
-      );
-    }
-
     return NextResponse.json(
       err({
         code: 'AI_CREDITS_DEPLETED',
-        message: 'AI temporarily unavailable. Your organization has run out of credits.',
+        message: 'AI is unavailable for this organization right now.',
         source: 'app',
       }),
       { status: 402 }
@@ -140,8 +101,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     data: {
-      usedToday,
-      remaining: remainingToday,
+      usedThisPeriod,
+      remaining: remainingTokens,
       remainingTokens,
       tokenCost: 1,
     },

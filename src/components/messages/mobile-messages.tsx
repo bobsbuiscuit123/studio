@@ -24,6 +24,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser, useGroupChats, useMembers, useMessages } from "@/lib/data-hooks";
+import {
+  getMessageTimestampMs,
+  isMessageFromActor,
+  markMessageReadByActor,
+  messageIncludesReader,
+  normalizeGroupChats,
+  normalizeMessageActor,
+  normalizeMessageMap,
+} from "@/lib/message-state";
 import type { GroupChat, Member, Message } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -65,15 +74,14 @@ function useLiveGroupStateMessages({
   refreshMessages: () => Promise<boolean>;
   refreshGroupChats: () => Promise<boolean>;
 }) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-
   useEffect(() => {
     if (!orgId || !groupId) {
       return;
     }
 
     let active = true;
-    let refreshTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let refreshTimer: number | null = null;
+    let removeChannel: (() => void) | null = null;
     const scheduleRefresh = () => {
       if (!active) return;
       if (refreshTimer !== null) {
@@ -86,34 +94,42 @@ function useLiveGroupStateMessages({
       }, 40);
     };
 
-    const channel = supabase
-      .channel(`group-state-messages:${orgId}:${groupId}`)
-      .on("postgres_changes", {
-        event: "INSERT",
-        schema: "public",
-        table: "group_state",
-        filter: `group_id=eq.${groupId}`,
-      }, scheduleRefresh)
-      .on("postgres_changes", {
-        event: "UPDATE",
-        schema: "public",
-        table: "group_state",
-        filter: `group_id=eq.${groupId}`,
-      }, scheduleRefresh)
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          console.error("Realtime message sync channel failed", { orgId, groupId });
-        }
-      });
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const channel = supabase
+        .channel(`group-state-messages:${orgId}:${groupId}`)
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "group_state",
+          filter: `group_id=eq.${groupId}`,
+        }, scheduleRefresh)
+        .on("postgres_changes", {
+          event: "UPDATE",
+          schema: "public",
+          table: "group_state",
+          filter: `group_id=eq.${groupId}`,
+        }, scheduleRefresh)
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR") {
+            console.error("Realtime message sync channel failed", { orgId, groupId });
+          }
+        });
+      removeChannel = () => {
+        void supabase.removeChannel(channel);
+      };
+    } catch (error) {
+      console.error("Realtime message sync setup failed", { orgId, groupId, error });
+    }
 
     return () => {
       active = false;
       if (refreshTimer !== null) {
         window.clearTimeout(refreshTimer);
       }
-      void supabase.removeChannel(channel);
+      removeChannel?.();
     };
-  }, [groupId, orgId, refreshGroupChats, refreshMessages, supabase]);
+  }, [groupId, orgId, refreshGroupChats, refreshMessages]);
 }
 
 export function MessagesListScreen() {
@@ -131,6 +147,10 @@ export function MessagesListScreen() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
+  const safeMembers = useMemo(() => normalizeMembersForMessages(members), [members]);
+  const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
+  const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
+  const currentUserEmail = normalizeMessageActor(user?.email);
 
   useLiveGroupStateMessages({
     orgId,
@@ -155,12 +175,12 @@ export function MessagesListScreen() {
   const conversationSummaries = useMemo(
     () =>
       buildConversationSummaries({
-        members,
-        groupChats,
-        allMessages,
-        currentUserEmail: user?.email ?? "",
+        members: safeMembers,
+        groupChats: safeGroupChats,
+        allMessages: safeAllMessages,
+        currentUserEmail,
       }),
-    [allMessages, groupChats, members, user?.email]
+    [currentUserEmail, safeAllMessages, safeGroupChats, safeMembers]
   );
 
   const filteredConversations = conversationSummaries.filter(conversation => {
@@ -171,17 +191,18 @@ export function MessagesListScreen() {
       conversation.subtitle.toLowerCase().includes(query)
     );
   });
-  const availableDirectMessages = members.filter(member => member.email !== (user?.email ?? ""));
+  const availableDirectMessages = safeMembers.filter(member => member.email !== currentUserEmail);
 
   const handleCreateGroup = (values: z.infer<typeof newGroupFormSchema>) => {
     if (!user) return;
+    const creatorEmail = normalizeMessageActor(user.email);
     const newGroup: GroupChat = {
       id: `group_${Date.now()}`,
       name: values.name,
-      members: [...values.members, user.email],
+      members: Array.from(new Set([...values.members.map(normalizeMessageActor), creatorEmail].filter(Boolean))),
       messages: [],
     };
-    setGroupChats(prev => [newGroup, ...prev]);
+    setGroupChats(prev => [newGroup, ...normalizeGroupChats(prev)]);
     setIsNewGroupDialogOpen(false);
     newGroupForm.reset();
     toast({ title: "Group created", description: newGroup.name });
@@ -242,8 +263,8 @@ export function MessagesListScreen() {
                 <div className="space-y-2">
                   <Label>Members</Label>
                   <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border p-3">
-                    {members
-                      .filter(member => member.email !== user.email)
+                    {safeMembers
+                      .filter(member => member.email !== currentUserEmail)
                       .map(member => (
                         <label key={member.email} htmlFor={`member-${member.email}`} className="flex min-h-11 items-center gap-3 rounded-xl px-2 py-2">
                           <Checkbox
@@ -368,6 +389,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const [lastMessageAt, setLastMessageAt] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const safeMembers = useMemo(() => normalizeMembersForMessages(members), [members]);
+  const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
+  const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
+  const currentUserEmail = normalizeMessageActor(user?.email);
 
   useLiveGroupStateMessages({
     orgId,
@@ -377,8 +402,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   });
 
   const conversation = useMemo(
-    () => resolveConversationFromRoute(conversationId, members, groupChats),
-    [conversationId, groupChats, members]
+    () => resolveConversationFromRoute(conversationId, safeMembers, safeGroupChats),
+    [conversationId, safeGroupChats, safeMembers]
   );
 
   const messageForm = useForm<z.infer<typeof messageFormSchema>>({
@@ -389,52 +414,45 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const activeMessages = useMemo(() => {
     if (!user || !conversation) return [];
     if (conversation.type === "dm") {
-      return allMessages[getConversationId(user.email, conversation.partner.email)] || [];
+      return safeAllMessages[getConversationId(user.email, conversation.partner.email)] || [];
     }
-    const currentChat = groupChats.find(chat => chat.id === conversation.chat.id);
+    const currentChat = safeGroupChats.find(chat => chat.id === conversation.chat.id);
     return currentChat?.messages || [];
-  }, [allMessages, conversation, groupChats, user]);
+  }, [conversation, safeAllMessages, safeGroupChats, user]);
 
   useEffect(() => {
-    if (!conversation || !user?.email) return;
-    const userEmail = user.email;
+    if (!conversation || !currentUserEmail) return;
 
     if (conversation.type === "dm") {
-      const conversationKey = getConversationId(userEmail, conversation.partner.email);
+      const conversationKey = getConversationId(currentUserEmail, conversation.partner.email);
       setAllMessages(prev => {
-        const currentMessages = prev[conversationKey] || [];
-        if (!currentMessages.some(message => !message.readBy.includes(userEmail))) {
+        const normalizedMessages = normalizeMessageMap(prev);
+        const currentMessages = normalizedMessages[conversationKey] || [];
+        if (!currentMessages.some(message => !messageIncludesReader(message, currentUserEmail))) {
           return prev;
         }
         return {
-          ...prev,
-          [conversationKey]: currentMessages.map(message =>
-            message.readBy.includes(userEmail)
-              ? message
-              : { ...message, readBy: [...message.readBy, userEmail] }
-          ),
+          ...normalizedMessages,
+          [conversationKey]: currentMessages.map(message => markMessageReadByActor(message, currentUserEmail)),
         };
       });
     } else {
       setGroupChats(prev => {
+        const normalizedChats = normalizeGroupChats(prev);
         let changed = false;
-        const nextChats = prev.map(chat => {
+        const nextChats = normalizedChats.map(chat => {
           if (chat.id !== conversation.chat.id) return chat;
-          if (!chat.messages.some(message => !message.readBy.includes(userEmail))) return chat;
+          if (!chat.messages.some(message => !messageIncludesReader(message, currentUserEmail))) return chat;
           changed = true;
           return {
             ...chat,
-            messages: chat.messages.map(message =>
-              message.readBy.includes(userEmail)
-                ? message
-                : { ...message, readBy: [...message.readBy, userEmail] }
-            ),
+            messages: chat.messages.map(message => markMessageReadByActor(message, currentUserEmail)),
           };
         });
-        return changed ? nextChats : prev;
+        return changed ? nextChats : normalizedChats;
       });
     }
-  }, [conversation, setAllMessages, setGroupChats, user?.email]);
+  }, [conversation, currentUserEmail, setAllMessages, setGroupChats]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -458,10 +476,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     }
 
     const newMessage: Message = {
-      sender: user.email,
+      sender: currentUserEmail || user.email,
       text: values.text,
       timestamp: new Date().toISOString(),
-      readBy: [user.email],
+      readBy: [currentUserEmail || user.email],
     };
 
     setIsSending(true);
@@ -514,13 +532,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
     if (conversation.type === "dm") {
       const conversationKey = getConversationId(user.email, conversation.partner.email);
-      setLocalMessages(prev => ({
-        ...prev,
-        [conversationKey]: [...(prev[conversationKey] || []), newMessage],
-      }));
+      setLocalMessages(prev => {
+        const normalizedMessages = normalizeMessageMap(prev);
+        return {
+          ...normalizedMessages,
+          [conversationKey]: [...(normalizedMessages[conversationKey] || []), newMessage],
+        };
+      });
     } else {
       setLocalGroupChats(prev =>
-        prev.map(chat =>
+        normalizeGroupChats(prev).map(chat =>
           chat.id === conversation.chat.id
             ? { ...chat, messages: [...chat.messages, newMessage] }
             : chat
@@ -599,8 +620,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         ) : (
           <div className="space-y-2">
             {activeMessages.map((message, index) => {
-              const isMine = message.sender === user.email;
-              const sender = members.find(member => member.email === message.sender);
+              const isMine = isMessageFromActor(message, currentUserEmail);
+              const sender = safeMembers.find(member => member.email === normalizeMessageActor(message.sender));
               return (
                 <div key={`${message.timestamp}-${index}`} className={cn("flex w-full", isMine ? "justify-end" : "justify-start")}>
                   <div
@@ -700,9 +721,9 @@ function buildConversationSummaries({
         name,
         subtitle: lastMessage?.text || (conversation.type === "group" ? "Group chat" : "Tap to start chatting"),
         timestampLabel: lastMessage ? formatTimestamp(lastMessage.timestamp) : "",
-        lastTimestamp: lastMessage ? new Date(lastMessage.timestamp).getTime() : 0,
+        lastTimestamp: getMessageTimestampMs(lastMessage),
         unread: messages.some(
-          message => message.sender !== currentUserEmail && !message.readBy.includes(currentUserEmail)
+          message => !isMessageFromActor(message, currentUserEmail) && !messageIncludesReader(message, currentUserEmail)
         ),
         avatar: conversation.type === "dm" ? conversation.partner.avatar : undefined,
         initials: getInitials(name),
@@ -731,7 +752,7 @@ function resolveConversationFromRoute(
   groupChats: GroupChat[]
 ): Conversation | null {
   if (routeId.startsWith("dm__")) {
-    const email = decodeURIComponent(routeId.slice(4));
+    const email = normalizeMessageActor(decodeURIComponent(routeId.slice(4)));
     const partner = members.find(member => member.email === email);
     return partner ? { type: "dm", partner } : null;
   }
@@ -749,12 +770,12 @@ function getConversationHref(conversation: Conversation) {
 
 function getRouteConversationId(conversation: Conversation) {
   return conversation.type === "dm"
-    ? `dm__${encodeURIComponent(conversation.partner.email)}`
+    ? `dm__${encodeURIComponent(normalizeMessageActor(conversation.partner.email))}`
     : `group__${encodeURIComponent(conversation.chat.id)}`;
 }
 
 function getConversationId(email1: string, email2: string) {
-  return [email1, email2].sort().join("_");
+  return [normalizeMessageActor(email1), normalizeMessageActor(email2)].sort().join("_");
 }
 
 function getInitials(name: string) {
@@ -771,16 +792,34 @@ function stringToColor(value: string) {
   for (let index = 0; index < value.length; index += 1) {
     hash = value.charCodeAt(index) + ((hash << 5) - hash);
   }
-  const hue = hash % 360;
+  const hue = Math.abs(hash % 360);
   return `hsl(${hue}, 50%, 70%)`;
 }
 
 function formatTimestamp(timestamp: string) {
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
   const now = new Date();
   const isToday = date.toDateString() === now.toDateString();
   if (isToday) {
     return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   }
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function normalizeMembersForMessages(members: Member[]): Member[] {
+  return (Array.isArray(members) ? members : []).flatMap(member => {
+    const email = normalizeMessageActor(member.email);
+    if (!email) {
+      return [];
+    }
+
+    return [{
+      ...member,
+      email,
+      name: typeof member.name === "string" && member.name.trim() ? member.name.trim() : email,
+    }];
+  });
 }

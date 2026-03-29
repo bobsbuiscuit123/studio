@@ -41,6 +41,46 @@ export async function POST(
     );
   }
 
+  const [{ data: orgRow, error: orgError }, { data: profileRow, error: profileError }] =
+    await Promise.all([
+      admin
+        .from('orgs')
+        .select('id, subscription_product_id')
+        .eq('id', parsed.data)
+        .maybeSingle(),
+      admin
+        .from('profiles')
+        .select('subscribed_org_id')
+        .eq('id', userId)
+        .maybeSingle(),
+    ]);
+
+  if (orgError || profileError) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: orgError?.message || profileError?.message || 'Unable to verify billing state.',
+        source: 'network',
+      }),
+      { status: 500 }
+    );
+  }
+
+  if (
+    orgRow?.subscription_product_id ||
+    profileRow?.subscribed_org_id === parsed.data
+  ) {
+    return NextResponse.json(
+      err({
+        code: 'VALIDATION',
+        message:
+          'Transfer or cancel the active subscription before deleting this organization.',
+        source: 'app',
+      }),
+      { status: 409 }
+    );
+  }
+
   const { error: deleteError } = await admin.from('orgs').delete().eq('id', parsed.data);
   if (deleteError) {
     return NextResponse.json(

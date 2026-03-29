@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const joinCode = parsed.data.joinCode.toUpperCase();
     const { data: orgRow } = await admin
       .from('orgs')
-      .select('id, member_cap')
+      .select('id')
       .eq('join_code', joinCode)
       .maybeSingle();
     if (!orgRow?.id) {
@@ -71,19 +71,6 @@ export async function POST(request: Request) {
         { status: 404, headers: getRateLimitHeaders(limiter) }
       );
     }
-
-    const maxUserLimit = Number(orgRow.member_cap ?? 0);
-    const { count } = await admin
-      .from('memberships')
-      .select('user_id', { count: 'exact', head: true })
-      .eq('org_id', orgRow.id);
-    if (maxUserLimit > 0 && (count ?? 0) >= maxUserLimit) {
-      return NextResponse.json(
-        err({ code: 'ORG_FULL', message: 'Organization is at capacity.', source: 'app' }),
-        { status: 409, headers: getRateLimitHeaders(limiter) }
-      );
-    }
-
     const { error: insertError } = await admin
       .from('memberships')
       .insert({ org_id: orgRow.id, user_id: userId, role: 'member' });

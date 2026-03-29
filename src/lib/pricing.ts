@@ -1,124 +1,189 @@
-export type UserTokenWallet = {
-  tokenBalance: number;
-  hasUsedTrial: boolean;
-};
+export const FREE_PLAN_ID = 'free' as const;
+export const REVENUECAT_OFFERING_ID = 'default' as const;
+export const REVENUECAT_ENTITLEMENT_ID = 'org_subscription' as const;
+export const ONE_TIME_FREE_TRIAL_TOKENS = 30;
 
-export type OrgTokenEstimate = {
-  memberCap: number;
-  dailyAiLimitPerUser: number;
-  estimatedMonthlyTokens: number;
-  estimatedDailyTokens: number;
-  trialTokens: number;
-  daysCovered: number;
-};
+export const PAID_PRODUCT_IDS = [
+  'starter_org',
+  'basic_org',
+  'growth_org',
+  'pro_org',
+  'elite_org',
+] as const;
 
-export type TokenHealth = 'healthy' | 'low' | 'urgent' | 'depleted';
-export type AiAvailability = 'available' | 'limited' | 'paused';
+export type PaidPlanId = (typeof PAID_PRODUCT_IDS)[number];
+export type PlanId = typeof FREE_PLAN_ID | PaidPlanId;
 
-export type TokenPackage = {
-  productId: string;
-  tokens: number;
+export type SubscriptionPlan = {
+  id: PlanId;
+  name: string;
+  description: string;
   priceLabel: string;
-  displayName: string;
-  displayLabel: string;
+  monthlyTokenLimit: number;
+  packageId: string | null;
+  isFree: boolean;
+  highlightedMessage?: string;
 };
 
-export const normalizeTokenProductId = (productId?: string | null) => {
-  if (!productId) return '';
-  return productId.trim().toLowerCase().replace('com.caspo.', '').replace(/\./g, '_');
+export type PaidSubscriptionPlan = SubscriptionPlan & {
+  id: PaidPlanId;
+  packageId: string;
+  isFree: false;
 };
 
-export const TOKEN_VALUE_ANCHOR = 0.0011;
-export const TRIAL_TOKENS = 30;
+export type UsageEstimate = {
+  members: number;
+  requestsPerMemberPerDay: number;
+  estimatedDailyTokens: number;
+  estimatedMonthlyTokens: number;
+};
 
-export const TOKEN_PACKAGES: TokenPackage[] = [
+export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
-    productId: 'tokens_basic',
-    tokens: 2200,
-    priceLabel: '$2.99',
-    displayName: 'Basic',
-    displayLabel: '2,200 tokens',
+    id: FREE_PLAN_ID,
+    name: 'Free',
+    description: 'Includes a one-time 30 token trial for your first organization.',
+    priceLabel: '$0/month',
+    monthlyTokenLimit: 0,
+    packageId: null,
+    isFree: true,
+    highlightedMessage: 'No AI usage available on free plan after the first period.',
   },
   {
-    productId: 'tokens_growth',
-    tokens: 6000,
-    priceLabel: '$6.99',
-    displayName: 'Growth',
-    displayLabel: '6,000 tokens',
+    id: 'starter_org',
+    name: 'Starter',
+    description: 'Monthly subscription for small organizations.',
+    priceLabel: '$2.99/month',
+    monthlyTokenLimit: 2_200,
+    packageId: 'starter',
+    isFree: false,
   },
   {
-    productId: 'tokens_pro',
-    tokens: 12500,
-    priceLabel: '$12.99',
-    displayName: 'Pro',
-    displayLabel: '12,500 tokens',
+    id: 'basic_org',
+    name: 'Basic',
+    description: 'Monthly subscription for growing teams.',
+    priceLabel: '$6.99/month',
+    monthlyTokenLimit: 6_000,
+    packageId: 'basic',
+    isFree: false,
   },
   {
-    productId: 'tokens_scale',
-    tokens: 28000,
-    priceLabel: '$24.99',
-    displayName: 'Scale',
-    displayLabel: '28,000 tokens',
+    id: 'growth_org',
+    name: 'Growth',
+    description: 'Monthly subscription for active organizations.',
+    priceLabel: '$12.99/month',
+    monthlyTokenLimit: 12_500,
+    packageId: 'growth',
+    isFree: false,
   },
   {
-    productId: 'tokens_enterprise',
-    tokens: 65000,
-    priceLabel: '$49.99',
-    displayName: 'Enterprise',
-    displayLabel: '65,000 tokens',
+    id: 'pro_org',
+    name: 'Pro',
+    description: 'Monthly subscription for advanced organizations.',
+    priceLabel: '$24.99/month',
+    monthlyTokenLimit: 28_000,
+    packageId: 'pro',
+    isFree: false,
+  },
+  {
+    id: 'elite_org',
+    name: 'Elite',
+    description: 'Monthly subscription for the largest organizations.',
+    priceLabel: '$49.99/month',
+    monthlyTokenLimit: 65_000,
+    packageId: 'elite',
+    isFree: false,
   },
 ];
 
-export const calculateMonthlyTokenEstimate = (memberCap: number, dailyAiLimitPerUser: number) =>
-  Math.max(0, memberCap) * Math.max(0, dailyAiLimitPerUser) * 30;
+const PLAN_BY_ID = new Map<PlanId, SubscriptionPlan>(
+  SUBSCRIPTION_PLANS.map((plan) => [plan.id, plan])
+);
 
-export const calculateDailyTokenEstimate = (memberCap: number, dailyAiLimitPerUser: number) =>
-  Math.max(0, memberCap) * Math.max(0, dailyAiLimitPerUser);
+const PLAN_BY_PACKAGE_ID = new Map<string, SubscriptionPlan>(
+  SUBSCRIPTION_PLANS.filter((plan) => plan.packageId).map((plan) => [plan.packageId as string, plan])
+);
 
-export const calculateTrialDaysCovered = (
-  memberCap: number,
-  dailyAiLimitPerUser: number,
-  trialTokens: number = TRIAL_TOKENS
-) => {
-  const dailyUsage = calculateDailyTokenEstimate(memberCap, dailyAiLimitPerUser);
-  if (dailyUsage <= 0) return 0;
-  return Math.floor(trialTokens / dailyUsage);
+export const normalizePlanId = (value?: string | null): string =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace('com.caspo.', '')
+    .replace(/\./g, '_');
+
+export const getPlanById = (planId?: string | null): SubscriptionPlan =>
+  PLAN_BY_ID.get((normalizePlanId(planId) || FREE_PLAN_ID) as PlanId) ?? PLAN_BY_ID.get(FREE_PLAN_ID)!;
+
+export const getPaidPlanByProductId = (productId?: string | null): PaidSubscriptionPlan | null => {
+  const normalized = normalizePlanId(productId);
+  if (!normalized || normalized === FREE_PLAN_ID) {
+    return null;
+  }
+  const plan = PLAN_BY_ID.get(normalized as PlanId);
+  return plan && !plan.isFree ? (plan as PaidSubscriptionPlan) : null;
 };
 
-export const calculateEstimatedDaysRemaining = (
-  tokenBalance: number,
-  estimatedMonthlyTokens: number
-) => {
-  if (tokenBalance <= 0 || estimatedMonthlyTokens <= 0) return 0;
-  return Math.floor(tokenBalance / Math.ceil(estimatedMonthlyTokens / 30));
+export const getPaidPlanByPackageId = (packageId?: string | null): PaidSubscriptionPlan | null => {
+  const normalized = normalizePlanId(packageId);
+  return (PLAN_BY_PACKAGE_ID.get(normalized) as PaidSubscriptionPlan | undefined) ?? null;
 };
 
-export const getTokenHealth = (daysRemaining: number): TokenHealth => {
-  if (daysRemaining <= 0) return 'depleted';
-  if (daysRemaining <= 3) return 'urgent';
-  if (daysRemaining <= 14) return 'low';
-  return 'healthy';
-};
+export const calculateDailyUsageEstimate = (
+  members: number,
+  requestsPerMemberPerDay: number
+): number => Math.max(0, Math.round(members)) * Math.max(0, Math.round(requestsPerMemberPerDay));
 
-export const getAiAvailability = (
-  tokenBalance: number,
-  estimatedMonthlyTokens: number
-): AiAvailability => {
-  if (tokenBalance <= 0) return 'paused';
-  const daysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
-  if (daysRemaining <= 3) return 'limited';
-  return 'available';
-};
+export const calculateMonthlyUsageEstimate = (
+  members: number,
+  requestsPerMemberPerDay: number
+): number => calculateDailyUsageEstimate(members, requestsPerMemberPerDay) * 30;
 
-export const calculateTokenUsageEstimate = (
-  memberCap: number,
-  dailyAiLimitPerUser: number,
-  trialTokens: number = TRIAL_TOKENS
-): OrgTokenEstimate => ({
-  memberCap,
-  dailyAiLimitPerUser,
-  estimatedMonthlyTokens: calculateMonthlyTokenEstimate(memberCap, dailyAiLimitPerUser),
-  estimatedDailyTokens: calculateDailyTokenEstimate(memberCap, dailyAiLimitPerUser),
-  trialTokens,
-  daysCovered: calculateTrialDaysCovered(memberCap, dailyAiLimitPerUser, trialTokens),
+export const calculateUsageEstimate = (
+  members: number,
+  requestsPerMemberPerDay: number
+): UsageEstimate => ({
+  members: Math.max(0, Math.round(members)),
+  requestsPerMemberPerDay: Math.max(0, Math.round(requestsPerMemberPerDay)),
+  estimatedDailyTokens: calculateDailyUsageEstimate(members, requestsPerMemberPerDay),
+  estimatedMonthlyTokens: calculateMonthlyUsageEstimate(members, requestsPerMemberPerDay),
 });
+
+export const getEffectiveAvailableTokens = ({
+  monthlyTokenLimit,
+  bonusTokensThisPeriod,
+  tokensUsedThisPeriod,
+}: {
+  monthlyTokenLimit: number;
+  bonusTokensThisPeriod: number;
+  tokensUsedThisPeriod: number;
+}) =>
+  Math.max(
+    0,
+    Math.max(0, monthlyTokenLimit) +
+      Math.max(0, bonusTokensThisPeriod) -
+      Math.max(0, tokensUsedThisPeriod)
+  );
+
+export const planSupportsAi = ({
+  monthlyTokenLimit,
+  bonusTokensThisPeriod,
+  tokensUsedThisPeriod,
+}: {
+  monthlyTokenLimit: number;
+  bonusTokensThisPeriod: number;
+  tokensUsedThisPeriod: number;
+}) =>
+  getEffectiveAvailableTokens({
+    monthlyTokenLimit,
+    bonusTokensThisPeriod,
+    tokensUsedThisPeriod,
+  }) > 0;
+
+export const getPlanRecommendation = (estimatedMonthlyTokens: number): SubscriptionPlan => {
+  const positiveEstimate = Math.max(0, estimatedMonthlyTokens);
+  const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
+  return (
+    paidPlans.find((plan) => plan.monthlyTokenLimit >= positiveEstimate) ??
+    paidPlans[paidPlans.length - 1]
+  );
+};

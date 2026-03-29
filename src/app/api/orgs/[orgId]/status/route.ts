@@ -1,17 +1,16 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/supabase/server';
+
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
-import { getRequestDayKey } from '@/lib/day-key';
-import { isMissingColumnError, isMissingFunctionError, readBalance } from '@/lib/org-balance';
 import {
-  calculateDailyTokenEstimate,
-  calculateEstimatedDaysRemaining,
-  calculateMonthlyTokenEstimate,
-  getAiAvailability,
-  getTokenHealth,
-} from '@/lib/pricing';
+  buildEffectiveAvailability,
+  getPlanName,
+  isPaidSubscriptionStatus,
+  resolvePlanId,
+  type OrgSubscriptionStatus,
+} from '@/lib/org-subscription';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +19,7 @@ const noStoreHeaders = {
 };
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
   const { orgId } = await params;
@@ -43,12 +42,25 @@ export async function GET(
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership } = await admin
-    .from('memberships')
-    .select('role')
-    .eq('org_id', parsed.data)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const [{ data: membership, error: membershipError }, refreshResponse] = await Promise.all([
+    admin
+      .from('memberships')
+      .select('role')
+      .eq('org_id', parsed.data)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    admin.rpc('refresh_org_subscription_period', {
+      p_org_id: parsed.data,
+    }),
+  ]);
+
+  if (membershipError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: membershipError.message, source: 'network' }),
+      { status: 500, headers: noStoreHeaders }
+    );
+  }
+
   if (!membership) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Not a member.', source: 'app' }),
@@ -56,161 +68,137 @@ export async function GET(
     );
   }
 
-  const [
-    orgResponse,
-    { count },
-    { data: usage },
-    statsResponse,
-  ] = await Promise.all([
+  if (refreshResponse.error) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: refreshResponse.error.message, source: 'network' }),
+      { status: 500, headers: noStoreHeaders }
+    );
+  }
+
+  const [orgResponse, membershipCountResponse] = await Promise.all([
     admin
       .from('orgs')
-      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, credit_balance, created_at, updated_at')
+      .select(
+        'id, name, join_code, owner_id, subscription_product_id, subscription_status, monthly_token_limit, tokens_used_this_period, current_period_start, current_period_end, bonus_tokens_this_period, usage_estimate_members, usage_estimate_requests_per_member, usage_estimate_monthly_tokens, created_at, updated_at'
+      )
       .eq('id', parsed.data)
       .maybeSingle(),
     admin
       .from('memberships')
       .select('user_id', { count: 'exact', head: true })
       .eq('org_id', parsed.data),
-    admin
-      .from('org_usage_daily')
-      .select('request_count')
-      .eq('org_id', parsed.data)
-      .eq('user_id', userId)
-      .eq('usage_date', getRequestDayKey(request))
-      .maybeSingle(),
-    admin.rpc('get_org_token_stats', { p_org_id: parsed.data }),
   ]);
 
-  let org = orgResponse.data;
-  let orgError = orgResponse.error;
-  if (orgError && isMissingColumnError(orgError, 'credit_balance')) {
-    const modernWithoutCredit = await admin
-      .from('orgs')
-      .select('name, join_code, owner_id, member_cap, daily_ai_limit, token_balance, created_at, updated_at')
-      .eq('id', parsed.data)
-      .maybeSingle();
-
-    if (modernWithoutCredit.error) {
-      return NextResponse.json(
-        err({ code: 'NETWORK_HTTP_ERROR', message: modernWithoutCredit.error.message, source: 'network' }),
-        { status: 500, headers: noStoreHeaders }
-      );
-    }
-
-    org = modernWithoutCredit.data
-      ? {
-          ...modernWithoutCredit.data,
-          credit_balance: null,
-        }
-      : null;
-    orgError = null;
-  }
-
-  if (orgError && (
-    isMissingColumnError(orgError, 'token_balance') ||
-    isMissingColumnError(orgError, 'owner_id') ||
-    isMissingColumnError(orgError, 'member_cap') ||
-    isMissingColumnError(orgError, 'daily_ai_limit')
-  )) {
-    const legacyOrgResponse = await admin
-      .from('orgs')
-      .select('name, join_code, owner_user_id, member_limit, ai_daily_limit_per_user, credit_balance, created_at, updated_at')
-      .eq('id', parsed.data)
-      .maybeSingle();
-
-    if (legacyOrgResponse.error) {
-      return NextResponse.json(
-        err({ code: 'NETWORK_HTTP_ERROR', message: legacyOrgResponse.error.message, source: 'network' }),
-        { status: 500, headers: noStoreHeaders }
-      );
-    }
-
-    org = legacyOrgResponse.data
-      ? {
-          ...legacyOrgResponse.data,
-          owner_id: legacyOrgResponse.data.owner_user_id,
-          member_cap: legacyOrgResponse.data.member_limit,
-          daily_ai_limit: legacyOrgResponse.data.ai_daily_limit_per_user,
-          token_balance: legacyOrgResponse.data.credit_balance,
-          credit_balance: legacyOrgResponse.data.credit_balance,
-        }
-      : null;
-  } else if (orgError) {
+  if (orgResponse.error) {
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: orgError.message, source: 'network' }),
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgResponse.error.message, source: 'network' }),
       { status: 500, headers: noStoreHeaders }
     );
   }
 
-  const memberLimit = Number(org?.member_cap ?? 0);
-  const dailyAiLimitPerUser = Number(org?.daily_ai_limit ?? 0);
-  const estimatedMonthlyTokens = calculateMonthlyTokenEstimate(memberLimit, dailyAiLimitPerUser);
-  const estimatedDailyTokens = calculateDailyTokenEstimate(memberLimit, dailyAiLimitPerUser);
-  const isOwner = String(org?.owner_id ?? '') === userId || membership.role === 'owner';
-  const effectiveRole = isOwner ? 'owner' : membership.role;
-
-  const tokenBalance = readBalance(org).balance;
-  const estimatedDaysRemaining = calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens);
-  let recentTokenActivity: Array<{
-    id: string;
-    amount: number;
-    type: string;
-    description: string;
-    metadata?: Record<string, unknown> | null;
-    created_at: string;
-  }> = [];
-
-  if (isOwner) {
-    const { data: activity, error: activityError } = await admin
-      .from('token_transactions')
-      .select('id, amount, type, description, metadata, created_at')
-      .eq('organization_id', parsed.data)
-      .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (!activityError) {
-      recentTokenActivity = activity ?? [];
-    }
+  const org = orgResponse.data;
+  if (!org) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
+      { status: 404, headers: noStoreHeaders }
+    );
   }
 
-  const aiAvailability = getAiAvailability(tokenBalance, estimatedMonthlyTokens);
-  const tokenHealth = getTokenHealth(calculateEstimatedDaysRemaining(tokenBalance, estimatedMonthlyTokens));
+  const ownerProfileResponse = await admin
+    .from('profiles')
+    .select('subscribed_org_id, active_subscription_product_id, subscription_status')
+    .eq('id', org.owner_id)
+    .maybeSingle();
 
-  const statsError = statsResponse?.error;
-  const statsDataRaw =
-    statsError && isMissingFunctionError(statsError, 'get_org_token_stats')
-      ? null
-      : statsResponse?.data;
-  const statsData = Array.isArray(statsDataRaw) ? statsDataRaw[0] : statsDataRaw;
-  const tokensPurchased = Math.max(0, Number(statsData?.tokens_purchased ?? 0));
-  const tokensUsed = Math.max(0, Math.min(Number(statsData?.tokens_used ?? 0), tokensPurchased));
+  if (ownerProfileResponse.error) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: ownerProfileResponse.error.message, source: 'network' }),
+      { status: 500, headers: noStoreHeaders }
+    );
+  }
 
-  return NextResponse.json({
-    ok: true,
-    data: {
-      orgId: parsed.data,
-      orgName: org?.name ?? 'Organization',
-      role: effectiveRole,
-      memberLimit,
-      dailyAiLimitPerUser,
-      activeUsers: count ?? 0,
-      requestsUsedToday: usage?.request_count ?? 0,
-      aiAvailability,
-      estimatedMonthlyTokens,
-      estimatedDailyTokens,
-      tokenHealth,
-      tokensPurchased,
-      tokensUsed,
-      createdAt: org?.created_at ?? null,
-      updatedAt: org?.updated_at ?? null,
-      ...(isOwner
-        ? {
-            joinCode: org?.join_code ?? null,
-            tokenBalance,
-            estimatedDaysRemaining,
-            recentTokenActivity,
-          }
-        : {}),
+  const refreshed =
+    Array.isArray(refreshResponse.data) && refreshResponse.data.length > 0
+      ? (refreshResponse.data[0] as {
+          subscription_product_id?: string | null;
+          subscription_status?: string | null;
+          monthly_token_limit?: number | null;
+          bonus_tokens_this_period?: number | null;
+          tokens_used_this_period?: number | null;
+          effective_available_tokens?: number | null;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+        })
+      : ((refreshResponse.data ?? {}) as {
+          subscription_product_id?: string | null;
+          subscription_status?: string | null;
+          monthly_token_limit?: number | null;
+          bonus_tokens_this_period?: number | null;
+          tokens_used_this_period?: number | null;
+          effective_available_tokens?: number | null;
+          current_period_start?: string | null;
+          current_period_end?: string | null;
+        });
+
+  const isOwner = String(org.owner_id ?? '') === userId || membership.role === 'owner';
+  const subscriptionProductId = (org.subscription_product_id ??
+    refreshed.subscription_product_id ??
+    null) as OrgSubscriptionStatus['subscriptionProductId'];
+  const planId = resolvePlanId(subscriptionProductId);
+  const monthlyTokenLimit = Number(
+    refreshed.monthly_token_limit ?? org.monthly_token_limit ?? 0
+  );
+  const bonusTokensThisPeriod = Number(
+    refreshed.bonus_tokens_this_period ?? org.bonus_tokens_this_period ?? 0
+  );
+  const tokensUsedThisPeriod = Number(
+    refreshed.tokens_used_this_period ?? org.tokens_used_this_period ?? 0
+  );
+  const effectiveAvailableTokens = buildEffectiveAvailability({
+    monthlyTokenLimit,
+    bonusTokensThisPeriod,
+    tokensUsedThisPeriod,
+  });
+  const payload: OrgSubscriptionStatus = {
+    orgId: org.id,
+    orgName: org.name ?? 'Organization',
+    role: isOwner ? 'owner' : membership.role,
+    joinCode: isOwner ? org.join_code ?? null : null,
+    activeUsers: membershipCountResponse.count ?? 0,
+    createdAt: org.created_at ?? null,
+    updatedAt: org.updated_at ?? null,
+    planId,
+    planName: getPlanName(planId),
+    subscriptionStatus: (subscriptionProductId
+      ? org.subscription_status ?? refreshed.subscription_status ?? 'active'
+      : 'free') as OrgSubscriptionStatus['subscriptionStatus'],
+    subscriptionProductId,
+    monthlyTokenLimit,
+    bonusTokensThisPeriod,
+    tokensUsedThisPeriod,
+    effectiveAvailableTokens,
+    currentPeriodStart: refreshed.current_period_start ?? org.current_period_start ?? null,
+    currentPeriodEnd: refreshed.current_period_end ?? org.current_period_end ?? null,
+    aiAvailable: effectiveAvailableTokens > 0,
+    canManageBilling: isOwner,
+    isSubscribedOrg: ownerProfileResponse.data?.subscribed_org_id === org.id,
+    ownerHasActiveSubscription:
+      Boolean(ownerProfileResponse.data?.active_subscription_product_id) &&
+      isPaidSubscriptionStatus(ownerProfileResponse.data?.subscription_status),
+    subscribedOrgId: isOwner ? ownerProfileResponse.data?.subscribed_org_id ?? null : null,
+    usageEstimateMembers: Number(org.usage_estimate_members ?? 0),
+    usageEstimateRequestsPerMember: Number(
+      org.usage_estimate_requests_per_member ?? 0
+    ),
+    usageEstimateMonthlyTokens: Number(org.usage_estimate_monthly_tokens ?? 0),
+    managementUrl: null,
+  };
+
+  return NextResponse.json(
+    {
+      ok: true,
+      data: payload,
     },
-  }, { headers: noStoreHeaders });
+    { headers: noStoreHeaders }
+  );
 }

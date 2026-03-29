@@ -20,8 +20,6 @@ import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
 import { isResult } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
-import { consumeOrgTokenCompat } from '@/lib/org-token-consumption';
-import { isMissingColumnError, isMissingFunctionError } from '@/lib/org-balance';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
@@ -144,58 +142,28 @@ export async function POST(request: Request) {
     const admin = createSupabaseAdmin();
 
     const usageDate = getRequestDayKey(request);
-    const { data: consumeData, error: consumeError } = await admin.rpc('consume_owner_token_for_org_ai', {
+    const { data: consumeData, error: consumeError } = await admin.rpc('consume_org_subscription_token', {
       p_org_id: orgId,
       p_user_id: userId,
       p_usage_date: usageDate,
     });
 
-    let consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+    const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
 
     if (consumeError) {
-      if (
-        isMissingFunctionError(consumeError, 'consume_owner_token_for_org_ai') ||
-        isMissingColumnError(consumeError, 'token_balance') ||
-        isMissingColumnError(consumeError, 'credit_balance') ||
-        isMissingColumnError(consumeError, 'owner_id')
-      ) {
-        consumeResult = await consumeOrgTokenCompat({
-          admin,
-          orgId,
-          userId,
-          usageDate,
-        });
-      } else {
-        return errorResponse(new Error(consumeError.message), 500);
-      }
-    }
-
-    const initialReason = String(consumeResult?.reason ?? '');
-
-    if (!consumeResult?.success && (initialReason === 'insufficient_tokens' || initialReason === '')) {
-      consumeResult = await consumeOrgTokenCompat({
-        admin,
-        orgId,
-        userId,
-        usageDate,
-      });
+      return errorResponse(new Error(consumeError.message), 500);
     }
 
     const reason = String(consumeResult?.reason ?? '');
-    const remainingTokens = Number(consumeResult?.remaining_tokens ?? 0);
-    const remainingToday = Number(consumeResult?.remaining_today ?? 0);
+    const remainingTokens = Number(consumeResult?.effective_available_tokens ?? 0);
 
     if (!consumeResult?.success) {
       if (reason === 'not_member') {
         return errorResponse(new Error('Not a member.'), 403);
       }
 
-      if (reason === 'daily_limit_reached') {
-        return errorResponse(new Error('Daily limit reached.'), 429);
-      }
-
       if (reason === 'insufficient_tokens' || reason === '') {
-        return errorResponse(new Error('AI temporarily unavailable. Your organization has run out of credits.'), 402);
+        return errorResponse(new Error('AI is unavailable for this organization right now.'), 402);
       }
 
       if (reason === 'org_not_found') {
@@ -205,7 +173,7 @@ export async function POST(request: Request) {
       return errorResponse(new Error('AI temporarily unavailable.'), 402);
     }
 
-    console.log('Token usage remaining tokens:', remainingTokens, 'remaining today:', remainingToday);
+    console.log('Subscription usage remaining tokens:', remainingTokens);
 
     const feature = parsed.data.feature;
     const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);

@@ -26,7 +26,7 @@ import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
 import { LegalDocumentDialog } from "@/components/legal-document-dialog";
-import { useOrgAiQuotaStatus } from "@/lib/data-hooks";
+import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { getSelectedOrgId } from "@/lib/selection";
 
 type ProfileDialogProps = {
@@ -144,12 +144,10 @@ export function ProfileDialog({
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [tokenBalance, setTokenBalance] = useState<number | null>(null);
-  const [tokenLoading, setTokenLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus } = useOrgAiQuotaStatus(selectedOrgId);
+  const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
 
   useEffect(() => {
     if (isOpen) {
@@ -160,48 +158,7 @@ export function ProfileDialog({
     }
   }, [user, isOpen]);
 
-  useEffect(() => {
-    if (!isOpen || !selectedOrgId || orgStatus?.role !== "owner") {
-      setTokenBalance(null);
-      setTokenLoading(false);
-      return;
-    }
-    let active = true;
-    const fetchBalance = async () => {
-      setTokenLoading(true);
-      const response = await safeFetchJson<{ ok: true; data: { tokenBalance: number } }>(
-        `/api/tokens/wallet?orgId=${encodeURIComponent(selectedOrgId)}`,
-        { method: "GET" }
-      );
-      if (!active) return;
-      if (response.ok) {
-        setTokenBalance(response.data.data.tokenBalance);
-      } else {
-        setTokenBalance(null);
-      }
-      setTokenLoading(false);
-    };
-    void fetchBalance();
-    return () => {
-      active = false;
-    };
-  }, [isOpen, orgStatus?.role, selectedOrgId]);
-
-  useEffect(() => {
-    if (!isOpen || !selectedOrgId || orgStatus?.role !== "owner") {
-      return;
-    }
-    const nextBalance = Number(orgStatus?.tokenBalance ?? NaN);
-    if (Number.isFinite(nextBalance)) {
-      setTokenBalance(nextBalance);
-    }
-  }, [isOpen, orgStatus?.role, orgStatus?.tokenBalance, selectedOrgId]);
-
-  const tokensPurchased = Math.max(0, orgStatus?.tokensPurchased ?? 0);
-  const tokensUsed = Math.max(0, Math.min(orgStatus?.tokensUsed ?? 0, tokensPurchased));
-  const tokensLeft = Math.max(tokensPurchased - tokensUsed, 0);
-
-  const handleBuyMoreTokens = () => {
+  const handleManageBilling = () => {
     if (!selectedOrgId) return;
     onOpenChange(false);
     router.push(`/orgs/${selectedOrgId}/credits`);
@@ -395,55 +352,34 @@ export function ProfileDialog({
             {orgStatus?.role === "owner" && selectedOrgId ? (
               <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
                 <div className="flex items-center justify-between">
-                  <span>Tokens used / purchased</span>
+                  <span>Current plan</span>
                   <span className="font-semibold text-slate-900">
-                    {tokensUsed.toLocaleString()} / {tokensPurchased.toLocaleString()}
+                    {orgStatus.planName}
                   </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
-                  <span>Organization token balance</span>
-                  {tokenLoading ? (
-                    <span className="text-xs">Loading...</span>
-                  ) : (
-                    <span className="font-semibold text-slate-900">
-                      {tokenBalance !== null ? tokenBalance.toLocaleString() : "—"} tokens
-                    </span>
-                  )}
+                  <span>Used this period</span>
+                  <span className="font-semibold text-slate-900">
+                    {orgStatus.tokensUsedThisPeriod.toLocaleString()} tokens
+                  </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {tokensLeft.toLocaleString()} tokens available for this organization.
+                  {orgStatus.effectiveAvailableTokens.toLocaleString()} tokens remain in the current period.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {orgStatus?.estimatedDaysRemaining
-                    ? `Estimated ${Math.round(orgStatus.estimatedDaysRemaining)} days remaining at current usage.`
-                    : "Estimated days remaining will appear after usage stabilizes."}
+                  {orgStatus.currentPeriodEnd
+                    ? `Current period ends ${new Date(orgStatus.currentPeriodEnd).toLocaleDateString()}.`
+                    : "Current billing period is managed on the server."}
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-3 w-full rounded-2xl"
-                  onClick={handleBuyMoreTokens}
+                  onClick={handleManageBilling}
                 >
-                  Buy more tokens
+                  Manage organization billing
                 </Button>
               </div>
-            ) : null}
-            {false ? (
-            <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-              <div className="flex items-center justify-between">
-                <span>Organization token balance</span>
-                {tokenLoading ? (
-                  <span className="text-xs">Loading…</span>
-                ) : (
-                  <span className="font-semibold text-slate-900">
-                    {tokenBalance !== null ? tokenBalance.toLocaleString() : "—"} tokens
-                  </span>
-                )}
-              </div>
-              <p className="text-xs">
-                This balance is stored on the organization and updates after purchases or AI usage.
-              </p>
-            </div>
             ) : null}
             <div className="overflow-hidden rounded-xl border">
               <button

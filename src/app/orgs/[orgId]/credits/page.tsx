@@ -31,6 +31,7 @@ import {
 } from '@/lib/revenuecat-subscriptions';
 import {
   PAID_PRODUCT_IDS,
+  REVENUECAT_ENTITLEMENT_ID,
   getPaidPlanByProductId,
   getPlanById,
   getPlanRecommendation,
@@ -230,6 +231,27 @@ export default function OrgCreditsPage() {
     return nextSubscription;
   };
 
+  const showPlanChangeSubmittedToast = (options: {
+    selectedPlanName: string;
+    activeProductId: PaidPlanId | null;
+    hasActiveEntitlement: boolean;
+  }) => {
+    const currentPlanName = options.activeProductId ? getPlanById(options.activeProductId).name : null;
+
+    toast({
+      title:
+        options.activeProductId && options.activeProductId !== selectedPlanId
+          ? 'Plan change scheduled'
+          : 'Plan change submitted',
+      description:
+        options.activeProductId && options.activeProductId !== selectedPlanId
+          ? `${currentPlanName} remains active for now. Apple will apply ${options.selectedPlanName} according to its subscription rules.`
+          : options.hasActiveEntitlement
+            ? `${options.selectedPlanName} was purchased and is still syncing to the backend. Check again shortly.`
+            : `${options.selectedPlanName} was submitted to Apple. The updated subscription state may take a moment to appear in the app.`,
+    });
+  };
+
   const syncCurrentOrg = async (expectedPlanId?: PaidPlanId | null) => {
     let lastSubscribedOrgId: string | null = null;
     let lastStatus = status;
@@ -284,9 +306,13 @@ export default function OrgCreditsPage() {
       return;
     }
 
+    let purchaseAttempted = false;
     setSubmitting(true);
     try {
       let liveActiveProductId = activeProductId;
+      let purchaseSucceeded = false;
+      let postPurchaseActiveProductId: PaidPlanId | null = null;
+      let postPurchaseHasActiveEntitlement = false;
       if (purchaseAvailability.supported) {
         try {
           const customerInfo = await getCurrentRevenueCatCustomerInfo();
@@ -373,27 +399,61 @@ export default function OrgCreditsPage() {
           });
           return;
         }
-        await purchaseRevenueCatPlan(selectedPackage);
+        purchaseAttempted = true;
+        const outcome = await purchaseRevenueCatPlan(selectedPackage);
+        purchaseSucceeded = true;
+
+        const refreshedCustomerInfo = await getCurrentRevenueCatCustomerInfo().catch((error) => {
+          console.warn('Unable to refresh RevenueCat customer info after purchase', error);
+          return outcome.customerInfo;
+        });
+
+        postPurchaseActiveProductId = extractActiveProductIdFromCustomerInfo(refreshedCustomerInfo);
+        postPurchaseHasActiveEntitlement = Boolean(
+          refreshedCustomerInfo.entitlements.active?.[REVENUECAT_ENTITLEMENT_ID] ??
+            refreshedCustomerInfo.entitlements.all?.[REVENUECAT_ENTITLEMENT_ID]
+        );
       }
 
-      const syncResult = await syncCurrentOrg(selectedPlanId);
+      let syncResult;
+      try {
+        syncResult = await syncCurrentOrg(selectedPlanId);
+      } catch (error) {
+        if (purchaseSucceeded) {
+          showPlanChangeSubmittedToast({
+            selectedPlanName: selectedPlan.name,
+            activeProductId: postPurchaseActiveProductId,
+            hasActiveEntitlement: postPurchaseHasActiveEntitlement,
+          });
+          return;
+        }
+
+        throw error;
+      }
+
       const observedPlanId =
         syncResult.status?.subscriptionProductId ?? syncResult.subscription?.activeProductId ?? null;
       const orgIsLinked =
         syncResult.subscribedOrgId === orgId || Boolean(syncResult.status?.isSubscribedOrg);
 
       if (!orgIsLinked) {
+        if (purchaseSucceeded) {
+          showPlanChangeSubmittedToast({
+            selectedPlanName: selectedPlan.name,
+            activeProductId: postPurchaseActiveProductId ?? observedPlanId,
+            hasActiveEntitlement: postPurchaseHasActiveEntitlement,
+          });
+          return;
+        }
+
         throw new Error('The subscription is active, but it is not yet linked to this organization.');
       }
 
       if (observedPlanId !== selectedPlanId) {
-        const currentPlanName = getPlanById(observedPlanId).name;
-        toast({
-          title: 'Plan change pending',
-          description:
-            observedPlanId
-              ? `${currentPlanName} is still the active plan. Apple may apply ${selectedPlan.name} at the next renewal, or RevenueCat may still be syncing the change.`
-              : `${selectedPlan.name} has not synced to the backend yet. Use Restore purchases from Settings if it does not update shortly.`,
+        showPlanChangeSubmittedToast({
+          selectedPlanName: selectedPlan.name,
+          activeProductId: observedPlanId ?? postPurchaseActiveProductId,
+          hasActiveEntitlement: postPurchaseHasActiveEntitlement,
         });
         return;
       }
@@ -410,7 +470,7 @@ export default function OrgCreditsPage() {
         });
       } else {
         toast({
-          title: 'Unable to update subscription',
+          title: purchaseAttempted ? 'Purchase could not be completed' : 'Plan change unavailable',
           description: error instanceof Error ? error.message : 'Please try again.',
           variant: 'destructive',
         });

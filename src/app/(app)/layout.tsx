@@ -44,7 +44,9 @@ export default function AppLayout({
       return;
     }
 
-    void initializeRevenueCat();
+    void initializeRevenueCat().catch((error) => {
+      console.warn("RevenueCat initialization deferred until auth is ready.", error);
+    });
   }, []);
 
   return (

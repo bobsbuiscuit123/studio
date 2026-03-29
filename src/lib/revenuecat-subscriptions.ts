@@ -36,7 +36,7 @@ export type SubscriptionPurchaseOutcome = {
 };
 
 let configuredAppUserId: string | null = null;
-let configurePromise: Promise<void> | null = null;
+let configurePromise: Promise<string> | null = null;
 let offeringsPromise: Promise<PurchasesOfferings | null> | null = null;
 let cachedOfferings: PurchasesOfferings | null = null;
 
@@ -78,37 +78,59 @@ const getAuthenticatedUserId = async () => {
   return user.id;
 };
 
-export const initializeRevenueCat = async () => {
+const getRevenueCatOriginalAppUserId = (customerInfo: CustomerInfo) =>
+  (
+    (customerInfo as CustomerInfo & { originalAppUserId?: string | null }).originalAppUserId ??
+    (customerInfo as CustomerInfo & { originalAppUserID?: string | null }).originalAppUserID ??
+    null
+  );
+
+const logRevenueCatCustomerIdentity = async (
+  context: string,
+  customerInfo?: CustomerInfo
+) => {
+  const resolvedCustomerInfo =
+    customerInfo ?? (await Purchases.getCustomerInfo()).customerInfo;
+  console.log(`RC_USER_ID [${context}]:`, getRevenueCatOriginalAppUserId(resolvedCustomerInfo));
+  return resolvedCustomerInfo;
+};
+
+export const initializeRevenueCat = async (): Promise<string> => {
   const availability = getSubscriptionPurchaseAvailability();
   if (!availability.supported) {
     throw new Error(availability.reason);
   }
 
+  const appUserID = await getAuthenticatedUserId();
+
   if (!configurePromise) {
     configurePromise = (async () => {
       const apiKey = getRevenueCatAppleApiKey();
       await Purchases.setLogLevel({ level: LOG_LEVEL.WARN });
-      await Purchases.configure({ apiKey });
+      await Purchases.configure({ apiKey, appUserID });
+      configuredAppUserId = appUserID;
+      await logRevenueCatCustomerIdentity('configure');
+      return appUserID;
     })().catch((error) => {
       configurePromise = null;
+      configuredAppUserId = null;
       throw error;
     });
   }
 
-  return configurePromise;
-};
+  await configurePromise;
 
-const ensureRevenueCatConfigured = async () => {
-  await initializeRevenueCat();
-  const appUserID = await getAuthenticatedUserId();
   if (configuredAppUserId === appUserID) {
     return appUserID;
   }
 
   await Purchases.logIn({ appUserID });
   configuredAppUserId = appUserID;
+  await logRevenueCatCustomerIdentity('logIn');
   return appUserID;
 };
+
+const ensureRevenueCatConfigured = async () => initializeRevenueCat();
 
 const getDefaultOfferingPackages = (offerings: PurchasesOfferings | null) => {
   const allOfferings = offerings?.all ?? {};
@@ -170,12 +192,14 @@ export const loadRevenueCatPlanPackages = async (): Promise<RevenueCatPlanPackag
 export const getCurrentRevenueCatCustomerInfo = async (): Promise<CustomerInfo> => {
   await ensureRevenueCatConfigured();
   const { customerInfo } = await Purchases.getCustomerInfo();
+  console.log('RC_USER_ID [getCustomerInfo]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;
 };
 
 export const restoreRevenueCatPurchases = async (): Promise<CustomerInfo> => {
   await ensureRevenueCatConfigured();
   const { customerInfo } = await Purchases.restorePurchases();
+  console.log('RC_USER_ID [restorePurchases]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;
 };
 
@@ -231,6 +255,10 @@ export const purchaseRevenueCatPlan = async (
   try {
     await ensureRevenueCatConfigured();
     const result = await Purchases.purchasePackage({ aPackage: revenueCatPackage });
+    console.log(
+      'RC_USER_ID [purchasePackage]:',
+      getRevenueCatOriginalAppUserId(result.customerInfo)
+    );
     const productId = getPaidPlanByProductId(result.productIdentifier)?.id;
     if (!productId) {
       throw new Error('RevenueCat returned an unsupported subscription product.');

@@ -99,14 +99,6 @@ type CompletedOrgState = {
   planName: string;
 };
 
-type PurchaseDebugInfo = {
-  surface: 'org-create';
-  selectedPlanId: PlanId;
-  packageId: string | null;
-  availablePackages: string[];
-  currentActiveProductId: PaidPlanId | null;
-};
-
 const getCreationMode = (
   planId: PlanId,
   subscription: UserSubscriptionSummary | null
@@ -164,7 +156,6 @@ export default function OrgCreatePage() {
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [completedOrg, setCompletedOrg] = useState<CompletedOrgState | null>(null);
-  const [debugInfo, setDebugInfo] = useState<PurchaseDebugInfo | null>(null);
 
   const usageEstimate = useMemo(
     () => calculateUsageEstimate(estimatedMembers, requestsPerMemberPerDay),
@@ -432,13 +423,6 @@ export default function OrgCreatePage() {
 
         const { selectedPackage: packageForPlan, availableProductIds } =
           await resolveRevenueCatPackageForPlan(resolvedPlan.id as PaidPlanId);
-        setDebugInfo({
-          surface: 'org-create',
-          selectedPlanId: resolvedPlan.id,
-          packageId: packageForPlan?.product?.identifier ?? null,
-          availablePackages: availableProductIds,
-          currentActiveProductId: liveActiveProductId,
-        });
         console.log('SELECTED PLAN:', resolvedPlan.id);
         console.log('PACKAGE IDENTIFIER:', packageForPlan?.product?.identifier ?? null);
         console.log('AVAILABLE PACKAGES:', availableProductIds);
@@ -908,25 +892,6 @@ export default function OrgCreatePage() {
         </DialogContent>
       </Dialog>
 
-      {debugInfo ? (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: 'black',
-            color: 'lime',
-            padding: '10px',
-            fontSize: '12px',
-            zIndex: 9999,
-            maxHeight: '35vh',
-            overflow: 'auto',
-          }}
-        >
-          <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
-        </div>
-      ) : null}
     </div>
   );
 }

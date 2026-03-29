@@ -311,6 +311,65 @@ export const extractActiveProductIdFromCustomerInfo = (
   return fromSubscriptionSnapshots;
 };
 
+export const extractScheduledProductIdFromCustomerInfo = (
+  customerInfo: CustomerInfo
+): PaidPlanId | null => {
+  const activeProductId = extractActiveProductIdFromCustomerInfo(customerInfo);
+  const now = Date.now();
+
+  return (
+    Object.values(customerInfo.subscriptionsByProductIdentifier ?? {})
+      .map((subscription) => {
+        const planId = getPaidPlanByProductId(subscription.productIdentifier)?.id ?? null;
+        if (!planId || planId === activeProductId) {
+          return null;
+        }
+
+        return {
+          planId,
+          purchaseAt: parseRevenueCatDate(subscription.purchaseDate),
+        };
+      })
+      .filter(
+        (
+          snapshot
+        ): snapshot is {
+          planId: PaidPlanId;
+          purchaseAt: number | null;
+        } => Boolean(snapshot)
+      )
+      .filter((snapshot) => Number.isFinite(snapshot.purchaseAt) && (snapshot.purchaseAt ?? 0) > now)
+      .sort((left, right) => (left.purchaseAt ?? Number.POSITIVE_INFINITY) - (right.purchaseAt ?? Number.POSITIVE_INFINITY))[0]
+      ?.planId ?? null
+  );
+};
+
+export const extractCurrentPeriodEndFromCustomerInfo = (
+  customerInfo: CustomerInfo
+): string | null => {
+  const entitlement =
+    customerInfo.entitlements.active?.[REVENUECAT_ENTITLEMENT_ID] ??
+    customerInfo.entitlements.all?.[REVENUECAT_ENTITLEMENT_ID];
+
+  const entitlementExpiration = String(
+    (entitlement as { expirationDate?: string | null } | undefined)?.expirationDate ?? ''
+  ).trim();
+  if (entitlementExpiration) {
+    return entitlementExpiration;
+  }
+
+  const activeProductId = extractActiveProductIdFromCustomerInfo(customerInfo);
+  if (!activeProductId) {
+    return null;
+  }
+
+  const snapshot = Object.values(customerInfo.subscriptionsByProductIdentifier ?? {}).find(
+    (subscription) => getPaidPlanByProductId(subscription.productIdentifier)?.id === activeProductId
+  );
+
+  return String(snapshot?.expiresDate ?? '').trim() || null;
+};
+
 const purchaseWasCancelled = (error: unknown) => {
   if (!error || typeof error !== 'object') {
     return false;

@@ -27,7 +27,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LogOut, Home, Settings, ChevronDown } from "lucide-react";
-import { OrgAiQuotaBadge } from "@/components/org-ai-quota-badge";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "./icons";
@@ -92,9 +91,8 @@ export function AppHeader() {
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
   const appName = useDemo ? 'CASPO' : 'CASPO';
   const title = pageTitles[pathname] || appName;
-  const { role, canEditContent } = useCurrentUserRole();
+  const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const selectedOrgId = !useDemo ? getSelectedOrgId() : null;
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
@@ -198,7 +196,6 @@ export function AppHeader() {
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
   const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
-  const showQuotaBadge = Boolean(!useDemo && selectedOrgId && hasGroupContext && canEditContent);
   const mobileTitle = title;
 
   const loadTransferCandidates = async () => {
@@ -357,12 +354,6 @@ export function AppHeader() {
           ) : null}
         </div>
 
-        {showQuotaBadge ? (
-          <div className="shrink-0">
-            <OrgAiQuotaBadge compact />
-          </div>
-        ) : null}
-      
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 touch-manipulation overflow-hidden rounded-2xl active:scale-95">

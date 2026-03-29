@@ -20,6 +20,8 @@ import { useOrgSubscriptionStatus, notifyOrgSubscriptionChanged } from '@/lib/or
 import type { Result } from '@/lib/result';
 import {
   extractActiveProductIdFromCustomerInfo,
+  extractCurrentPeriodEndFromCustomerInfo,
+  extractScheduledProductIdFromCustomerInfo,
   getCurrentRevenueCatCustomerInfo,
   getRevenueCatManagementUrl,
   resolveRevenueCatPackageForPlan,
@@ -59,6 +61,63 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const getPaidPlanTierIndex = (planId: PaidPlanId | null) =>
   planId ? PAID_PRODUCT_IDS.indexOf(planId) : -1;
 
+type PersistedScheduledPlanChange = {
+  currentPlanId: PaidPlanId;
+  scheduledPlanId: PaidPlanId;
+  effectiveDate: string;
+};
+
+const getScheduledPlanStorageKey = (orgId: string) => `caspo:scheduled-plan-change:${orgId}`;
+
+const readPersistedScheduledPlanChange = (
+  orgId: string
+): PersistedScheduledPlanChange | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(getScheduledPlanStorageKey(orgId));
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as PersistedScheduledPlanChange;
+    if (
+      parsed &&
+      getPaidPlanByProductId(parsed.currentPlanId)?.id === parsed.currentPlanId &&
+      getPaidPlanByProductId(parsed.scheduledPlanId)?.id === parsed.scheduledPlanId &&
+      formatSubscriptionDate(parsed.effectiveDate)
+    ) {
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('Unable to parse persisted scheduled plan change', error);
+  }
+
+  window.localStorage.removeItem(getScheduledPlanStorageKey(orgId));
+  return null;
+};
+
+const writePersistedScheduledPlanChange = (
+  orgId: string,
+  value: PersistedScheduledPlanChange
+) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(getScheduledPlanStorageKey(orgId), JSON.stringify(value));
+};
+
+const clearPersistedScheduledPlanChange = (orgId: string) => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem(getScheduledPlanStorageKey(orgId));
+};
+
 const formatSubscriptionDate = (value?: string | null) => {
   if (!value) {
     return null;
@@ -88,6 +147,14 @@ export default function OrgCreditsPage() {
   const [liveCustomerActiveProductId, setLiveCustomerActiveProductId] = useState<PaidPlanId | null>(
     null
   );
+  const [liveCustomerScheduledProductId, setLiveCustomerScheduledProductId] = useState<PaidPlanId | null>(
+    null
+  );
+  const [liveCustomerCurrentPeriodEnd, setLiveCustomerCurrentPeriodEnd] = useState<string | null>(
+    null
+  );
+  const [persistedScheduledChange, setPersistedScheduledChange] =
+    useState<PersistedScheduledPlanChange | null>(null);
   const [planPackages, setPlanPackages] = useState<Record<string, RevenueCatPlanPackage>>({});
   const [selectedPlanId, setSelectedPlanId] = useState<PaidPlanId | null>(null);
   const [hasUserSelectedPlan, setHasUserSelectedPlan] = useState(false);
@@ -112,7 +179,7 @@ export default function OrgCreditsPage() {
 
     let active = true;
     const loadContext = async () => {
-      const [reconcileResult, packageList, rcManagementUrl, liveRevenueCatProductId] =
+      const [reconcileResult, packageList, rcManagementUrl, liveRevenueCatCustomerInfo] =
         await Promise.all([
           safeFetchJson<ReconcileResponse>('/api/orgs/subscription/reconcile', {
             method: 'POST',
@@ -124,12 +191,10 @@ export default function OrgCreditsPage() {
             ? getRevenueCatManagementUrl().catch(() => null)
             : Promise.resolve(null),
           purchaseAvailability.supported
-            ? getCurrentRevenueCatCustomerInfo()
-                .then((customerInfo) => extractActiveProductIdFromCustomerInfo(customerInfo))
-                .catch((error) => {
-                  console.warn('Failed to load live RevenueCat customer info for billing page', error);
-                  return null;
-                })
+            ? getCurrentRevenueCatCustomerInfo().catch((error) => {
+                console.warn('Failed to load live RevenueCat customer info for billing page', error);
+                return null;
+              })
             : Promise.resolve(null),
         ]);
 
@@ -139,7 +204,19 @@ export default function OrgCreditsPage() {
         setUserSubscription(reconcileResult.data.data ?? null);
       }
 
-      setLiveCustomerActiveProductId(liveRevenueCatProductId);
+      setLiveCustomerActiveProductId(
+        liveRevenueCatCustomerInfo ? extractActiveProductIdFromCustomerInfo(liveRevenueCatCustomerInfo) : null
+      );
+      setLiveCustomerScheduledProductId(
+        liveRevenueCatCustomerInfo
+          ? extractScheduledProductIdFromCustomerInfo(liveRevenueCatCustomerInfo)
+          : null
+      );
+      setLiveCustomerCurrentPeriodEnd(
+        liveRevenueCatCustomerInfo
+          ? extractCurrentPeriodEndFromCustomerInfo(liveRevenueCatCustomerInfo)
+          : null
+      );
       setPlanPackages(
         packageList.reduce<Record<string, RevenueCatPlanPackage>>((acc, item) => {
           acc[item.id] = item;
@@ -156,6 +233,15 @@ export default function OrgCreditsPage() {
       active = false;
     };
   }, [orgId, purchaseAvailability.supported, status?.canManageBilling]);
+
+  useEffect(() => {
+    if (!orgId) {
+      setPersistedScheduledChange(null);
+      return;
+    }
+
+    setPersistedScheduledChange(readPersistedScheduledPlanChange(orgId));
+  }, [orgId]);
 
   useEffect(() => {
     if (hasUserSelectedPlan) {
@@ -179,6 +265,64 @@ export default function OrgCreditsPage() {
     setHasUserSelectedPlan(false);
     setSelectedPlanId(null);
   }, [orgId]);
+
+  const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
+  const userSubscribedOrg = userSubscription?.subscribedOrgId ?? status?.subscribedOrgId ?? null;
+  const hasActiveSubscription =
+    Boolean(userSubscription?.activeProductId) ||
+    Boolean(status?.ownerHasActiveSubscription) ||
+    Boolean(activeProductId);
+  const scheduledProductId =
+    userSubscription?.scheduledProductId ??
+    liveCustomerScheduledProductId ??
+    (persistedScheduledChange?.currentPlanId === activeProductId
+      ? persistedScheduledChange?.scheduledPlanId
+      : null) ??
+    status?.scheduledProductId ??
+    null;
+  const scheduledEffectiveDate =
+    userSubscription?.currentPeriodEnd ??
+    liveCustomerCurrentPeriodEnd ??
+    (persistedScheduledChange?.currentPlanId === activeProductId
+      ? persistedScheduledChange?.effectiveDate
+      : null) ??
+    status?.currentPeriodEnd ??
+    null;
+  const formattedScheduledEffectiveDate = formatSubscriptionDate(scheduledEffectiveDate);
+  const isScheduledDowngrade = Boolean(
+    activeProductId &&
+      scheduledProductId &&
+      scheduledProductId !== activeProductId &&
+      getPaidPlanTierIndex(scheduledProductId) >= 0 &&
+      getPaidPlanTierIndex(activeProductId) >= 0 &&
+      getPaidPlanTierIndex(scheduledProductId) < getPaidPlanTierIndex(activeProductId)
+  );
+  const scheduledPlanName = scheduledProductId ? getPlanById(scheduledProductId).name : null;
+  const currentDisplayedPlanName = activeProductId
+    ? getPlanById(activeProductId).name
+    : status?.planName ?? 'Free';
+
+  useEffect(() => {
+    if (!orgId) {
+      return;
+    }
+
+    if (!persistedScheduledChange) {
+      clearPersistedScheduledPlanChange(orgId);
+      return;
+    }
+
+    const effectiveAt = Date.parse(persistedScheduledChange.effectiveDate);
+    const shouldClear =
+      !activeProductId ||
+      activeProductId === persistedScheduledChange.scheduledPlanId ||
+      (Number.isFinite(effectiveAt) && effectiveAt <= Date.now() && activeProductId !== persistedScheduledChange.currentPlanId);
+
+    if (shouldClear) {
+      clearPersistedScheduledPlanChange(orgId);
+      setPersistedScheduledChange(null);
+    }
+  }, [activeProductId, orgId, persistedScheduledChange]);
 
   if (!orgId) {
     return null;
@@ -206,29 +350,6 @@ export default function OrgCreditsPage() {
     );
   }
 
-  const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
-  const userSubscribedOrg = userSubscription?.subscribedOrgId ?? status?.subscribedOrgId ?? null;
-  const hasActiveSubscription =
-    Boolean(userSubscription?.activeProductId) ||
-    Boolean(status?.ownerHasActiveSubscription) ||
-    Boolean(activeProductId);
-  const scheduledProductId =
-    userSubscription?.scheduledProductId ?? status?.scheduledProductId ?? null;
-  const scheduledEffectiveDate =
-    userSubscription?.currentPeriodEnd ?? status?.currentPeriodEnd ?? null;
-  const formattedScheduledEffectiveDate = formatSubscriptionDate(scheduledEffectiveDate);
-  const isScheduledDowngrade = Boolean(
-    activeProductId &&
-      scheduledProductId &&
-      scheduledProductId !== activeProductId &&
-      getPaidPlanTierIndex(scheduledProductId) >= 0 &&
-      getPaidPlanTierIndex(activeProductId) >= 0 &&
-      getPaidPlanTierIndex(scheduledProductId) < getPaidPlanTierIndex(activeProductId)
-  );
-  const scheduledPlanName = scheduledProductId ? getPlanById(scheduledProductId).name : null;
-  const currentDisplayedPlanName = activeProductId
-    ? getPlanById(activeProductId).name
-    : status?.planName ?? 'Free';
   const purchaseDecision = resolvePaidPlanActionDecision({
     hasActiveSubscription,
     subscribedOrgId: userSubscribedOrg,
@@ -296,6 +417,31 @@ export default function OrgCreditsPage() {
             ? `${options.selectedPlanName} was purchased and is still syncing to the backend. Check again shortly.`
             : `${options.selectedPlanName} was submitted to Apple. The updated subscription state may take a moment to appear in the app.`,
     });
+  };
+
+  const maybePersistScheduledDowngrade = (options: {
+    currentPlanId: PaidPlanId | null;
+    scheduledPlanId: PaidPlanId | null;
+    effectiveDate: string | null;
+  }) => {
+    if (
+      !orgId ||
+      !options.currentPlanId ||
+      !options.scheduledPlanId ||
+      !options.effectiveDate ||
+      getPaidPlanTierIndex(options.scheduledPlanId) >= getPaidPlanTierIndex(options.currentPlanId)
+    ) {
+      return;
+    }
+
+    const value: PersistedScheduledPlanChange = {
+      currentPlanId: options.currentPlanId,
+      scheduledPlanId: options.scheduledPlanId,
+      effectiveDate: options.effectiveDate,
+    };
+
+    writePersistedScheduledPlanChange(orgId, value);
+    setPersistedScheduledChange(value);
   };
 
   const syncCurrentOrg = async (expectedPlanId?: PaidPlanId | null) => {
@@ -463,6 +609,11 @@ export default function OrgCreditsPage() {
         postPurchaseActiveProductId = extractActiveProductIdFromCustomerInfo(refreshedCustomerInfo);
         postPurchaseHasActiveEntitlement = Boolean(activeEntitlement);
         postPurchaseEffectiveDate = activeEntitlement?.expirationDate ?? null;
+        maybePersistScheduledDowngrade({
+          currentPlanId: postPurchaseActiveProductId,
+          scheduledPlanId: selectedPlanId,
+          effectiveDate: postPurchaseEffectiveDate,
+        });
       }
 
       let syncResult;
@@ -501,6 +652,15 @@ export default function OrgCreditsPage() {
               null,
             hasActiveEntitlement: postPurchaseHasActiveEntitlement,
           });
+          maybePersistScheduledDowngrade({
+            currentPlanId: postPurchaseActiveProductId ?? observedPlanId,
+            scheduledPlanId: selectedPlanId,
+            effectiveDate:
+              postPurchaseEffectiveDate ??
+              syncResult.subscription?.currentPeriodEnd ??
+              syncResult.status?.currentPeriodEnd ??
+              null,
+          });
           return;
         }
 
@@ -518,6 +678,15 @@ export default function OrgCreditsPage() {
             syncResult.status?.currentPeriodEnd ??
             null,
           hasActiveEntitlement: postPurchaseHasActiveEntitlement,
+        });
+        maybePersistScheduledDowngrade({
+          currentPlanId: observedPlanId ?? postPurchaseActiveProductId,
+          scheduledPlanId: selectedPlanId,
+          effectiveDate:
+            postPurchaseEffectiveDate ??
+            syncResult.subscription?.currentPeriodEnd ??
+            syncResult.status?.currentPeriodEnd ??
+            null,
         });
         return;
       }

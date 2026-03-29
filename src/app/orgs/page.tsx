@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CreditCard, Sparkles, Users } from 'lucide-react';
+import { CreditCard, Users } from 'lucide-react';
 
 import { Logo } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
@@ -188,10 +188,10 @@ export default function OrgsPage() {
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold">Your organizations</h2>
-            <p className="text-sm text-slate-600">
-              Open a workspace, check AI availability, or manage subscription settings if you own it.
-            </p>
-          </div>
+              <p className="text-sm text-slate-600">
+                Open a workspace, review the monthly allowance, or manage subscription settings if you own it.
+              </p>
+            </div>
 
           {loading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -241,38 +241,26 @@ export default function OrgsPage() {
                           <span className="font-semibold text-slate-900">{status?.planName ?? 'Free'}</span>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
-                          <span>Period remaining</span>
+                          <span>Monthly allowance</span>
                           <span className="font-semibold text-slate-900">
-                            {(status?.effectiveAvailableTokens ?? 0).toLocaleString()} tokens
+                            {(status?.monthlyTokenLimit ?? 0).toLocaleString()} tokens
                           </span>
                         </div>
                       </div>
 
-                      {isOwner ? (
-                        <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-4 py-3">
-                          <div className="flex items-center gap-2 font-medium text-emerald-900">
-                            <Sparkles className="h-4 w-4" />
-                            {status?.tokensUsedThisPeriod ?? 0} used this period
-                          </div>
-                          <p className="mt-1 text-xs text-emerald-800">
-                            {status?.monthlyTokenLimit ?? 0} monthly allowance
-                            {status?.bonusTokensThisPeriod
-                              ? ` + ${status.bonusTokensThisPeriod} one-time bonus`
-                              : ''}
+                      <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+                        {status?.aiAvailable
+                          ? 'AI is currently available for this organization.'
+                          : 'AI is currently paused for this organization until the next billing reset.'}
+                        {isOwner ? (
+                          <p className="mt-2">Detailed AI usage is only shown on the billing screen.</p>
+                        ) : null}
+                        {isOwner && status && status.ownerHasActiveSubscription && !status.isSubscribedOrg ? (
+                          <p className="mt-2">
+                            Your active subscription is currently assigned to another organization.
                           </p>
-                          {status && status.ownerHasActiveSubscription && !status.isSubscribedOrg ? (
-                            <p className="mt-2 text-xs text-emerald-800">
-                              Your active subscription is currently assigned to another organization.
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
-                          {status?.aiAvailable
-                            ? 'AI is currently available for this organization.'
-                            : 'AI is currently unavailable for this organization.'}
-                        </div>
-                      )}
+                        ) : null}
+                      </div>
                     </CardContent>
                     <CardFooter className="flex items-center gap-2">
                       <Button onClick={() => handleSelectOrg(org.id)} className="flex-1 rounded-2xl">

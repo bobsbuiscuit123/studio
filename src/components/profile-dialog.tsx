@@ -420,13 +420,13 @@ export function ProfileDialog({
                   </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
-                  <span>Used this period</span>
+                  <span>Monthly allowance</span>
                   <span className="font-semibold text-slate-900">
-                    {orgStatus.tokensUsedThisPeriod.toLocaleString()} tokens
+                    {orgStatus.monthlyTokenLimit.toLocaleString()} tokens
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {orgStatus.effectiveAvailableTokens.toLocaleString()} tokens remain in the current period.
+                  Detailed AI usage is only shown on the billing screen.
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {orgStatus.currentPeriodEnd

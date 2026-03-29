@@ -431,8 +431,8 @@ begin
 
   update public.orgs
   set subscription_status = case
-        when subscription_product_id is null then 'free'
-        else subscription_status
+        when public.orgs.subscription_product_id is null then 'free'
+        else public.orgs.subscription_status
       end,
       monthly_token_limit = next_limit,
       bonus_tokens_this_period = next_bonus,

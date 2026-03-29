@@ -17,16 +17,16 @@ const creationModes = [
 ] as const;
 
 const draftSchema = z.object({
-  draftId: z.string().uuid().optional(),
+  draftId: z.string().uuid().nullish(),
   name: z.string().min(3),
-  category: z.string().max(120).optional(),
-  description: z.string().max(500).optional(),
+  category: z.string().max(120).nullish(),
+  description: z.string().max(500).nullish(),
   usageEstimateMembers: z.number().int().min(0).max(100_000).optional(),
   usageEstimateRequestsPerMember: z.number().int().min(0).max(10_000).optional(),
   usageEstimateMonthlyTokens: z.number().int().min(0).max(10_000_000).optional(),
-  selectedPlanId: z.string().min(1).optional(),
-  creationMode: z.enum(creationModes).optional(),
-  idempotencyKey: z.string().max(120).optional(),
+  selectedPlanId: z.string().min(1).nullish(),
+  creationMode: z.enum(creationModes).nullish(),
+  idempotencyKey: z.string().max(120).nullish(),
 });
 
 export async function POST(request: Request) {

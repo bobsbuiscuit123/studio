@@ -208,7 +208,7 @@ export default function OrgCreatePage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        draftId,
+        ...(draftId ? { draftId } : {}),
         name: orgName.trim(),
         category: orgCategory.trim(),
         description: orgDescription.trim(),

@@ -55,6 +55,16 @@ export type CanonicalRevenueCatState = {
   managementUrl: string | null;
 };
 
+type KnownSubscriptionSnapshot = {
+  productId: PaidPlanId;
+  expiresDate: string | null;
+  purchaseDate: string | null;
+  originalPurchaseDate: string | null;
+  billingIssueDetectedAt: string | null;
+  gracePeriodExpiresAt: string | null;
+  unsubscribeDetectedAt: string | null;
+};
+
 const normalizeDate = (value?: string | null) => {
   if (!value) {
     return null;
@@ -127,14 +137,62 @@ export const fetchRevenueCatSubscriber = async (
   return (await response.json()) as RevenueCatSubscriberResponse;
 };
 
+export const logRevenueCatSubscriberDiagnostics = (
+  lookupUserId: string,
+  payload: RevenueCatSubscriberResponse | null,
+  context: string
+) => {
+  console.log('RC_LOOKUP_USER_ID:', lookupUserId);
+  console.log(`RC_SUBSCRIBER [${context}]:`, JSON.stringify(payload, null, 2));
+  console.log(
+    `ENTITLEMENTS [${context}]:`,
+    JSON.stringify(payload?.subscriber?.entitlements ?? null, null, 2)
+  );
+};
+
+const getKnownSubscriptionSnapshots = (
+  payload: RevenueCatSubscriberResponse | null
+): KnownSubscriptionSnapshot[] =>
+  Object.entries(payload?.subscriber?.subscriptions ?? {})
+    .map(([productId, subscription]) => {
+      const resolvedProductId = getPaidPlanByProductId(productId)?.id ?? null;
+      if (!resolvedProductId) {
+        return null;
+      }
+
+      return {
+        productId: resolvedProductId,
+        expiresDate: normalizeDate(subscription?.expires_date ?? null),
+        purchaseDate: normalizeDate(subscription?.purchase_date ?? null),
+        originalPurchaseDate: normalizeDate(subscription?.original_purchase_date ?? null),
+        billingIssueDetectedAt: normalizeDate(subscription?.billing_issues_detected_at ?? null),
+        gracePeriodExpiresAt: normalizeDate(subscription?.grace_period_expires_date ?? null),
+        unsubscribeDetectedAt: normalizeDate(subscription?.unsubscribe_detected_at ?? null),
+      } satisfies KnownSubscriptionSnapshot;
+    })
+    .filter((snapshot): snapshot is KnownSubscriptionSnapshot => Boolean(snapshot))
+    .sort((left, right) => {
+      const leftPriority =
+        Date.parse(left.gracePeriodExpiresAt ?? left.expiresDate ?? left.purchaseDate ?? left.originalPurchaseDate ?? '') ||
+        0;
+      const rightPriority =
+        Date.parse(
+          right.gracePeriodExpiresAt ?? right.expiresDate ?? right.purchaseDate ?? right.originalPurchaseDate ?? ''
+        ) || 0;
+      return rightPriority - leftPriority;
+    });
+
 export const deriveCanonicalRevenueCatState = (
   payload: RevenueCatSubscriberResponse | null
 ): CanonicalRevenueCatState => {
   const subscriber = payload?.subscriber;
   const entitlement = subscriber?.entitlements?.[REVENUECAT_ENTITLEMENT_ID];
   const entitlementProductId = getPaidPlanByProductId(entitlement?.product_identifier ?? '')?.id ?? null;
+  const knownSubscriptions = getKnownSubscriptionSnapshots(payload);
+  const fallbackSubscription = knownSubscriptions[0] ?? null;
+  const resolvedProductId = entitlementProductId ?? fallbackSubscription?.productId ?? null;
 
-  if (!entitlementProductId) {
+  if (!resolvedProductId) {
     return {
       activeProductId: null,
       subscriptionStatus: 'free',
@@ -147,7 +205,7 @@ export const deriveCanonicalRevenueCatState = (
     };
   }
 
-  const subscription = subscriber?.subscriptions?.[entitlementProductId] ?? null;
+  const subscription = subscriber?.subscriptions?.[resolvedProductId] ?? null;
   const billingIssueDetectedAt = normalizeDate(
     entitlement?.billing_issues_detected_at ?? subscription?.billing_issues_detected_at ?? null
   );
@@ -160,7 +218,9 @@ export const deriveCanonicalRevenueCatState = (
   );
   const now = Date.now();
   const expiresAtMs = currentPeriodEnd ? Date.parse(currentPeriodEnd) : NaN;
-  const unsubscribeDetectedAt = normalizeDate(subscription?.unsubscribe_detected_at ?? null);
+  const unsubscribeDetectedAt = normalizeDate(
+    subscription?.unsubscribe_detected_at ?? fallbackSubscription?.unsubscribeDetectedAt ?? null
+  );
 
   let subscriptionStatus: CanonicalRevenueCatState['subscriptionStatus'] = 'active';
   if (currentPeriodEnd && Number.isFinite(expiresAtMs) && expiresAtMs <= now) {
@@ -169,12 +229,10 @@ export const deriveCanonicalRevenueCatState = (
     subscriptionStatus = 'grace_period';
   } else if (billingIssueDetectedAt) {
     subscriptionStatus = 'billing_retry';
-  } else if (unsubscribeDetectedAt) {
-    subscriptionStatus = 'cancelled';
   }
 
   return {
-    activeProductId: entitlementProductId,
+    activeProductId: resolvedProductId,
     subscriptionStatus,
     currentPeriodStart,
     currentPeriodEnd,

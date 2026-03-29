@@ -5,11 +5,13 @@ import {
   collectRevenueCatCustomerCandidates,
   deriveCanonicalRevenueCatState,
   fetchRevenueCatSubscriber,
+  type CanonicalRevenueCatState,
   type RevenueCatWebhookEvent,
   validateRevenueCatWebhookAuthorization,
 } from '@/lib/revenuecat-server';
 import {
   claimProcessedWebhookAndSyncSubscription,
+  getUserSubscriptionSummary,
   resolveLocalUserIdFromRevenueCatCandidates,
 } from '@/lib/subscription-sync';
 
@@ -38,6 +40,14 @@ type RevenueCatWebhookPayload = {
   api_version?: string | null;
   event?: RevenueCatWebhookEvent | null;
 };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const toCanonicalPaidStatus = (
+  status?: string | null
+): CanonicalRevenueCatState['subscriptionStatus'] =>
+  status === 'grace_period' || status === 'billing_retry' || status === 'expired' || status === 'cancelled'
+    ? status
+    : 'active';
 
 export async function POST(request: Request) {
   try {
@@ -98,17 +108,50 @@ export async function POST(request: Request) {
     const userId = await resolveLocalUserIdFromRevenueCatCandidates(admin, candidates);
     console.log('User ID:', userId ?? '(not found)');
 
+    const previousSubscription = userId ? await getUserSubscriptionSummary(admin, userId) : null;
     let subscriberPayload = null;
-    for (const candidate of candidates) {
-      try {
-        subscriberPayload = await fetchRevenueCatSubscriber(candidate);
-      } catch (error) {
-        console.warn('Subscriber fetch failed:', candidate, error);
-        subscriberPayload = null;
+    let lookupUserId = candidates[0] ?? null;
+    let canonicalState = null;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      subscriberPayload = null;
+
+      for (const candidate of candidates) {
+        try {
+          lookupUserId = candidate;
+          subscriberPayload = await fetchRevenueCatSubscriber(candidate);
+        } catch (error) {
+          console.warn('Subscriber fetch failed:', candidate, error);
+          subscriberPayload = null;
+        }
+        if (subscriberPayload) {
+          break;
+        }
       }
-      if (subscriberPayload) {
+
+      if (lookupUserId) {
+        console.log('RC_LOOKUP_USER_ID:', lookupUserId);
+      }
+      console.log(`RC_SUBSCRIBER [webhook attempt ${attempt + 1}]:`, JSON.stringify(subscriberPayload, null, 2));
+      console.log(
+        `ENTITLEMENTS [webhook attempt ${attempt + 1}]:`,
+        JSON.stringify(subscriberPayload?.subscriber?.entitlements ?? null, null, 2)
+      );
+
+      canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
+      console.log('RC_CANONICAL_STATE:', canonicalState);
+
+      const shouldRetryEmptyPaidState =
+        canonicalState.activeProductId === null &&
+        canonicalState.subscriptionStatus === 'free' &&
+        Boolean(previousSubscription?.activeProductId) &&
+        attempt < 2;
+
+      if (!shouldRetryEmptyPaidState) {
         break;
       }
+
+      await sleep(400 * (attempt + 1));
     }
     console.log('Subscriber payload exists:', Boolean(subscriberPayload));
 
@@ -120,12 +163,51 @@ export async function POST(request: Request) {
       });
     }
 
-    const canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
+    const stabilizedCanonicalState =
+      canonicalState &&
+      canonicalState.activeProductId === null &&
+      canonicalState.subscriptionStatus === 'free' &&
+      previousSubscription?.activeProductId &&
+      previousSubscription.currentPeriodEnd &&
+      Date.parse(previousSubscription.currentPeriodEnd) > Date.now()
+        ? {
+            activeProductId: previousSubscription.activeProductId,
+            subscriptionStatus: toCanonicalPaidStatus(previousSubscription.subscriptionStatus),
+            currentPeriodStart: previousSubscription.currentPeriodStart,
+            currentPeriodEnd: previousSubscription.currentPeriodEnd,
+            willRenew: previousSubscription.willRenew,
+            billingIssueDetectedAt: null,
+            gracePeriodExpiresAt: null,
+            managementUrl: canonicalState.managementUrl,
+          }
+        : canonicalState;
+
+    if (
+      canonicalState &&
+      stabilizedCanonicalState &&
+      canonicalState.activeProductId !== stabilizedCanonicalState.activeProductId
+    ) {
+      console.warn('RC_CANONICAL_STATE_PRESERVED_PAID_STATE [webhook]:', {
+        previousSubscription,
+        canonicalState,
+        stabilizedCanonicalState,
+      });
+    }
+
     const result = await claimProcessedWebhookAndSyncSubscription({
       admin,
       eventId,
       userId,
-      canonicalState,
+      canonicalState: stabilizedCanonicalState ?? {
+        activeProductId: null,
+        subscriptionStatus: 'free',
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        willRenew: false,
+        billingIssueDetectedAt: null,
+        gracePeriodExpiresAt: null,
+        managementUrl: null,
+      },
     });
 
     return acknowledge({

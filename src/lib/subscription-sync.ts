@@ -5,6 +5,7 @@ import {
   collectRevenueCatCustomerCandidates,
   deriveCanonicalRevenueCatState,
   fetchRevenueCatSubscriber,
+  logRevenueCatSubscriberDiagnostics,
   type CanonicalRevenueCatState,
   type RevenueCatWebhookEvent,
 } from '@/lib/revenuecat-server';
@@ -35,6 +36,18 @@ const isSubscriptionAssignmentConflict = (error: unknown) => {
 
 const buildSubscriptionConflictError = () =>
   new Error('subscription_assignment_conflict');
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const toCanonicalPaidStatus = (
+  status: UserSubscriptionSummary['subscriptionStatus']
+): CanonicalRevenueCatState['subscriptionStatus'] => {
+  if (status === 'grace_period' || status === 'billing_retry' || status === 'expired' || status === 'cancelled') {
+    return status;
+  }
+
+  return 'active';
+};
 
 async function runSyncUserSubscriptionStateRpc(
   admin: SupabaseClient,
@@ -215,24 +228,90 @@ export const syncRevenueCatSubscriber = async ({
     };
   }
 
+  const previousSubscription = await getUserSubscriptionSummary(admin, userId);
   let subscriberPayload = null;
-  for (const candidate of candidates) {
-    subscriberPayload = await fetchRevenueCatSubscriber(candidate);
-    if (subscriberPayload) {
+  let lookupUserId = candidates[0] ?? appUserId ?? userId;
+  let canonicalState: CanonicalRevenueCatState | null = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    subscriberPayload = null;
+
+    for (const candidate of candidates) {
+      lookupUserId = candidate;
+      subscriberPayload = await fetchRevenueCatSubscriber(candidate);
+      if (subscriberPayload) {
+        break;
+      }
+    }
+
+    logRevenueCatSubscriberDiagnostics(lookupUserId, subscriberPayload, `sync attempt ${attempt + 1}`);
+    canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
+    console.log('RC_CANONICAL_STATE:', canonicalState);
+
+    const shouldRetryEmptyPaidState =
+      canonicalState.activeProductId === null &&
+      canonicalState.subscriptionStatus === 'free' &&
+      Boolean(previousSubscription.activeProductId) &&
+      attempt < 2;
+
+    if (!shouldRetryEmptyPaidState) {
       break;
     }
+
+    await sleep(400 * (attempt + 1));
   }
 
-  const canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
+  const stabilizedCanonicalState =
+    canonicalState &&
+    canonicalState.activeProductId === null &&
+    canonicalState.subscriptionStatus === 'free' &&
+    previousSubscription.activeProductId &&
+    previousSubscription.currentPeriodEnd &&
+    Date.parse(previousSubscription.currentPeriodEnd) > Date.now()
+        ? {
+          activeProductId: previousSubscription.activeProductId,
+          subscriptionStatus: toCanonicalPaidStatus(previousSubscription.subscriptionStatus),
+          currentPeriodStart: previousSubscription.currentPeriodStart,
+          currentPeriodEnd: previousSubscription.currentPeriodEnd,
+          willRenew: previousSubscription.willRenew,
+          billingIssueDetectedAt: null,
+          gracePeriodExpiresAt: null,
+          managementUrl: canonicalState.managementUrl,
+        }
+      : canonicalState;
+
+  if (
+    canonicalState &&
+    stabilizedCanonicalState &&
+    canonicalState.activeProductId !== stabilizedCanonicalState.activeProductId
+  ) {
+    console.warn('RC_CANONICAL_STATE_PRESERVED_PAID_STATE:', {
+      previousSubscription,
+      canonicalState,
+      stabilizedCanonicalState,
+    });
+  }
+
+  const finalCanonicalState = stabilizedCanonicalState ?? {
+    activeProductId: null,
+    subscriptionStatus: 'free',
+    currentPeriodStart: null,
+    currentPeriodEnd: null,
+    willRenew: false,
+    billingIssueDetectedAt: null,
+    gracePeriodExpiresAt: null,
+    managementUrl: null,
+  };
+
   const data = await runSyncUserSubscriptionStateRpc(admin, {
     p_user_id: userId,
-    p_active_product_id: canonicalState.activeProductId,
-    p_subscription_status: canonicalState.subscriptionStatus,
-    p_period_start: canonicalState.currentPeriodStart,
-    p_period_end: canonicalState.currentPeriodEnd,
-    p_will_renew: canonicalState.willRenew,
-    p_billing_issue_detected_at: canonicalState.billingIssueDetectedAt,
-    p_grace_period_expires_at: canonicalState.gracePeriodExpiresAt,
+    p_active_product_id: finalCanonicalState.activeProductId,
+    p_subscription_status: finalCanonicalState.subscriptionStatus,
+    p_period_start: finalCanonicalState.currentPeriodStart,
+    p_period_end: finalCanonicalState.currentPeriodEnd,
+    p_will_renew: finalCanonicalState.willRenew,
+    p_billing_issue_detected_at: finalCanonicalState.billingIssueDetectedAt,
+    p_grace_period_expires_at: finalCanonicalState.gracePeriodExpiresAt,
     p_target_org_id: targetOrgId,
   });
 
@@ -243,7 +322,7 @@ export const syncRevenueCatSubscriber = async ({
 
   return {
     userId,
-    canonicalState,
+    canonicalState: finalCanonicalState,
     subscriberPayloadFound: Boolean(subscriberPayload),
     subscribedOrgId: syncRow?.subscribed_org_id ?? null,
   };

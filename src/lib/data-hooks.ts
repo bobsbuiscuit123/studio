@@ -33,6 +33,12 @@ type ClubData = {
     mindmap: MindMapData;
 };
 
+type MemberProfileRow = {
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const isDemoRoute = () =>
   typeof window !== 'undefined' &&
@@ -157,9 +163,18 @@ const collectDeletedIds = (currentValue: unknown, nextValue: unknown) => {
     .filter((id): id is string => Boolean(id) && !nextIds.has(id));
 };
 
-const dispatchGroupStateSync = () => {
+type GroupStateSyncDetail = {
+  orgId: string;
+  groupId: string;
+};
+
+const dispatchGroupStateSync = (orgId: string, groupId: string) => {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('group-state-sync'));
+  window.dispatchEvent(
+    new CustomEvent<GroupStateSyncDetail>('group-state-sync', {
+      detail: { orgId, groupId },
+    })
+  );
 };
 
 type GroupStateResponse = { ok: true; data: ClubData };
@@ -178,12 +193,8 @@ async function fetchGroupStateFromServer(orgId: string, groupId: string) {
   return normalizeClubData(response.data.data);
 }
 
-async function loadGroupState(orgId: string, groupId: string) {
+async function requestGroupState(orgId: string, groupId: string) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  const cached = groupStateCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
   const pending = groupStateRequestCache.get(cacheKey);
   if (pending) {
     return pending;
@@ -203,11 +214,18 @@ async function loadGroupState(orgId: string, groupId: string) {
   }
 }
 
-async function fetchFreshGroupState(orgId: string, groupId: string) {
+async function loadGroupState(orgId: string, groupId: string) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  const normalized = await fetchGroupStateFromServer(orgId, groupId);
-  groupStateCache.set(cacheKey, normalized);
-  return normalized;
+  const cached = groupStateCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  return requestGroupState(orgId, groupId);
+}
+
+async function fetchFreshGroupState(orgId: string, groupId: string) {
+  return requestGroupState(orgId, groupId);
 }
 
 function useClubDataStore() {
@@ -357,7 +375,27 @@ function useClubDataStore() {
         const handleVisibilityChange = () => {
             void refreshFromBackend();
         };
-        const handleGroupStateSync = () => {
+        const handleGroupStateSync = (event: Event) => {
+            const syncEvent = event as CustomEvent<GroupStateSyncDetail>;
+            const detail = syncEvent.detail;
+            if (detail?.orgId && detail?.groupId) {
+                const eventCacheKey = getGroupStateCacheKey(detail.orgId, detail.groupId);
+                const currentCacheKey = getGroupStateCacheKey(orgId, clubId);
+                if (eventCacheKey !== currentCacheKey) {
+                    return;
+                }
+                const cached = groupStateCache.get(currentCacheKey);
+                if (cached) {
+                    setError(null);
+                    setData(prev => {
+                        if (prev && stableSerialize(prev) === stableSerialize(cached)) {
+                            return prev;
+                        }
+                        return cached;
+                    });
+                    return;
+                }
+            }
             void refreshFromBackend();
         };
 
@@ -503,7 +541,7 @@ function useClubDataStore() {
             });
             groupStateCache.set(getGroupStateCacheKey(orgId, clubId), confirmedData);
             setError(null);
-            dispatchGroupStateSync();
+            dispatchGroupStateSync(orgId, clubId);
             return true;
         },
         [clubId, data, demoCtx, orgId, supabase, useDemo]
@@ -666,8 +704,9 @@ export function useMembers() {
         if (profilesError) {
           console.error(`Error loading member profiles for ${clubId}`, profilesError);
         } else if (profiles) {
+          const profileRows = profiles as MemberProfileRow[];
           const profileByEmail = new Map(
-            profiles
+            profileRows
               .filter(profile => profile.email)
               .map(profile => [profile.email as string, profile])
           );

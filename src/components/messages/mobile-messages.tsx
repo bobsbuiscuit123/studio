@@ -110,7 +110,7 @@ function useLiveGroupStateMessages({
           table: "group_state",
           filter: `group_id=eq.${groupId}`,
         }, scheduleRefresh)
-        .subscribe((status) => {
+        .subscribe((status: "SUBSCRIBED" | "TIMED_OUT" | "CLOSED" | "CHANNEL_ERROR") => {
           if (status === "CHANNEL_ERROR") {
             console.error("Realtime message sync channel failed", { orgId, groupId });
           }

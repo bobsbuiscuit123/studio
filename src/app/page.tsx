@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -361,7 +362,8 @@ export default function HomePage() {
       }
     };
     initAuth();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event: AuthChangeEvent, session: Session | null) => {
       if (!session) {
         clearUser();
         return;
@@ -373,7 +375,8 @@ export default function HomePage() {
         email: sessionUser.email || '',
         avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
       });
-    });
+      }
+    );
     return () => {
       listener.subscription.unsubscribe();
     };

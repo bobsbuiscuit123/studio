@@ -53,6 +53,14 @@ type TransferResponse = {
   };
 };
 
+type PurchaseDebugInfo = {
+  surface: 'billing';
+  selectedPlanId: PaidPlanId | null;
+  packageId: string | null;
+  availablePackages: string[];
+  currentActiveProductId: PaidPlanId | null;
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function OrgCreditsPage() {
@@ -69,6 +77,7 @@ export default function OrgCreditsPage() {
   const [managementUrl, setManagementUrl] = useState<string | null>(null);
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [debugInfo, setDebugInfo] = useState<PurchaseDebugInfo | null>(null);
 
   const recommendedPlan = useMemo(
     () => getPlanRecommendation(status?.usageEstimateMonthlyTokens ?? 0),
@@ -322,6 +331,13 @@ export default function OrgCreditsPage() {
         const { selectedPackage, availableProductIds } = await resolveRevenueCatPackageForPlan(
           selectedPlanId
         );
+        setDebugInfo({
+          surface: 'billing',
+          selectedPlanId,
+          packageId: selectedPackage?.product?.identifier ?? null,
+          availablePackages: availableProductIds,
+          currentActiveProductId: liveActiveProductId,
+        });
         console.log('SELECTED PLAN:', selectedPlanId);
         console.log('PACKAGE IDENTIFIER:', selectedPackage?.product?.identifier ?? null);
         console.log('AVAILABLE PACKAGES:', availableProductIds);
@@ -598,6 +614,26 @@ export default function OrgCreditsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {debugInfo ? (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            background: 'black',
+            color: 'lime',
+            padding: '10px',
+            fontSize: '12px',
+            zIndex: 9999,
+            maxHeight: '35vh',
+            overflow: 'auto',
+          }}
+        >
+          <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+        </div>
+      ) : null}
     </div>
   );
 }

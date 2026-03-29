@@ -3,6 +3,7 @@ import { cookies, headers } from 'next/headers';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestDayKey } from '@/lib/day-key';
+import { getEffectiveOrgAiAllowance, parseOptionalPositiveInt } from '@/lib/org-settings';
 import { err } from '@/lib/result';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 
@@ -56,6 +57,66 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdmin();
+  const refreshResponse = await admin.rpc('refresh_org_subscription_period', {
+    p_org_id: orgId,
+  });
+  if (refreshResponse.error) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: refreshResponse.error.message,
+        source: 'network',
+      }),
+      { status: 500 }
+    );
+  }
+
+  const { data: orgRow, error: orgError } = await admin
+    .from('orgs')
+    .select('*')
+    .eq('id', orgId)
+    .maybeSingle();
+
+  if (orgError) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: orgError.message,
+        source: 'network',
+      }),
+      { status: 500 }
+    );
+  }
+
+  if (!orgRow) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Organization not found.', source: 'app' }),
+      { status: 404 }
+    );
+  }
+
+  const aiTokenLimitOverride = parseOptionalPositiveInt(
+    (orgRow as Record<string, unknown>).ai_token_limit_override
+  );
+  if (aiTokenLimitOverride) {
+    const effectiveAllowance = getEffectiveOrgAiAllowance({
+      monthlyTokenLimit: Number(orgRow.monthly_token_limit ?? 0),
+      bonusTokensThisPeriod: Number(orgRow.bonus_tokens_this_period ?? 0),
+      aiTokenLimitOverride,
+    });
+    const usedThisPeriod = Number(orgRow.tokens_used_this_period ?? 0);
+    if (usedThisPeriod >= effectiveAllowance) {
+      return NextResponse.json(
+        err({
+          code: 'AI_CREDITS_DEPLETED',
+          message: 'AI is unavailable for this organization right now.',
+          source: 'app',
+        }),
+        { status: 402 }
+      );
+    }
+  }
+
   const usageDate = getRequestDayKey(request);
   const { data: result, error: consumeError } = await admin.rpc('consume_org_subscription_token', {
     p_org_id: orgId,

@@ -78,6 +78,42 @@ alter table public.orgs
 alter table public.orgs
   add column if not exists usage_estimate_monthly_tokens integer not null default 0;
 
+alter table public.orgs
+  add column if not exists member_limit_override integer;
+
+alter table public.orgs
+  add column if not exists ai_token_limit_override integer;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.table_constraints
+    where constraint_schema = 'public'
+      and table_name = 'orgs'
+      and constraint_name = 'orgs_member_limit_override_check'
+  ) then
+    alter table public.orgs
+      add constraint orgs_member_limit_override_check
+      check (member_limit_override is null or member_limit_override >= 1);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.table_constraints
+    where constraint_schema = 'public'
+      and table_name = 'orgs'
+      and constraint_name = 'orgs_ai_token_limit_override_check'
+  ) then
+    alter table public.orgs
+      add constraint orgs_ai_token_limit_override_check
+      check (ai_token_limit_override is null or ai_token_limit_override >= 1);
+  end if;
+end $$;
+
 do $$
 begin
   if exists (

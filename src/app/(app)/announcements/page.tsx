@@ -213,12 +213,15 @@ function AnnouncementsPageInner() {
 
   useEffect(() => {
     if (!Array.isArray(safeAnnouncements) || safeAnnouncements.length === 0) return;
-    const normalizedAnnouncements = safeAnnouncements.map(normalizeAnnouncementForDisplay);
-    const changed = normalizedAnnouncements.some(
-      (announcement, index) => announcement.title !== safeAnnouncements[index]?.title
-    );
-    if (!changed) return;
-    setAnnouncements(normalizedAnnouncements as Announcement[]);
+    setAnnouncements(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      if (list.length === 0) return prev;
+      const normalizedAnnouncements = list.map(normalizeAnnouncementForDisplay);
+      const changed = normalizedAnnouncements.some(
+        (announcement, index) => announcement.title !== list[index]?.title
+      );
+      return changed ? (normalizedAnnouncements as Announcement[]) : prev;
+    });
   }, [safeAnnouncements, setAnnouncements]);
 
   useEffect(() => {

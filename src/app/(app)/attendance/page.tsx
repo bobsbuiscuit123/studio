@@ -23,7 +23,7 @@ const checkInFormSchema = z.object({
 });
 
 export default function AttendancePage() {
-  const { data: events, updateData: setEvents, loading: eventsLoading } = useEvents();
+  const { data: events, updateDataAsync: saveEvents, loading: eventsLoading } = useEvents();
   const { data: members, loading: membersLoading } = useMembers();
   const { user, loading: userLoading } = useCurrentUser();
   const { canEditContent } = useCurrentUserRole();
@@ -35,16 +35,25 @@ export default function AttendancePage() {
     defaultValues: { code: "" },
   });
 
-  const handleGenerateCode = (eventId: string) => {
+  const handleGenerateCode = async (eventId: string) => {
     const code = faker.string.alphanumeric(4).toUpperCase();
-    const updatedEvents = events.map(event =>
-      event.id === eventId ? { ...event, checkInCode: code } : event
+    const saved = await saveEvents(prevEvents =>
+      prevEvents.map(event =>
+        event.id === eventId ? { ...event, checkInCode: code } : event
+      )
     );
-    setEvents(updatedEvents);
+    if (!saved) {
+      toast({
+        title: "Could not generate code",
+        description: "The check-in code was not saved. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({ title: "Check-in code generated!", description: `The code for the event is ${code}.` });
   };
 
-  const handleCheckIn = (eventId: string, values: z.infer<typeof checkInFormSchema>) => {
+  const handleCheckIn = async (eventId: string, values: z.infer<typeof checkInFormSchema>) => {
     if (!user) return;
     const event = events.find(e => e.id === eventId);
     if (!event || !event.checkInCode) {
@@ -66,10 +75,19 @@ export default function AttendancePage() {
     // Note: Point allocation logic happens implicitly via useEffect on the Points page
     // when the 'events' data changes.
 
-    const updatedEvents = events.map(e =>
-      e.id === eventId ? { ...e, attendees: [...attendees, user.email] } : e
+    const saved = await saveEvents(prevEvents =>
+      prevEvents.map(e =>
+        e.id === eventId ? { ...e, attendees: [...attendees, user.email] } : e
+      )
     );
-    setEvents(updatedEvents);
+    if (!saved) {
+      toast({
+        title: "Check-in failed",
+        description: "Your attendance was not saved. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({ title: "Check-in Successful!", description: `You have been marked as attended for "${event.title}".` });
     form.reset();
   };

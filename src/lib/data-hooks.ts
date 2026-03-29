@@ -136,6 +136,32 @@ const normalizeClubData = (data: ClubData): ClubData => {
     return normalized;
 };
 
+type GroupStateDeletionMap = Partial<
+  Record<'announcements' | 'events' | 'galleryImages', string[]>
+>;
+
+const getRecordId = (value: unknown) => {
+  if (!value || typeof value !== 'object') return '';
+  const idValue = (value as { id?: unknown }).id;
+  return typeof idValue === 'string' || typeof idValue === 'number' ? String(idValue) : '';
+};
+
+const collectDeletedIds = (currentValue: unknown, nextValue: unknown) => {
+  if (!Array.isArray(currentValue) || !Array.isArray(nextValue)) {
+    return [];
+  }
+
+  const nextIds = new Set(nextValue.map(getRecordId).filter(Boolean));
+  return currentValue
+    .map(getRecordId)
+    .filter((id): id is string => Boolean(id) && !nextIds.has(id));
+};
+
+const dispatchGroupStateSync = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('group-state-sync'));
+};
+
 async function loadGroupState(
   supabase: ReturnType<typeof createSupabaseBrowserClient>,
   orgId: string,
@@ -341,18 +367,33 @@ function useClubDataStore() {
     }, [clubId, orgId]);
 
     const updateClubData = useCallback(
-        async (nextData: ClubData) => {
+        async (
+            nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData),
+            options?: {
+                deletedIds?: GroupStateDeletionMap;
+                optimisticData?: ClubData;
+            }
+        ) => {
             if (useDemo && demoCtx) {
-                demoCtx.updateClubData(nextData);
+                const resolvedData =
+                    typeof nextDataOrUpdater === 'function'
+                        ? nextDataOrUpdater(data ?? getDefaultClubData())
+                        : nextDataOrUpdater;
+                demoCtx.updateClubData(resolvedData);
                 return true;
             }
-            if (!clubId || !orgId) return false;
+            if (!clubId || !orgId || !supabase) return false;
             const currentData = data ?? getDefaultClubData();
-            if (stableSerialize(currentData) === stableSerialize(nextData)) {
+            const optimisticData =
+                options?.optimisticData ??
+                (typeof nextDataOrUpdater === 'function'
+                    ? nextDataOrUpdater(currentData)
+                    : nextDataOrUpdater);
+            if (stableSerialize(currentData) === stableSerialize(optimisticData)) {
                 return true;
             }
-            const violation = findPolicyViolation(nextData);
-            if (violation) {
+            const optimisticViolation = findPolicyViolation(optimisticData);
+            if (optimisticViolation) {
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(
                         new CustomEvent('policy-violation', {
@@ -362,24 +403,77 @@ function useClubDataStore() {
                 }
                 return false;
             }
-            setData(nextData);
-            groupStateCache.set(getGroupStateCacheKey(orgId, clubId), nextData);
+
+            setData(optimisticData);
+            groupStateCache.set(getGroupStateCacheKey(orgId, clubId), optimisticData);
+
+            let freshCurrentData = currentData;
+            try {
+                freshCurrentData = await fetchFreshGroupState(supabase, orgId, clubId);
+            } catch (error) {
+                console.error(`Error refreshing latest data for group ${clubId} before save`, error);
+            }
+
+            const nextData =
+                typeof nextDataOrUpdater === 'function'
+                    ? nextDataOrUpdater(freshCurrentData)
+                    : nextDataOrUpdater;
+            if (stableSerialize(freshCurrentData) === stableSerialize(nextData)) {
+                if (stableSerialize(optimisticData) !== stableSerialize(freshCurrentData)) {
+                    setData(freshCurrentData);
+                    groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
+                }
+                return true;
+            }
+
+            const violation = findPolicyViolation(nextData);
+            if (violation) {
+                setData(freshCurrentData);
+                groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                        new CustomEvent('policy-violation', {
+                            detail: { message: policyErrorMessage },
+                        })
+                    );
+                }
+                return false;
+            }
             const response = await safeFetchJson('/api/org-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ orgId, groupId: clubId, data: nextData }),
+                body: JSON.stringify({
+                    orgId,
+                    groupId: clubId,
+                    data: nextData,
+                    deletedIds: options?.deletedIds,
+                }),
                 timeoutMs: 10_000,
                 retry: { retries: 1 },
             });
             if (!response.ok) {
                 console.error(`Error saving data for group ${clubId}`, response.error);
-                setData(currentData);
-                groupStateCache.set(getGroupStateCacheKey(orgId, clubId), currentData);
+                setData(freshCurrentData);
+                groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
                 return false;
             }
+            let confirmedData = nextData;
+            try {
+                confirmedData = await fetchFreshGroupState(supabase, orgId, clubId);
+            } catch (error) {
+                console.error(`Error fetching confirmed data for group ${clubId}`, error);
+            }
+            setData(prev => {
+                if (prev && stableSerialize(prev) === stableSerialize(confirmedData)) {
+                    return prev;
+                }
+                return confirmedData;
+            });
+            groupStateCache.set(getGroupStateCacheKey(orgId, clubId), confirmedData);
+            dispatchGroupStateSync();
             return true;
         },
-        [clubId, data, demoCtx, orgId, useDemo]
+        [clubId, data, demoCtx, orgId, supabase, useDemo]
     );
 
     if (useDemo && demoCtx) {
@@ -407,7 +501,7 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
 
     const updateDataAsync = useCallback(
         async (newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
-            if (!clubId) return;
+            if (!clubId) return false;
             const base = data ?? getDefaultClubData();
             const valueToStore =
                 typeof newData === 'function'
@@ -417,7 +511,26 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                 return true;
             }
             const updatedFullData = { ...base, [key]: valueToStore };
-            return updateClubData(updatedFullData);
+            const deletedIds =
+                key === 'announcements' || key === 'events' || key === 'galleryImages'
+                    ? collectDeletedIds(base[key], valueToStore)
+                    : [];
+            return updateClubData(
+                freshBase => {
+                    const nextValue =
+                        typeof newData === 'function'
+                            ? (newData as (prevData: ClubData[K]) => ClubData[K])(freshBase[key])
+                            : valueToStore;
+                    return { ...freshBase, [key]: nextValue };
+                },
+                {
+                    optimisticData: updatedFullData,
+                    deletedIds:
+                        deletedIds.length > 0
+                            ? { [key]: deletedIds }
+                            : undefined,
+                }
+            );
         },
         [clubId, data, key, updateClubData]
     );
@@ -558,7 +671,16 @@ export function useMembers() {
       }
       setMembersData(valueToStore);
       const nextFullData = { ...(data ?? getDefaultClubData()), members: valueToStore };
-      void updateClubData(nextFullData);
+      void updateClubData(
+        freshBase => ({
+          ...freshBase,
+          members:
+            typeof newData === 'function'
+              ? (newData as (prevData: Member[]) => Member[])(Array.isArray(freshBase.members) ? freshBase.members : [])
+              : valueToStore,
+        }),
+        { optimisticData: nextFullData }
+      );
     },
     [data, updateClubData]
   );

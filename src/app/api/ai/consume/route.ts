@@ -18,6 +18,7 @@ import { resolveMetricValue } from '@/ai/flows/resolve-metric-value';
 import { resolveGraphRequest } from '@/ai/flows/resolve-graph-request';
 import { resolveMissedActivity } from '@/ai/flows/resolve-missed-activity';
 import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-limit';
+import { getEffectiveOrgAiAllowance, parseOptionalPositiveInt } from '@/lib/org-settings';
 import { isResult } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
 
@@ -140,6 +141,41 @@ export async function POST(request: Request) {
     }
 
     const admin = createSupabaseAdmin();
+
+    const refreshResponse = await admin.rpc('refresh_org_subscription_period', {
+      p_org_id: orgId,
+    });
+    if (refreshResponse.error) {
+      return errorResponse(new Error(refreshResponse.error.message), 500);
+    }
+
+    const { data: orgRow, error: orgError } = await admin
+      .from('orgs')
+      .select('*')
+      .eq('id', orgId)
+      .maybeSingle();
+
+    if (orgError) {
+      return errorResponse(new Error(orgError.message), 500);
+    }
+    if (!orgRow) {
+      return errorResponse(new Error('Organization not found.'), 404);
+    }
+
+    const aiTokenLimitOverride = parseOptionalPositiveInt(
+      (orgRow as Record<string, unknown>).ai_token_limit_override
+    );
+    if (aiTokenLimitOverride) {
+      const effectiveAllowance = getEffectiveOrgAiAllowance({
+        monthlyTokenLimit: Number(orgRow.monthly_token_limit ?? 0),
+        bonusTokensThisPeriod: Number(orgRow.bonus_tokens_this_period ?? 0),
+        aiTokenLimitOverride,
+      });
+      const usedThisPeriod = Number(orgRow.tokens_used_this_period ?? 0);
+      if (usedThisPeriod >= effectiveAllowance) {
+        return errorResponse(new Error('AI is unavailable for this organization right now.'), 402);
+      }
+    }
 
     const usageDate = getRequestDayKey(request);
     const { data: consumeData, error: consumeError } = await admin.rpc('consume_org_subscription_token', {

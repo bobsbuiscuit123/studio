@@ -48,6 +48,9 @@ import {
 const MAX_GALLERY_IMAGES = 20;
 const isNativeApp = Capacitor.isNativePlatform();
 
+const createGalleryImageId = (offset: number = 0) =>
+  Date.now() * 1000 + offset + Math.floor(Math.random() * 1000);
+
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
   images: z.array(z.custom<File>()).min(1, "At least one image is required."),
@@ -158,10 +161,9 @@ export default function GalleryPage() {
         }
 
         const newStatus = canEditContent ? 'approved' : 'pending';
-        const lastId = images.length > 0 ? Math.max(...images.map(i => i.id)) : 0;
 
         const newImages: GalleryImage[] = validImageSrcs.map((imgSrc, index) => ({
-            id: lastId + index + 1,
+            id: createGalleryImageId(index),
             src: imgSrc,
             alt: values.alt || "User uploaded image",
             author: user.name,
@@ -172,8 +174,7 @@ export default function GalleryPage() {
             read: !canEditContent,
         }));
         
-        const updatedImages = [...newImages, ...images].slice(0, MAX_GALLERY_IMAGES);
-        const saved = await setImagesAsync(updatedImages);
+        const saved = await setImagesAsync(prevImages => [...newImages, ...prevImages].slice(0, MAX_GALLERY_IMAGES));
         if (!saved) {
             toast({
                 title: "Upload Failed",
@@ -206,22 +207,23 @@ export default function GalleryPage() {
 
   const handleLike = (imageId: number) => {
     if (!user?.email) return;
-    const updatedImages = images.map((image) => {
-      if (image.id === imageId) {
-        const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
-        const newLikedState = !likedBy.includes(user.email);
-        const nextLikedBy = newLikedState
-          ? [...likedBy, user.email]
-          : likedBy.filter(email => email !== user.email);
-        return {
-          ...image,
-          likes: nextLikedBy.length,
-          likedBy: nextLikedBy,
-        };
-      }
-      return image;
-    });
-    void setImagesAsync(updatedImages).then(saved => {
+    void setImagesAsync(prevImages =>
+      prevImages.map((image) => {
+        if (image.id === imageId) {
+          const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
+          const newLikedState = !likedBy.includes(user.email);
+          const nextLikedBy = newLikedState
+            ? [...likedBy, user.email]
+            : likedBy.filter(email => email !== user.email);
+          return {
+            ...image,
+            likes: nextLikedBy.length,
+            likedBy: nextLikedBy,
+          };
+        }
+        return image;
+      })
+    ).then(saved => {
       if (!saved) {
         toast({
           title: "Like failed",
@@ -269,10 +271,10 @@ export default function GalleryPage() {
     link.click();
     document.body.removeChild(link);
   };
-
+  
   const handleDelete = async (imageId: number) => {
     const imageToDelete = images.find(img => img.id === imageId);
-    const saved = await setImagesAsync(images.filter(img => img.id !== imageId));
+    const saved = await setImagesAsync(prevImages => prevImages.filter(img => img.id !== imageId));
     if (!saved) {
       toast({
         title: "Delete failed",
@@ -291,12 +293,13 @@ export default function GalleryPage() {
   
   const handleApproval = async (imageId: number, newStatus: 'approved' | 'rejected') => {
     if (newStatus === 'approved') {
-      const updatedImages: GalleryImage[] = images.map(img =>
-        img.id === imageId
-          ? { ...img, status: 'approved' as const, read: false }
-          : img // Mark as unread for others
+      const saved = await setImagesAsync(prevImages =>
+        prevImages.map(img =>
+          img.id === imageId
+            ? { ...img, status: 'approved' as const, read: false }
+            : img
+        )
       );
-      const saved = await setImagesAsync(updatedImages);
       if (!saved) {
         toast({
           title: "Approval failed",

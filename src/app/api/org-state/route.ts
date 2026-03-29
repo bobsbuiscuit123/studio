@@ -152,11 +152,13 @@ const mergeGroupChats = (currentChats: unknown, nextChats: unknown) => {
 const mergeAnnouncements = (
   currentAnnouncements: unknown,
   nextAnnouncements: unknown,
+  deletedAnnouncementIds: Set<string>,
   actorEmail?: string | null
 ) => {
   const currentList = Array.isArray(currentAnnouncements) ? currentAnnouncements : [];
   const nextList = Array.isArray(nextAnnouncements) ? nextAnnouncements : [];
   const currentById = new Map<string, Record<string, any>>();
+  const nextById = new Map<string, Record<string, any>>();
   const normalizedActorEmail = actorEmail ? normalizeEmail(actorEmail) : '';
 
   currentList.forEach(item => {
@@ -168,16 +170,34 @@ const mergeAnnouncements = (
     currentById.set(announcementId, item as Record<string, any>);
   });
 
-  return nextList.map(item => {
-    if (!item || typeof item !== 'object') return item;
-    const nextAnnouncement = item as Record<string, any>;
-    const idValue = nextAnnouncement.id;
-    const announcementId =
-      typeof idValue === 'string' || typeof idValue === 'number' ? String(idValue) : '';
-    if (!announcementId) return item;
+  nextList.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const announcementId = getAnnouncementId(item as Record<string, unknown>);
+    if (!announcementId) return;
+    nextById.set(announcementId, item as Record<string, any>);
+  });
 
+  const orderedIds = [
+    ...nextList
+      .map(item => (item && typeof item === 'object' ? getAnnouncementId(item as Record<string, unknown>) : ''))
+      .filter(Boolean),
+    ...currentList
+      .map(item => (item && typeof item === 'object' ? getAnnouncementId(item as Record<string, unknown>) : ''))
+      .filter(Boolean),
+  ];
+
+  return Array.from(new Set(orderedIds)).flatMap(announcementId => {
     const currentAnnouncement = currentById.get(announcementId);
-    if (!currentAnnouncement) return item;
+    const nextAnnouncement = nextById.get(announcementId);
+    if (!nextAnnouncement) {
+      if (!currentAnnouncement || deletedAnnouncementIds.has(announcementId)) {
+        return [];
+      }
+      return [currentAnnouncement];
+    }
+    if (!currentAnnouncement) {
+      return [nextAnnouncement];
+    }
 
     const currentViewed = uniqueStrings(
       Array.isArray(currentAnnouncement.viewedBy) ? currentAnnouncement.viewedBy : []
@@ -191,18 +211,25 @@ const mergeAnnouncements = (
       mergedViewed.push(normalizedActorEmail);
     }
 
-    return {
+    return [{
+      ...currentAnnouncement,
       ...nextAnnouncement,
       viewedBy: mergedViewed,
       read: Boolean(nextAnnouncement.read) || Boolean(currentAnnouncement.read) || Boolean(normalizedActorEmail),
-    };
+    }];
   });
 };
 
-const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: string | null) => {
+const mergeEvents = (
+  currentEvents: unknown,
+  nextEvents: unknown,
+  deletedEventIds: Set<string>,
+  actorEmail?: string | null
+) => {
   const currentList = Array.isArray(currentEvents) ? currentEvents : [];
   const nextList = Array.isArray(nextEvents) ? nextEvents : [];
   const currentById = new Map<string, Record<string, any>>();
+  const nextById = new Map<string, Record<string, any>>();
   const normalizedActorEmail = actorEmail ? normalizeEmail(actorEmail) : '';
 
   currentList.forEach(event => {
@@ -212,14 +239,34 @@ const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: s
     currentById.set(eventId, event as Record<string, any>);
   });
 
-  return nextList.map(event => {
-    if (!event || typeof event !== 'object') return event;
-    const nextEvent = event as Record<string, any>;
-    const eventId = typeof nextEvent.id === 'string' ? nextEvent.id : '';
-    if (!eventId) return event;
+  nextList.forEach(event => {
+    if (!event || typeof event !== 'object') return;
+    const eventId = getEventId(event as Record<string, unknown>);
+    if (!eventId) return;
+    nextById.set(eventId, event as Record<string, any>);
+  });
 
+  const orderedIds = [
+    ...nextList
+      .map(event => (event && typeof event === 'object' ? getEventId(event as Record<string, unknown>) : ''))
+      .filter(Boolean),
+    ...currentList
+      .map(event => (event && typeof event === 'object' ? getEventId(event as Record<string, unknown>) : ''))
+      .filter(Boolean),
+  ];
+
+  return Array.from(new Set(orderedIds)).flatMap(eventId => {
     const currentEvent = currentById.get(eventId);
-    if (!currentEvent) return event;
+    const nextEvent = nextById.get(eventId);
+    if (!nextEvent) {
+      if (!currentEvent || deletedEventIds.has(eventId)) {
+        return [];
+      }
+      return [currentEvent];
+    }
+    if (!currentEvent) {
+      return [nextEvent];
+    }
 
     const currentViewed = uniqueStrings(Array.isArray(currentEvent.viewedBy) ? currentEvent.viewedBy : []);
     const nextViewed = uniqueStrings(Array.isArray(nextEvent.viewedBy) ? nextEvent.viewedBy : []);
@@ -266,7 +313,8 @@ const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: s
       mergedMaybe.push(normalizedActorEmail);
     }
 
-    return {
+    return [{
+      ...currentEvent,
       ...nextEvent,
       viewedBy: uniqueStrings([...currentViewed, ...nextViewed]),
       attendees: uniqueStrings([...currentAttendees, ...nextAttendees]),
@@ -275,7 +323,93 @@ const mergeEvents = (currentEvents: unknown, nextEvents: unknown, actorEmail?: s
         no: mergedNo,
         maybe: mergedMaybe,
       },
-    };
+      read: Boolean(nextEvent.read) || Boolean(currentEvent.read),
+      lastViewedAttendees:
+        typeof nextEvent.lastViewedAttendees === 'number'
+          ? nextEvent.lastViewedAttendees
+          : currentEvent.lastViewedAttendees,
+    }];
+  });
+};
+
+const getGalleryImageId = (item: Record<string, unknown>) => {
+  const value = item.id;
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+};
+
+const mergeGalleryImages = (
+  currentGalleryImages: unknown,
+  nextGalleryImages: unknown,
+  deletedGalleryImageIds: Set<string>,
+  actorEmail?: string | null
+) => {
+  const currentList = Array.isArray(currentGalleryImages) ? currentGalleryImages : [];
+  const nextList = Array.isArray(nextGalleryImages) ? nextGalleryImages : [];
+  const currentById = new Map<string, Record<string, any>>();
+  const nextById = new Map<string, Record<string, any>>();
+  const normalizedActorEmail = actorEmail ? normalizeEmail(actorEmail) : '';
+
+  currentList.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const imageId = getGalleryImageId(item as Record<string, unknown>);
+    if (!imageId) return;
+    currentById.set(imageId, item as Record<string, any>);
+  });
+
+  nextList.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const imageId = getGalleryImageId(item as Record<string, unknown>);
+    if (!imageId) return;
+    nextById.set(imageId, item as Record<string, any>);
+  });
+
+  const orderedIds = [
+    ...nextList
+      .map(item => (item && typeof item === 'object' ? getGalleryImageId(item as Record<string, unknown>) : ''))
+      .filter(Boolean),
+    ...currentList
+      .map(item => (item && typeof item === 'object' ? getGalleryImageId(item as Record<string, unknown>) : ''))
+      .filter(Boolean),
+  ];
+
+  return Array.from(new Set(orderedIds)).flatMap(imageId => {
+    const currentImage = currentById.get(imageId);
+    const nextImage = nextById.get(imageId);
+    if (!nextImage) {
+      if (!currentImage || deletedGalleryImageIds.has(imageId)) {
+        return [];
+      }
+      return [currentImage];
+    }
+    if (!currentImage) {
+      const nextLikedBy = uniqueStrings(Array.isArray(nextImage.likedBy) ? nextImage.likedBy : []).map(normalizeEmail);
+      return [{
+        ...nextImage,
+        likedBy: nextLikedBy,
+        likes: nextLikedBy.length > 0 ? nextLikedBy.length : Math.max(0, Number(nextImage.likes) || 0),
+      }];
+    }
+
+    const currentLikedBy = uniqueStrings(Array.isArray(currentImage.likedBy) ? currentImage.likedBy : []).map(normalizeEmail);
+    const nextLikedBy = uniqueStrings(Array.isArray(nextImage.likedBy) ? nextImage.likedBy : []).map(normalizeEmail);
+    const actorLiked = normalizedActorEmail ? nextLikedBy.includes(normalizedActorEmail) : null;
+
+    let mergedLikedBy = uniqueStrings([...currentLikedBy, ...nextLikedBy]).map(normalizeEmail);
+    if (normalizedActorEmail) {
+      mergedLikedBy = mergedLikedBy.filter(email => email !== normalizedActorEmail);
+      if (actorLiked) {
+        mergedLikedBy.push(normalizedActorEmail);
+      }
+    }
+
+    return [{
+      ...currentImage,
+      ...nextImage,
+      likedBy: mergedLikedBy,
+      likes: mergedLikedBy.length,
+      status: typeof nextImage.status === 'string' ? nextImage.status : currentImage.status,
+      read: Boolean(nextImage.read) || Boolean(currentImage.read),
+    }];
   });
 };
 
@@ -352,6 +486,15 @@ const getAnnouncementId = (item: Record<string, unknown>) => {
 const getEventId = (item: Record<string, unknown>) => {
   return typeof item.id === 'string' ? item.id : '';
 };
+
+const toDeletedIdSet = (ids: unknown) =>
+  new Set(
+    (Array.isArray(ids) ? ids : [])
+      .map(value =>
+        typeof value === 'string' || typeof value === 'number' ? String(value) : ''
+      )
+      .filter(Boolean)
+  );
 
 const resolveUserIdsByEmails = async (
   admin: ReturnType<typeof createSupabaseAdmin>,
@@ -658,6 +801,14 @@ export async function POST(request: Request) {
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
     data: z.record(z.any()),
+    deletedIds: z
+      .object({
+        announcements: z.array(z.string()).optional(),
+        events: z.array(z.string()).optional(),
+        galleryImages: z.array(z.string()).optional(),
+      })
+      .partial()
+      .optional(),
   });
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -726,12 +877,30 @@ export async function POST(request: Request) {
 
   const currentData = (existingState?.data ?? {}) as Record<string, any>;
   const nextData = parsed.data.data as Record<string, any>;
+  const deletedIds = parsed.data.deletedIds ?? {};
   const mergedData = {
+    ...currentData,
     ...nextData,
     messages: mergeDirectMessages(currentData.messages, nextData.messages),
     groupChats: mergeGroupChats(currentData.groupChats, nextData.groupChats),
-    announcements: mergeAnnouncements(currentData.announcements, nextData.announcements, userData.user.email),
-    events: mergeEvents(currentData.events, nextData.events, userData.user.email),
+    announcements: mergeAnnouncements(
+      currentData.announcements,
+      nextData.announcements,
+      toDeletedIdSet(deletedIds.announcements),
+      userData.user.email
+    ),
+    events: mergeEvents(
+      currentData.events,
+      nextData.events,
+      toDeletedIdSet(deletedIds.events),
+      userData.user.email
+    ),
+    galleryImages: mergeGalleryImages(
+      currentData.galleryImages,
+      nextData.galleryImages,
+      toDeletedIdSet(deletedIds.galleryImages),
+      userData.user.email
+    ),
   };
   const groupRole = normalizeGroupRole(membership.role);
   const currentMembers = stableSerialize(Array.isArray(currentData.members) ? currentData.members : []);
@@ -745,10 +914,10 @@ export async function POST(request: Request) {
 
   const announcementsChanged =
     stableSerialize(stripCollaborativeAnnouncementFields(currentData.announcements)) !==
-    stableSerialize(stripCollaborativeAnnouncementFields(nextData.announcements));
+    stableSerialize(stripCollaborativeAnnouncementFields(mergedData.announcements));
   const eventContentChanged =
     stableSerialize(stripCollaborativeEventFields(currentData.events)) !==
-    stableSerialize(stripCollaborativeEventFields(nextData.events));
+    stableSerialize(stripCollaborativeEventFields(mergedData.events));
 
   if ((announcementsChanged || eventContentChanged) && !canEditGroupContent(groupRole)) {
     return NextResponse.json(

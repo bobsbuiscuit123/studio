@@ -92,6 +92,12 @@ type CalendarAiEnvelope = {
   };
   message?: string;
 };
+
+const createClientEventId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
 const manualEventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),
   description: z.string().optional().or(z.literal("")),
@@ -193,10 +199,7 @@ export default function CalendarPage() {
     if (editingDraftEvent) {
       const eventToCreate = {
         ...savedEvent,
-        id:
-          typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        id: createClientEventId(),
       };
       const persisted = await saveEvents(prevEvents => [...prevEvents, eventToCreate]);
       if (!persisted) {
@@ -209,10 +212,9 @@ export default function CalendarPage() {
       }
       toast({ title: "Event added successfully!" });
     } else {
-      const updatedEvents = safeEvents.map((event) =>
-        event.id === editingEvent.id ? savedEvent : event
+      const persisted = await saveEvents(prevEvents =>
+        prevEvents.map((event) => (event.id === editingEvent.id ? savedEvent : event))
       );
-      const persisted = await saveEvents(updatedEvents);
       if (!persisted) {
         toast({
           title: "Could not update event",
@@ -348,7 +350,7 @@ export default function CalendarPage() {
         ? new Date()
         : parsedDate;
       const newEvent: ClubEvent = {
-        id: (safeEvents.length + 1).toString(),
+        id: createClientEventId(),
         title: result.title,
         description: result.description,
         date: safeDate,
@@ -382,7 +384,7 @@ export default function CalendarPage() {
       : new Date(`${values.date}T00:00`);
     const hasTime = Boolean(values.time && values.time.trim());
     const newEvent: ClubEvent = {
-      id: (safeEvents.length + 1).toString(),
+      id: createClientEventId(),
       title: values.title,
       description: values.description?.trim() || "",
       date: dateTime,

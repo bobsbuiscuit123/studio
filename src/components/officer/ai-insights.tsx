@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  AlertTriangle,
   BadgeCheck,
   Lightbulb,
   TrendingDown,
@@ -1338,7 +1337,7 @@ export default function AIInsights({
       `}</style>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
-          <CardTitle className="text-lg">AI Insights</CardTitle>
+          <CardTitle className="text-lg">Insights</CardTitle>
           <p className="text-sm text-muted-foreground">
             Quick signals from recent club activity.
           </p>
@@ -1565,10 +1564,6 @@ export default function AIInsights({
             </span>
           </div>
         )}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <AlertTriangle className="h-3.5 w-3.5" />
-        Default insights are based on live group data. Adding a custom insight uses AI.
-      </div>
       </CardContent>
     </Card>
   );

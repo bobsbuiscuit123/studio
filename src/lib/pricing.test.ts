@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FREE_PLAN_ID,
-  ONE_TIME_FREE_TRIAL_TOKENS,
   calculateUsageEstimate,
   getEffectiveAvailableTokens,
   getPaidPlanByPackageId,
@@ -36,14 +35,14 @@ describe('subscription pricing helpers', () => {
     });
   });
 
-  it('calculates effective availability using monthly limit plus one-time bonus', () => {
+  it('calculates effective availability using monthly limit plus bonus tokens', () => {
     expect(
       getEffectiveAvailableTokens({
         monthlyTokenLimit: 0,
-        bonusTokensThisPeriod: ONE_TIME_FREE_TRIAL_TOKENS,
+        bonusTokensThisPeriod: 0,
         tokensUsedThisPeriod: 0,
       })
-    ).toBe(30);
+    ).toBe(0);
 
     expect(
       getEffectiveAvailableTokens({
@@ -66,10 +65,10 @@ describe('subscription pricing helpers', () => {
     expect(
       planSupportsAi({
         monthlyTokenLimit: 0,
-        bonusTokensThisPeriod: ONE_TIME_FREE_TRIAL_TOKENS,
-        tokensUsedThisPeriod: 29,
+        bonusTokensThisPeriod: 0,
+        tokensUsedThisPeriod: 0,
       })
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       planSupportsAi({

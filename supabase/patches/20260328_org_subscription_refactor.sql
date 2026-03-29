@@ -439,10 +439,7 @@ begin
     else public.subscription_product_monthly_limit(org_row.subscription_product_id)
   end;
 
-  next_bonus := case
-    when org_row.subscription_product_id is null then greatest(coalesce(org_row.bonus_tokens_this_period, 0), 0)
-    else 0
-  end;
+  next_bonus := 0;
 
   next_used := greatest(coalesce(org_row.tokens_used_this_period, 0), 0);
 
@@ -712,7 +709,6 @@ declare
   resolved_plan_id text;
   assigned_product_id text;
   generated_join_code text;
-  trial_bonus integer := 0;
   paid_sync_result record;
 begin
   select *
@@ -877,15 +873,6 @@ begin
     return;
   end if;
 
-  if owner_org_count = 0 and coalesce(profile_row.has_received_org_creation_bonus, false) = false then
-    trial_bonus := 30;
-    update public.profiles
-    set has_received_org_creation_bonus = true,
-        org_creation_bonus_granted_at = coalesce(org_creation_bonus_granted_at, now()),
-        updated_at = now()
-    where id = p_user_id;
-  end if;
-
   update public.orgs
   set subscription_product_id = null,
       subscription_status = 'free',
@@ -893,8 +880,8 @@ begin
       tokens_used_this_period = 0,
       current_period_start = now(),
       current_period_end = now() + interval '1 month',
-      bonus_tokens_this_period = trial_bonus,
-      ai_enabled = trial_bonus > 0,
+      bonus_tokens_this_period = 0,
+      ai_enabled = false,
       updated_at = now()
   where id = created_org.id;
 

@@ -48,7 +48,6 @@ import {
 } from '@/lib/revenuecat-subscriptions';
 import {
   FREE_PLAN_ID,
-  ONE_TIME_FREE_TRIAL_TOKENS,
   SUBSCRIPTION_PLANS,
   calculateUsageEstimate,
   getPaidPlanByProductId,
@@ -531,7 +530,7 @@ export default function OrgCreatePage() {
               </CardTitle>
               <CardDescription>
                 {step === 1
-                  ? 'Enter organization details. This does not create the organization yet.'
+                  ? 'Enter organization details.'
                   : step === 2
                     ? 'Estimate monthly AI usage and choose how this organization should be billed.'
                     : 'Review the organization details, usage estimate, and billing action before continuing.'}
@@ -573,16 +572,6 @@ export default function OrgCreatePage() {
                   </div>
                 </div>
 
-                <Card className="rounded-[28px] border border-slate-200 bg-slate-50/90 shadow-sm">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">What happens next</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-slate-600">
-                    <p>1. Save these organization details as a draft.</p>
-                    <p>2. Estimate monthly AI usage and choose a subscription plan.</p>
-                    <p>3. Review the setup, then buy or transfer the subscription if needed.</p>
-                  </CardContent>
-                </Card>
               </div>
             ) : null}
 
@@ -725,11 +714,6 @@ export default function OrgCreatePage() {
                               </p>
                             </div>
                           </div>
-                          {plan.isFree ? (
-                            <p className="mt-3 text-xs text-emerald-700">
-                              Includes a one-time {ONE_TIME_FREE_TRIAL_TOKENS} token trial for your first organization.
-                            </p>
-                          ) : null}
                           {plan.id !== FREE_PLAN_ID &&
                           (createPaidActionDecision.crossOrgBlocked ||
                             createPaidActionDecision.unassignedSubscriptionRequiresReconcile) ? (
@@ -804,9 +788,7 @@ export default function OrgCreatePage() {
                     </div>
                     {resolvedPlan.isFree ? (
                       <p className="rounded-2xl bg-white px-4 py-3 text-xs text-slate-600">
-                        {subscription?.hasReceivedOrgCreationBonus
-                          ? 'No AI usage is included on the free plan for this account.'
-                          : `Your first free organization gets a one-time ${ONE_TIME_FREE_TRIAL_TOKENS} token trial for the first period only.`}
+                        No AI usage is included on the free plan.
                       </p>
                     ) : null}
                   </CardContent>
@@ -845,7 +827,7 @@ export default function OrgCreatePage() {
 
             {step === 3 ? (
               <Button
-                className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                className="rounded-2xl bg-emerald-300 text-slate-950 hover:bg-emerald-400"
                 onClick={() => void handleFinalize()}
                 disabled={
                   finalizing ||

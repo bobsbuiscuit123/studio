@@ -1,7 +1,6 @@
 export const FREE_PLAN_ID = 'free' as const;
 export const REVENUECAT_OFFERING_ID = 'default' as const;
 export const REVENUECAT_ENTITLEMENT_ID = 'org_subscription' as const;
-export const ONE_TIME_FREE_TRIAL_TOKENS = 30;
 
 export const PAID_PRODUCT_IDS = [
   'starter_org',
@@ -42,12 +41,12 @@ export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {
     id: FREE_PLAN_ID,
     name: 'Free',
-    description: 'Includes a one-time 30 token trial for your first organization.',
+    description: 'No AI usage included.',
     priceLabel: '$0/month',
     monthlyTokenLimit: 0,
     packageId: null,
     isFree: true,
-    highlightedMessage: 'No AI usage available on free plan after the first period.',
+    highlightedMessage: 'No AI usage available on the free plan.',
   },
   {
     id: 'starter_org',

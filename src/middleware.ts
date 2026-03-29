@@ -7,6 +7,31 @@ const isLocalhost = (hostname: string) =>
   hostname === '::1' ||
   hostname === '[::1]';
 
+const MIDDLEWARE_AUTH_TIMEOUT_MS = 2500;
+
+const hasSupabaseAuthCookie = (request: NextRequest) =>
+  request.cookies
+    .getAll()
+    .some(({ name }) => name.startsWith('sb-') && name.includes('auth-token'));
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`Middleware auth lookup timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+};
+
 export async function middleware(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl;
   if (pathname.startsWith('/api/')) {
@@ -36,6 +61,17 @@ export async function middleware(request: NextRequest) {
   if (!url || !anonKey) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });
+  const publicRoutes = ['/login', '/auth/callback', '/reset-password'];
+  const isPublicRoute =
+    publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const isRootRoute = pathname === '/';
+  const orgRoute =
+    pathname === '/orgs' ||
+    pathname.startsWith('/orgs/') ||
+    pathname === '/org' ||
+    pathname.startsWith('/org/');
+  const clubsRoute = pathname === '/clubs' || pathname.startsWith('/clubs/');
+  const authCookiePresent = hasSupabaseAuthCookie(request);
 
   const supabase = createServerClient(url, anonKey, {
     cookies: {
@@ -52,20 +88,21 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const publicRoutes = ['/login', '/auth/callback', '/reset-password'];
-  const isPublicRoute =
-    publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
-  const isRootRoute = pathname === '/';
-  const orgRoute =
-    pathname === '/orgs' ||
-    pathname.startsWith('/orgs/') ||
-    pathname === '/org' ||
-    pathname.startsWith('/org/');
-  const clubsRoute = pathname === '/clubs' || pathname.startsWith('/clubs/');
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'] = null;
+  if (authCookiePresent) {
+    try {
+      const {
+        data: { user: nextUser },
+      } = await withTimeout(supabase.auth.getUser(), MIDDLEWARE_AUTH_TIMEOUT_MS);
+      user = nextUser;
+    } catch (error) {
+      console.error('Middleware auth lookup failed', {
+        pathname,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return response;
+    }
+  }
 
   if (!user && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
@@ -103,5 +140,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|.*\\.[^/]+$).*)'],
 };

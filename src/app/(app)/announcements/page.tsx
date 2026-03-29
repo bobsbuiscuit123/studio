@@ -95,7 +95,9 @@ function AnnouncementsPageInner() {
     data: announcements,
     updateData: setAnnouncements,
     updateDataAsync: setAnnouncementsAsync,
+    error,
     loading,
+    refreshData,
     clubId,
   } = useAnnouncements();
   const {
@@ -786,6 +788,18 @@ function AnnouncementsPageInner() {
       <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
         <div className="flex flex-col gap-4">
           {loading ? <p>Loading...</p> : 
+            error && safeAnnouncements.length === 0 ? (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="tab-empty-state gap-3">
+                    <p className="text-muted-foreground">{error}</p>
+                    <Button variant="outline" onClick={() => void refreshData()}>
+                      Try again
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) :
             safeAnnouncements.length > 0 ? (
               sortedAnnouncements.map((announcement) => {
                 const hasButtonAttachment = Array.isArray(announcement.attachments) && announcement.attachments.some(att => att.type === 'button');

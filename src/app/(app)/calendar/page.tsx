@@ -112,7 +112,7 @@ export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isClient, setIsClient] = useState(false);
-  const { data: events, updateData: setEvents, updateDataAsync: saveEvents, loading } = useEvents();
+  const { data: events, updateData: setEvents, updateDataAsync: saveEvents, error, loading, refreshData } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
@@ -714,6 +714,14 @@ export default function CalendarPage() {
           </CardHeader>
           <CardContent className="flex-1">
              {loading ? <p>Loading...</p> : 
+                error && upcomingEvents.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground space-y-3">
+                    <div>{error}</div>
+                    <Button variant="outline" onClick={() => void refreshData()}>
+                      Try again
+                    </Button>
+                  </div>
+                ) :
                 upcomingEvents.length > 0 ? (
                   <Accordion type="single" collapsible className="w-full space-y-3">
                     {upcomingEvents.map((event) => (

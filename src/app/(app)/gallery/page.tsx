@@ -61,7 +61,9 @@ export default function GalleryPage() {
     data: images,
     updateData: setImages,
     updateDataAsync: setImagesAsync,
+    error,
     loading,
+    refreshData,
   } = useGalleryImages();
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
@@ -446,6 +448,13 @@ export default function GalleryPage() {
         <h2 className="text-2xl font-bold mb-4">Group Gallery</h2>
         {loading ? (
           <p>Loading gallery...</p>
+        ) : error && approvedImages.length === 0 ? (
+          <div className="text-center py-16 border-2 border-dashed rounded-lg space-y-3">
+             <p className="text-muted-foreground">{error}</p>
+             <Button variant="outline" onClick={() => void refreshData()}>
+               Try again
+             </Button>
+          </div>
         ) : approvedImages.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {approvedImages.map((image) => {

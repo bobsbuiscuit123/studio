@@ -4,7 +4,6 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
-import { headers } from 'next/headers';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
 import { sendPushToUsers } from '@/lib/send-push';
@@ -448,6 +447,13 @@ const stripCollaborativeAnnouncementFields = (announcements: unknown) => {
   });
 };
 
+const getRequestIp = (headerList: Headers) =>
+  headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+  headerList.get('x-real-ip') ||
+  'unknown';
+
+const getCollectionCount = (value: unknown) => (Array.isArray(value) ? value.length : 0);
+
 const stripEventPushFields = (event: unknown) => {
   if (!event || typeof event !== 'object') return event;
 
@@ -778,12 +784,105 @@ const collectEventPushJobs = async ({
   return jobs;
 };
 
+export async function GET(request: Request) {
+  const ip = getRequestIp(request.headers);
+  const limiter = rateLimit(`org-state:${ip}`, 60, 60_000);
+  if (!limiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const url = new URL(request.url);
+  const schema = z.object({
+    orgId: z.string().uuid(),
+    groupId: z.string().uuid(),
+  });
+  const parsed = schema.safeParse({
+    orgId: url.searchParams.get('orgId'),
+    groupId: url.searchParams.get('groupId'),
+  });
+  if (!parsed.success) {
+    return NextResponse.json(
+      err({
+        code: 'VALIDATION',
+        message: 'Invalid org payload.',
+        source: 'app',
+      }),
+      { status: 400, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
+      { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const { data: membership } = await supabase
+    .from('group_memberships')
+    .select('role')
+    .eq('group_id', parsed.data.groupId)
+    .eq('user_id', userData.user.id)
+    .maybeSingle();
+  if (!membership) {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
+      { status: 403, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const admin = createSupabaseAdmin();
+  const { data: existingState, error } = await admin
+    .from('group_state')
+    .select('data')
+    .eq('group_id', parsed.data.groupId)
+    .eq('org_id', parsed.data.orgId)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: error.message,
+        source: 'network',
+      }),
+      { status: 500, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  if (!existingState?.data) {
+    console.warn('group_state GET missing row', {
+      userId: userData.user.id,
+      orgId: parsed.data.orgId,
+      groupId: parsed.data.groupId,
+    });
+    return NextResponse.json(
+      err({
+        code: 'VALIDATION',
+        message: 'Group content could not be loaded.',
+        source: 'app',
+      }),
+      { status: 404, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  return NextResponse.json(
+    { ok: true, data: existingState.data },
+    { headers: getRateLimitHeaders(limiter) }
+  );
+}
+
 export async function POST(request: Request) {
-  const headerList = await headers();
-  const ip =
-    headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    headerList.get('x-real-ip') ||
-    'unknown';
+  const ip = getRequestIp(request.headers);
   const limiter = rateLimit(`org-state:${ip}`, 60, 60_000);
   if (!limiter.allowed) {
     return NextResponse.json(
@@ -873,6 +972,7 @@ export async function POST(request: Request) {
     .from('group_state')
     .select('data')
     .eq('group_id', parsed.data.groupId)
+    .eq('org_id', parsed.data.orgId)
     .maybeSingle();
 
   const currentData = (existingState?.data ?? {}) as Record<string, any>;
@@ -984,5 +1084,16 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true }, { headers: getRateLimitHeaders(limiter) });
+  console.info('group_state POST merged counts', {
+    orgId: parsed.data.orgId,
+    groupId: parsed.data.groupId,
+    announcements: getCollectionCount(mergedData.announcements),
+    events: getCollectionCount(mergedData.events),
+    galleryImages: getCollectionCount(mergedData.galleryImages),
+  });
+
+  return NextResponse.json(
+    { ok: true, data: mergedData },
+    { headers: getRateLimitHeaders(limiter) }
+  );
 }

@@ -23,7 +23,7 @@ const checkInFormSchema = z.object({
 });
 
 export default function AttendancePage() {
-  const { data: events, updateDataAsync: saveEvents, loading: eventsLoading } = useEvents();
+  const { data: events, updateDataAsync: saveEvents, error: eventsError, loading: eventsLoading, refreshData } = useEvents();
   const { data: members, loading: membersLoading } = useMembers();
   const { user, loading: userLoading } = useCurrentUser();
   const { canEditContent } = useCurrentUserRole();
@@ -130,7 +130,14 @@ export default function AttendancePage() {
             <CardDescription>Generate codes and view who attended each event.</CardDescription>
           </CardHeader>
           <CardContent>
-            {sortedEvents.length === 0 ? (
+            {eventsError && sortedEvents.length === 0 ? (
+                <div className="text-center py-8 space-y-3">
+                    <p className="text-muted-foreground">{eventsError}</p>
+                    <Button variant="outline" onClick={() => void refreshData()}>
+                        Try again
+                    </Button>
+                </div>
+            ) : sortedEvents.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No events found.</p>
             ) : (
                 <Accordion type="single" collapsible className="w-full">

@@ -1,31 +1,31 @@
 from PIL import Image, ImageDraw
 
 
-def main() -> None:
-    size = 1024
-    margin = 120
-    scale = (size - 2 * margin) / 24
-    line_width = int(scale * 2.2)
-    corner_radius = 180
+BACKGROUND = (99, 194, 133)
+FOREGROUND = (255, 255, 255)
+SIZE = 1024
+MARK_SCALE = 1.12
+VERTICAL_SHIFT = -36
+TOP_LAYER = [(512, 168), (244, 278), (512, 388), (780, 278)]
+MID_LAYER = [(244, 404), (244, 468), (512, 578), (780, 468), (780, 404), (512, 514)]
+LOW_LAYER = [(244, 562), (244, 626), (512, 736), (780, 626), (780, 562), (512, 672)]
 
-    img = Image.new("RGB", (size, size), (227, 245, 230))
+
+def transform_point(point: tuple[float, float]) -> tuple[float, float]:
+    x, y = point
+    centered_x = 512 + (x - 512) * MARK_SCALE
+    centered_y = 512 + (y - 420) * MARK_SCALE + VERTICAL_SHIFT
+    return (centered_x, centered_y)
+
+
+def main() -> None:
+    img = Image.new("RGB", (SIZE, SIZE), BACKGROUND)
     draw = ImageDraw.Draw(img)
 
-    def transform(x: float, y: float) -> tuple[float, float]:
-        return (margin + x * scale, margin + y * scale)
+    for shape in (TOP_LAYER, MID_LAYER, LOW_LAYER):
+        draw.polygon([transform_point(point) for point in shape], fill=FOREGROUND)
 
-    paths = [
-        [(12, 2), (2, 7), (12, 12), (22, 7), (12, 2)],
-        [(2, 12), (12, 17), (22, 12)],
-        [(2, 17), (12, 22), (22, 17)],
-    ]
-
-    color = (34, 197, 94)
-    for path in paths:
-        transformed = [transform(x, y) for x, y in path]
-        draw.line(transformed, fill=color, width=line_width, joint="curve")
-
-    output_path = "ios/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
+    output_path = "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
     img.save(output_path)
 
 

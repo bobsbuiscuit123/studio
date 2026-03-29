@@ -99,13 +99,22 @@ const getCreationMode = (
     return subscription?.activeProductId ? 'keep_current_paid' : 'free';
   }
 
-  return subscription?.activeProductId ? 'transfer_subscription' : 'purchase';
+  if (!subscription?.activeProductId) {
+    return 'purchase';
+  }
+
+  return subscription.activeProductId === plan.id ? 'transfer_subscription' : 'purchase';
 };
 
-const creationModeLabel = (mode: OrgBillingMode) => {
+const creationModeLabel = (
+  mode: OrgBillingMode,
+  options?: { isPlanChange?: boolean }
+) => {
   switch (mode) {
     case 'purchase':
-      return 'Buy a new monthly subscription for this organization.';
+      return options?.isPlanChange
+        ? 'Change your existing monthly subscription and assign it to this organization.'
+        : 'Buy a new monthly subscription for this organization.';
     case 'transfer_subscription':
       return 'Transfer your existing subscription to this organization.';
     case 'keep_current_paid':
@@ -200,6 +209,10 @@ export default function OrgCreatePage() {
   const activeSubscriptionProductId = subscription?.activeProductId ?? null;
   const activeSubscriptionPlan =
     activeSubscriptionProductId ? getPlanById(activeSubscriptionProductId) : null;
+  const isChangingExistingSubscription =
+    Boolean(activeSubscriptionProductId) &&
+    resolvedPlan.id !== FREE_PLAN_ID &&
+    resolvedPlan.id !== activeSubscriptionProductId;
 
   const saveDraft = async (nextPlanId?: PlanId) => {
     setSavingDraft(true);
@@ -270,14 +283,6 @@ export default function OrgCreatePage() {
   };
 
   const handlePlanSelect = (planId: PlanId) => {
-    if (
-      activeSubscriptionProductId &&
-      planId !== FREE_PLAN_ID &&
-      planId !== activeSubscriptionProductId
-    ) {
-      return;
-    }
-
     setSelectedPlanId(planId);
   };
 
@@ -492,7 +497,8 @@ export default function OrgCreatePage() {
                       {paidOrg?.name
                         ? `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}.`
                         : 'You already have an active subscription linked to another organization.'}{' '}
-                      Choose Free to keep that organization paid, or choose your current paid plan to transfer it here.
+                      Choose Free to keep that organization paid, choose your current paid plan to transfer it here,
+                      or choose a different paid plan to change the subscription and assign it here.
                     </AlertDescription>
                   </Alert>
                 ) : null}
@@ -574,10 +580,6 @@ export default function OrgCreatePage() {
                     </div>
                     {SUBSCRIPTION_PLANS.map((plan) => {
                       const isSelected = resolvedPlan.id === plan.id;
-                      const isDisabled =
-                        Boolean(activeSubscriptionProductId) &&
-                        plan.id !== FREE_PLAN_ID &&
-                        plan.id !== activeSubscriptionProductId;
                       const resolvedPrice =
                         planPackages[plan.id]?.resolvedPriceLabel ?? plan.priceLabel;
 
@@ -586,12 +588,11 @@ export default function OrgCreatePage() {
                           key={plan.id}
                           type="button"
                           onClick={() => handlePlanSelect(plan.id)}
-                          disabled={isDisabled}
                           className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
                             isSelected
                               ? 'border-emerald-400 bg-emerald-50 shadow-sm'
                               : 'border-slate-200 bg-white hover:border-slate-300'
-                          } ${isDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                          }`}
                         >
                           <div className="flex items-start justify-between gap-4">
                             <div>
@@ -618,9 +619,14 @@ export default function OrgCreatePage() {
                               Includes a one-time {ONE_TIME_FREE_TRIAL_TOKENS} token trial for your first organization.
                             </p>
                           ) : null}
-                          {isDisabled ? (
+                          {activeSubscriptionProductId && plan.id === activeSubscriptionProductId ? (
                             <p className="mt-3 text-xs text-slate-500">
-                              Change the paid tier after creation from organization billing.
+                              Selecting this plan transfers your existing subscription to the new organization.
+                            </p>
+                          ) : null}
+                          {activeSubscriptionProductId && plan.id !== FREE_PLAN_ID && plan.id !== activeSubscriptionProductId ? (
+                            <p className="mt-3 text-xs text-slate-500">
+                              Selecting this plan changes your existing subscription tier and assigns it to the new organization.
                             </p>
                           ) : null}
                         </button>
@@ -680,7 +686,11 @@ export default function OrgCreatePage() {
                     </div>
                     <div className="rounded-2xl bg-white px-4 py-3">
                       <p className="text-xs uppercase tracking-wide text-slate-500">Final action</p>
-                      <p className="mt-1 font-medium text-slate-900">{creationModeLabel(creationMode)}</p>
+                      <p className="mt-1 font-medium text-slate-900">
+                        {creationModeLabel(creationMode, {
+                          isPlanChange: isChangingExistingSubscription,
+                        })}
+                      </p>
                     </div>
                     {resolvedPlan.isFree ? (
                       <p className="rounded-2xl bg-white px-4 py-3 text-xs text-slate-600">

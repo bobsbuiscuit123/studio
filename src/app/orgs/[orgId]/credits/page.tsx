@@ -30,7 +30,7 @@ import {
   type RevenueCatPlanPackage,
 } from '@/lib/revenuecat-subscriptions';
 import {
-  SUBSCRIPTION_PLANS,
+  PAID_PRODUCT_IDS,
   getPaidPlanByProductId,
   getPlanById,
   getPlanRecommendation,
@@ -206,7 +206,6 @@ export default function OrgCreditsPage() {
     );
   }
 
-  const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
   const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
   const userSubscribedOrg = userSubscription?.subscribedOrgId ?? status?.subscribedOrgId ?? null;
   const hasActiveSubscription =
@@ -590,7 +589,8 @@ export default function OrgCreditsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {paidPlans.map((plan) => {
+            {PAID_PRODUCT_IDS.map((planId, index) => {
+              const plan = getPlanById(planId);
               const resolvedPrice = planPackages[plan.id]?.resolvedPriceLabel ?? plan.priceLabel;
               const isSelected = selectedPlanId === plan.id;
               const isCurrent = activeProductId === plan.id;
@@ -598,12 +598,18 @@ export default function OrgCreditsPage() {
                 <button
                   key={plan.id}
                   type="button"
+                  data-plan-id={planId}
                   onClick={() => {
-                    console.log('CLICKED PLAN:', plan);
+                    console.log('CLICKED PLAN:', {
+                      index,
+                      planId,
+                      renderedName: plan.name,
+                      renderedDescription: plan.description,
+                    });
                     setHasUserSelectedPlan(true);
                     setSelectedPlanSource('user');
-                    setLastClickedPlanId(plan.id as PaidPlanId);
-                    setSelectedPlanId(plan.id as PaidPlanId);
+                    setLastClickedPlanId(planId);
+                    setSelectedPlanId(planId);
                   }}
                   className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
                     isSelected

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
-import { syncRevenueCatSubscriber } from '@/lib/subscription-sync';
+import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subscription-sync';
 
 const bodySchema = z.object({
   targetOrgId: z.string().uuid(),
@@ -33,6 +33,28 @@ export async function POST(request: Request) {
   const admin = createSupabaseAdmin();
 
   try {
+    await syncRevenueCatSubscriber({
+      admin,
+      appUserId: userId,
+    });
+
+    const subscription = await getUserSubscriptionSummary(admin, userId);
+    if (
+      subscription.activeProductId &&
+      subscription.subscribedOrgId &&
+      subscription.subscribedOrgId !== parsed.data.targetOrgId
+    ) {
+      return NextResponse.json(
+        err({
+          code: 'BILLING_INACTIVE',
+          message:
+            'You already have a subscription on another organization. Paid plan changes are only allowed on that organization.',
+          source: 'app',
+        }),
+        { status: 409 }
+      );
+    }
+
     const result = await syncRevenueCatSubscriber({
       admin,
       appUserId: userId,

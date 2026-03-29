@@ -5,7 +5,7 @@ import type { OrgBillingMode } from '@/lib/org-subscription';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
-import { syncRevenueCatSubscriber } from '@/lib/subscription-sync';
+import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subscription-sync';
 
 const creationModes = [
   'free',
@@ -79,6 +79,39 @@ export async function POST(request: Request) {
         admin,
         appUserId: userId,
       });
+      const subscription = await getUserSubscriptionSummary(admin, userId);
+      if (subscription.activeProductId && subscription.subscribedOrgId) {
+        return NextResponse.json(
+          err({
+            code: 'BILLING_INACTIVE',
+            message:
+              'You already have a subscription on another organization. Create this organization on the free plan or manage the paid plan from the current paid organization.',
+            source: 'app',
+          }),
+          { status: 409 }
+        );
+      }
+
+      const isFreshVerifiedPurchase =
+        parsed.data.creationMode === 'purchase' &&
+        Boolean(parsed.data.verifiedProductId) &&
+        subscription.activeProductId === parsed.data.verifiedProductId;
+
+      if (
+        subscription.activeProductId &&
+        !subscription.subscribedOrgId &&
+        !isFreshVerifiedPurchase
+      ) {
+        return NextResponse.json(
+          err({
+            code: 'BILLING_INACTIVE',
+            message:
+              'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.',
+            source: 'app',
+          }),
+          { status: 409 }
+        );
+      }
     } catch (error) {
       const message =
         error instanceof Error && error.message

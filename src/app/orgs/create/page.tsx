@@ -31,7 +31,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { safeFetchJson } from '@/lib/network';
 import { notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
-import type { OrgBillingMode, UserSubscriptionSummary } from '@/lib/org-subscription';
+import {
+  resolvePaidPlanActionDecision,
+  type OrgBillingMode,
+  type UserSubscriptionSummary,
+} from '@/lib/org-subscription';
 import {
   extractActiveProductIdFromCustomerInfo,
   getCurrentRevenueCatCustomerInfo,
@@ -48,6 +52,7 @@ import {
   calculateUsageEstimate,
   getPlanById,
   getPlanRecommendation,
+  type PaidPlanId,
   type PlanId,
 } from '@/lib/pricing';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
@@ -105,7 +110,7 @@ const getCreationMode = (
     return 'purchase';
   }
 
-  return subscription.activeProductId === plan.id ? 'transfer_subscription' : 'purchase';
+  return 'purchase';
 };
 
 const creationModeLabel = (
@@ -196,7 +201,7 @@ export default function OrgCreatePage() {
     }
 
     if (subscription?.activeProductId) {
-      setSelectedPlanId(subscription.activeProductId);
+      setSelectedPlanId(FREE_PLAN_ID);
       return;
     }
 
@@ -211,10 +216,29 @@ export default function OrgCreatePage() {
   const activeSubscriptionProductId = subscription?.activeProductId ?? null;
   const activeSubscriptionPlan =
     activeSubscriptionProductId ? getPlanById(activeSubscriptionProductId) : null;
+  const createPaidActionDecision = resolvePaidPlanActionDecision({
+    hasActiveSubscription: Boolean(activeSubscriptionProductId),
+    subscribedOrgId: subscription?.subscribedOrgId ?? null,
+    currentOrgId: null,
+    selectedPlanId: resolvedPlan.isFree ? null : (resolvedPlan.id as PaidPlanId),
+    liveActiveProductId: activeSubscriptionProductId,
+  });
+  const paidPlanBlockedInCreate =
+    !resolvedPlan.isFree &&
+    (createPaidActionDecision.crossOrgBlocked ||
+      createPaidActionDecision.unassignedSubscriptionRequiresReconcile);
   const isChangingExistingSubscription =
     Boolean(activeSubscriptionProductId) &&
     resolvedPlan.id !== FREE_PLAN_ID &&
     resolvedPlan.id !== activeSubscriptionProductId;
+
+  useEffect(() => {
+    if (!paidPlanBlockedInCreate) {
+      return;
+    }
+
+    setSelectedPlanId(FREE_PLAN_ID);
+  }, [paidPlanBlockedInCreate]);
 
   const saveDraft = async (nextPlanId?: PlanId) => {
     setSavingDraft(true);
@@ -269,6 +293,17 @@ export default function OrgCreatePage() {
   };
 
   const handleReviewNext = async () => {
+    if (paidPlanBlockedInCreate) {
+      toast({
+        title: 'Paid plan unavailable',
+        description: createPaidActionDecision.crossOrgBlocked
+          ? 'You already have a subscription on another organization. Create this organization on Free or manage the paid plan from the current paid organization.'
+          : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const response = await saveDraft((selectedPlanId ?? FREE_PLAN_ID) as PlanId);
     if (!response.ok) {
       toast({
@@ -285,6 +320,21 @@ export default function OrgCreatePage() {
   };
 
   const handlePlanSelect = (planId: PlanId) => {
+    if (
+      planId !== FREE_PLAN_ID &&
+      (createPaidActionDecision.crossOrgBlocked ||
+        createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
+    ) {
+      toast({
+        title: 'Paid plan unavailable',
+        description: createPaidActionDecision.crossOrgBlocked
+          ? 'This account already has a subscription on another organization. Paid plan changes are only allowed on that organization.'
+          : 'Restore purchases from Settings before choosing a paid plan for a new organization.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setSelectedPlanId(planId);
   };
 
@@ -330,6 +380,14 @@ export default function OrgCreatePage() {
 
     setFinalizing(true);
     try {
+      if (paidPlanBlockedInCreate) {
+        throw new Error(
+          createPaidActionDecision.crossOrgBlocked
+            ? 'You already have a subscription on another organization. Create this organization on the free plan or manage the paid plan from the current paid organization.'
+            : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.'
+        );
+      }
+
       let liveActiveProductId = subscription?.activeProductId ?? null;
       if (purchaseAvailability.supported) {
         try {
@@ -520,13 +578,14 @@ export default function OrgCreatePage() {
                 {activeSubscriptionProductId ? (
                   <Alert className="rounded-[24px] border-emerald-200 bg-emerald-50 text-emerald-950">
                     <Sparkles className="h-4 w-4" />
-                    <AlertTitle>Active subscription already assigned</AlertTitle>
+                    <AlertTitle>Paid plans are unavailable for this new organization</AlertTitle>
                     <AlertDescription>
-                      {paidOrg?.name
-                        ? `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}.`
-                        : 'You already have an active subscription linked to another organization.'}{' '}
-                      Choose Free to keep that organization paid, choose your current paid plan to transfer it here,
-                      or choose a different paid plan to change the subscription and assign it here.
+                      {createPaidActionDecision.crossOrgBlocked
+                        ? paidOrg?.name
+                          ? `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}. Paid plan changes are only allowed from that organization's billing screen.`
+                          : 'Your account already has an active subscription linked to another organization. Paid plan changes are only allowed from that organization.'
+                        : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.'}{' '}
+                      You can still create this organization on the free plan.
                     </AlertDescription>
                   </Alert>
                 ) : null}
@@ -616,10 +675,21 @@ export default function OrgCreatePage() {
                           key={plan.id}
                           type="button"
                           onClick={() => handlePlanSelect(plan.id)}
+                          disabled={
+                            plan.id !== FREE_PLAN_ID &&
+                            (createPaidActionDecision.crossOrgBlocked ||
+                              createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
+                          }
                           className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
                             isSelected
                               ? 'border-emerald-400 bg-emerald-50 shadow-sm'
                               : 'border-slate-200 bg-white hover:border-slate-300'
+                          } ${
+                            plan.id !== FREE_PLAN_ID &&
+                            (createPaidActionDecision.crossOrgBlocked ||
+                              createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
+                              ? 'cursor-not-allowed opacity-60'
+                              : ''
                           }`}
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -647,14 +717,11 @@ export default function OrgCreatePage() {
                               Includes a one-time {ONE_TIME_FREE_TRIAL_TOKENS} token trial for your first organization.
                             </p>
                           ) : null}
-                          {activeSubscriptionProductId && plan.id === activeSubscriptionProductId ? (
+                          {plan.id !== FREE_PLAN_ID &&
+                          (createPaidActionDecision.crossOrgBlocked ||
+                            createPaidActionDecision.unassignedSubscriptionRequiresReconcile) ? (
                             <p className="mt-3 text-xs text-slate-500">
-                              Selecting this plan transfers your existing subscription to the new organization.
-                            </p>
-                          ) : null}
-                          {activeSubscriptionProductId && plan.id !== FREE_PLAN_ID && plan.id !== activeSubscriptionProductId ? (
-                            <p className="mt-3 text-xs text-slate-500">
-                              Selecting this plan changes your existing subscription tier and assigns it to the new organization.
+                              Paid plans are unavailable while another organization already owns this account's subscription.
                             </p>
                           ) : null}
                         </button>
@@ -715,9 +782,11 @@ export default function OrgCreatePage() {
                     <div className="rounded-2xl bg-white px-4 py-3">
                       <p className="text-xs uppercase tracking-wide text-slate-500">Final action</p>
                       <p className="mt-1 font-medium text-slate-900">
-                        {creationModeLabel(creationMode, {
-                          isPlanChange: isChangingExistingSubscription,
-                        })}
+                        {paidPlanBlockedInCreate
+                          ? 'Paid plans cannot be used for this new organization while another organization already owns the account subscription.'
+                          : creationModeLabel(creationMode, {
+                              isPlanChange: isChangingExistingSubscription,
+                            })}
                       </p>
                     </div>
                     {resolvedPlan.isFree ? (

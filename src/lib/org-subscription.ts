@@ -62,6 +62,19 @@ export type UserSubscriptionSummary = {
   bonusGrantedAt: string | null;
 };
 
+export type PaidPlanActionDecision = {
+  hasActiveSubscription: boolean;
+  userSubscribedOrg: string | null;
+  currentOrgId: string | null;
+  selectedPlanId: PaidPlanId | null;
+  liveActiveProductId: PaidPlanId | null;
+  sameOrgUpgradeAllowed: boolean;
+  sameOrgSamePlan: boolean;
+  crossOrgBlocked: boolean;
+  unassignedSubscriptionRequiresReconcile: boolean;
+  newPurchaseAllowed: boolean;
+};
+
 export const resolvePlanId = (productId?: string | null): PlanId => {
   const normalized = String(productId ?? '').trim().toLowerCase();
   return normalized ? (normalized as PaidPlanId) : FREE_PLAN_ID;
@@ -87,3 +100,55 @@ export const isPaidSubscriptionStatus = (status?: string | null) =>
   status === 'active' || status === 'grace_period' || status === 'billing_retry';
 
 export const isPaidPlan = (planId?: string | null) => resolvePlanId(planId) !== FREE_PLAN_ID;
+
+export const resolvePaidPlanActionDecision = ({
+  hasActiveSubscription,
+  subscribedOrgId,
+  currentOrgId,
+  selectedPlanId,
+  liveActiveProductId,
+}: {
+  hasActiveSubscription: boolean;
+  subscribedOrgId: string | null;
+  currentOrgId: string | null;
+  selectedPlanId: PaidPlanId | null;
+  liveActiveProductId: PaidPlanId | null;
+}): PaidPlanActionDecision => {
+  const userSubscribedOrg = subscribedOrgId ?? null;
+  const isSameOrg = Boolean(
+    currentOrgId && userSubscribedOrg && currentOrgId === userSubscribedOrg
+  );
+  const crossOrgBlocked = Boolean(
+    hasActiveSubscription && userSubscribedOrg && currentOrgId !== userSubscribedOrg
+  );
+  const unassignedSubscriptionRequiresReconcile = Boolean(
+    hasActiveSubscription && !userSubscribedOrg
+  );
+  const sameOrgSamePlan = Boolean(
+    isSameOrg &&
+      selectedPlanId &&
+      liveActiveProductId &&
+      selectedPlanId === liveActiveProductId
+  );
+  const sameOrgUpgradeAllowed = Boolean(
+    isSameOrg &&
+      selectedPlanId &&
+      (!liveActiveProductId || selectedPlanId !== liveActiveProductId)
+  );
+  const newPurchaseAllowed = Boolean(
+    selectedPlanId && !hasActiveSubscription && !crossOrgBlocked
+  );
+
+  return {
+    hasActiveSubscription,
+    userSubscribedOrg,
+    currentOrgId,
+    selectedPlanId,
+    liveActiveProductId,
+    sameOrgUpgradeAllowed,
+    sameOrgSamePlan,
+    crossOrgBlocked,
+    unassignedSubscriptionRequiresReconcile,
+    newPurchaseAllowed,
+  };
+};

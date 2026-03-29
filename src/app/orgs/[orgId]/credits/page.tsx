@@ -34,7 +34,10 @@ import {
   getPlanRecommendation,
   type PaidPlanId,
 } from '@/lib/pricing';
-import type { UserSubscriptionSummary } from '@/lib/org-subscription';
+import {
+  resolvePaidPlanActionDecision,
+  type UserSubscriptionSummary,
+} from '@/lib/org-subscription';
 
 type ReconcileResponse = {
   ok: boolean;
@@ -152,19 +155,31 @@ export default function OrgCreditsPage() {
   const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
   const selectedPlan = selectedPlanId ? getPlanById(selectedPlanId) : recommendedPlan;
   const selectedPackage = selectedPlanId ? planPackages[selectedPlanId]?.revenueCatPackage ?? null : null;
+  const userSubscribedOrg = userSubscription?.subscribedOrgId ?? status?.subscribedOrgId ?? null;
+  const hasActiveSubscription =
+    Boolean(userSubscription?.activeProductId) ||
+    Boolean(status?.ownerHasActiveSubscription) ||
+    Boolean(activeProductId);
+  const purchaseDecision = resolvePaidPlanActionDecision({
+    hasActiveSubscription,
+    subscribedOrgId: userSubscribedOrg,
+    currentOrgId: orgId,
+    selectedPlanId,
+    liveActiveProductId: activeProductId,
+  });
 
   const actionLabel = (() => {
     if (!selectedPlanId) return 'Select a plan';
-    if (activeProductId && status?.isSubscribedOrg && activeProductId === selectedPlanId) {
+    if (purchaseDecision.crossOrgBlocked) {
+      return 'Subscription on another organization';
+    }
+    if (purchaseDecision.unassignedSubscriptionRequiresReconcile) {
+      return 'Restore purchases first';
+    }
+    if (purchaseDecision.sameOrgSamePlan) {
       return 'Current plan active';
     }
-    if (activeProductId && activeProductId === selectedPlanId && !status?.isSubscribedOrg) {
-      return 'Transfer subscription here';
-    }
-    if (activeProductId && !status?.isSubscribedOrg) {
-      return 'Change plan and transfer here';
-    }
-    if (activeProductId) {
+    if (purchaseDecision.sameOrgUpgradeAllowed) {
       return 'Change plan';
     }
     return 'Activate subscription on this organization';
@@ -259,8 +274,45 @@ export default function OrgCreditsPage() {
         }
       }
 
-      const isSameActivePlan = liveActiveProductId === selectedPlanId;
-      const needsPurchase = !isSameActivePlan || !liveActiveProductId;
+      const effectiveHasActiveSubscription = hasActiveSubscription || Boolean(liveActiveProductId);
+      const decision = resolvePaidPlanActionDecision({
+        hasActiveSubscription: effectiveHasActiveSubscription,
+        subscribedOrgId: userSubscribedOrg,
+        currentOrgId: orgId,
+        selectedPlanId,
+        liveActiveProductId,
+      });
+
+      console.log('ORG_PAID_ACTION_DECISION [billing]', {
+        userSubscribedOrg: decision.userSubscribedOrg,
+        currentOrg: decision.currentOrgId,
+        hasActiveSubscription: decision.hasActiveSubscription,
+        selectedPlanId: decision.selectedPlanId,
+        liveActiveProductId: decision.liveActiveProductId,
+      });
+
+      if (decision.crossOrgBlocked) {
+        throw new Error(
+          'You already have a subscription on another organization. Paid plan changes are only allowed on that organization.'
+        );
+      }
+
+      if (decision.unassignedSubscriptionRequiresReconcile) {
+        throw new Error(
+          'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before changing plans.'
+        );
+      }
+
+      if (decision.sameOrgSamePlan) {
+        await syncCurrentOrg(selectedPlanId);
+        toast({
+          title: 'Current plan active',
+          description: `${selectedPlan.name} is already assigned to ${status?.orgName ?? 'this organization'}.`,
+        });
+        return;
+      }
+
+      const needsPurchase = decision.sameOrgUpgradeAllowed || decision.newPurchaseAllowed;
 
       if (needsPurchase) {
         if (!purchaseAvailability.supported) {
@@ -355,7 +407,7 @@ export default function OrgCreditsPage() {
           <Alert className="rounded-[24px] border-amber-200 bg-amber-50 text-amber-950">
             <AlertTitle>Subscription assigned elsewhere</AlertTitle>
             <AlertDescription>
-              Your account already has an active subscription linked to another organization. You can transfer it here or leave this organization on the free plan.
+              Your account already has an active subscription linked to another organization. Paid plan changes are only allowed on that organization.
             </AlertDescription>
           </Alert>
         ) : null}
@@ -512,7 +564,9 @@ export default function OrgCreditsPage() {
               disabled={
                 submitting ||
                 !selectedPlanId ||
-                (activeProductId === selectedPlanId && Boolean(status?.isSubscribedOrg)) ||
+                purchaseDecision.crossOrgBlocked ||
+                purchaseDecision.unassignedSubscriptionRequiresReconcile ||
+                purchaseDecision.sameOrgSamePlan ||
                 (!purchaseAvailability.supported && (!activeProductId || activeProductId !== selectedPlanId))
               }
             >

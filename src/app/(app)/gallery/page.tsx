@@ -54,7 +54,12 @@ const uploadFormSchema = z.object({
 });
 
 export default function GalleryPage() {
-  const { data: images, updateData: setImages, loading } = useGalleryImages();
+  const {
+    data: images,
+    updateData: setImages,
+    updateDataAsync: setImagesAsync,
+    loading,
+  } = useGalleryImages();
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { toast } = useToast();
@@ -168,7 +173,16 @@ export default function GalleryPage() {
         }));
         
         const updatedImages = [...newImages, ...images].slice(0, MAX_GALLERY_IMAGES);
-        setImages(updatedImages);
+        const saved = await setImagesAsync(updatedImages);
+        if (!saved) {
+            toast({
+                title: "Upload Failed",
+                description: "The images were processed, but they were not saved to your organization. Please try again.",
+                variant: "destructive",
+            });
+            setIsUploading(false);
+            return;
+        }
 
         toast({ 
             title: newStatus === 'approved' ? "Images displayed successfully!" : "Images submitted for approval!",
@@ -207,7 +221,15 @@ export default function GalleryPage() {
       }
       return image;
     });
-    setImages(updatedImages);
+    void setImagesAsync(updatedImages).then(saved => {
+      if (!saved) {
+        toast({
+          title: "Like failed",
+          description: "Your reaction was not saved. Please try again.",
+          variant: "destructive",
+        });
+      }
+    });
   };
   
   const handleDownload = async (imageSrc: string, imageName: string) => {
@@ -248,28 +270,44 @@ export default function GalleryPage() {
     document.body.removeChild(link);
   };
 
-  const handleDelete = (imageId: number) => {
+  const handleDelete = async (imageId: number) => {
     const imageToDelete = images.find(img => img.id === imageId);
+    const saved = await setImagesAsync(images.filter(img => img.id !== imageId));
+    if (!saved) {
+      toast({
+        title: "Delete failed",
+        description: "The image could not be removed from your organization. Please try again.",
+        variant: "destructive",
+      });
+      setDeletingImageId(null);
+      return;
+    }
     if (imageToDelete?.src.startsWith('blob:')) {
         URL.revokeObjectURL(imageToDelete.src);
     }
-    setImages(images.filter(img => img.id !== imageId));
     toast({ title: "Image deleted successfully" });
     setDeletingImageId(null);
   };
   
-  const handleApproval = (imageId: number, newStatus: 'approved' | 'rejected') => {
+  const handleApproval = async (imageId: number, newStatus: 'approved' | 'rejected') => {
     if (newStatus === 'approved') {
       const updatedImages: GalleryImage[] = images.map(img =>
         img.id === imageId
           ? { ...img, status: 'approved' as const, read: false }
           : img // Mark as unread for others
       );
-      setImages(updatedImages);
+      const saved = await setImagesAsync(updatedImages);
+      if (!saved) {
+        toast({
+          title: "Approval failed",
+          description: "The image approval was not saved. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
       toast({ title: "Image approved!" });
     } else { // 'rejected'
-      handleDelete(imageId); // Use the same delete logic to ensure blob cleanup
-      toast({ title: "Image rejected and removed." });
+      await handleDelete(imageId); // Use the same delete logic to ensure blob cleanup
     }
   };
   

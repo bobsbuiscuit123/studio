@@ -9,6 +9,9 @@ import * as z from "zod";
 import ReactMarkdown from 'react-markdown';
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +43,7 @@ import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { safeFetchJson } from "@/lib/network";
 
+const isNativeApp = Capacitor.isNativePlatform();
 
 const promptFormSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -363,11 +367,42 @@ function AnnouncementsPageInner() {
     setIsDownloading(true);
   };
   
-  const handleDownloadAttachment = (attachment: Attachment) => {
+  const handleDownloadAttachment = async (attachment: Attachment) => {
     if (attachment.type === "button" && attachment.dataUri) {
       router.push(attachment.dataUri);
       return;
     }
+
+    if (isNativeApp) {
+      try {
+        const { base64Data, mimeType } = extractAttachmentBase64(attachment.dataUri);
+        const safeFileName = buildAttachmentFileName(attachment.name, mimeType);
+        const path = `announcements/${Date.now()}-${safeFileName}`;
+        const file = await Filesystem.writeFile({
+          path,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+
+        await Share.share({
+          title: attachment.name,
+          text: "Save or share this attachment",
+          url: file.uri,
+          dialogTitle: "Save or share attachment",
+        });
+        return;
+      } catch (error) {
+        console.error("Native attachment download failed", error);
+        toast({
+          title: "Couldn't open attachment",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     const link = document.createElement("a");
     link.href = attachment.dataUri;
     link.download = attachment.name;
@@ -1002,6 +1037,38 @@ function AnnouncementsPageInner() {
     </div>
     </>
   );
+}
+
+function extractAttachmentBase64(dataUri: string) {
+  const [meta, base64Data = ""] = dataUri.split(",");
+  const mimeType = meta.match(/data:(.*?);base64/)?.[1] || "application/octet-stream";
+  if (!base64Data) {
+    throw new Error("Missing attachment data.");
+  }
+  return { base64Data, mimeType };
+}
+
+function buildAttachmentFileName(fileName: string, mimeType: string) {
+  const trimmedName = fileName.trim() || "attachment";
+  if (/\.[A-Za-z0-9]+$/.test(trimmedName)) {
+    return trimmedName.replace(/[^\w.\-() ]+/g, "_");
+  }
+
+  const extension = mimeTypeToExtension(mimeType);
+  const safeBase = trimmedName.replace(/[^\w.\-() ]+/g, "_");
+  return `${safeBase}.${extension}`;
+}
+
+function mimeTypeToExtension(mimeType: string) {
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  if (mimeType.includes("gif")) return "gif";
+  if (mimeType.includes("pdf")) return "pdf";
+  if (mimeType.includes("word")) return "doc";
+  if (mimeType.includes("officedocument.wordprocessingml")) return "docx";
+  if (mimeType.includes("plain")) return "txt";
+  if (mimeType.includes("csv")) return "csv";
+  return mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "bin";
 }
 
 export default function AnnouncementsPage() {

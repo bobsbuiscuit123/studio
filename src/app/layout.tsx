@@ -9,6 +9,7 @@ import { PolicyViolationToaster } from "@/components/policy-violation-toaster";
 import { SecurityGuard } from "@/components/security-guard";
 import { ClientTimeZoneSync } from "@/components/client-timezone-sync";
 import { NativeStatusBar } from "@/components/native-status-bar";
+import { SafeAreaSync } from "@/components/safe-area-sync";
 import { PT_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -48,6 +49,7 @@ export default function RootLayout({
       <body className={`${bodyFont.variable} font-body antialiased`} suppressHydrationWarning>
         <div className="app-root">
           <NativeStatusBar />
+          <SafeAreaSync />
           <ClientTimeZoneSync />
           <ErrorReporter />
           <SecurityGuard />

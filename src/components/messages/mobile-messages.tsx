@@ -212,7 +212,7 @@ export function MessagesListScreen() {
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header px-4">
+        <div className="tab-page-header page-header-safe-inset px-4">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
@@ -225,7 +225,7 @@ export function MessagesListScreen() {
   if (!user) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header px-4">
+        <div className="tab-page-header page-header-safe-inset px-4">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
@@ -237,7 +237,7 @@ export function MessagesListScreen() {
 
   return (
     <div className="messages-screen messages-list-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
-      <div className="header tab-page-header relative space-y-3 px-4">
+      <div className="header tab-page-header page-header-safe-inset relative space-y-3 px-4">
         <div className="flex items-center justify-between">
           <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
@@ -557,7 +557,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header px-4">
+        <div className="tab-page-header page-header-safe-inset px-4">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
@@ -570,7 +570,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   if (!user) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header px-4">
+        <div className="tab-page-header page-header-safe-inset px-4">
           <h2 className="text-xl font-semibold">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
@@ -596,7 +596,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   return (
     <div className="messages-screen messages-thread-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
-      <div className="header tab-page-header flex items-center gap-3 border-b px-4">
+      <div className="header tab-page-header page-header-safe-inset flex items-center gap-3 border-b px-4">
         <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" onClick={() => router.push("/messages")}>
           <ArrowLeft className="h-5 w-5" />
           <span className="sr-only">Back to conversations</span>

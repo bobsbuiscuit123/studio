@@ -87,8 +87,20 @@ const normalizeAnnouncementForDisplay = <T extends { title?: string | null; cont
 
 function AnnouncementsPageInner() {
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
-  const { data: announcements, updateData: setAnnouncements, loading, clubId } = useAnnouncements();
-  const { data: forms, loading: formsLoading, updateData: setForms, clubId: formsClubId } = useForms();
+  const {
+    data: announcements,
+    updateData: setAnnouncements,
+    updateDataAsync: setAnnouncementsAsync,
+    loading,
+    clubId,
+  } = useAnnouncements();
+  const {
+    data: forms,
+    loading: formsLoading,
+    updateData: setForms,
+    updateDataAsync: setFormsAsync,
+    clubId: formsClubId,
+  } = useForms();
   const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
@@ -104,6 +116,7 @@ function AnnouncementsPageInner() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
   const memberNameByEmail = useMemo(() => {
@@ -112,7 +125,6 @@ function AnnouncementsPageInner() {
   }, [members]);
   const resolveMemberName = (value: string) =>
     memberNameByEmail.get(value) || value;
-  const [optimisticAnnouncements, setOptimisticAnnouncements] = useState<Announcement[]>([]);
   const [recipientMode, setRecipientMode] = useState<'all' | 'specific'>('all');
   const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [showAi, setShowAi] = useState(false);
@@ -194,19 +206,6 @@ function AnnouncementsPageInner() {
       recipients: "",
     },
   });
-
-  const persistAnnouncement = (announcement: Announcement) => {
-    setAnnouncements(prev => {
-      const list = Array.isArray(prev) ? prev : [];
-      const exists = list.some(a => a.id === announcement.id);
-      return exists ? list : [announcement, ...list];
-    });
-  };
-
-  useEffect(() => {
-    const ids = new Set(safeAnnouncements.map(a => a.id));
-    setOptimisticAnnouncements(prev => prev.filter(a => !ids.has(a.id)));
-  }, [safeAnnouncements]);
 
   useEffect(() => {
     if (!Array.isArray(safeAnnouncements) || safeAnnouncements.length === 0) return;
@@ -336,13 +335,25 @@ function AnnouncementsPageInner() {
     }
   }
 
-  const handleUpdateAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
+  const handleUpdateAnnouncement = async (values: z.infer<typeof announcementFormSchema>) => {
     if (!editingAnnouncement) return;
     const recipients = recipientMode === 'specific' ? selectedRecipients : [];
-    const updatedAnnouncements = safeAnnouncements.map((ann) =>
+    setIsSavingAnnouncement(true);
+    const saved = await setAnnouncementsAsync(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      return list.map((ann) =>
         ann.id === editingAnnouncement.id ? { ...ann, ...values, recipients } : ann
-    );
-    setAnnouncements(updatedAnnouncements);
+      );
+    });
+    setIsSavingAnnouncement(false);
+    if (!saved) {
+      toast({
+        title: "Failed to update announcement",
+        description: "Your changes were not saved. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({ title: "Announcement updated!" });
     handleDialogClose();
   };
@@ -406,7 +417,7 @@ function AnnouncementsPageInner() {
     }
   };
 
-  const handlePostAnnouncement = (values: z.infer<typeof announcementFormSchema>) => {
+  const handlePostAnnouncement = async (values: z.infer<typeof announcementFormSchema>) => {
     if (!user) return;
     const recipients = recipientMode === 'specific' ? selectedRecipients : [];
     const newId = Date.now();
@@ -438,34 +449,42 @@ function AnnouncementsPageInner() {
         read: false,
         linkedFormId: linkedFormIdDraft || undefined,
     };
-    setAnnouncements(prev => {
+    setIsSavingAnnouncement(true);
+    const saved = await setAnnouncementsAsync(prev => {
       const list = Array.isArray(prev) ? prev : [];
       const exists = list.some(a => a.id === newAnnouncement.id);
-      const next = exists ? list : [newAnnouncement, ...list];
-      return next as any;
+      return exists ? list : [newAnnouncement, ...list];
     });
-    setOptimisticAnnouncements(prev => {
-      const exists = prev.some(a => a.id === newAnnouncement.id);
-      return exists ? prev : [newAnnouncement, ...prev];
-    });
-    persistAnnouncement(newAnnouncement);
-    if (linkedFormIdDraft) {
-      setForms(prev => {
-        const list = Array.isArray(prev) ? prev : [];
-        return list.map(form => form.id === linkedFormIdDraft ? { ...form, linkedAnnouncementId: newAnnouncement.id } : form);
+    if (!saved) {
+      setIsSavingAnnouncement(false);
+      toast({
+        title: "Failed to post announcement",
+        description: "The announcement was not saved to your organization. Please try again.",
+        variant: "destructive",
       });
-      if (formsClubId) {
-        setForms(prev => {
-          const list = Array.isArray(prev) ? prev : [];
-          return list.map(form =>
-            form.id === linkedFormIdDraft
-              ? { ...form, linkedAnnouncementId: newAnnouncement.id }
-              : form
-          );
+      return;
+    }
+
+    if (linkedFormIdDraft && formsClubId) {
+      const linkedFormId = linkedFormIdDraft;
+      const formSaved = await setFormsAsync(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        return list.map(form =>
+          form.id === linkedFormId
+            ? { ...form, linkedAnnouncementId: newAnnouncement.id }
+            : form
+        );
+      });
+      if (!formSaved) {
+        toast({
+          title: "Announcement posted",
+          description: "The announcement was saved, but the linked form reference did not persist. Please reopen the form and link it again if needed.",
+          variant: "destructive",
         });
       }
       setLinkedFormIdDraft(null);
     }
+    setIsSavingAnnouncement(false);
     toast({ title: "Announcement posted successfully!" });
     promptForm.reset();
     setAttachments([]);
@@ -488,17 +507,12 @@ function AnnouncementsPageInner() {
   };
 
   const sortedAnnouncements = useMemo(() => {
-    const merged = (() => {
-      const optimisticIds = new Set(optimisticAnnouncements.map(a => a.id));
-      const dedupedSafe = safeAnnouncements.filter(a => !optimisticIds.has(a.id));
-      return [...optimisticAnnouncements, ...dedupedSafe].map(normalizeAnnouncementForDisplay);
-    })();
-    return [...merged].sort((a: any, b: any) => {
+    return [...safeAnnouncements.map(normalizeAnnouncementForDisplay)].sort((a: any, b: any) => {
       const aDate = new Date(a?.date ?? 0).getTime();
       const bDate = new Date(b?.date ?? 0).getTime();
       return bDate - aDate;
     });
-  }, [optimisticAnnouncements, safeAnnouncements]);
+  }, [safeAnnouncements]);
   
   return (
     <>
@@ -864,7 +878,7 @@ function AnnouncementsPageInner() {
     </div>
     
     <Dialog open={!!editingAnnouncement || isPostDialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent>
+        <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] sm:top-[50%] sm:max-h-[calc(100dvh-2rem)]">
             <DialogHeader>
                 <DialogTitle>{editingAnnouncement ? "Edit Announcement" : "Review and Post Announcement"}</DialogTitle>
                 {!editingAnnouncement && (
@@ -960,8 +974,13 @@ function AnnouncementsPageInner() {
         </Form>
             <DialogFooter>
                 <Button type="button" variant="ghost" onClick={handleDialogClose}>Cancel</Button>
-                <Button type="submit" form="announcement-form">
-                    {editingAnnouncement ? "Save Changes" : "Post Announcement"}
+                <Button type="submit" form="announcement-form" disabled={isSavingAnnouncement}>
+                    {isSavingAnnouncement ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : editingAnnouncement ? "Save Changes" : "Post Announcement"}
                 </Button>
             </DialogFooter>
         </DialogContent>

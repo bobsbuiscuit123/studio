@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import {
+  addMonths,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -105,10 +106,11 @@ export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isClient, setIsClient] = useState(false);
-  const { data: events, updateData: setEvents, loading } = useEvents();
+  const { data: events, updateData: setEvents, updateDataAsync: saveEvents, loading } = useEvents();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
+  const [editingDraftEvent, setEditingDraftEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
@@ -157,8 +159,9 @@ export default function CalendarPage() {
     resolver: zodResolver(editFormSchema),
   });
 
-  const handleEditClick = (event: ClubEvent) => {
+  const openEventEditor = (event: ClubEvent, options?: { isDraft?: boolean }) => {
     setEditingEvent(event);
+    setEditingDraftEvent(Boolean(options?.isDraft));
     setSelectedEvent(null); // Close the details dialog if open
     editForm.reset({
       title: event.title,
@@ -170,24 +173,58 @@ export default function CalendarPage() {
     });
   };
 
-  const handleUpdateEvent = (values: z.infer<typeof editFormSchema>) => {
+  const handleEditClick = (event: ClubEvent) => {
+    openEventEditor(event);
+  };
+
+  const handleUpdateEvent = async (values: z.infer<typeof editFormSchema>) => {
     if (!editingEvent) return;
-    const updatedEvents = safeEvents.map((event) =>
-      event.id === editingEvent.id
-        ? {
-            ...event,
-            title: values.title,
-            description: values.description,
-            location: values.location?.trim() || "",
-            date: new Date(values.date),
-            hasTime: true,
-            points: values.points,
-            rsvpRequired: Boolean(values.rsvpRequired),
-          }
-        : event
-    );
-    setEvents(updatedEvents);
-    toast({ title: "Event updated!" });
+    const savedEvent: ClubEvent = {
+      ...editingEvent,
+      title: values.title,
+      description: values.description,
+      location: values.location?.trim() || "",
+      date: new Date(values.date),
+      hasTime: true,
+      points: values.points,
+      rsvpRequired: Boolean(values.rsvpRequired),
+    };
+
+    if (editingDraftEvent) {
+      const eventToCreate = {
+        ...savedEvent,
+        id:
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      };
+      const persisted = await saveEvents(prevEvents => [...prevEvents, eventToCreate]);
+      if (!persisted) {
+        toast({
+          title: "Could not add event",
+          description: "The event was not saved. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Event added successfully!" });
+    } else {
+      const updatedEvents = safeEvents.map((event) =>
+        event.id === editingEvent.id ? savedEvent : event
+      );
+      const persisted = await saveEvents(updatedEvents);
+      if (!persisted) {
+        toast({
+          title: "Could not update event",
+          description: "Your changes were not saved. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({ title: "Event updated!" });
+    }
+
+    setEditingDraftEvent(false);
     setEditingEvent(null);
   };
 
@@ -323,11 +360,9 @@ export default function CalendarPage() {
         viewedBy: currentEmail ? [currentEmail] : [],
         read: false,
       };
-      // Pass a function to setEvents to ensure we're updating the latest state
-      setEvents(prevEvents => [...prevEvents, newEvent]);
-      toast({ title: "Event added successfully!" });
       form.reset();
-      handleEditClick(newEvent); // Open edit dialog to set points
+      toast({ title: "Review event details" });
+      openEventEditor(newEvent, { isDraft: true });
     } catch (error: any) {
       console.error(error);
       toast({
@@ -341,7 +376,7 @@ export default function CalendarPage() {
     }
   };
   
-  const handleManualAdd = (values: z.infer<typeof manualEventSchema>) => {
+  const handleManualAdd = async (values: z.infer<typeof manualEventSchema>) => {
     const dateTime = values.time
       ? new Date(`${values.date}T${values.time}`)
       : new Date(`${values.date}T00:00`);
@@ -359,7 +394,15 @@ export default function CalendarPage() {
       viewedBy: currentEmail ? [currentEmail] : [],
       read: false,
     };
-    setEvents(prevEvents => [...prevEvents, newEvent]);
+    const persisted = await saveEvents(prevEvents => [...prevEvents, newEvent]);
+    if (!persisted) {
+      toast({
+        title: "Could not add event",
+        description: "The event was not saved. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
     toast({ title: "Event added manually!" });
     manualForm.reset({
       title: "",
@@ -434,7 +477,16 @@ export default function CalendarPage() {
                   <div className="truncate text-base font-semibold sm:text-lg">
                     {format(currentMonth, "MMMM yyyy")}
                   </div>
-                  <div className="flex h-10 w-10 items-center justify-center" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-10 w-10 rounded-xl"
+                    onClick={() => setCurrentMonth(prev => addMonths(prev, 1))}
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                    <span className="sr-only">Next month</span>
+                  </Button>
                 </div>
 
                 <div className="grid w-full max-w-full grid-cols-7 gap-1 sm:gap-1.5">
@@ -871,10 +923,16 @@ export default function CalendarPage() {
         </Dialog>
     )}
     {editingEvent && (
-        <Dialog open={!!editingEvent} onOpenChange={() => setEditingEvent(null)}>
+        <Dialog
+          open={!!editingEvent}
+          onOpenChange={() => {
+            setEditingDraftEvent(false);
+            setEditingEvent(null);
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit Event</DialogTitle>
+              <DialogTitle>{editingDraftEvent ? "Review Event" : "Edit Event"}</DialogTitle>
             </DialogHeader>
             <Form {...editForm}>
               <form onSubmit={editForm.handleSubmit(handleUpdateEvent)} className="space-y-4">
@@ -950,8 +1008,19 @@ export default function CalendarPage() {
                   )}
                 />
                 <DialogFooter>
-                    <Button type="button" variant="ghost" onClick={() => setEditingEvent(null)}>Cancel</Button>
-                    <Button type="submit">Save Changes</Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingDraftEvent(false);
+                        setEditingEvent(null);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button type="submit">
+                      {editingDraftEvent ? "Add Event" : "Save Changes"}
+                    </Button>
                 </DialogFooter>
               </form>
             </Form>

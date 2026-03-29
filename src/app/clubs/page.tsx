@@ -532,10 +532,7 @@ export default function ClubsPage() {
         )}
 
         {isOrgOwner ? (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button variant="outline" onClick={() => router.push(`/orgs/${selectedOrgId}/credits`)} className="w-full">
-              <CreditCard className="mr-2" /> Manage billing for {orgStatus?.orgName ?? 'this organization'}
-            </Button>
+          <div>
             <Button variant="destructive" onClick={() => setIsDeleteOrgOpen(true)} className="w-full">
               <Trash2 className="mr-2" /> Delete Organization
             </Button>

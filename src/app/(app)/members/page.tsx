@@ -228,7 +228,7 @@ export default function MembersPage() {
                       <Share2 className="mr-2" /> Invite Members
                   </Button>
                   </DialogTrigger>
-                  <DialogContent>
+                  <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] sm:top-[50%] sm:max-h-[calc(100dvh-2rem)]">
                   <DialogHeader>
                       <DialogTitle>Invite Members with Join Code</DialogTitle>
                       <DialogDescription>

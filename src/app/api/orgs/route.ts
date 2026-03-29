@@ -3,8 +3,15 @@ import { NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const ipLimiter = rateLimit(`orgs-list:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -14,6 +21,11 @@ export async function GET() {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`orgs-list-user:${userId}`, 120, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

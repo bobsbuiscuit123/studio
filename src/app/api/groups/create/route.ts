@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     description: z.string().optional(),
     joinCode: z.string().min(4),
     logo: z.string().optional(),
-  });
+  }).strict();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -68,6 +68,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const userLimiter = rateLimit(`group-create-user:${userId}`, 20, 60_000);
+  if (!userLimiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(userLimiter) }
     );
   }
 

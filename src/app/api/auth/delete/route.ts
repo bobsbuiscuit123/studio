@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import {
@@ -6,6 +7,8 @@ import {
   removeGroupStateMember,
   updateGroupStateMemberRole,
 } from '@/lib/group-permissions';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 type DeletePlanItem = {
   groupId: string;
@@ -13,11 +16,22 @@ type DeletePlanItem = {
   newAdminUserId?: string;
 };
 
-type DeleteRequest = {
-  plans?: DeletePlanItem[];
-};
+const deletePlanSchema = z.object({
+  groupId: z.string().uuid(),
+  action: z.enum(['transfer', 'delete']),
+  newAdminUserId: z.string().uuid().optional(),
+}).strict();
+
+const deleteRequestSchema = z.object({
+  plans: z.array(deletePlanSchema).max(100).optional(),
+}).strict();
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`auth-delete:${getRequestIp(request.headers)}`, 10, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -28,11 +42,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'Unauthorized.' }, { status: 401 });
   }
 
-  let body: DeleteRequest = {};
-  try {
-    body = (await request.json()) as DeleteRequest;
-  } catch {
-    body = {};
+  const userLimiter = rateLimit(`auth-delete-user:${user.id}`, 10, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const parsed = deleteRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: 'Invalid delete payload.' }, { status: 400 });
   }
 
   const admin = createSupabaseAdmin();
@@ -46,7 +64,7 @@ export async function POST(request: Request) {
   }
 
   const groupIds = (groupMemberships || []).map((row) => row.group_id);
-  const plans = Array.isArray(body.plans) ? body.plans : [];
+  const plans = parsed.data.plans ?? [];
 
   const { data: userProfile } = await admin
     .from('profiles')

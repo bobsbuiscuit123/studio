@@ -3,13 +3,26 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+
+const avatarSchema = z.string().trim().max(2_000_000).refine(
+  (value) => value.length === 0 || value.startsWith('data:image/') || /^https?:\/\//.test(value),
+  'Invalid avatar.'
+);
+
+const schema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  avatar: avatarSchema.optional(),
+}).strict();
 
 export async function PATCH(request: Request) {
+  const ipLimiter = rateLimit(`profile-patch:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
-  const schema = z.object({
-    name: z.string().min(1).optional(),
-    avatar: z.string().optional(),
-  });
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -28,8 +41,13 @@ export async function PATCH(request: Request) {
     );
   }
 
+  const userLimiter = rateLimit(`profile-patch-user:${user.id}`, 30, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
+  }
+
   const displayName =
-    parsed.data.name ||
+    parsed.data.name?.trim() ||
     (user.user_metadata?.display_name as string | undefined) ||
     user.email ||
     'Member';
@@ -47,7 +65,7 @@ export async function PATCH(request: Request) {
 
   const requestedAvatar =
     typeof parsed.data.avatar === 'string' && parsed.data.avatar.trim().length > 0
-      ? parsed.data.avatar
+      ? parsed.data.avatar.trim()
       : null;
   const existingAvatar =
     typeof existingProfile?.avatar_url === 'string' && existingProfile.avatar_url.trim().length > 0

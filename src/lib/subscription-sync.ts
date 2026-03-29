@@ -247,9 +247,6 @@ export const syncRevenueCatSubscriber = async ({
 
     logRevenueCatSubscriberDiagnostics(lookupUserId, subscriberPayload, `sync attempt ${attempt + 1}`);
     canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
-    console.log('RC_CANONICAL_STATE:', canonicalState);
-    console.log('CURRENT_PLAN:', canonicalState.activeProductId);
-    console.log('SCHEDULED_PLAN:', canonicalState.scheduledProductId);
 
     const shouldRetryEmptyPaidState =
       canonicalState.activeProductId === null &&
@@ -289,11 +286,7 @@ export const syncRevenueCatSubscriber = async ({
     stabilizedCanonicalState &&
     canonicalState.activeProductId !== stabilizedCanonicalState.activeProductId
   ) {
-    console.warn('RC_CANONICAL_STATE_PRESERVED_PAID_STATE:', {
-      previousSubscription,
-      canonicalState,
-      stabilizedCanonicalState,
-    });
+    console.warn('RevenueCat sync preserved an existing paid state after an empty subscriber response.');
   }
 
   const finalCanonicalState = stabilizedCanonicalState ?? {

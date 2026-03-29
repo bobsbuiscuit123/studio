@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 import { REVENUECAT_ENTITLEMENT_ID, getPaidPlanByProductId, type PaidPlanId } from '@/lib/pricing';
 
 export type RevenueCatWebhookEvent = {
@@ -75,6 +77,26 @@ const normalizeDate = (value?: string | null) => {
 };
 
 const getRevenueCatSecretApiKey = () => process.env.REVENUECAT_SECRET_API_KEY?.trim() ?? '';
+const isRevenueCatDebugEnabled = () => process.env.DEBUG_REVENUECAT === 'true';
+
+const secureEquals = (left: string, right: string) => {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const maskIdentifier = (value?: string | null) => {
+  const normalized = value?.trim() ?? '';
+  if (!normalized) {
+    return '(missing)';
+  }
+
+  if (normalized.length <= 8) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 4)}...${normalized.slice(-4)}`;
+};
 
 export const validateRevenueCatWebhookAuthorization = (request: Request) => {
   const expected = process.env.REVENUECAT_WEBHOOK_AUTH?.trim();
@@ -87,7 +109,7 @@ export const validateRevenueCatWebhookAuthorization = (request: Request) => {
   }
 
   const authorization = request.headers.get('authorization')?.trim() ?? '';
-  if (authorization !== expected && authorization !== `Bearer ${expected}`) {
+  if (!secureEquals(authorization, expected) && !secureEquals(authorization, `Bearer ${expected}`)) {
     return {
       ok: false as const,
       message: 'Unauthorized RevenueCat webhook.',
@@ -143,16 +165,17 @@ export const logRevenueCatSubscriberDiagnostics = (
   payload: RevenueCatSubscriberResponse | null,
   context: string
 ) => {
-  console.log('RC_LOOKUP_USER_ID:', lookupUserId);
-  console.log(`RC_SUBSCRIBER [${context}]:`, JSON.stringify(payload, null, 2));
-  console.log(
-    `RC_SUBSCRIPTIONS [${context}]:`,
-    JSON.stringify(payload?.subscriber?.subscriptions ?? null, null, 2)
-  );
-  console.log(
-    `RC_ENTITLEMENTS [${context}]:`,
-    JSON.stringify(payload?.subscriber?.entitlements ?? null, null, 2)
-  );
+  if (!isRevenueCatDebugEnabled()) {
+    return;
+  }
+
+  console.log('RevenueCat subscriber diagnostic', {
+    context,
+    lookupUserId: maskIdentifier(lookupUserId),
+    payloadFound: Boolean(payload),
+    subscriptionProductIds: Object.keys(payload?.subscriber?.subscriptions ?? {}),
+    entitlementIds: Object.keys(payload?.subscriber?.entitlements ?? {}),
+  });
 };
 
 const getSnapshotPriority = (snapshot: KnownSubscriptionSnapshot) =>

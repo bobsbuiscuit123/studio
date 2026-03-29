@@ -11,6 +11,8 @@ import {
   resolvePlanId,
   type OrgSubscriptionStatus,
 } from '@/lib/org-subscription';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,9 +21,14 @@ const noStoreHeaders = {
 };
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const ipLimiter = rateLimit(`org-status:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const { orgId } = await params;
   const parsed = z.string().uuid().safeParse(orgId);
   if (!parsed.success) {
@@ -39,6 +46,11 @@ export async function GET(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: noStoreHeaders }
     );
+  }
+
+  const userLimiter = rateLimit(`org-status-user:${userId}`, 120, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

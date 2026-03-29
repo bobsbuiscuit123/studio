@@ -5,6 +5,8 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { parseOptionalPositiveInt, type OrgSettings } from '@/lib/org-settings';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -15,7 +17,7 @@ const paramsSchema = z.string().uuid();
 const bodySchema = z.object({
   memberLimitOverride: z.number().int().positive().nullable().optional(),
   aiTokenLimitOverride: z.number().int().positive().nullable().optional(),
-});
+}).strict();
 
 async function loadOwnerContext(orgId: string) {
   const supabase = await createSupabaseServerClient();
@@ -91,9 +93,14 @@ async function loadOwnerContext(orgId: string) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const ipLimiter = rateLimit(`org-settings-get:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const { orgId } = await params;
   const parsed = paramsSchema.safeParse(orgId);
   if (!parsed.success) {
@@ -106,6 +113,11 @@ export async function GET(
   const context = await loadOwnerContext(parsed.data);
   if (!context.ok) {
     return context.response;
+  }
+
+  const userLimiter = rateLimit(`org-settings-get-user:${context.userId}`, 60, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const orgRecord = context.org as Record<string, unknown>;
@@ -128,6 +140,11 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const ipLimiter = rateLimit(`org-settings-patch:${getRequestIp(request.headers)}`, 20, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const { orgId } = await params;
   const parsedParams = paramsSchema.safeParse(orgId);
   if (!parsedParams.success) {
@@ -149,6 +166,11 @@ export async function PATCH(
   const context = await loadOwnerContext(parsedParams.data);
   if (!context.ok) {
     return context.response;
+  }
+
+  const userLimiter = rateLimit(`org-settings-patch-user:${context.userId}`, 40, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const updatePayload = {

@@ -153,7 +153,6 @@ export async function runAssistantAction(
             content: clampAssistantPrompt(item.content).slice(-MAX_ASSISTANT_PROMPT_CHARS),
           }))
       : undefined;
-    console.log('EXTRACTED MESSAGE:', normalizedQuery);
     return runAssistant({
       query: normalizedQuery,
       history: trimmedHistory,

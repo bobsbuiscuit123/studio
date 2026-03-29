@@ -3,18 +3,20 @@ import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const querySchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
-});
+}).strict();
 
 const bodySchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
   section: z.enum(['mindmap', 'assistant', 'aiInsights', 'dashboard']),
-  value: z.any(),
-});
+  value: z.unknown(),
+}).strict();
 
 async function requireGroupMembership(orgId: string, groupId: string) {
   const supabase = await createSupabaseServerClient();
@@ -53,6 +55,11 @@ async function requireGroupMembership(orgId: string, groupId: string) {
 }
 
 export async function GET(request: Request) {
+  const ipLimiter = rateLimit(`group-user-state-get:${getRequestIp(request.headers)}`, 120, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     orgId: url.searchParams.get('orgId'),
@@ -69,6 +76,11 @@ export async function GET(request: Request) {
   const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
   if (!membershipResult.ok) {
     return membershipResult.response;
+  }
+
+  const userLimiter = rateLimit(`group-user-state-get-user:${membershipResult.userId}`, 180, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();
@@ -91,6 +103,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`group-user-state-post:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(body);
 
@@ -104,6 +121,11 @@ export async function POST(request: Request) {
   const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
   if (!membershipResult.ok) {
     return membershipResult.response;
+  }
+
+  const userLimiter = rateLimit(`group-user-state-post-user:${membershipResult.userId}`, 120, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

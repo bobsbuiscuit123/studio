@@ -11,24 +11,26 @@ import {
   removeGroupStateMember,
   updateGroupStateMemberRole,
 } from '@/lib/group-permissions';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const listSchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
-});
+}).strict();
 
 const roleSchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
   userId: z.string().uuid(),
-  role: z.string(),
-});
+  role: z.string().trim().min(1).max(32),
+}).strict();
 
 const removeSchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
   userId: z.string().uuid(),
-});
+}).strict();
 
 const requireActingAdmin = async (orgId: string, groupId: string) => {
   const supabase = await createSupabaseServerClient();
@@ -60,6 +62,11 @@ const requireActingAdmin = async (orgId: string, groupId: string) => {
 };
 
 export async function GET(request: Request) {
+  const ipLimiter = rateLimit(`group-members-list:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const url = new URL(request.url);
   const parsed = listSchema.safeParse({
     orgId: url.searchParams.get('orgId'),
@@ -80,6 +87,11 @@ export async function GET(request: Request) {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`group-members-list-user:${userId}`, 120, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();
@@ -208,6 +220,11 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const ipLimiter = rateLimit(`group-members-patch:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = roleSchema.safeParse(body);
   if (!parsed.success || !isGroupRole(parsed.data.role)) {
@@ -219,6 +236,11 @@ export async function PATCH(request: Request) {
 
   const permission = await requireActingAdmin(parsed.data.orgId, parsed.data.groupId);
   if (!permission.ok) return permission.response;
+
+  const userLimiter = rateLimit(`group-members-patch-user:${permission.actingUserId}`, 60, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
+  }
 
   const { admin } = permission;
   const { data: targetMembership } = await admin
@@ -290,6 +312,11 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`group-members-post:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = roleSchema.safeParse(body);
   if (!parsed.success || !isGroupRole(parsed.data.role)) {
@@ -301,6 +328,11 @@ export async function POST(request: Request) {
 
   const permission = await requireActingAdmin(parsed.data.orgId, parsed.data.groupId);
   if (!permission.ok) return permission.response;
+
+  const userLimiter = rateLimit(`group-members-post-user:${permission.actingUserId}`, 60, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
+  }
 
   const { admin } = permission;
   const { data: orgMembership } = await admin
@@ -368,6 +400,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const ipLimiter = rateLimit(`group-members-delete:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = removeSchema.safeParse(body);
   if (!parsed.success) {
@@ -379,6 +416,11 @@ export async function DELETE(request: Request) {
 
   const permission = await requireActingAdmin(parsed.data.orgId, parsed.data.groupId);
   if (!permission.ok) return permission.response;
+
+  const userLimiter = rateLimit(`group-members-delete-user:${permission.actingUserId}`, 60, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
+  }
 
   const { admin } = permission;
   const { data: targetMembership } = await admin

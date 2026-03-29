@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { rateLimit } from '@/lib/rate-limit';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   collectRevenueCatCustomerCandidates,
@@ -51,6 +53,11 @@ const toCanonicalPaidStatus = (
 
 export async function POST(request: Request) {
   try {
+    const ipLimiter = rateLimit(`revenuecat-webhook:${getRequestIp(request.headers)}`, 240, 60_000);
+    if (!ipLimiter.allowed) {
+      return rateLimitExceededResponse(ipLimiter, 'Too many webhook requests. Please slow down.');
+    }
+
     const authorization = validateRevenueCatWebhookAuthorization(request);
     if (!authorization.ok) {
       return NextResponse.json(
@@ -70,23 +77,11 @@ export async function POST(request: Request) {
       return acknowledge({ reason: 'invalid_json' });
     }
 
-    const authHeader = request.headers.get('authorization');
-    console.log('AUTH HEADER:', authHeader ?? '(missing)');
-    console.log(
-      'EXPECTED:',
-      process.env.REVENUECAT_WEBHOOK_AUTH
-        ? `Bearer ${process.env.REVENUECAT_WEBHOOK_AUTH}`
-        : '(missing REVENUECAT_WEBHOOK_AUTH)'
-    );
-
     const event =
       body && typeof body === 'object' && 'event' in body
         ? ((body as RevenueCatWebhookPayload).event ?? null)
         : (body as RevenueCatWebhookEvent | null);
     const eventId = String(event?.id ?? '').trim();
-
-    console.log('RevenueCat webhook body keys:', body && typeof body === 'object' ? Object.keys(body) : []);
-    console.log('Event ID:', eventId || '(missing)');
 
     if (!eventId) {
       console.warn('RevenueCat webhook missing event id.');
@@ -95,7 +90,6 @@ export async function POST(request: Request) {
 
     const admin = createSupabaseAdmin();
     const candidates = event ? collectRevenueCatCustomerCandidates(event) : [];
-    console.log('Candidates:', candidates);
 
     if (candidates.length === 0) {
       const alreadyProcessed = await markWebhookProcessedWithoutMutation(eventId, admin);
@@ -106,11 +100,9 @@ export async function POST(request: Request) {
     }
 
     const userId = await resolveLocalUserIdFromRevenueCatCandidates(admin, candidates);
-    console.log('User ID:', userId ?? '(not found)');
 
     const previousSubscription = userId ? await getUserSubscriptionSummary(admin, userId) : null;
     let subscriberPayload = null;
-    let lookupUserId = candidates[0] ?? null;
     let canonicalState = null;
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -118,10 +110,9 @@ export async function POST(request: Request) {
 
       for (const candidate of candidates) {
         try {
-          lookupUserId = candidate;
           subscriberPayload = await fetchRevenueCatSubscriber(candidate);
         } catch (error) {
-          console.warn('Subscriber fetch failed:', candidate, error);
+          console.warn('RevenueCat subscriber fetch failed during webhook processing.', error);
           subscriberPayload = null;
         }
         if (subscriberPayload) {
@@ -129,19 +120,7 @@ export async function POST(request: Request) {
         }
       }
 
-      if (lookupUserId) {
-        console.log('RC_LOOKUP_USER_ID:', lookupUserId);
-      }
-      console.log(`RC_SUBSCRIBER [webhook attempt ${attempt + 1}]:`, JSON.stringify(subscriberPayload, null, 2));
-      console.log(
-        `ENTITLEMENTS [webhook attempt ${attempt + 1}]:`,
-        JSON.stringify(subscriberPayload?.subscriber?.entitlements ?? null, null, 2)
-      );
-
       canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
-      console.log('RC_CANONICAL_STATE:', canonicalState);
-      console.log('CURRENT_PLAN:', canonicalState.activeProductId);
-      console.log('SCHEDULED_PLAN:', canonicalState.scheduledProductId);
 
       const shouldRetryEmptyPaidState =
         canonicalState.activeProductId === null &&
@@ -155,7 +134,6 @@ export async function POST(request: Request) {
 
       await sleep(400 * (attempt + 1));
     }
-    console.log('Subscriber payload exists:', Boolean(subscriberPayload));
 
     if (!userId) {
       const alreadyProcessed = await markWebhookProcessedWithoutMutation(eventId, admin);
@@ -190,11 +168,7 @@ export async function POST(request: Request) {
       stabilizedCanonicalState &&
       canonicalState.activeProductId !== stabilizedCanonicalState.activeProductId
     ) {
-      console.warn('RC_CANONICAL_STATE_PRESERVED_PAID_STATE [webhook]:', {
-        previousSubscription,
-        canonicalState,
-        stabilizedCanonicalState,
-      });
+      console.warn('RevenueCat webhook preserved a previous paid state after an empty subscriber response.');
     }
 
     const result = await claimProcessedWebhookAndSyncSubscription({

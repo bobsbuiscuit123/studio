@@ -5,6 +5,8 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { sendPushToUsers } from '@/lib/send-push';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
@@ -13,16 +15,16 @@ const schema = z.discriminatedUnion('conversationType', [
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
     conversationType: z.literal('dm'),
-    partnerEmail: z.string().email(),
+    partnerEmail: z.string().trim().email().max(320),
     text: z.string().trim().min(1).max(500),
-  }),
+  }).strict(),
   z.object({
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
     conversationType: z.literal('group'),
-    chatId: z.string().min(1),
+    chatId: z.string().trim().min(1).max(200),
     text: z.string().trim().min(1).max(500),
-  }),
+  }).strict(),
 ]);
 
 const getConversationId = (email1: string, email2: string) => [email1, email2].sort().join('_');
@@ -55,6 +57,11 @@ const buildMessageAuditEnvelope = ({
   });
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`messages-send:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter, 'Too many messages sent too quickly. Please slow down.');
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -72,6 +79,11 @@ export async function POST(request: Request) {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`messages-send-user:${actingUser.id}`, 60, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter, 'Too many messages sent too quickly. Please slow down.');
   }
 
   const admin = createSupabaseAdmin();

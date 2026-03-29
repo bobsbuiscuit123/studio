@@ -5,12 +5,19 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getUserSubscriptionSummary } from '@/lib/subscription-sync';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const bodySchema = z.object({
   draftId: z.string().uuid(),
-});
+}).strict();
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`org-create-checkout:${getRequestIp(request.headers)}`, 15, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
@@ -28,6 +35,11 @@ export async function POST(request: Request) {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`org-create-checkout-user:${userId}`, 20, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

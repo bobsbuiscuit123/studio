@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const schema = z.object({
       joinCode: z.string().min(3),
-    });
+    }).strict();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

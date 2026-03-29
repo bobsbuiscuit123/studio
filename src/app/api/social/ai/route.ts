@@ -31,7 +31,7 @@ export async function POST(request: Request) {
       const schema = z.object({
         prompt: z.string().min(3, 'Prompt is required.'),
         photoDataUris: z.array(z.string()).optional(),
-      });
+      }).strict();
       const parsed = schema.safeParse(body);
       if (!parsed.success) {
         return NextResponse.json(

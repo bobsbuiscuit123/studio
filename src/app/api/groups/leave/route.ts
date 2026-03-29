@@ -15,7 +15,7 @@ const schema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
   transferAdminUserId: z.string().uuid().optional(),
-});
+}).strict();
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -52,6 +52,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const userLimiter = rateLimit(`group-leave-user:${userId}`, 30, 60_000);
+  if (!userLimiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(userLimiter) }
     );
   }
 

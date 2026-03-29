@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { isGroupAdminRole } from '@/lib/group-permissions';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 type AdminMember = {
   userId: string;
@@ -16,7 +18,12 @@ type AdminGroup = {
   members: AdminMember[];
 };
 
-export async function POST() {
+export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`auth-delete-check:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -25,6 +32,11 @@ export async function POST() {
 
   if (userError || !user) {
     return NextResponse.json({ ok: false, error: 'Unauthorized.' }, { status: 401 });
+  }
+
+  const userLimiter = rateLimit(`auth-delete-check-user:${user.id}`, 30, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

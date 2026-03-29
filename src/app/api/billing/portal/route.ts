@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 export async function POST(request: Request) {
+  const limiter = rateLimit(`billing-portal:${getRequestIp(request.headers)}`, 15, 60_000);
+  if (!limiter.allowed) {
+    return rateLimitExceededResponse(limiter);
+  }
+
   return NextResponse.json(
     err({
       code: 'VALIDATION',

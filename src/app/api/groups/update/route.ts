@@ -32,7 +32,7 @@ export async function PATCH(request: Request) {
     name: z.string().min(3),
     description: z.string().optional(),
     logo: z.string().optional(),
-  });
+  }).strict();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -57,6 +57,18 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const userLimiter = rateLimit(`group-update-user:${userId}`, 40, 60_000);
+  if (!userLimiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(userLimiter) }
     );
   }
 

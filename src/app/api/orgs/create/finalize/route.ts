@@ -6,6 +6,8 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
 import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subscription-sync';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const creationModes = [
   'free',
@@ -17,8 +19,8 @@ const creationModes = [
 const bodySchema = z.object({
   draftId: z.string().uuid(),
   creationMode: z.enum(creationModes),
-  verifiedProductId: z.string().optional(),
-});
+  verifiedProductId: z.string().trim().min(1).max(120).optional(),
+}).strict();
 
 const isSubscriptionAssignmentConflict = (message: string) =>
   /subscription_assignment_conflict|one_paid_org_per_user|23505|duplicate key value violates unique constraint/i.test(
@@ -52,6 +54,11 @@ const finalizeDraftWithRetry = async (
 };
 
 export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`org-finalize:${getRequestIp(request.headers)}`, 10, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = bodySchema.safeParse(body);
   if (!parsed.success) {
@@ -69,6 +76,11 @@ export async function POST(request: Request) {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`org-finalize-user:${userId}`, 15, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

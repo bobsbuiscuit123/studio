@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       const body = await request.json().catch(() => ({}));
       const schema = z.object({
         prompt: z.string().min(5, 'Prompt is required.'),
-      });
+      }).strict();
       const parsed = schema.safeParse(body);
       if (!parsed.success) {
         return NextResponse.json(

@@ -1,32 +1,30 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
-type SignupPayload = {
-  name: string;
-  email: string;
-  password: string;
-};
-
-const isEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
+const signupSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  email: z.string().trim().email().max(320),
+  password: z.string().min(8).max(256),
+}).strict();
 
 export async function POST(request: Request) {
-  let payload: SignupPayload;
-  try {
-    payload = (await request.json()) as SignupPayload;
-  } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid JSON.' });
+  const ipLimiter = rateLimit(`auth-signup:${getRequestIp(request.headers)}`, 10, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
   }
 
-  const name = (payload.name || '').trim();
-  const email = (payload.email || '').trim().toLowerCase();
-  const password = payload.password || '';
+  const body = await request.json().catch(() => ({}));
+  const parsed = signupSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: 'Invalid signup payload.' }, { status: 400 });
+  }
 
-  if (!name || !email || !password) {
-    return NextResponse.json({ ok: false, error: 'Missing required fields.' });
-  }
-  if (!isEmail(email)) {
-    return NextResponse.json({ ok: false, error: 'Invalid email address.' });
-  }
+  const name = parsed.data.name;
+  const email = parsed.data.email.toLowerCase();
+  const password = parsed.data.password;
 
   const supabase = createSupabaseAdmin();
   const { data, error } = await supabase.auth.admin.createUser({

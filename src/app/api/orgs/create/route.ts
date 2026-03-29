@@ -27,7 +27,7 @@ const draftSchema = z.object({
   selectedPlanId: z.string().min(1).nullish(),
   creationMode: z.enum(creationModes).nullish(),
   idempotencyKey: z.string().max(120).nullish(),
-});
+}).strict();
 
 export async function POST(request: Request) {
   const headerList = await headers();
@@ -67,6 +67,18 @@ export async function POST(request: Request) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const userLimiter = rateLimit(`org-create-draft-user:${userId}`, 20, 60_000);
+  if (!userLimiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(userLimiter) }
     );
   }
 

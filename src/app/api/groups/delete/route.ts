@@ -10,7 +10,7 @@ import { isGroupAdminRole } from '@/lib/group-permissions';
 const schema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),
-});
+}).strict();
 
 type DeleteResult = {
   error: { message: string; code?: string } | null;
@@ -57,6 +57,18 @@ export async function POST(request: Request) {
       return NextResponse.json(
         err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
         { status: 401, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
+    const userLimiter = rateLimit(`group-delete-user:${userId}`, 15, 60_000);
+    if (!userLimiter.allowed) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: 'Too many requests. Please slow down.',
+          source: 'network',
+        }),
+        { status: 429, headers: getRateLimitHeaders(userLimiter) }
       );
     }
 

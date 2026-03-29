@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const limiter = rateLimit(`tokens-wallet:${getRequestIp(request.headers)}`, 30, 60_000);
+  if (!limiter.allowed) {
+    return rateLimitExceededResponse(limiter);
+  }
+
   return NextResponse.json(
     err({
       code: 'VALIDATION',

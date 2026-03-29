@@ -4,8 +4,15 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
 import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subscription-sync';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
-export async function POST() {
+export async function POST(request: Request) {
+  const ipLimiter = rateLimit(`org-subscription-reconcile:${getRequestIp(request.headers)}`, 15, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -14,6 +21,11 @@ export async function POST() {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`org-subscription-reconcile-user:${userId}`, 20, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

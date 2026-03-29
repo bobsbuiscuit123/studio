@@ -4,12 +4,19 @@ import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 const querySchema = z.object({
   orgId: z.string().uuid(),
-});
+}).strict();
 
 export async function GET(request: Request) {
+  const ipLimiter = rateLimit(`groups-list:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     orgId: url.searchParams.get('orgId'),
@@ -31,6 +38,11 @@ export async function GET(request: Request) {
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`groups-list-user:${userId}`, 120, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

@@ -83,22 +83,10 @@ const getAuthenticatedUserId = async () => {
   return user.id;
 };
 
-const getRevenueCatOriginalAppUserId = (customerInfo: CustomerInfo) =>
-  (
-    (customerInfo as CustomerInfo & { originalAppUserId?: string | null }).originalAppUserId ??
-    (customerInfo as CustomerInfo & { originalAppUserID?: string | null }).originalAppUserID ??
-    null
-  );
-
 const logRevenueCatCustomerIdentity = async (
-  context: string,
+  _context: string,
   customerInfo?: CustomerInfo
-) => {
-  const resolvedCustomerInfo =
-    customerInfo ?? (await Purchases.getCustomerInfo()).customerInfo;
-  console.log(`RC_USER_ID [${context}]:`, getRevenueCatOriginalAppUserId(resolvedCustomerInfo));
-  return resolvedCustomerInfo;
-};
+) => customerInfo ?? (await Purchases.getCustomerInfo()).customerInfo;
 
 export const initializeRevenueCat = async (): Promise<string> => {
   const availability = getSubscriptionPurchaseAvailability();
@@ -219,14 +207,12 @@ export const getCurrentRevenueCatCustomerInfo = async (): Promise<CustomerInfo> 
   }
   await Purchases.invalidateCustomerInfoCache();
   const { customerInfo } = await Purchases.getCustomerInfo();
-  console.log('RC_USER_ID [getCustomerInfo]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;
 };
 
 export const restoreRevenueCatPurchases = async (): Promise<CustomerInfo> => {
   await ensureRevenueCatConfigured();
   const { customerInfo } = await Purchases.restorePurchases();
-  console.log('RC_USER_ID [restorePurchases]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;
 };
 
@@ -400,10 +386,6 @@ export const purchaseRevenueCatPlan = async (
   try {
     await ensureRevenueCatConfigured();
     const result = await Purchases.purchasePackage({ aPackage: revenueCatPackage });
-    console.log(
-      'RC_USER_ID [purchasePackage]:',
-      getRevenueCatOriginalAppUserId(result.customerInfo)
-    );
     const productId = getPaidPlanByProductId(result.productIdentifier)?.id;
     if (!productId) {
       throw new Error('RevenueCat returned an unsupported subscription product.');

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { headers, cookies } from 'next/headers';
+import { cookies } from 'next/headers';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { generateClubAnnouncement } from '@/ai/flows/generate-announcement';
@@ -21,13 +21,15 @@ import { clampAiOutputChars, MAX_TAB_AI_OUTPUT_CHARS } from '@/lib/ai-output-lim
 import { getEffectiveOrgAiAllowance, parseOptionalPositiveInt } from '@/lib/org-settings';
 import { isResult } from '@/lib/result';
 import { getRequestDayKey } from '@/lib/day-key';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { rateLimit } from '@/lib/rate-limit';
 
 const schema = z.object({
   orgId: z.string().uuid().optional(),
   feature: z.enum(['chat', 'insights', 'whats_new']),
-  action: z.string().optional(),
+  action: z.string().trim().min(1).max(80).optional(),
   payload: z.unknown().optional(),
-});
+}).strict();
 
 const jsonHeaders = { 'Content-Type': 'application/json' } as const;
 
@@ -45,7 +47,6 @@ const successResponse = (result: unknown, status = 200) => {
     );
   }
 
-  console.log('AI RESULT:', result);
   return new Response(
     JSON.stringify({
       success: true,
@@ -102,15 +103,18 @@ const cappedTabActions = new Set([
 
 export async function POST(request: Request) {
   try {
+    const ipLimiter = rateLimit(`ai-consume-ip:${getRequestIp(request.headers)}`, 20, 60_000);
+    if (!ipLimiter.allowed) {
+      return rateLimitExceededResponse(ipLimiter, 'Too many AI requests. Please slow down.');
+    }
+
     const body = await request.json().catch(() => ({}));
-    console.log('REQUEST BODY:', body);
 
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
-      return errorResponse(new Error('Invalid AI request.'), 500);
+      return errorResponse(new Error('Invalid AI request.'), 400);
     }
 
-    const headerList = await headers();
     const cookieStore = await cookies();
     const payload = parsed.data.payload as Record<string, unknown> | undefined;
     const orgId = parsed.data.orgId || cookieStore.get('selectedOrgId')?.value;
@@ -129,15 +133,12 @@ export async function POST(request: Request) {
     const { data: userData } = await supabase.auth.getUser();
     const userId = userData.user?.id;
     if (!userId) {
-      return errorResponse(new Error('Unauthorized.'), 500);
+      return errorResponse(new Error('Unauthorized.'), 401);
     }
 
-    const ip =
-      headerList.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-      headerList.get('x-real-ip') ||
-      'unknown';
-    if (!ip) {
-      return errorResponse(new Error('Unknown error'), 500);
+    const userLimiter = rateLimit(`ai-consume-user:${userId}`, 30, 60_000);
+    if (!userLimiter.allowed) {
+      return rateLimitExceededResponse(userLimiter, 'Too many AI requests. Please slow down.');
     }
 
     const admin = createSupabaseAdmin();
@@ -191,8 +192,6 @@ export async function POST(request: Request) {
     }
 
     const reason = String(consumeResult?.reason ?? '');
-    const remainingTokens = Number(consumeResult?.effective_available_tokens ?? 0);
-
     if (!consumeResult?.success) {
       if (reason === 'not_member') {
         return errorResponse(new Error('Not a member.'), 403);
@@ -209,8 +208,6 @@ export async function POST(request: Request) {
       return errorResponse(new Error('AI temporarily unavailable.'), 402);
     }
 
-    console.log('Subscription usage remaining tokens:', remainingTokens);
-
     const feature = parsed.data.feature;
     const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);
 
@@ -223,7 +220,9 @@ export async function POST(request: Request) {
             ? payload.prompt
             : '';
     const message = String(messageSource ?? '').trim();
-    console.log('MESSAGE:', message);
+    if (message.length > 8_000) {
+      return errorResponse(new Error('Prompt is too long.'), 400);
+    }
 
     let result: unknown;
 
@@ -326,7 +325,6 @@ export async function POST(request: Request) {
       feature === 'chat' && cappedTabActions.has(action);
     const finalResult = shouldClampResult ? clampTabAiResult(result) : result;
 
-    console.log('AI RESULT:', finalResult);
     return successResponse(finalResult, 200);
   } catch (error) {
     return new Response(

@@ -3,11 +3,18 @@ import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
+import { rateLimit } from '@/lib/rate-limit';
+import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ orgId: string }> }
 ) {
+  const ipLimiter = rateLimit(`org-cancel:${getRequestIp(request.headers)}`, 10, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
   const { orgId } = await params;
   const parsed = z.string().uuid().safeParse(orgId);
   if (!parsed.success) {
@@ -25,6 +32,11 @@ export async function POST(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401 }
     );
+  }
+
+  const userLimiter = rateLimit(`org-cancel-user:${userId}`, 10, 60_000);
+  if (!userLimiter.allowed) {
+    return rateLimitExceededResponse(userLimiter);
   }
 
   const admin = createSupabaseAdmin();

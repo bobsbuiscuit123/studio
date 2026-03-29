@@ -802,7 +802,7 @@ export async function GET(request: Request) {
   const schema = z.object({
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
-  });
+  }).strict();
   const parsed = schema.safeParse({
     orgId: url.searchParams.get('orgId'),
     groupId: url.searchParams.get('groupId'),
@@ -824,6 +824,18 @@ export async function GET(request: Request) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
       { status: 401, headers: getRateLimitHeaders(limiter) }
+    );
+  }
+
+  const userLimiter = rateLimit(`org-state-read-user:${userData.user.id}`, 180, 60_000);
+  if (!userLimiter.allowed) {
+    return NextResponse.json(
+      err({
+        code: 'NETWORK_HTTP_ERROR',
+        message: 'Too many requests. Please slow down.',
+        source: 'network',
+      }),
+      { status: 429, headers: getRateLimitHeaders(userLimiter) }
     );
   }
 
@@ -908,7 +920,7 @@ export async function POST(request: Request) {
       })
       .partial()
       .optional(),
-  });
+  }).strict();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(

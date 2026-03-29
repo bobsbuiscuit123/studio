@@ -244,8 +244,16 @@ export default function OrgCreditsPage() {
       if (purchaseAvailability.supported) {
         try {
           const customerInfo = await getCurrentRevenueCatCustomerInfo();
-          liveActiveProductId =
+          const resolvedLiveProductId =
             extractActiveProductIdFromCustomerInfo(customerInfo) ?? liveActiveProductId;
+          console.log('RC_PLAN_PREFLIGHT [billing]:', {
+            selectedPlanId,
+            backendActiveProductId: activeProductId,
+            liveActiveProductId: resolvedLiveProductId,
+            activeSubscriptions: customerInfo.activeSubscriptions,
+            subscriptionKeys: Object.keys(customerInfo.subscriptionsByProductIdentifier ?? {}),
+          });
+          liveActiveProductId = resolvedLiveProductId;
         } catch (error) {
           console.warn('Unable to load live RevenueCat customer info before applying plan', error);
         }

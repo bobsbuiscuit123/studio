@@ -191,6 +191,11 @@ export const loadRevenueCatPlanPackages = async (): Promise<RevenueCatPlanPackag
 
 export const getCurrentRevenueCatCustomerInfo = async (): Promise<CustomerInfo> => {
   await ensureRevenueCatConfigured();
+  try {
+    await Purchases.syncPurchases();
+  } catch (error) {
+    console.warn('RevenueCat syncPurchases failed before loading customer info', error);
+  }
   await Purchases.invalidateCustomerInfoCache();
   const { customerInfo } = await Purchases.getCustomerInfo();
   console.log('RC_USER_ID [getCustomerInfo]:', getRevenueCatOriginalAppUserId(customerInfo));
@@ -202,6 +207,15 @@ export const restoreRevenueCatPurchases = async (): Promise<CustomerInfo> => {
   const { customerInfo } = await Purchases.restorePurchases();
   console.log('RC_USER_ID [restorePurchases]:', getRevenueCatOriginalAppUserId(customerInfo));
   return customerInfo;
+};
+
+const parseRevenueCatDate = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 };
 
 export const extractActiveProductIdFromCustomerInfo = (
@@ -223,7 +237,57 @@ export const extractActiveProductIdFromCustomerInfo = (
       .map((productId) => getPaidPlanByProductId(productId)?.id ?? null)
       .find((value): value is PaidPlanId => Boolean(value)) ?? null;
 
-  return fromSubscriptions;
+  if (fromSubscriptions) {
+    return fromSubscriptions;
+  }
+
+  const now = Date.now();
+  const fromSubscriptionSnapshots =
+    Object.values(customerInfo.subscriptionsByProductIdentifier ?? {})
+      .map((subscription) => {
+        const planId = getPaidPlanByProductId(subscription.productIdentifier)?.id ?? null;
+        if (!planId) {
+          return null;
+        }
+
+        return {
+          planId,
+          purchaseAt: parseRevenueCatDate(subscription.purchaseDate),
+          expiresAt: parseRevenueCatDate(subscription.expiresDate),
+          gracePeriodExpiresAt: parseRevenueCatDate(subscription.gracePeriodExpiresDate),
+        };
+      })
+      .filter(
+        (
+          snapshot
+        ): snapshot is {
+          planId: PaidPlanId;
+          purchaseAt: number | null;
+          expiresAt: number | null;
+          gracePeriodExpiresAt: number | null;
+        } => Boolean(snapshot)
+      )
+      .filter((snapshot) => {
+        const effectiveExpiration =
+          snapshot.gracePeriodExpiresAt ?? snapshot.expiresAt ?? Number.POSITIVE_INFINITY;
+        const purchaseAt = snapshot.purchaseAt ?? Number.NEGATIVE_INFINITY;
+        return purchaseAt <= now && effectiveExpiration > now;
+      })
+      .sort((left, right) => {
+        const rightPurchaseAt = right.purchaseAt ?? Number.NEGATIVE_INFINITY;
+        const leftPurchaseAt = left.purchaseAt ?? Number.NEGATIVE_INFINITY;
+        if (rightPurchaseAt !== leftPurchaseAt) {
+          return rightPurchaseAt - leftPurchaseAt;
+        }
+
+        const rightExpiresAt =
+          right.gracePeriodExpiresAt ?? right.expiresAt ?? Number.NEGATIVE_INFINITY;
+        const leftExpiresAt =
+          left.gracePeriodExpiresAt ?? left.expiresAt ?? Number.NEGATIVE_INFINITY;
+        return rightExpiresAt - leftExpiresAt;
+      })[0]?.planId ?? null;
+
+  return fromSubscriptionSnapshots;
 };
 
 const purchaseWasCancelled = (error: unknown) => {

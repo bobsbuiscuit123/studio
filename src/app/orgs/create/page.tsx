@@ -334,8 +334,16 @@ export default function OrgCreatePage() {
       if (purchaseAvailability.supported) {
         try {
           const customerInfo = await getCurrentRevenueCatCustomerInfo();
-          liveActiveProductId =
+          const resolvedLiveProductId =
             extractActiveProductIdFromCustomerInfo(customerInfo) ?? liveActiveProductId;
+          console.log('RC_PLAN_PREFLIGHT [org-create]:', {
+            selectedPlanId: resolvedPlan.id,
+            backendActiveProductId: subscription?.activeProductId ?? null,
+            liveActiveProductId: resolvedLiveProductId,
+            activeSubscriptions: customerInfo.activeSubscriptions,
+            subscriptionKeys: Object.keys(customerInfo.subscriptionsByProductIdentifier ?? {}),
+          });
+          liveActiveProductId = resolvedLiveProductId;
         } catch (error) {
           console.warn('Unable to load live RevenueCat customer info before finalizing org', error);
         }

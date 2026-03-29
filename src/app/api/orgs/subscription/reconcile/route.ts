@@ -18,9 +18,16 @@ export async function POST() {
 
   const admin = createSupabaseAdmin();
   try {
-    await syncRevenueCatSubscriber({
+    const syncResult = await syncRevenueCatSubscriber({
       admin,
       appUserId: userId,
+    });
+    const subscription = await getUserSubscriptionSummary(admin, userId);
+    subscription.scheduledProductId = syncResult.canonicalState?.scheduledProductId ?? null;
+
+    return NextResponse.json({
+      ok: true,
+      data: subscription,
     });
   } catch (error) {
     const message =
@@ -33,9 +40,4 @@ export async function POST() {
     );
   }
 
-  const subscription = await getUserSubscriptionSummary(admin, userId);
-  return NextResponse.json({
-    ok: true,
-    data: subscription,
-  });
 }

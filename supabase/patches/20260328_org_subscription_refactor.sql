@@ -955,14 +955,14 @@ begin
   perform *
   from public.refresh_org_subscription_period(p_org_id);
 
-  update public.orgs
-  set tokens_used_this_period = tokens_used_this_period + 1,
+  update public.orgs as o
+  set tokens_used_this_period = o.tokens_used_this_period + 1,
       ai_enabled = greatest(
-        coalesce(monthly_token_limit, 0) + coalesce(bonus_tokens_this_period, 0) - (coalesce(tokens_used_this_period, 0) + 1),
+        coalesce(o.monthly_token_limit, 0) + coalesce(o.bonus_tokens_this_period, 0) - (coalesce(o.tokens_used_this_period, 0) + 1),
         0
       ) > 0,
       updated_at = now()
-  where id = p_org_id
+  where o.id = p_org_id
     and exists (
       select 1
       from public.memberships
@@ -970,9 +970,9 @@ begin
         and user_id = p_user_id
     )
     and (
-      coalesce(monthly_token_limit, 0) +
-      coalesce(bonus_tokens_this_period, 0) -
-      coalesce(tokens_used_this_period, 0)
+      coalesce(o.monthly_token_limit, 0) +
+      coalesce(o.bonus_tokens_this_period, 0) -
+      coalesce(o.tokens_used_this_period, 0)
     ) > 0
   returning *
   into org_row;

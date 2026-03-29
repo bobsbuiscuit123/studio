@@ -136,6 +136,7 @@ const mapProfileRowToSummary = (
   }> | null
 ): UserSubscriptionSummary => ({
   activeProductId: (row?.active_subscription_product_id ?? null) as UserSubscriptionSummary['activeProductId'],
+  scheduledProductId: null,
   subscribedOrgId: row?.subscribed_org_id ?? null,
   subscriptionStatus: (row?.subscription_status ?? 'free') as UserSubscriptionSummary['subscriptionStatus'],
   currentPeriodStart: row?.subscription_current_period_start ?? null,

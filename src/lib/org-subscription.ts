@@ -34,6 +34,7 @@ export type OrgSubscriptionStatus = {
   planName: string;
   subscriptionStatus: SubscriptionLifecycleStatus;
   subscriptionProductId: PaidPlanId | null;
+  scheduledProductId: PaidPlanId | null;
   monthlyTokenLimit: number;
   bonusTokensThisPeriod: number;
   tokensUsedThisPeriod: number;
@@ -53,6 +54,7 @@ export type OrgSubscriptionStatus = {
 
 export type UserSubscriptionSummary = {
   activeProductId: PaidPlanId | null;
+  scheduledProductId: PaidPlanId | null;
   subscribedOrgId: string | null;
   subscriptionStatus: SubscriptionLifecycleStatus;
   currentPeriodStart: string | null;

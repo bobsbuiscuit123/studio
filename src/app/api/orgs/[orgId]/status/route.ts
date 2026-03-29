@@ -173,6 +173,7 @@ export async function GET(
       ? org.subscription_status ?? refreshed.subscription_status ?? 'active'
       : 'free') as OrgSubscriptionStatus['subscriptionStatus'],
     subscriptionProductId,
+    scheduledProductId: null,
     monthlyTokenLimit,
     bonusTokensThisPeriod,
     tokensUsedThisPeriod,

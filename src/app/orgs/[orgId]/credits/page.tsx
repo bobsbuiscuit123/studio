@@ -56,6 +56,26 @@ type TransferResponse = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const getPaidPlanTierIndex = (planId: PaidPlanId | null) =>
+  planId ? PAID_PRODUCT_IDS.indexOf(planId) : -1;
+
+const formatSubscriptionDate = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
 export default function OrgCreditsPage() {
   const params = useParams<{ orgId: string }>();
   const router = useRouter();
@@ -192,6 +212,23 @@ export default function OrgCreditsPage() {
     Boolean(userSubscription?.activeProductId) ||
     Boolean(status?.ownerHasActiveSubscription) ||
     Boolean(activeProductId);
+  const scheduledProductId =
+    userSubscription?.scheduledProductId ?? status?.scheduledProductId ?? null;
+  const scheduledEffectiveDate =
+    userSubscription?.currentPeriodEnd ?? status?.currentPeriodEnd ?? null;
+  const formattedScheduledEffectiveDate = formatSubscriptionDate(scheduledEffectiveDate);
+  const isScheduledDowngrade = Boolean(
+    activeProductId &&
+      scheduledProductId &&
+      scheduledProductId !== activeProductId &&
+      getPaidPlanTierIndex(scheduledProductId) >= 0 &&
+      getPaidPlanTierIndex(activeProductId) >= 0 &&
+      getPaidPlanTierIndex(scheduledProductId) < getPaidPlanTierIndex(activeProductId)
+  );
+  const scheduledPlanName = scheduledProductId ? getPlanById(scheduledProductId).name : null;
+  const currentDisplayedPlanName = activeProductId
+    ? getPlanById(activeProductId).name
+    : status?.planName ?? 'Free';
   const purchaseDecision = resolvePaidPlanActionDecision({
     hasActiveSubscription,
     subscribedOrgId: userSubscribedOrg,
@@ -234,18 +271,27 @@ export default function OrgCreditsPage() {
   const showPlanChangeSubmittedToast = (options: {
     selectedPlanName: string;
     activeProductId: PaidPlanId | null;
+    scheduledProductId: PaidPlanId | null;
+    effectiveDate: string | null;
     hasActiveEntitlement: boolean;
   }) => {
     const currentPlanName = options.activeProductId ? getPlanById(options.activeProductId).name : null;
+    const formattedEffectiveDate = formatSubscriptionDate(options.effectiveDate);
+    const isDowngrade =
+      Boolean(
+        options.activeProductId &&
+          options.scheduledProductId &&
+          options.activeProductId !== options.scheduledProductId &&
+          getPaidPlanTierIndex(options.scheduledProductId) < getPaidPlanTierIndex(options.activeProductId)
+      );
 
     toast({
-      title:
-        options.activeProductId && options.activeProductId !== selectedPlanId
-          ? 'Plan change scheduled'
-          : 'Plan change submitted',
+      title: isDowngrade ? 'Plan change scheduled' : 'Plan change submitted',
       description:
-        options.activeProductId && options.activeProductId !== selectedPlanId
-          ? `${currentPlanName} remains active for now. Apple will apply ${options.selectedPlanName} according to its subscription rules.`
+        isDowngrade && formattedEffectiveDate && currentPlanName
+          ? `You are currently on ${currentPlanName}. Your plan will change to ${options.selectedPlanName} on ${formattedEffectiveDate}.`
+          : options.activeProductId && options.activeProductId !== selectedPlanId
+            ? `${currentPlanName} remains active for now. Apple will apply ${options.selectedPlanName} according to its subscription rules.`
           : options.hasActiveEntitlement
             ? `${options.selectedPlanName} was purchased and is still syncing to the backend. Check again shortly.`
             : `${options.selectedPlanName} was submitted to Apple. The updated subscription state may take a moment to appear in the app.`,
@@ -313,6 +359,7 @@ export default function OrgCreditsPage() {
       let purchaseSucceeded = false;
       let postPurchaseActiveProductId: PaidPlanId | null = null;
       let postPurchaseHasActiveEntitlement = false;
+      let postPurchaseEffectiveDate: string | null = null;
       if (purchaseAvailability.supported) {
         try {
           const customerInfo = await getCurrentRevenueCatCustomerInfo();
@@ -408,11 +455,14 @@ export default function OrgCreditsPage() {
           return outcome.customerInfo;
         });
 
+        const activeEntitlement =
+          (refreshedCustomerInfo.entitlements.active?.[REVENUECAT_ENTITLEMENT_ID] ??
+            refreshedCustomerInfo.entitlements.all?.[REVENUECAT_ENTITLEMENT_ID] ??
+            null) as { expirationDate?: string | null } | null;
+
         postPurchaseActiveProductId = extractActiveProductIdFromCustomerInfo(refreshedCustomerInfo);
-        postPurchaseHasActiveEntitlement = Boolean(
-          refreshedCustomerInfo.entitlements.active?.[REVENUECAT_ENTITLEMENT_ID] ??
-            refreshedCustomerInfo.entitlements.all?.[REVENUECAT_ENTITLEMENT_ID]
-        );
+        postPurchaseHasActiveEntitlement = Boolean(activeEntitlement);
+        postPurchaseEffectiveDate = activeEntitlement?.expirationDate ?? null;
       }
 
       let syncResult;
@@ -423,6 +473,8 @@ export default function OrgCreditsPage() {
           showPlanChangeSubmittedToast({
             selectedPlanName: selectedPlan.name,
             activeProductId: postPurchaseActiveProductId,
+            scheduledProductId: selectedPlanId,
+            effectiveDate: postPurchaseEffectiveDate,
             hasActiveEntitlement: postPurchaseHasActiveEntitlement,
           });
           return;
@@ -441,6 +493,12 @@ export default function OrgCreditsPage() {
           showPlanChangeSubmittedToast({
             selectedPlanName: selectedPlan.name,
             activeProductId: postPurchaseActiveProductId ?? observedPlanId,
+            scheduledProductId: selectedPlanId,
+            effectiveDate:
+              postPurchaseEffectiveDate ??
+              syncResult.subscription?.currentPeriodEnd ??
+              syncResult.status?.currentPeriodEnd ??
+              null,
             hasActiveEntitlement: postPurchaseHasActiveEntitlement,
           });
           return;
@@ -453,6 +511,12 @@ export default function OrgCreditsPage() {
         showPlanChangeSubmittedToast({
           selectedPlanName: selectedPlan.name,
           activeProductId: observedPlanId ?? postPurchaseActiveProductId,
+          scheduledProductId: selectedPlanId,
+          effectiveDate:
+            postPurchaseEffectiveDate ??
+            syncResult.subscription?.currentPeriodEnd ??
+            syncResult.status?.currentPeriodEnd ??
+            null,
           hasActiveEntitlement: postPurchaseHasActiveEntitlement,
         });
         return;
@@ -528,10 +592,21 @@ export default function OrgCreditsPage() {
           <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
             <CardHeader className="pb-2">
               <CardDescription>Current plan</CardDescription>
-              <CardTitle className="text-3xl">{status?.planName ?? 'Free'}</CardTitle>
+              <CardTitle className="text-3xl">
+                {currentDisplayedPlanName}
+                {isScheduledDowngrade && scheduledPlanName && formattedScheduledEffectiveDate ? (
+                  <span className="mt-2 block text-sm font-medium text-slate-600">
+                    (changes to {scheduledPlanName} on {formattedScheduledEffectiveDate})
+                  </span>
+                ) : null}
+              </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-slate-600">
-              {status?.subscriptionStatus === 'free' ? 'No paid subscription assigned' : status?.subscriptionStatus}
+              {isScheduledDowngrade && scheduledPlanName && formattedScheduledEffectiveDate
+                ? `You are currently on ${currentDisplayedPlanName}. Your plan will change to ${scheduledPlanName} on ${formattedScheduledEffectiveDate}.`
+                : status?.subscriptionStatus === 'free'
+                  ? 'No paid subscription assigned'
+                  : status?.subscriptionStatus}
             </CardContent>
           </Card>
 

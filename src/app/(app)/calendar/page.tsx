@@ -117,6 +117,7 @@ export default function CalendarPage() {
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [editingDraftEvent, setEditingDraftEvent] = useState(false);
+  const [savingEvent, setSavingEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
@@ -184,7 +185,8 @@ export default function CalendarPage() {
   };
 
   const handleUpdateEvent = async (values: z.infer<typeof editFormSchema>) => {
-    if (!editingEvent) return;
+    if (!editingEvent || savingEvent) return;
+    setSavingEvent(true);
     const savedEvent: ClubEvent = {
       ...editingEvent,
       title: values.title,
@@ -197,17 +199,21 @@ export default function CalendarPage() {
     };
 
     if (editingDraftEvent) {
-      const eventToCreate = {
-        ...savedEvent,
-        id: createClientEventId(),
-      };
-      const persisted = await saveEvents(prevEvents => [...prevEvents, eventToCreate]);
+      const persisted = await saveEvents(prevEvents => {
+        const list = Array.isArray(prevEvents) ? prevEvents : [];
+        const alreadyExists = list.some(event => event.id === savedEvent.id);
+        if (alreadyExists) {
+          return list.map(event => (event.id === savedEvent.id ? savedEvent : event));
+        }
+        return [...list, savedEvent];
+      });
       if (!persisted) {
         toast({
           title: "Could not add event",
           description: "The event was not saved. Please try again.",
           variant: "destructive",
         });
+        setSavingEvent(false);
         return;
       }
       toast({ title: "Event added successfully!" });
@@ -221,6 +227,7 @@ export default function CalendarPage() {
           description: "Your changes were not saved. Please try again.",
           variant: "destructive",
         });
+        setSavingEvent(false);
         return;
       }
       toast({ title: "Event updated!" });
@@ -228,6 +235,7 @@ export default function CalendarPage() {
 
     setEditingDraftEvent(false);
     setEditingEvent(null);
+    setSavingEvent(false);
   };
 
   const markEventViewed = (eventId: string) => {
@@ -928,6 +936,7 @@ export default function CalendarPage() {
         <Dialog
           open={!!editingEvent}
           onOpenChange={() => {
+            if (savingEvent) return;
             setEditingDraftEvent(false);
             setEditingEvent(null);
           }}
@@ -1013,15 +1022,22 @@ export default function CalendarPage() {
                     <Button
                       type="button"
                       variant="ghost"
+                      disabled={savingEvent}
                       onClick={() => {
+                        if (savingEvent) return;
                         setEditingDraftEvent(false);
                         setEditingEvent(null);
                       }}
                     >
                       Cancel
                     </Button>
-                    <Button type="submit">
-                      {editingDraftEvent ? "Add Event" : "Save Changes"}
+                    <Button type="submit" disabled={savingEvent}>
+                      {savingEvent ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : editingDraftEvent ? "Add Event" : "Save Changes"}
                     </Button>
                 </DialogFooter>
               </form>

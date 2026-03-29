@@ -785,7 +785,7 @@ export default function ClubsPage() {
           <DialogHeader>
             <DialogTitle>Edit Organization</DialogTitle>
             <DialogDescription>
-              Only owners can change org-level limits and share the organization code.
+              Change organization settings and share the organization code.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">

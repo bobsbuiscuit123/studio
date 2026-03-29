@@ -34,13 +34,29 @@ export function SafeAreaSync() {
 
     let animationFrameId: number | null = null;
     let timeoutId: number | null = null;
+    let lastStableTopInset = 0;
 
     const applyInsetVars = () => {
       const styles = window.getComputedStyle(probe);
-      root.style.setProperty("--safe-area-top-runtime", `${parsePixels(styles.paddingTop)}px`);
-      root.style.setProperty("--safe-area-right-runtime", `${parsePixels(styles.paddingRight)}px`);
-      root.style.setProperty("--safe-area-bottom-runtime", `${parsePixels(styles.paddingBottom)}px`);
-      root.style.setProperty("--safe-area-left-runtime", `${parsePixels(styles.paddingLeft)}px`);
+      const measuredTopInset = parsePixels(styles.paddingTop);
+      const measuredRightInset = parsePixels(styles.paddingRight);
+      const measuredBottomInset = parsePixels(styles.paddingBottom);
+      const measuredLeftInset = parsePixels(styles.paddingLeft);
+      const isCompactViewport = Math.min(window.innerWidth, window.innerHeight) <= 900;
+
+      if (measuredTopInset > 0) {
+        lastStableTopInset = measuredTopInset;
+      }
+
+      const resolvedTopInset =
+        measuredTopInset <= 0 && lastStableTopInset > 0 && isCompactViewport
+          ? lastStableTopInset
+          : measuredTopInset;
+
+      root.style.setProperty("--safe-area-top-runtime", `${resolvedTopInset}px`);
+      root.style.setProperty("--safe-area-right-runtime", `${measuredRightInset}px`);
+      root.style.setProperty("--safe-area-bottom-runtime", `${measuredBottomInset}px`);
+      root.style.setProperty("--safe-area-left-runtime", `${measuredLeftInset}px`);
     };
 
     const scheduleSync = () => {
@@ -67,7 +83,11 @@ export function SafeAreaSync() {
     window.addEventListener("orientationchange", scheduleSync);
     window.addEventListener("pageshow", scheduleSync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", scheduleSync);
+    window.addEventListener("focusin", scheduleSync);
+    window.addEventListener("focusout", scheduleSync);
     window.visualViewport?.addEventListener("resize", scheduleSync);
+    window.visualViewport?.addEventListener("scroll", scheduleSync);
 
     return () => {
       if (animationFrameId !== null) {
@@ -80,7 +100,11 @@ export function SafeAreaSync() {
       window.removeEventListener("orientationchange", scheduleSync);
       window.removeEventListener("pageshow", scheduleSync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", scheduleSync);
+      window.removeEventListener("focusin", scheduleSync);
+      window.removeEventListener("focusout", scheduleSync);
       window.visualViewport?.removeEventListener("resize", scheduleSync);
+      window.visualViewport?.removeEventListener("scroll", scheduleSync);
       probe.remove();
     };
   }, []);

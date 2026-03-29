@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -817,11 +817,8 @@ export default function OrgCreditsPage() {
         <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
           <CardHeader>
             <CardTitle>Current period</CardTitle>
-            <CardDescription>
-              Backend-synced usage for the organization currently assigned to this subscription.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
+          <CardContent>
             <div className="rounded-[24px] bg-slate-50 px-4 py-4 text-sm text-slate-600">
               <div className="flex items-center justify-between">
                 <span>Period start</span>
@@ -840,26 +837,13 @@ export default function OrgCreditsPage() {
                 </span>
               </div>
             </div>
-            <div className="rounded-[24px] border border-emerald-100 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
-              <div className="flex items-center gap-2 font-medium">
-                <Sparkles className="h-4 w-4" />
-                {status?.aiAvailable ? 'AI is available for members.' : 'AI is unavailable for members.'}
-              </div>
-              <p className="mt-2 text-xs text-emerald-800">
-                Free organizations do not receive recurring tokens. The one-time 30 token trial only applies to the first eligible free organization period.
-              </p>
-            </div>
           </CardContent>
         </Card>
 
         <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
           <CardHeader>
-            <CardTitle>Choose a paid plan</CardTitle>
-            <CardDescription>
-              {loadingPackages
-                ? 'Loading live App Store pricing...'
-                : 'Select a monthly subscription plan to activate, transfer, upgrade, or downgrade.'}
-            </CardDescription>
+            <CardTitle>Change your plan here</CardTitle>
+            {loadingPackages ? <CardDescription>Loading live App Store pricing...</CardDescription> : null}
           </CardHeader>
           <CardContent className="space-y-3">
             {PAID_PRODUCT_IDS.map((planId, index) => {
@@ -913,18 +897,13 @@ export default function OrgCreditsPage() {
         <Card className="rounded-[28px] border-0 bg-white/90 shadow-sm">
           <CardHeader>
             <CardTitle>Apply to this organization</CardTitle>
-            <CardDescription>
-              {selectedPlan.name} will be assigned to {status?.orgName ?? 'this organization'} after the backend confirms the subscription state.
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-slate-600">
-            {!purchaseAvailability.supported ? (
-              <p>{purchaseAvailability.reason ?? 'Paid subscriptions require the iOS app.'}</p>
-            ) : null}
-            <p>Upgrades and downgrades are handled by RevenueCat and Apple for your single active subscription.</p>
-            <p>Cancellation is managed in Apple subscription settings. Restores and transfers stay tied to your user account.</p>
-          </CardContent>
           <CardContent>
+            {!purchaseAvailability.supported ? (
+              <p className="mb-3 text-sm text-slate-600">
+                {purchaseAvailability.reason ?? 'Paid subscriptions require the iOS app.'}
+              </p>
+            ) : null}
             <Button
               className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
               onClick={() => void handleApplyPlan()}

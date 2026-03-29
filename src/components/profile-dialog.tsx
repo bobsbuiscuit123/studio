@@ -425,14 +425,6 @@ export function ProfileDialog({
                     {orgStatus.monthlyTokenLimit.toLocaleString()} tokens
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Detailed AI usage is only shown on the billing screen.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {orgStatus.currentPeriodEnd
-                    ? `Current period ends ${new Date(orgStatus.currentPeriodEnd).toLocaleDateString()}.`
-                    : "Current billing period is managed on the server."}
-                </p>
                 <Button
                   variant="outline"
                   size="sm"

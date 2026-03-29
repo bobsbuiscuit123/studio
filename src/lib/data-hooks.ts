@@ -188,10 +188,9 @@ async function loadGroupState(
       throw error;
     }
     if (!row?.data) {
-      const defaults = getDefaultClubData();
-      await supabase.from('group_state').insert({ org_id: orgId, group_id: groupId, data: defaults });
-      groupStateCache.set(cacheKey, defaults);
-      return defaults;
+      groupStateCache.delete(cacheKey);
+      console.warn('group_state row missing during initial load', { orgId, groupId });
+      return getDefaultClubData();
     }
     const normalized = normalizeClubData(row.data as ClubData);
     groupStateCache.set(cacheKey, normalized);
@@ -211,6 +210,7 @@ async function fetchFreshGroupState(
   orgId: string,
   groupId: string
 ) {
+  const cacheKey = getGroupStateCacheKey(orgId, groupId);
   const { data: row, error } = await supabase
     .from('group_state')
     .select('data')
@@ -221,10 +221,12 @@ async function fetchFreshGroupState(
     throw error;
   }
   if (!row?.data) {
-    return groupStateCache.get(getGroupStateCacheKey(orgId, groupId)) ?? getDefaultClubData();
+    groupStateCache.delete(cacheKey);
+    console.warn('group_state row missing during refresh', { orgId, groupId });
+    return getDefaultClubData();
   }
   const normalized = normalizeClubData(row.data as ClubData);
-  groupStateCache.set(getGroupStateCacheKey(orgId, groupId), normalized);
+  groupStateCache.set(cacheKey, normalized);
   return normalized;
 }
 
@@ -259,7 +261,43 @@ function useClubDataStore() {
         }
         return !groupStateCache.has(getGroupStateCacheKey(initialOrgId, initialClubId));
     });
+    const [authReady, setAuthReady] = useState(() => useDemo || typeof window === 'undefined');
     const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
+
+    useEffect(() => {
+        if (useDemo || !supabase) {
+            setAuthReady(true);
+            return;
+        }
+
+        let active = true;
+        setAuthReady(false);
+
+        const hydrateAuth = async () => {
+            try {
+                await supabase.auth.getSession();
+            } finally {
+                if (active) {
+                    setAuthReady(true);
+                }
+            }
+        };
+
+        void hydrateAuth();
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange(() => {
+            if (active) {
+                setAuthReady(true);
+            }
+        });
+
+        return () => {
+            active = false;
+            subscription.unsubscribe();
+        };
+    }, [supabase, useDemo]);
 
     useEffect(() => {
         if (useDemo) return;
@@ -275,6 +313,10 @@ function useClubDataStore() {
         }
         if (!clubId || !orgId) {
             setLoading(false);
+            return;
+        }
+        if (!authReady) {
+            setLoading(true);
             return;
         }
         const load = async () => {
@@ -296,10 +338,10 @@ function useClubDataStore() {
             setLoading(false);
         };
         load();
-    }, [clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, orgId, supabase, useDemo]);
 
     useEffect(() => {
-        if (useDemo || !supabase || !clubId || !orgId || typeof window === 'undefined') {
+        if (useDemo || !supabase || !clubId || !orgId || typeof window === 'undefined' || !authReady) {
             return;
         }
 
@@ -340,10 +382,10 @@ function useClubDataStore() {
             window.removeEventListener('online', handleVisibilityChange);
             window.removeEventListener('group-state-sync', handleGroupStateSync);
         };
-    }, [clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, orgId, supabase, useDemo]);
 
     const refreshData = useCallback(async () => {
-        if (useDemo || !supabase || !clubId || !orgId) return false;
+        if (useDemo || !supabase || !clubId || !orgId || !authReady) return false;
         try {
             const nextData = await fetchFreshGroupState(supabase, orgId, clubId);
             setData(prev => {
@@ -357,7 +399,7 @@ function useClubDataStore() {
             console.error(`Error refreshing data for group ${clubId}`, error);
             return false;
         }
-    }, [clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, orgId, supabase, useDemo]);
 
     const setLocalClubData = useCallback((nextData: ClubData) => {
         if (!clubId || !orgId) return false;

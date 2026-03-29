@@ -497,9 +497,6 @@ export default function OrgCreatePage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
-              <p className="text-sm text-slate-600">
-                Organization creation now finishes after review and subscription confirmation.
-              </p>
             </div>
           </div>
           <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/orgs')}>
@@ -584,7 +581,6 @@ export default function OrgCreatePage() {
                     <p>1. Save these organization details as a draft.</p>
                     <p>2. Estimate monthly AI usage and choose a subscription plan.</p>
                     <p>3. Review the setup, then buy or transfer the subscription if needed.</p>
-                    <p>4. The organization is created only after the final confirmation succeeds.</p>
                   </CardContent>
                 </Card>
               </div>

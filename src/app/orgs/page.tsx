@@ -141,9 +141,6 @@ export default function OrgsPage() {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
               <h1 className="text-3xl font-semibold">Your organizations</h1>
-              <p className="text-sm text-slate-600">
-                Create organizations, join existing ones, and manage subscription-backed AI access.
-              </p>
             </div>
           </div>
           <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
@@ -155,13 +152,8 @@ export default function OrgsPage() {
           <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Create organization</CardTitle>
-              <CardDescription>
-                Enter organization details, estimate usage, then review and confirm the plan assignment.
-              </CardDescription>
+              <CardDescription>Set up a new organization.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              New organizations are created only after the final step succeeds.
-            </CardContent>
             <CardFooter>
               <Button onClick={() => router.push('/orgs/create')} className="w-full rounded-2xl">
                 Start setup
@@ -174,9 +166,6 @@ export default function OrgsPage() {
               <CardTitle className="text-xl">Join organization</CardTitle>
               <CardDescription>Already invited? Enter a join code to get started.</CardDescription>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600">
-              Members can collaborate without seeing subscription management controls.
-            </CardContent>
             <CardFooter>
               <Button variant="outline" onClick={() => router.push('/orgs/join')} className="w-full rounded-2xl">
                 Join with code
@@ -188,10 +177,7 @@ export default function OrgsPage() {
         <section className="space-y-4">
           <div>
             <h2 className="text-xl font-semibold">Your organizations</h2>
-              <p className="text-sm text-slate-600">
-                Open a workspace, review the monthly allowance, or manage subscription settings if you own it.
-              </p>
-            </div>
+          </div>
 
           {loading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -247,20 +233,11 @@ export default function OrgsPage() {
                           </span>
                         </div>
                       </div>
-
-                      <div className="rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
-                        {status?.aiAvailable
-                          ? 'AI is currently available for this organization.'
-                          : 'AI is currently paused for this organization until the next billing reset.'}
-                        {isOwner ? (
-                          <p className="mt-2">Detailed AI usage is only shown on the billing screen.</p>
-                        ) : null}
-                        {isOwner && status && status.ownerHasActiveSubscription && !status.isSubscribedOrg ? (
-                          <p className="mt-2">
-                            Your active subscription is currently assigned to another organization.
-                          </p>
-                        ) : null}
-                      </div>
+                      {isOwner && status && status.ownerHasActiveSubscription && !status.isSubscribedOrg ? (
+                        <p className="text-xs text-slate-500">
+                          This account's paid subscription is assigned to another organization.
+                        </p>
+                      ) : null}
                     </CardContent>
                     <CardFooter className="flex items-center gap-2">
                       <Button onClick={() => handleSelectOrg(org.id)} className="flex-1 rounded-2xl">

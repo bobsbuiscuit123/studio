@@ -57,11 +57,17 @@ export async function POST(request: Request) {
       body = (await request.json()) as RevenueCatWebhookPayload | RevenueCatWebhookEvent | null;
     } catch (error) {
       console.error('RevenueCat webhook JSON parse error:', error);
-      return new Response('Invalid JSON', { status: 400 });
+      return acknowledge({ reason: 'invalid_json' });
     }
 
     const authHeader = request.headers.get('authorization');
-    console.log('RevenueCat webhook auth header present:', Boolean(authHeader));
+    console.log('AUTH HEADER:', authHeader ?? '(missing)');
+    console.log(
+      'EXPECTED:',
+      process.env.REVENUECAT_WEBHOOK_AUTH
+        ? `Bearer ${process.env.REVENUECAT_WEBHOOK_AUTH}`
+        : '(missing REVENUECAT_WEBHOOK_AUTH)'
+    );
 
     const event =
       body && typeof body === 'object' && 'event' in body
@@ -70,20 +76,16 @@ export async function POST(request: Request) {
     const eventId = String(event?.id ?? '').trim();
 
     console.log('RevenueCat webhook body keys:', body && typeof body === 'object' ? Object.keys(body) : []);
-    console.log('RevenueCat webhook event id:', eventId || '(missing)');
+    console.log('Event ID:', eventId || '(missing)');
 
     if (!eventId) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'Missing RevenueCat webhook event id.',
-        },
-        { status: 400 }
-      );
+      console.warn('RevenueCat webhook missing event id.');
+      return acknowledge({ reason: 'missing_event_id' });
     }
 
     const admin = createSupabaseAdmin();
     const candidates = event ? collectRevenueCatCustomerCandidates(event) : [];
+    console.log('Candidates:', candidates);
 
     if (candidates.length === 0) {
       const alreadyProcessed = await markWebhookProcessedWithoutMutation(eventId, admin);
@@ -94,14 +96,21 @@ export async function POST(request: Request) {
     }
 
     const userId = await resolveLocalUserIdFromRevenueCatCandidates(admin, candidates);
+    console.log('User ID:', userId ?? '(not found)');
 
     let subscriberPayload = null;
     for (const candidate of candidates) {
-      subscriberPayload = await fetchRevenueCatSubscriber(candidate);
+      try {
+        subscriberPayload = await fetchRevenueCatSubscriber(candidate);
+      } catch (error) {
+        console.warn('Subscriber fetch failed:', candidate, error);
+        subscriberPayload = null;
+      }
       if (subscriberPayload) {
         break;
       }
     }
+    console.log('Subscriber payload exists:', Boolean(subscriberPayload));
 
     if (!userId) {
       const alreadyProcessed = await markWebhookProcessedWithoutMutation(eventId, admin);
@@ -125,7 +134,7 @@ export async function POST(request: Request) {
       subscribedOrgId: result.subscribedOrgId,
     });
   } catch (error) {
-    console.error('RevenueCat webhook error:', error);
-    return new Response('Internal Error', { status: 500 });
+    console.error('WEBHOOK FATAL ERROR:', error);
+    return new Response('OK', { status: 200 });
   }
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,8 +26,12 @@ import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
 import { LegalDocumentDialog } from "@/components/legal-document-dialog";
-import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
+import { notifyOrgSubscriptionChanged, useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { getSelectedOrgId } from "@/lib/selection";
+import {
+  getSubscriptionPurchaseAvailability,
+  restoreRevenueCatPurchases,
+} from "@/lib/revenuecat-subscriptions";
 
 type ProfileDialogProps = {
   isOpen: boolean;
@@ -144,10 +148,12 @@ export function ProfileDialog({
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
+  const purchaseAvailability = useMemo(() => getSubscriptionPurchaseAvailability(), []);
+  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgSubscriptionStatus(selectedOrgId);
 
   useEffect(() => {
     if (isOpen) {
@@ -162,6 +168,62 @@ export function ProfileDialog({
     if (!selectedOrgId) return;
     onOpenChange(false);
     router.push(`/orgs/${selectedOrgId}/credits`);
+  };
+
+  const syncSelectedOrgSubscription = async () => {
+    if (!selectedOrgId) {
+      throw new Error("Select an organization first.");
+    }
+
+    const response = await safeFetchJson<{ ok: true; data: { subscribedOrgId: string | null } }>(
+      "/api/orgs/subscription/transfer",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetOrgId: selectedOrgId }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(response.error.message);
+    }
+
+    notifyOrgSubscriptionChanged();
+    await refreshOrgStatus({ force: true });
+    return response.data.data?.subscribedOrgId ?? null;
+  };
+
+  const handleRestorePurchases = async () => {
+    if (!selectedOrgId) {
+      return;
+    }
+
+    if (!purchaseAvailability.supported) {
+      toast({
+        title: "Restore unavailable",
+        description: purchaseAvailability.reason || "Purchases are unavailable on this device.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRestoringPurchases(true);
+    try {
+      await restoreRevenueCatPurchases();
+      await syncSelectedOrgSubscription();
+      toast({
+        title: "Purchases restored",
+        description: "RevenueCat restored your App Store subscription and synced this organization.",
+      });
+    } catch (error) {
+      toast({
+        title: "Restore failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRestoringPurchases(false);
+    }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -378,6 +440,20 @@ export function ProfileDialog({
                   onClick={handleManageBilling}
                 >
                   Manage organization billing
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full rounded-2xl"
+                  onClick={() => void handleRestorePurchases()}
+                  disabled={isRestoringPurchases}
+                >
+                  {isRestoringPurchases ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Restore purchases
                 </Button>
               </div>
             ) : null}

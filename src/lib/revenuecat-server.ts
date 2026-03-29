@@ -40,6 +40,7 @@ export type RevenueCatSubscriberResponse = {
 
 export type CanonicalRevenueCatState = {
   activeProductId: PaidPlanId | null;
+  scheduledProductId: PaidPlanId | null;
   subscriptionStatus:
     | 'free'
     | 'active'
@@ -145,9 +146,61 @@ export const logRevenueCatSubscriberDiagnostics = (
   console.log('RC_LOOKUP_USER_ID:', lookupUserId);
   console.log(`RC_SUBSCRIBER [${context}]:`, JSON.stringify(payload, null, 2));
   console.log(
-    `ENTITLEMENTS [${context}]:`,
+    `RC_SUBSCRIPTIONS [${context}]:`,
+    JSON.stringify(payload?.subscriber?.subscriptions ?? null, null, 2)
+  );
+  console.log(
+    `RC_ENTITLEMENTS [${context}]:`,
     JSON.stringify(payload?.subscriber?.entitlements ?? null, null, 2)
   );
+};
+
+const getSnapshotPriority = (snapshot: KnownSubscriptionSnapshot) =>
+  Date.parse(
+    snapshot.gracePeriodExpiresAt ??
+      snapshot.expiresDate ??
+      snapshot.purchaseDate ??
+      snapshot.originalPurchaseDate ??
+      ''
+  ) || 0;
+
+const isSnapshotEligibleNow = (snapshot: KnownSubscriptionSnapshot, now: number) => {
+  const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : NaN;
+  return !Number.isFinite(purchaseAtMs) || purchaseAtMs <= now;
+};
+
+const resolveCurrentAndScheduledSnapshots = ({
+  entitlementProductId,
+  knownSubscriptions,
+  now,
+}: {
+  entitlementProductId: PaidPlanId | null;
+  knownSubscriptions: KnownSubscriptionSnapshot[];
+  now: number;
+}) => {
+  const currentSnapshot = entitlementProductId
+    ? knownSubscriptions.find((snapshot) => snapshot.productId === entitlementProductId) ?? null
+    : knownSubscriptions
+        .filter((snapshot) => isSnapshotEligibleNow(snapshot, now))
+        .sort((left, right) => getSnapshotPriority(right) - getSnapshotPriority(left))[0] ?? null;
+
+  const scheduledSnapshot =
+    knownSubscriptions
+      .filter((snapshot) => snapshot.productId !== currentSnapshot?.productId)
+      .filter((snapshot) => {
+        const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : NaN;
+        return Number.isFinite(purchaseAtMs) && purchaseAtMs > now;
+      })
+      .sort((left, right) => {
+        const leftPurchaseAt = Date.parse(left.purchaseDate ?? '') || Number.POSITIVE_INFINITY;
+        const rightPurchaseAt = Date.parse(right.purchaseDate ?? '') || Number.POSITIVE_INFINITY;
+        return leftPurchaseAt - rightPurchaseAt;
+      })[0] ?? null;
+
+  return {
+    currentSnapshot,
+    scheduledSnapshot,
+  };
 };
 
 const getKnownSubscriptionSnapshots = (
@@ -171,16 +224,7 @@ const getKnownSubscriptionSnapshots = (
       } satisfies KnownSubscriptionSnapshot;
     })
     .filter((snapshot): snapshot is KnownSubscriptionSnapshot => Boolean(snapshot))
-    .sort((left, right) => {
-      const leftPriority =
-        Date.parse(left.gracePeriodExpiresAt ?? left.expiresDate ?? left.purchaseDate ?? left.originalPurchaseDate ?? '') ||
-        0;
-      const rightPriority =
-        Date.parse(
-          right.gracePeriodExpiresAt ?? right.expiresDate ?? right.purchaseDate ?? right.originalPurchaseDate ?? ''
-        ) || 0;
-      return rightPriority - leftPriority;
-    });
+    .sort((left, right) => getSnapshotPriority(right) - getSnapshotPriority(left));
 
 export const deriveCanonicalRevenueCatState = (
   payload: RevenueCatSubscriberResponse | null
@@ -189,12 +233,19 @@ export const deriveCanonicalRevenueCatState = (
   const entitlement = subscriber?.entitlements?.[REVENUECAT_ENTITLEMENT_ID];
   const entitlementProductId = getPaidPlanByProductId(entitlement?.product_identifier ?? '')?.id ?? null;
   const knownSubscriptions = getKnownSubscriptionSnapshots(payload);
-  const fallbackSubscription = knownSubscriptions[0] ?? null;
-  const resolvedProductId = entitlementProductId ?? fallbackSubscription?.productId ?? null;
+  const now = Date.now();
+  const { currentSnapshot, scheduledSnapshot } = resolveCurrentAndScheduledSnapshots({
+    entitlementProductId,
+    knownSubscriptions,
+    now,
+  });
+  const fallbackSubscription = currentSnapshot;
+  const resolvedProductId = entitlementProductId ?? currentSnapshot?.productId ?? null;
 
   if (!resolvedProductId) {
     return {
       activeProductId: null,
+      scheduledProductId: scheduledSnapshot?.productId ?? null,
       subscriptionStatus: 'free',
       currentPeriodStart: null,
       currentPeriodEnd: null,
@@ -216,7 +267,6 @@ export const deriveCanonicalRevenueCatState = (
   const currentPeriodStart = normalizeDate(
     entitlement?.purchase_date ?? subscription?.purchase_date ?? subscription?.original_purchase_date ?? null
   );
-  const now = Date.now();
   const expiresAtMs = currentPeriodEnd ? Date.parse(currentPeriodEnd) : NaN;
   const unsubscribeDetectedAt = normalizeDate(
     subscription?.unsubscribe_detected_at ?? fallbackSubscription?.unsubscribeDetectedAt ?? null
@@ -233,6 +283,7 @@ export const deriveCanonicalRevenueCatState = (
 
   return {
     activeProductId: resolvedProductId,
+    scheduledProductId: scheduledSnapshot?.productId ?? null,
     subscriptionStatus,
     currentPeriodStart,
     currentPeriodEnd,

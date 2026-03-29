@@ -247,6 +247,8 @@ export const syncRevenueCatSubscriber = async ({
     logRevenueCatSubscriberDiagnostics(lookupUserId, subscriberPayload, `sync attempt ${attempt + 1}`);
     canonicalState = deriveCanonicalRevenueCatState(subscriberPayload);
     console.log('RC_CANONICAL_STATE:', canonicalState);
+    console.log('CURRENT_PLAN:', canonicalState.activeProductId);
+    console.log('SCHEDULED_PLAN:', canonicalState.scheduledProductId);
 
     const shouldRetryEmptyPaidState =
       canonicalState.activeProductId === null &&
@@ -270,6 +272,7 @@ export const syncRevenueCatSubscriber = async ({
     Date.parse(previousSubscription.currentPeriodEnd) > Date.now()
         ? {
           activeProductId: previousSubscription.activeProductId,
+          scheduledProductId: canonicalState.scheduledProductId,
           subscriptionStatus: toCanonicalPaidStatus(previousSubscription.subscriptionStatus),
           currentPeriodStart: previousSubscription.currentPeriodStart,
           currentPeriodEnd: previousSubscription.currentPeriodEnd,
@@ -294,6 +297,7 @@ export const syncRevenueCatSubscriber = async ({
 
   const finalCanonicalState = stabilizedCanonicalState ?? {
     activeProductId: null,
+    scheduledProductId: null,
     subscriptionStatus: 'free',
     currentPeriodStart: null,
     currentPeriodEnd: null,

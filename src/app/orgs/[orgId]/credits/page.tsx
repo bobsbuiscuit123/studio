@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Loader2, RefreshCw, Sparkles } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2, Sparkles } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -17,12 +17,12 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { safeFetchJson } from '@/lib/network';
 import { useOrgSubscriptionStatus, notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
+import type { Result } from '@/lib/result';
 import {
   getRevenueCatManagementUrl,
   getSubscriptionPurchaseAvailability,
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
-  restoreRevenueCatPurchases,
   RevenueCatPurchaseCancelledError,
   type RevenueCatPlanPackage,
 } from '@/lib/revenuecat-subscriptions';
@@ -38,6 +38,15 @@ type ReconcileResponse = {
   ok: boolean;
   data?: UserSubscriptionSummary;
 };
+
+type TransferResponse = {
+  ok: true;
+  data?: {
+    subscribedOrgId: string | null;
+  };
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function OrgCreditsPage() {
   const params = useParams<{ orgId: string }>();
@@ -159,23 +168,67 @@ export default function OrgCreditsPage() {
     return 'Activate subscription on this organization';
   })();
 
-  const syncCurrentOrg = async () => {
-    const response = await safeFetchJson<{ ok: true; data: { subscribedOrgId: string | null } }>(
-      '/api/orgs/subscription/transfer',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetOrgId: orgId }),
-      }
-    );
+  const reconcileSubscription = async () => {
+    const response = await safeFetchJson<ReconcileResponse>('/api/orgs/subscription/reconcile', {
+      method: 'POST',
+    });
 
     if (!response.ok) {
       throw new Error(response.error.message);
     }
 
-    notifyOrgSubscriptionChanged();
-    await refresh({ force: true });
-    return response.data.data?.subscribedOrgId ?? null;
+    const nextSubscription = response.data.data ?? null;
+    setUserSubscription(nextSubscription);
+    return nextSubscription;
+  };
+
+  const syncCurrentOrg = async (expectedPlanId?: PaidPlanId | null) => {
+    let lastSubscribedOrgId: string | null = null;
+    let lastStatus = status;
+    let lastSubscription = userSubscription;
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const transferResult: Result<TransferResponse> = await safeFetchJson<TransferResponse>(
+        '/api/orgs/subscription/transfer',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ targetOrgId: orgId }),
+        }
+      );
+
+      if (!transferResult.ok) {
+        throw new Error(transferResult.error.message);
+      }
+
+      lastSubscribedOrgId = transferResult.data.data?.subscribedOrgId ?? null;
+      notifyOrgSubscriptionChanged();
+      lastStatus = await refresh({ force: true });
+      lastSubscription = await reconcileSubscription();
+
+      const observedPlanId =
+        lastStatus?.subscriptionProductId ?? lastSubscription?.activeProductId ?? null;
+      const orgIsLinked =
+        lastSubscribedOrgId === orgId || Boolean(lastStatus?.isSubscribedOrg);
+
+      if (orgIsLinked && (!expectedPlanId || observedPlanId === expectedPlanId)) {
+        return {
+          subscribedOrgId: lastSubscribedOrgId,
+          status: lastStatus,
+          subscription: lastSubscription,
+        };
+      }
+
+      if (attempt < 3) {
+        await sleep(500 * (attempt + 1));
+      }
+    }
+
+    return {
+      subscribedOrgId: lastSubscribedOrgId,
+      status: lastStatus,
+      subscription: lastSubscription,
+    };
   };
 
   const handleApplyPlan = async () => {
@@ -198,7 +251,28 @@ export default function OrgCreditsPage() {
         await purchaseRevenueCatPlan(selectedPackage);
       }
 
-      await syncCurrentOrg();
+      const syncResult = await syncCurrentOrg(selectedPlanId);
+      const observedPlanId =
+        syncResult.status?.subscriptionProductId ?? syncResult.subscription?.activeProductId ?? null;
+      const orgIsLinked =
+        syncResult.subscribedOrgId === orgId || Boolean(syncResult.status?.isSubscribedOrg);
+
+      if (!orgIsLinked) {
+        throw new Error('The subscription is active, but it is not yet linked to this organization.');
+      }
+
+      if (observedPlanId !== selectedPlanId) {
+        const currentPlanName = getPlanById(observedPlanId).name;
+        toast({
+          title: 'Plan change pending',
+          description:
+            observedPlanId
+              ? `${currentPlanName} is still the active plan. Apple may apply ${selectedPlan.name} at the next renewal, or RevenueCat may still be syncing the change.`
+              : `${selectedPlan.name} has not synced to the backend yet. Use Restore purchases from Settings if it does not update shortly.`,
+        });
+        return;
+      }
+
       toast({
         title: 'Subscription updated',
         description: `${selectedPlan.name} is now linked to ${status?.orgName ?? 'this organization'}.`,
@@ -216,26 +290,6 @@ export default function OrgCreditsPage() {
           variant: 'destructive',
         });
       }
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRestore = async () => {
-    setSubmitting(true);
-    try {
-      await restoreRevenueCatPurchases();
-      await syncCurrentOrg();
-      toast({
-        title: 'Purchases restored',
-        description: 'RevenueCat restored your App Store subscription and synced this organization.',
-      });
-    } catch (error) {
-      toast({
-        title: 'Restore failed',
-        description: error instanceof Error ? error.message : 'Please try again.',
-        variant: 'destructive',
-      });
     } finally {
       setSubmitting(false);
     }
@@ -269,10 +323,6 @@ export default function OrgCreditsPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-2xl" onClick={() => void handleRestore()} disabled={submitting}>
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-              Restore purchases
-            </Button>
             <Button variant="outline" className="rounded-2xl" onClick={handleOpenManagement}>
               Manage in Apple
               <ExternalLink className="ml-2 h-4 w-4" />

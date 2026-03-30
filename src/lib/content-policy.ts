@@ -17,11 +17,11 @@ const scanString = (value: string): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
 
-  // Skip machine-generated URL payloads like gallery image data URIs and remote image links.
-  // Those can contain arbitrary base64/text fragments that look like blocked words even when
-  // the user-entered content is harmless.
+  // Skip machine-generated URL payloads like data URIs and remote links.
+  // Base64 attachment/image payloads can contain arbitrary text fragments that look like blocked
+  // words even when the user-entered content is harmless.
   if (
-    /^data:image\/[a-z0-9.+-]+;base64,/i.test(trimmed) ||
+    /^data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,/i.test(trimmed) ||
     /^https?:\/\//i.test(trimmed)
   ) {
     return null;

@@ -42,6 +42,7 @@ import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurre
 import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { safeFetchJson } from "@/lib/network";
+import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 
 const isNativeApp = Capacitor.isNativePlatform();
 
@@ -489,6 +490,15 @@ function AnnouncementsPageInner() {
         read: false,
         linkedFormId: linkedFormIdDraft || undefined,
     };
+    const violation = findPolicyViolation(newAnnouncement);
+    if (violation) {
+      toast({
+        title: "Announcement blocked",
+        description: policyErrorMessage,
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSavingAnnouncement(true);
     const saved = await setAnnouncementsAsync(prev => {
       const list = Array.isArray(prev) ? prev : [];

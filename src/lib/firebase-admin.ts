@@ -7,7 +7,13 @@ const getFirebaseCredentials = () => {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
   if (!projectId || !clientEmail || !privateKey) {
-    throw new Error('Missing Firebase Admin env vars.');
+    const missingVars = [
+      !projectId ? 'FIREBASE_PROJECT_ID' : null,
+      !clientEmail ? 'FIREBASE_CLIENT_EMAIL' : null,
+      !privateKey ? 'FIREBASE_PRIVATE_KEY' : null,
+    ].filter(Boolean);
+
+    throw new Error(`Missing Firebase Admin env vars: ${missingVars.join(', ')}.`);
   }
 
   return {

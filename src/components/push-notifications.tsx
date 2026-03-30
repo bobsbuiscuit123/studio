@@ -11,6 +11,7 @@ import {
 import type { PluginListenerHandle } from '@capacitor/core';
 import { useRouter } from 'next/navigation';
 
+import { useToast } from '@/hooks/use-toast';
 import { useCurrentUser } from '@/lib/data-hooks';
 import { safeFetchJson } from '@/lib/network';
 
@@ -35,8 +36,9 @@ const getPushRoute = (notification: PushNotificationSchema | undefined) => {
 
 export function PushNotificationClient() {
   const router = useRouter();
+  const { toast } = useToast();
   const { user, loading } = useCurrentUser();
-  const lastRegisteredTokenRef = useRef<string | null>(null);
+  const lastRegistrationKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || loading || !user) {
@@ -47,7 +49,8 @@ export function PushNotificationClient() {
     const listenerHandles: PluginListenerHandle[] = [];
 
     const registerToken = async (token: string) => {
-      if (!token || lastRegisteredTokenRef.current === token) return;
+      const registrationKey = `${user.email}:${token}`;
+      if (!token || lastRegistrationKeyRef.current === registrationKey) return;
       const result = await safeFetchJson<{ ok: boolean }>('/api/push/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,7 +64,7 @@ export function PushNotificationClient() {
       });
 
       if (result.ok) {
-        lastRegisteredTokenRef.current = token;
+        lastRegistrationKeyRef.current = registrationKey;
       } else {
         console.error('Push token registration failed', result.error);
       }
@@ -76,6 +79,19 @@ export function PushNotificationClient() {
       const { route } = getPushRoute(event.notification);
       if (!route) return;
       router.push(route);
+    };
+
+    const handleReceived = (notification: PushNotificationSchema) => {
+      const title = typeof notification.title === 'string' ? notification.title.trim() : '';
+      const body = typeof notification.body === 'string' ? notification.body.trim() : '';
+      if (!title && !body) {
+        return;
+      }
+
+      toast({
+        title: title || 'Notification',
+        description: body || undefined,
+      });
     };
 
     const init = async () => {
@@ -96,6 +112,9 @@ export function PushNotificationClient() {
         })
       );
       listenerHandles.push(
+        await PushNotifications.addListener('pushNotificationReceived', handleReceived)
+      );
+      listenerHandles.push(
         await PushNotifications.addListener('pushNotificationActionPerformed', handleAction)
       );
 
@@ -108,7 +127,7 @@ export function PushNotificationClient() {
       cancelled = true;
       void Promise.all(listenerHandles.map(handle => handle.remove()));
     };
-  }, [loading, router, user]);
+  }, [loading, router, toast, user]);
 
   return null;
 }

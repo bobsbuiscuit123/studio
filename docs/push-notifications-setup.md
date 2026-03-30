@@ -21,6 +21,8 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 
 Use literal `\n` sequences in `FIREBASE_PRIVATE_KEY`.
 
+For hosted deployments, set the same three variables in the server environment used by your production app. TestFlight clients will not receive notifications if the deployed server is missing these values.
+
 ## 2. Install CocoaPods dependencies
 
 Run this on your Mac:
@@ -80,6 +82,11 @@ In Firebase Console:
 3. iOS app configuration
 4. Upload an APNs Authentication Key (`.p8`)
 5. Enter the Apple Key ID and Team ID
+
+Important for TestFlight and App Store builds:
+
+- the release build must sign with a production APNs entitlement
+- this repo now uses a separate release entitlements file so TestFlight builds do not ship with the development APNs environment
 
 ## 7. Build on a real iPhone
 

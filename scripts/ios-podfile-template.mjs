@@ -6,6 +6,7 @@ platform :ios, '15.0'
 project 'App.xcodeproj'
 
 target 'App' do
+  use_modular_headers!
   pod 'FirebaseCore'
   pod 'FirebaseMessaging'
 end

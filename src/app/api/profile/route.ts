@@ -10,6 +10,7 @@ const avatarSchema = z.string().trim().max(2_000_000).refine(
   (value) => value.length === 0 || value.startsWith('data:image/') || /^https?:\/\//.test(value),
   'Invalid avatar.'
 );
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -78,7 +79,7 @@ export async function PATCH(request: Request) {
 
   const { error } = await supabase.from('profiles').upsert({
     id: user.id,
-    email: user.email || null,
+    email: user.email ? normalizeEmail(user.email) : null,
     display_name: displayName,
     avatar_url: avatarUrl,
   });
@@ -93,7 +94,7 @@ export async function PATCH(request: Request) {
     ok: true,
     data: {
       name: displayName,
-      email: user.email || '',
+      email: user.email ? normalizeEmail(user.email) : '',
       avatar: avatarUrl,
     },
   });

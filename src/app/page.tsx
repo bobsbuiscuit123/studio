@@ -85,6 +85,8 @@ function getAuthDisplayName(
   return fromMeta || user?.email || 'Member';
 }
 
+const normalizeEmailForStorage = (value: string) => value.trim().toLowerCase();
+
 function SignUpForm({
   onUserSaved,
   onSwitchToLogin,
@@ -137,7 +139,7 @@ function SignUpForm({
             .from('profiles')
             .upsert({
               id: data.user.id,
-              email: values.email,
+              email: normalizeEmailForStorage(values.email),
               display_name: values.name,
               avatar_url: getPlaceholderImageUrl({ label: values.name.charAt(0) }),
             });
@@ -239,7 +241,7 @@ function LoginForm({
             .from('profiles')
             .upsert({
               id: data.user.id,
-              email: values.email,
+              email: normalizeEmailForStorage(values.email),
               display_name: displayName,
               avatar_url: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
             });

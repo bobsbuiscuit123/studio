@@ -109,6 +109,7 @@ export async function sendPushToUsers({
       },
       apns: {
         headers: {
+          'apns-push-type': 'alert',
           'apns-priority': '10',
         },
         payload: {

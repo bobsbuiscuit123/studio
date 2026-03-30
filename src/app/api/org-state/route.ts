@@ -504,6 +504,8 @@ const toDeletedIdSet = (ids: unknown) =>
 
 const resolveUserIdsByEmails = async (
   admin: ReturnType<typeof createSupabaseAdmin>,
+  orgId: string,
+  groupId: string,
   emails: string[],
   actorId: string
 ) => {
@@ -512,10 +514,32 @@ const resolveUserIdsByEmails = async (
   );
   if (normalizedEmails.length === 0) return [];
 
+  const { data: memberships, error: membershipsError } = await admin
+    .from('group_memberships')
+    .select('user_id')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const candidateUserIds = Array.from(
+    new Set(
+      (memberships ?? [])
+        .map(row => row.user_id)
+        .filter(
+          (value): value is string =>
+            typeof value === 'string' && value.length > 0 && value !== actorId
+        )
+    )
+  );
+  if (candidateUserIds.length === 0) return [];
+
   const { data, error } = await admin
     .from('profiles')
     .select('id, email')
-    .in('email', normalizedEmails);
+    .in('id', candidateUserIds);
 
   if (error) {
     throw error;
@@ -524,7 +548,10 @@ const resolveUserIdsByEmails = async (
   return Array.from(
     new Set(
       (data ?? [])
-        .filter(profile => profile.id !== actorId)
+        .filter(profile => {
+          const email = typeof profile.email === 'string' ? normalizeEmail(profile.email) : '';
+          return Boolean(email) && normalizedEmails.includes(email);
+        })
         .map(profile => profile.id)
         .filter((value): value is string => typeof value === 'string' && value.length > 0)
     )
@@ -595,12 +622,16 @@ const collectMessagePushJobs = async ({
   admin,
   actorId,
   actorEmail,
+  orgId,
+  groupId,
   currentData,
   nextData,
 }: {
   admin: ReturnType<typeof createSupabaseAdmin>;
   actorId: string;
   actorEmail: string;
+  orgId: string;
+  groupId: string;
   currentData: Record<string, any>;
   nextData: Record<string, any>;
 }) => {
@@ -625,7 +656,13 @@ const collectMessagePushJobs = async ({
       if (!sender || sender !== normalizedActorEmail) continue;
       const recipientEmail = participants.find(email => email !== sender);
       if (!recipientEmail) continue;
-      const recipientIds = await resolveUserIdsByEmails(admin, [recipientEmail], actorId);
+      const recipientIds = await resolveUserIdsByEmails(
+        admin,
+        orgId,
+        groupId,
+        [recipientEmail],
+        actorId
+      );
       if (recipientIds.length === 0) continue;
       const threadId = `dm__${encodeURIComponent(recipientEmail)}`;
       jobs.push({
@@ -667,7 +704,13 @@ const collectMessagePushJobs = async ({
       const sender = typeof message.sender === 'string' ? normalizeEmail(message.sender) : '';
       if (!sender || sender !== normalizedActorEmail) continue;
       const recipientEmails = groupMembers.filter((email: string) => email !== sender);
-      const recipientIds = await resolveUserIdsByEmails(admin, recipientEmails, actorId);
+      const recipientIds = await resolveUserIdsByEmails(
+        admin,
+        orgId,
+        groupId,
+        recipientEmails,
+        actorId
+      );
       if (recipientIds.length === 0) continue;
       const threadId = `group__${encodeURIComponent(chat.id)}`;
       jobs.push({
@@ -1043,6 +1086,8 @@ export async function POST(request: Request) {
       admin,
       actorId: userData.user.id,
       actorEmail: userData.user.email ?? '',
+      orgId: parsed.data.orgId,
+      groupId: parsed.data.groupId,
       currentData,
       nextData: mergedData,
     }),

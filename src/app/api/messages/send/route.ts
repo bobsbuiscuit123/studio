@@ -32,6 +32,72 @@ const getConversationId = (email1: string, email2: string) => [email1, email2].s
 const getMessagePreview = (value: string) =>
   value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
 
+const resolveGroupMemberUserIdsByEmails = async ({
+  admin,
+  orgId,
+  groupId,
+  emails,
+  excludeUserId,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  orgId: string;
+  groupId: string;
+  emails: string[];
+  excludeUserId?: string;
+}) => {
+  const normalizedEmails = Array.from(
+    new Set(emails.map(email => normalizeEmail(email)).filter(Boolean))
+  );
+  if (normalizedEmails.length === 0) {
+    return [];
+  }
+
+  const { data: memberships, error: membershipsError } = await admin
+    .from('group_memberships')
+    .select('user_id')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  const candidateUserIds = Array.from(
+    new Set(
+      (memberships ?? [])
+        .map(row => row.user_id)
+        .filter(
+          (value): value is string =>
+            typeof value === 'string' && value.length > 0 && value !== excludeUserId
+        )
+    )
+  );
+  if (candidateUserIds.length === 0) {
+    return [];
+  }
+
+  const { data: profiles, error: profilesError } = await admin
+    .from('profiles')
+    .select('id, email')
+    .in('id', candidateUserIds);
+
+  if (profilesError) {
+    throw profilesError;
+  }
+
+  return Array.from(
+    new Set(
+      (profiles ?? [])
+        .filter(profile => {
+          const email = typeof profile.email === 'string' ? normalizeEmail(profile.email) : '';
+          return Boolean(email) && normalizedEmails.includes(email);
+        })
+        .map(profile => profile.id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    )
+  );
+};
+
 const buildMessageAuditEnvelope = ({
   conversationType,
   conversationKey,
@@ -164,24 +230,29 @@ export async function POST(request: Request) {
       message: newMessage,
     });
 
-    const { data: profiles, error: profilesError } = await admin
-      .from('profiles')
-      .select('id, email')
-      .eq('email', partnerEmail)
-      .limit(1);
-
-    if (profilesError) {
+    let recipientIds: string[] = [];
+    try {
+      recipientIds = await resolveGroupMemberUserIdsByEmails({
+        admin,
+        orgId: parsed.data.orgId,
+        groupId: parsed.data.groupId,
+        emails: [partnerEmail],
+        excludeUserId: actingUser.id,
+      });
+    } catch (profilesError) {
       return NextResponse.json(
-        err({ code: 'NETWORK_HTTP_ERROR', message: profilesError.message, source: 'network' }),
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: profilesError instanceof Error ? profilesError.message : 'Failed to resolve push recipient.',
+          source: 'network',
+        }),
         { status: 500 }
       );
     }
-
-    const recipientId = profiles?.[0]?.id;
-    if (recipientId) {
+    if (recipientIds.length > 0) {
       const threadId = `dm__${encodeURIComponent(partnerEmail)}`;
       pushJob = {
-        userIds: [recipientId],
+        userIds: recipientIds,
         title: 'New message',
         body: getMessagePreview(parsed.data.text),
         route: `/messages/${threadId}`,
@@ -228,25 +299,25 @@ export async function POST(request: Request) {
 
     const recipientEmails = memberEmails.filter((email: string) => email !== normalizedActorEmail);
     if (recipientEmails.length > 0) {
-      const { data: profiles, error: profilesError } = await admin
-        .from('profiles')
-        .select('id, email')
-        .in('email', recipientEmails);
-
-      if (profilesError) {
+      let recipientIds: string[] = [];
+      try {
+        recipientIds = await resolveGroupMemberUserIdsByEmails({
+          admin,
+          orgId: parsed.data.orgId,
+          groupId: parsed.data.groupId,
+          emails: recipientEmails,
+          excludeUserId: actingUser.id,
+        });
+      } catch (profilesError) {
         return NextResponse.json(
-          err({ code: 'NETWORK_HTTP_ERROR', message: profilesError.message, source: 'network' }),
+          err({
+            code: 'NETWORK_HTTP_ERROR',
+            message: profilesError instanceof Error ? profilesError.message : 'Failed to resolve push recipients.',
+            source: 'network',
+          }),
           { status: 500 }
         );
       }
-
-      const recipientIds = Array.from(
-        new Set(
-          (profiles ?? [])
-            .map(profile => profile.id)
-            .filter((value): value is string => typeof value === 'string' && value.length > 0 && value !== actingUser.id)
-        )
-      );
 
       if (recipientIds.length > 0) {
         const threadId = `group__${encodeURIComponent(chatId)}`;
@@ -296,7 +367,7 @@ export async function POST(request: Request) {
   }
 
   if (pushJob) {
-    void sendPushToUsers(pushJob).catch(error => {
+    await sendPushToUsers(pushJob).catch(error => {
       console.error('Message push failed', error);
     });
   }

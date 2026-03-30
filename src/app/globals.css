@@ -233,24 +233,24 @@ main,
 }
 
 .app-header-inner {
-  padding-top: calc(clamp(0.35rem, calc(var(--safe-area-top-runtime) * 0.18), 0.6rem) + 0.125rem);
-  padding-bottom: 0.25rem;
+  padding-top: calc(clamp(0.1rem, calc(var(--safe-area-top-runtime) * 0.08), 0.28rem) + 0.0625rem);
+  padding-bottom: 0.2rem;
 }
 
 @media (min-width: 640px) {
   .app-header-inner {
-    padding-top: calc(clamp(0.4rem, calc(var(--safe-area-top-runtime) * 0.2), 0.75rem) + 0.25rem);
-    padding-bottom: 0.375rem;
+    padding-top: calc(clamp(0.125rem, calc(var(--safe-area-top-runtime) * 0.09), 0.32rem) + 0.125rem);
+    padding-bottom: 0.25rem;
   }
 }
 
 .page-header-safe-inset {
-  padding-top: calc(clamp(0.3rem, calc(var(--safe-area-top-runtime) * 0.16), 0.5rem) + 0.125rem);
+  padding-top: calc(clamp(0.08rem, calc(var(--safe-area-top-runtime) * 0.06), 0.24rem) + 0.0625rem);
 }
 
 @media (min-width: 640px) {
   .page-header-safe-inset {
-    padding-top: calc(clamp(0.35rem, calc(var(--safe-area-top-runtime) * 0.18), 0.65rem) + 0.25rem);
+    padding-top: calc(clamp(0.1rem, calc(var(--safe-area-top-runtime) * 0.07), 0.28rem) + 0.125rem);
   }
 }
 
@@ -290,7 +290,7 @@ main,
   height: 100dvh;
   min-height: 100dvh;
   background: #ffffff;
-  padding-top: clamp(0.35rem, calc(var(--safe-area-top-runtime) * 0.18), 0.75rem);
+  padding-top: clamp(0.15rem, calc(var(--safe-area-top-runtime) * 0.08), 0.4rem);
   padding-right: 0;
   padding-bottom: 0;
   padding-left: 0;

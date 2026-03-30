@@ -1,10 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Caspo app icon">
-  <rect width="1024" height="1024" fill="#63C285" />
-  <g transform="translate(0 -36)">
-    <g fill="#FFFFFF" transform="translate(512 512) scale(1.12) translate(-512 -420)">
-      <path d="M512 168 244 278l268 110 268-110z" />
-      <path d="M244 404v64l268 110 268-110v-64L512 514z" />
-      <path d="M244 562v64l268 110 268-110v-64L512 672z" />
-    </g>
+  <rect width="1024" height="1024" fill="#FFFFFF" />
+  <g
+    transform="translate(80 80) scale(36)"
+    fill="none"
+    stroke="#63C285"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+    <path d="M2 12l10 5 10-5" />
+    <path d="M2 17l10 5 10-5" />
   </g>
 </svg>

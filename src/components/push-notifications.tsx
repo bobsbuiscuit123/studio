@@ -9,7 +9,7 @@ import {
   type Token,
 } from '@capacitor/push-notifications';
 import type { PluginListenerHandle } from '@capacitor/core';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 import { useToast } from '@/hooks/use-toast';
 import { useCurrentUser } from '@/lib/data-hooks';
@@ -34,8 +34,43 @@ const getPushRoute = (notification: PushNotificationSchema | undefined) => {
   return { route, params };
 };
 
+const normalizeRoutePath = (value: string) => {
+  if (!value) return '';
+  try {
+    const parsed = new URL(value, 'https://caspo.local');
+    return parsed.pathname.replace(/\/+$/, '') || '/';
+  } catch {
+    return value.split('?')[0]?.replace(/\/+$/, '') || '/';
+  }
+};
+
+const getRouteSection = (value: string) => {
+  let path = normalizeRoutePath(value);
+  if (path === '/demo/app') {
+    path = '/';
+  } else if (path.startsWith('/demo/app/')) {
+    path = path.slice('/demo/app'.length) || '/';
+  }
+  return path.split('/').filter(Boolean)[0] ?? '';
+};
+
+const shouldSuppressForegroundToast = (pathname: string, route: string) => {
+  const currentPath = normalizeRoutePath(pathname);
+  const targetPath = normalizeRoutePath(route);
+  if (!currentPath || !targetPath) {
+    return false;
+  }
+  if (currentPath === targetPath) {
+    return true;
+  }
+  const currentSection = getRouteSection(currentPath);
+  const targetSection = getRouteSection(targetPath);
+  return Boolean(currentSection) && currentSection === targetSection;
+};
+
 export function PushNotificationClient() {
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
   const { user, loading } = useCurrentUser();
   const lastRegistrationKeyRef = useRef<string | null>(null);
@@ -82,6 +117,11 @@ export function PushNotificationClient() {
     };
 
     const handleReceived = (notification: PushNotificationSchema) => {
+      const { route } = getPushRoute(notification);
+      if (route && shouldSuppressForegroundToast(pathname, route)) {
+        return;
+      }
+
       const title = typeof notification.title === 'string' ? notification.title.trim() : '';
       const body = typeof notification.body === 'string' ? notification.body.trim() : '';
       if (!title && !body) {
@@ -127,7 +167,7 @@ export function PushNotificationClient() {
       cancelled = true;
       void Promise.all(listenerHandles.map(handle => handle.remove()));
     };
-  }, [loading, router, toast, user]);
+  }, [loading, pathname, router, toast, user]);
 
   return null;
 }

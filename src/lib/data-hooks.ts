@@ -193,11 +193,17 @@ async function fetchGroupStateFromServer(orgId: string, groupId: string) {
   return normalizeClubData(response.data.data);
 }
 
-async function requestGroupState(orgId: string, groupId: string) {
+async function requestGroupState(
+  orgId: string,
+  groupId: string,
+  options: { forceFresh?: boolean } = {}
+) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  const pending = groupStateRequestCache.get(cacheKey);
-  if (pending) {
-    return pending;
+  if (!options.forceFresh) {
+    const pending = groupStateRequestCache.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
   }
 
   const request = (async () => {
@@ -210,7 +216,9 @@ async function requestGroupState(orgId: string, groupId: string) {
   try {
     return await request;
   } finally {
-    groupStateRequestCache.delete(cacheKey);
+    if (groupStateRequestCache.get(cacheKey) === request) {
+      groupStateRequestCache.delete(cacheKey);
+    }
   }
 }
 
@@ -225,7 +233,7 @@ async function loadGroupState(orgId: string, groupId: string) {
 }
 
 async function fetchFreshGroupState(orgId: string, groupId: string) {
-  return requestGroupState(orgId, groupId);
+  return requestGroupState(orgId, groupId, { forceFresh: true });
 }
 
 function useClubDataStore() {

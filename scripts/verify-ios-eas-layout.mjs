@@ -14,6 +14,8 @@ const rootPbxprojPath = path.join(rootXcodeproj, 'project.pbxproj');
 const nestedWrapper = path.join(iosRoot, 'App');
 const nestedAppDir = path.join(nestedWrapper, 'App');
 const nestedInfoPlist = path.join(nestedAppDir, 'Info.plist');
+const nestedDebugEntitlements = path.join(nestedAppDir, 'App.entitlements');
+const nestedReleaseEntitlements = path.join(nestedAppDir, 'AppRelease.entitlements');
 const nestedXcodeproj = path.join(nestedWrapper, 'App.xcodeproj');
 const nestedCapAppSpm = path.join(nestedWrapper, 'CapApp-SPM');
 const nestedPackageSwiftPath = path.join(nestedCapAppSpm, 'Package.swift');
@@ -27,6 +29,8 @@ const requiredPaths = [
   nestedWrapper,
   nestedAppDir,
   nestedInfoPlist,
+  nestedDebugEntitlements,
+  nestedReleaseEntitlements,
   nestedXcodeproj,
   nestedCapAppSpm,
   nestedPackageSwiftPath,
@@ -101,6 +105,14 @@ if (!rootPbxproj.includes('path = App/App;')) {
 
 if (!rootPbxproj.includes('INFOPLIST_FILE = App/App/Info.plist;')) {
   throw new Error('ios/App.xcodeproj is not using App/App/Info.plist');
+}
+
+if (!rootPbxproj.includes('CODE_SIGN_ENTITLEMENTS = App/App/App.entitlements;')) {
+  throw new Error('ios/App.xcodeproj is not using App/App/App.entitlements for Debug');
+}
+
+if (!rootPbxproj.includes('CODE_SIGN_ENTITLEMENTS = App/App/AppRelease.entitlements;')) {
+  throw new Error('ios/App.xcodeproj is not using App/App/AppRelease.entitlements for Release');
 }
 
 if (!rootPbxproj.includes('relativePath = "App/CapApp-SPM";')) {

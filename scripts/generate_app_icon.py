@@ -3,7 +3,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 
-BACKGROUND = (255, 255, 255)
+BACKGROUND = (207, 239, 217)
 FOREGROUND = (99, 194, 133)
 MASTER_SIZE = 1024
 APPLE_TOUCH_SIZE = 180
@@ -12,7 +12,7 @@ FAVICON_SIZES = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
 ANTIALIAS_SCALE = 4
 
 # Use the actual in-app logo geometry so the app icon matches the product mark.
-ICON_SCALE = 36
+ICON_SCALE = 33
 STROKE_UNITS = 2
 VIEWBOX_CENTER = 12
 
@@ -69,7 +69,7 @@ def main() -> None:
     app_icon_path = repo_root / "ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
     apple_touch_path = repo_root / "src/app/apple-icon.png"
     favicon_path = repo_root / "src/app/favicon.ico"
-    preview_path = repo_root / "tmp/logo-preview-white-bg-green-outline.png"
+    preview_path = repo_root / "tmp/logo-preview-light-green-bg.png"
 
     master_icon.save(app_icon_path)
     master_icon.resize((APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE), Image.Resampling.LANCZOS).save(apple_touch_path)

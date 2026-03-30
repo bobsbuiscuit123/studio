@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Group management with AI assistance.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#FFFFFF',
+    background_color: '#CFEFD9',
     theme_color: '#63C285',
     icons: [
       {

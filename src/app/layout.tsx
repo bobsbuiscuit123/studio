@@ -25,7 +25,12 @@ export const metadata: Metadata = {
   title: "CASPO",
   description: "The ultimate group management tool, powered by AI.",
   icons: {
-    icon: "/icon.svg",
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" },
+    ],
+    apple: "/apple-icon.png",
+    shortcut: "/favicon.ico",
   },
 };
 

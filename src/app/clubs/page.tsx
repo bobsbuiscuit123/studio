@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId, clearSelectedOrgId, getSelectedOrgId, setSelectedGroupId } from "@/lib/selection";
@@ -73,15 +72,10 @@ export default function ClubsPage() {
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
   const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
   const [orgSettingsLoading, setOrgSettingsLoading] = useState(false);
-  const [orgSettingsSaving, setOrgSettingsSaving] = useState(false);
   const [orgJoinCode, setOrgJoinCode] = useState("");
-  const [memberLimitEnabled, setMemberLimitEnabled] = useState(false);
-  const [memberLimitValue, setMemberLimitValue] = useState("");
-  const [aiLimitEnabled, setAiLimitEnabled] = useState(false);
-  const [aiLimitValue, setAiLimitValue] = useState("");
 
   const selectedOrgId = getSelectedOrgId();
-  const { status: orgStatus, refresh: refreshOrgStatus } = useOrgSubscriptionStatus(selectedOrgId);
+  const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
   const formatDate = (value?: string | null) =>
@@ -139,14 +133,6 @@ export default function ClubsPage() {
       return;
     }
     setOrgJoinCode(response.data.data.joinCode ?? "");
-    setMemberLimitEnabled(Boolean(response.data.data.memberLimitOverride));
-    setMemberLimitValue(
-      response.data.data.memberLimitOverride ? String(response.data.data.memberLimitOverride) : ""
-    );
-    setAiLimitEnabled(Boolean(response.data.data.aiTokenLimitOverride));
-    setAiLimitValue(
-      response.data.data.aiTokenLimitOverride ? String(response.data.data.aiTokenLimitOverride) : ""
-    );
     setIsEditOrgOpen(true);
   };
 
@@ -154,66 +140,6 @@ export default function ClubsPage() {
     if (!orgJoinCode) return;
     await navigator.clipboard.writeText(orgJoinCode);
     toast({ title: "Copied", description: "Organization code copied to clipboard." });
-  };
-
-  const handleSaveOrganizationSettings = async () => {
-    if (!selectedOrgId || !isOrgOwner) return;
-
-    const parsedMemberLimit = memberLimitEnabled ? Number.parseInt(memberLimitValue, 10) : null;
-    if (
-      memberLimitEnabled &&
-      (parsedMemberLimit === null || !Number.isFinite(parsedMemberLimit) || parsedMemberLimit < 1)
-    ) {
-      toast({
-        title: "Invalid member limit",
-        description: "Enter a whole number greater than 0.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const parsedAiLimit = aiLimitEnabled ? Number.parseInt(aiLimitValue, 10) : null;
-    if (
-      aiLimitEnabled &&
-      (parsedAiLimit === null || !Number.isFinite(parsedAiLimit) || parsedAiLimit < 1)
-    ) {
-      toast({
-        title: "Invalid AI limit",
-        description: "Enter a whole number greater than 0.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setOrgSettingsSaving(true);
-    const response = await safeFetchJson<{ ok: true; data: OrgSettings }>(
-      `/api/orgs/${selectedOrgId}/settings`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          memberLimitOverride: memberLimitEnabled ? parsedMemberLimit : null,
-          aiTokenLimitOverride: aiLimitEnabled ? parsedAiLimit : null,
-        }),
-      }
-    );
-    setOrgSettingsSaving(false);
-    if (!response.ok) {
-      toast({
-        title: "Save failed",
-        description: response.error.message,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setOrgJoinCode(response.data.data.joinCode ?? orgJoinCode);
-    await refreshOrgStatus({ force: true });
-    toast({
-      title: "Organization updated",
-      description: "Your organization settings were saved.",
-    });
-    setIsEditOrgOpen(false);
   };
 
   useEffect(() => {
@@ -785,7 +711,7 @@ export default function ClubsPage() {
           <DialogHeader>
             <DialogTitle>Edit Organization</DialogTitle>
             <DialogDescription>
-              Change organization settings and share the organization code.
+              View and share the organization code.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-2">
@@ -801,69 +727,10 @@ export default function ClubsPage() {
                 </Button>
               </div>
             </div>
-
-            <div className="space-y-3 rounded-xl border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="member-limit-toggle">Set a member limit</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Optional. Block new members once the organization reaches this size.
-                  </p>
-                </div>
-                <Switch
-                  id="member-limit-toggle"
-                  checked={memberLimitEnabled}
-                  onCheckedChange={setMemberLimitEnabled}
-                />
-              </div>
-              {memberLimitEnabled ? (
-                <div className="space-y-2">
-                  <Label htmlFor="member-limit-value">Member limit</Label>
-                  <Input
-                    id="member-limit-value"
-                    inputMode="numeric"
-                    value={memberLimitValue}
-                    onChange={(event) => setMemberLimitValue(event.target.value.replace(/[^\d]/g, ""))}
-                    placeholder="50"
-                  />
-                </div>
-              ) : null}
-            </div>
-
-            <div className="space-y-3 rounded-xl border p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="ai-limit-toggle">Set an AI limit</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Optional. Cap monthly AI usage for this org below the plan allowance if you want.
-                  </p>
-                </div>
-                <Switch
-                  id="ai-limit-toggle"
-                  checked={aiLimitEnabled}
-                  onCheckedChange={setAiLimitEnabled}
-                />
-              </div>
-              {aiLimitEnabled ? (
-                <div className="space-y-2">
-                  <Label htmlFor="ai-limit-value">Monthly AI token cap</Label>
-                  <Input
-                    id="ai-limit-value"
-                    inputMode="numeric"
-                    value={aiLimitValue}
-                    onChange={(event) => setAiLimitValue(event.target.value.replace(/[^\d]/g, ""))}
-                    placeholder="3000"
-                  />
-                </div>
-              ) : null}
-            </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsEditOrgOpen(false)} disabled={orgSettingsSaving}>
-              Cancel
-            </Button>
-            <Button onClick={() => void handleSaveOrganizationSettings()} disabled={orgSettingsSaving}>
-              {orgSettingsSaving ? "Saving..." : "Save Organization"}
+            <Button variant="ghost" onClick={() => setIsEditOrgOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

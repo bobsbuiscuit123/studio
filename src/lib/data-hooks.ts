@@ -1032,6 +1032,7 @@ export function useNotifications() {
     // This provider lives in the shared app layout, so it must reuse one store instance.
     const { data, loading: clubDataLoading, updateClubData } = useClubDataStore();
     const { user, loading: userLoading } = useCurrentUser();
+    const { role: membershipRole, loading: roleLoading } = useCurrentUserRole();
     const [tabLastViewed, setTabLastViewed] = useState<Record<NotificationKey, number>>({
         ...createEmptyNotificationActivity(),
     });
@@ -1047,11 +1048,12 @@ export function useNotifications() {
     const forms = clubData.forms;
     const members = clubData.members;
 
-    const role = useMemo(() => {
+    const inferredRole = useMemo(() => {
         return getRoleFromMembers(members, user?.email);
     }, [members, user?.email]);
+    const role = membershipRole ?? inferredRole;
 
-    const loading = userLoading || clubDataLoading;
+    const loading = userLoading || clubDataLoading || roleLoading;
 
     useEffect(() => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) {

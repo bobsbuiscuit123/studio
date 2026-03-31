@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 const assistantHref = "/assistant";
 const assistantComingSoonLabel = "CASPO AI Agent";
 const assistantComingSoonMessage =
-  "A smarter club copilot is on the way. It will help with announcements, answers, and busywork right from this tab.";
+  "CASPO AI copilot is on the way.";
 const mobileNavOrder = [
   "/dashboard",
   "/announcements",

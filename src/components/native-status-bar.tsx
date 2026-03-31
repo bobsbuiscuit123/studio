@@ -5,9 +5,7 @@ import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { usePathname } from 'next/navigation';
 import { StatusBar, Style } from '@capacitor/status-bar';
-
-const SAFE_AREA_RESYNC_EVENT = "caspo:safe-area-resync";
-const STATUS_BAR_REASSERT_EVENT = "caspo:status-bar-reassert";
+import { SAFE_AREA_RESYNC_EVENT, STATUS_BAR_REASSERT_EVENT } from "@/lib/native-chrome";
 
 export function NativeStatusBar() {
   const pathname = usePathname();

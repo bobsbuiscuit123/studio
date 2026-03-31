@@ -3,8 +3,7 @@
 import { Capacitor } from "@capacitor/core";
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-
-const SAFE_AREA_RESYNC_EVENT = "caspo:safe-area-resync";
+import { SAFE_AREA_RESYNC_EVENT } from "@/lib/native-chrome";
 
 function parsePixels(value: string) {
   const parsed = Number.parseFloat(value);

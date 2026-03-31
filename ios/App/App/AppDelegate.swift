@@ -8,6 +8,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     var window: UIWindow?
 
+    private func reassertWindowChrome() {
+        window?.backgroundColor = .white
+        window?.rootViewController?.view.backgroundColor = .white
+        window?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
+    }
+
     private func publishPushToken(_ token: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -23,8 +29,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
             FirebaseApp.configure()
         }
         Messaging.messaging().delegate = self
-        window?.backgroundColor = .white
-        window?.rootViewController?.view.backgroundColor = .white
+        reassertWindowChrome()
         return true
     }
 
@@ -40,10 +45,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
+        reassertWindowChrome()
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+        reassertWindowChrome()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

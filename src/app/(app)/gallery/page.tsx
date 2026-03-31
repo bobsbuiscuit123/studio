@@ -36,6 +36,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { resizeImage } from "@/lib/image-resizer";
+import { scheduleNativeChromeResync } from "@/lib/native-chrome";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +75,14 @@ export default function GalleryPage() {
     resolver: zodResolver(uploadFormSchema),
     defaultValues: { alt: "", images: [] },
   });
+
+  const reassertNativeChrome = () => {
+    if (!isNativeApp) {
+      return;
+    }
+
+    scheduleNativeChromeResync();
+  };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -88,6 +97,8 @@ export default function GalleryPage() {
       });
       setPreviewImages(prev => [...prev, ...newPreviews]);
     }
+
+    reassertNativeChrome();
   };
 
   const addImages = (newFiles: File[], newPreviews: string[]) => {
@@ -119,6 +130,8 @@ export default function GalleryPage() {
         description: "Please try again or choose an image from your library.",
         variant: "destructive",
       });
+    } finally {
+      reassertNativeChrome();
     }
   };
   

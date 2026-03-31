@@ -46,7 +46,7 @@ describe('ai output limit', () => {
 
     expect(clamped).toEqual({
       questions: [
-        { prompt: 'First question', description: 'Alpha' },
+        { prompt: 'First question', description: 'Alph' },
         { prompt: '', description: '' },
       ],
     });

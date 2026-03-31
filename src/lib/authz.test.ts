@@ -17,6 +17,20 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+vi.mock('@/lib/supabase/admin', () => ({
+  createSupabaseAdmin: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { role: 'owner' } }),
+          }),
+        }),
+      }),
+    }),
+  }),
+}));
+
 describe('requireOrgRole', () => {
   it('allows owner role', async () => {
     const result = await requireOrgRole('org-1', ['owner']);

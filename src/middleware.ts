@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
 
 const isLocalhost = (hostname: string) =>
   hostname === 'localhost' ||
@@ -7,32 +6,12 @@ const isLocalhost = (hostname: string) =>
   hostname === '::1' ||
   hostname === '[::1]';
 
-const MIDDLEWARE_AUTH_TIMEOUT_MS = 2500;
-
 const hasSupabaseAuthCookie = (request: NextRequest) =>
   request.cookies
     .getAll()
     .some(({ name }) => name.startsWith('sb-') && name.includes('auth-token'));
 
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timeoutHandle = setTimeout(() => {
-          reject(new Error(`Middleware auth lookup timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-  }
-};
-
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl;
   if (pathname.startsWith('/api/')) {
     return NextResponse.next();
@@ -60,7 +39,6 @@ export async function middleware(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next({ request });
 
-  let response = NextResponse.next({ request });
   const publicRoutes = ['/login', '/auth/callback', '/reset-password'];
   const isPublicRoute =
     publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
@@ -71,50 +49,16 @@ export async function middleware(request: NextRequest) {
     pathname === '/org' ||
     pathname.startsWith('/org/');
   const clubsRoute = pathname === '/clubs' || pathname.startsWith('/clubs/');
+  // Keep middleware cookie-only. Remote auth lookups here block every navigation.
   const authCookiePresent = hasSupabaseAuthCookie(request);
 
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>['data']['user'] = null;
-  if (authCookiePresent) {
-    try {
-      const {
-        data: { user: nextUser },
-      } = await withTimeout(supabase.auth.getUser(), MIDDLEWARE_AUTH_TIMEOUT_MS);
-      user = nextUser;
-    } catch (error) {
-      console.error('Middleware auth lookup failed', {
-        pathname,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      return response;
-    }
-  }
-
-  if (!user && !isPublicRoute) {
+  if (!authCookiePresent && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = '/login';
-    const redirectResponse = NextResponse.redirect(redirectUrl);
-    response.cookies.getAll().forEach((cookie) => {
-      redirectResponse.cookies.set(cookie);
-    });
-    return redirectResponse;
+    return NextResponse.redirect(redirectUrl);
   }
 
-  if (user) {
+  if (authCookiePresent) {
     const selectedOrgId = request.cookies.get('selectedOrgId')?.value;
     const selectedGroupId = request.cookies.get('selectedGroupId')?.value;
 
@@ -136,7 +80,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(redirectUrl);
     }
   }
-  return response;
+
+  return NextResponse.next({ request });
 }
 
 export const config = {

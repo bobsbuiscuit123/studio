@@ -16,6 +16,15 @@ import {
     normalizeMessageMap,
 } from '@/lib/message-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import {
+    createEmptyNotificationActivity,
+    createEmptyUnreadNotifications,
+    getNotificationActivityByKey,
+    getRoleFromMembers,
+    getUnreadNotifications,
+    type NotificationKey,
+} from '@/lib/notification-state';
+import { startPerformanceTimer } from '@/lib/performance-guard';
 
 type ClubData = {
     members: Member[];
@@ -60,19 +69,6 @@ const stableSerialize = (value: unknown): string => {
     }
     return JSON.stringify(value);
 };
-
-const normalizeActivityActor = (value?: string | null) =>
-    String(value ?? '').trim().toLowerCase();
-
-const getActivityTimestamp = (value?: string | Date | null) => {
-    if (!value) return 0;
-    const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
-    return Number.isFinite(timestamp) ? timestamp : 0;
-};
-
-const viewedByCurrentUser = (viewedBy: string[] | undefined, userEmail: string) =>
-    Array.isArray(viewedBy) &&
-    viewedBy.some(email => normalizeActivityActor(email) === userEmail);
 
 const getTabViewStorageKey = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) =>
     `${TAB_VIEW_KEY}:${userEmail}:${orgId}:${groupId}:${key}`;
@@ -207,9 +203,18 @@ async function requestGroupState(
   }
 
   const request = (async () => {
-    const normalized = await fetchGroupStateFromServer(orgId, groupId);
-    groupStateCache.set(cacheKey, normalized);
-    return normalized;
+    const performanceTimer = startPerformanceTimer('group state fetch', 1_000, {
+      orgId,
+      groupId,
+      mode: options.forceFresh ? 'fresh' : 'cached-miss',
+    });
+    try {
+      const normalized = await fetchGroupStateFromServer(orgId, groupId);
+      groupStateCache.set(cacheKey, normalized);
+      return normalized;
+    } finally {
+      performanceTimer.stop();
+    }
   })();
 
   groupStateRequestCache.set(cacheKey, request);
@@ -1006,7 +1011,7 @@ export function useCurrentUserRole() {
     return { role, canEditContent: canEdit, canManageRoles: canManage, loading };
 }
 
-export type NotificationKey = 'announcements' | 'social' | 'messages' | 'calendar' | 'gallery' | 'attendance' | 'forms';
+export type { NotificationKey } from '@/lib/notification-state';
 
 export const notifyOrgAiUsageChanged = (
     orgId?: string | null,
@@ -1023,39 +1028,35 @@ export const notifyOrgAiUsageChanged = (
 
 
 export function useNotifications() {
-    const { data: announcements, loading: announcementsLoading } = useAnnouncements();
-    const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-    const { data: allMessages, loading: messagesLoading } = useMessages();
-    const { data: groupChats, loading: groupsLoading } = useGroupChats();
-    const { data: events, loading: eventsLoading } = useEvents();
-    const { data: galleryImages, loading: galleryImagesLoading } = useGalleryImages();
-    const { data: forms, loading: formsLoading } = useForms();
+    const defaultClubData = useMemo(() => getDefaultClubData(), []);
+    // This provider lives in the shared app layout, so it must reuse one store instance.
+    const { data, loading: clubDataLoading, updateClubData } = useClubDataStore();
     const { user, loading: userLoading } = useCurrentUser();
-    const { role, loading: roleLoading } = useCurrentUserRole();
     const [tabLastViewed, setTabLastViewed] = useState<Record<NotificationKey, number>>({
-        announcements: 0,
-        social: 0,
-        messages: 0,
-        calendar: 0,
-        gallery: 0,
-        attendance: 0,
-        forms: 0,
+        ...createEmptyNotificationActivity(),
     });
     const selectedOrgId = getSelectedOrgId();
     const selectedGroupId = getSelectedGroupId();
+    const clubData = data ?? defaultClubData;
+    const announcements = clubData.announcements;
+    const socialPosts = clubData.socialPosts;
+    const allMessages = clubData.messages;
+    const groupChats = clubData.groupChats;
+    const events = clubData.events;
+    const galleryImages = clubData.galleryImages;
+    const forms = clubData.forms;
+    const members = clubData.members;
 
-    const loading = userLoading || announcementsLoading || socialPostsLoading || messagesLoading || groupsLoading || eventsLoading || galleryImagesLoading || formsLoading || roleLoading;
+    const role = useMemo(() => {
+        return getRoleFromMembers(members, user?.email);
+    }, [members, user?.email]);
+
+    const loading = userLoading || clubDataLoading;
 
     useEffect(() => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) {
             setTabLastViewed({
-                announcements: 0,
-                social: 0,
-                messages: 0,
-                calendar: 0,
-                gallery: 0,
-                attendance: 0,
-                forms: 0,
+                ...createEmptyNotificationActivity(),
             });
             return;
         }
@@ -1071,187 +1072,92 @@ export function useNotifications() {
     }, [selectedGroupId, selectedOrgId, user?.email]);
 
     const activityByKey = useMemo<Record<NotificationKey, number>>(() => {
-        if (loading || !user) {
-            return {
-                announcements: 0,
-                social: 0,
-                messages: 0,
-                calendar: 0,
-                gallery: 0,
-                forms: 0,
-                attendance: 0,
-            };
-        }
-
-        const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
-        const safeSocialPosts = Array.isArray(socialPosts) ? socialPosts : [];
-        const safeEvents = Array.isArray(events) ? events : [];
-        const safeGalleryImages = Array.isArray(galleryImages) ? galleryImages : [];
-        const safeGroupChats = normalizeGroupChats(groupChats);
-        const safeAllMessages = normalizeMessageMap(allMessages);
-        const safeForms = Array.isArray(forms) ? forms : [];
-        const currentUserEmail = normalizeActivityActor(user.email);
-        const currentUserName = normalizeActivityActor(user.name);
-        const isCurrentUserActor = (actor?: string | null) => {
-            const normalizedActor = normalizeActivityActor(actor);
-            if (!normalizedActor) return false;
-            return normalizedActor === currentUserEmail || normalizedActor === currentUserName;
-        };
-
-        const latestAnnouncementTimestamp = safeAnnouncements.reduce((latest: number, announcement: Announcement) => {
-            if (isCurrentUserActor(announcement.author) || viewedByCurrentUser(announcement.viewedBy, currentUserEmail)) {
-                return latest;
-            }
-            return Math.max(latest, getActivityTimestamp(announcement.date));
-        }, 0);
-        const latestSocialTimestamp = safeSocialPosts.reduce((latest: number, post: SocialPost) => {
-            if (isCurrentUserActor(post.author)) {
-                return latest;
-            }
-            return Math.max(latest, getActivityTimestamp(post.date));
-        }, 0);
-        const latestDmTimestamp = Object.values(safeAllMessages)
-            .flat()
-            .filter((m: Message) => !isMessageFromActor(m, currentUserEmail))
-            .reduce((latest, message) => {
-                if (messageIncludesReader(message, currentUserEmail)) {
-                    return latest;
-                }
-                return Math.max(latest, getActivityTimestamp(message.timestamp));
-            }, 0);
-        const latestGroupTimestamp = safeGroupChats.reduce((latestChatTimestamp: number, chat: GroupChat) => {
-            const chatLatest = chat.messages
-                .filter(message => !isMessageFromActor(message, currentUserEmail))
-                .reduce((latestMessageTimestamp, message) => {
-                    if (messageIncludesReader(message, currentUserEmail)) {
-                        return latestMessageTimestamp;
-                    }
-                    return Math.max(latestMessageTimestamp, getActivityTimestamp(message.timestamp));
-                }, 0);
-            return Math.max(latestChatTimestamp, chatLatest);
-        }, 0);
-        const latestMessageTimestamp = Math.max(latestDmTimestamp, latestGroupTimestamp);
-        const latestEventTimestamp = safeEvents.reduce((latest: number, event: ClubEvent) => {
-            if (viewedByCurrentUser(event.viewedBy, currentUserEmail)) {
-                return latest;
-            }
-            return Math.max(latest, getActivityTimestamp(event.date));
-        }, 0);
-        const latestGalleryTimestamp = safeGalleryImages.reduce((latest: number, image: GalleryImage) => {
-            if (image.status !== 'approved' || isCurrentUserActor(image.author)) {
-                return latest;
-            }
-            return Math.max(latest, getActivityTimestamp(image.date));
-        }, 0);
-        const latestFormTimestamp = safeForms.reduce((latest: number, form: ClubForm) => {
-            const createdAt =
-                !isCurrentUserActor(form.createdBy) && !viewedByCurrentUser(form.viewedBy, currentUserEmail)
-                    ? getActivityTimestamp(form.createdAt)
-                    : 0;
-            const latestResponse = form.responses.reduce((responseLatest, response) => {
-                if (normalizeActivityActor(response.respondentEmail) === currentUserEmail) {
-                    return responseLatest;
-                }
-                return Math.max(responseLatest, getActivityTimestamp(response.submittedAt));
-            }, 0);
-            return Math.max(latest, createdAt, latestResponse);
-        }, 0);
-        const attendanceActivity =
-            role === 'Admin'
-                ? safeEvents.reduce(
-                      (count, event) =>
-                          count +
-                          (Array.isArray(event.attendees)
-                              ? event.attendees.filter(email => normalizeActivityActor(email) !== currentUserEmail).length
-                              : 0),
-                      0
-                  )
-                : 0;
-
-        return {
-            announcements: latestAnnouncementTimestamp,
-            social: latestSocialTimestamp,
-            messages: latestMessageTimestamp,
-            calendar: latestEventTimestamp,
-            gallery: latestGalleryTimestamp,
-            forms: latestFormTimestamp,
-            attendance: attendanceActivity,
-        };
+        return getNotificationActivityByKey({
+            announcements,
+            socialPosts,
+            allMessages,
+            groupChats,
+            events,
+            galleryImages,
+            forms,
+            user,
+            role,
+            loading,
+        });
     }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms]);
 
     const unread = useMemo(() => {
-        if (loading || !user) {
-            return {
-                announcements: false,
-                social: false,
-                messages: false,
-                calendar: false,
-                gallery: false,
-                forms: false,
-                attendance: false,
-            };
-        }
-
-        return {
-            announcements: activityByKey.announcements > tabLastViewed.announcements,
-            social: activityByKey.social > tabLastViewed.social,
-            messages: activityByKey.messages > tabLastViewed.messages,
-            calendar: activityByKey.calendar > tabLastViewed.calendar,
-            gallery: activityByKey.gallery > tabLastViewed.gallery,
-            forms: activityByKey.forms > tabLastViewed.forms,
-            attendance: role === 'Admin' && activityByKey.attendance > tabLastViewed.attendance,
-        };
+        return getUnreadNotifications({
+            activityByKey,
+            tabLastViewed,
+            loading,
+            user,
+            role,
+        });
     }, [activityByKey, loading, role, tabLastViewed, user]);
-    
-    const announcementsHook = useAnnouncements();
-    const socialPostsHook = useSocialPosts();
-    const messagesHook = useMessages();
-    const groupChatsHook = useGroupChats();
-    const eventsHook = useEvents();
-    const galleryImagesHook = useGalleryImages();
-    const formsHook = useForms();
     
     const markAllAsRead = useCallback((key: NotificationKey) => {
         if (!user?.email) return;
         const userEmail = user.email;
-
-        switch (key) {
-            case 'announcements':
-                announcementsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({ ...item, read: true })));
-                break;
-            case 'social':
-                socialPostsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({ ...item, read: true })));
-                break;
-            case 'messages':
-                messagesHook.updateData(prev => {
-                    const newMessages = normalizeMessageMap(prev);
-                    for (const convoId in newMessages) {
-                        newMessages[convoId] = newMessages[convoId].map(msg => markMessageReadByActor(msg, userEmail));
-                    }
-                    return newMessages;
-                });
-                groupChatsHook.updateData(prev => normalizeGroupChats(prev).map(g => ({
-                    ...g,
-                    messages: g.messages.map(msg => markMessageReadByActor(msg, userEmail)),
-                })));
-                break;
-            case 'calendar':
-                eventsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({...item, read: true } as any)));
-                break;
-            case 'gallery':
-                galleryImagesHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({ ...item, read: true })));
-                break;
-            case 'forms':
-                formsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => {
-                    const viewedBy = Array.isArray(item.viewedBy) ? item.viewedBy : [];
-                    return viewedBy.includes(userEmail) ? item : { ...item, viewedBy: [...viewedBy, userEmail] };
-                }));
-                break;
-            case 'attendance':
-                eventsHook.updateData(prev => (Array.isArray(prev) ? prev : []).map(item => ({...item, lastViewedAttendees: item.attendees?.length || 0 } as any)));
-                break;
-        }
-    }, [user, announcementsHook, socialPostsHook, messagesHook, groupChatsHook, eventsHook, galleryImagesHook, formsHook]);
+        void updateClubData(prev => {
+            switch (key) {
+                case 'announcements':
+                    return {
+                        ...prev,
+                        announcements: prev.announcements.map(item => ({ ...item, read: true })),
+                    };
+                case 'social':
+                    return {
+                        ...prev,
+                        socialPosts: prev.socialPosts.map(item => ({ ...item, read: true })),
+                    };
+                case 'messages':
+                    return {
+                        ...prev,
+                        messages: Object.fromEntries(
+                            Object.entries(normalizeMessageMap(prev.messages)).map(([convoId, messages]) => [
+                                convoId,
+                                messages.map(msg => markMessageReadByActor(msg, userEmail)),
+                            ])
+                        ),
+                        groupChats: normalizeGroupChats(prev.groupChats).map(chat => ({
+                            ...chat,
+                            messages: chat.messages.map(msg => markMessageReadByActor(msg, userEmail)),
+                        })),
+                    };
+                case 'calendar':
+                    return {
+                        ...prev,
+                        events: prev.events.map(item => ({ ...item, read: true })),
+                    };
+                case 'gallery':
+                    return {
+                        ...prev,
+                        galleryImages: prev.galleryImages.map(item => ({ ...item, read: true })),
+                    };
+                case 'forms':
+                    return {
+                        ...prev,
+                        forms: prev.forms.map(item => {
+                            const viewedBy = Array.isArray(item.viewedBy) ? item.viewedBy : [];
+                            return viewedBy.includes(userEmail)
+                                ? item
+                                : { ...item, viewedBy: [...viewedBy, userEmail] };
+                        }),
+                    };
+                case 'attendance':
+                    return {
+                        ...prev,
+                        events: prev.events.map(item => ({
+                            ...item,
+                            lastViewedAttendees: item.attendees?.length || 0,
+                        })),
+                    };
+                default:
+                    return prev;
+            }
+        });
+    }, [updateClubData, user?.email]);
 
     const markTabViewed = useCallback((key: NotificationKey) => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) return;
@@ -1260,5 +1166,5 @@ export function useNotifications() {
         setTabLastViewed(prev => ({ ...prev, [key]: nextValue }));
     }, [activityByKey, selectedGroupId, selectedOrgId, user?.email]);
 
-    return { unread, loading, markAllAsRead, markTabViewed };
+    return { unread, loading, markAllAsRead, markTabViewed, role };
 }

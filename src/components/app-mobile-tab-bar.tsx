@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { useCurrentUserRole } from "@/lib/data-hooks";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
 import type { NotificationKey } from "@/lib/data-hooks";
@@ -20,6 +19,7 @@ const mobileNavOrder = [
   "/messages",
   "/calendar",
   "/forms",
+  "/email",
   "/attendance",
   "/points",
   "/gallery",
@@ -34,8 +34,7 @@ type MobileNavItem = {
 
 export function AppMobileTabBar() {
   const pathname = usePathname();
-  const { role } = useCurrentUserRole();
-  const { unread, markTabViewed } = useNotificationsContext();
+  const { unread, markTabViewed, role } = useNotificationsContext();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
   const isMessagesListRoute = pathname === "/messages" || pathname === "/demo/app/messages";
   const isMessageThreadRoute =

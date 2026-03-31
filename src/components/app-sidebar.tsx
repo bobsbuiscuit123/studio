@@ -5,13 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "./icons";
 import { AppSidebarNav } from "./app-sidebar-nav";
-import { useCurrentUserRole } from "@/lib/data-hooks";
 import { useNotificationsContext } from "@/components/notifications-provider";
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { role } = useCurrentUserRole();
-  const { unread, markTabViewed } = useNotificationsContext();
+  const { unread, markTabViewed, role } = useNotificationsContext();
   const isDemoApp = pathname === '/demo/app' || pathname.startsWith('/demo/app/');
   const homeHref = isDemoApp ? '/demo/app' : '/';
   const appName = isDemoApp ? 'CASPO' : 'CASPO';

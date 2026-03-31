@@ -40,12 +40,12 @@ export const allNavItems = [
   { href: '/messages', icon: MessageSquare, label: 'Messages', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'messages' as NotificationKey },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'calendar' as NotificationKey },
   { href: '/forms', icon: ClipboardList, label: 'Forms', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'forms' as NotificationKey },
+  { href: '/email', icon: Mail, label: 'Email', roles: ['Admin', 'Officer'], notificationKey: null },
   { href: '/attendance', icon: CheckCircle, label: 'Attendance', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'attendance' as NotificationKey },
   { href: '/points', icon: BarChart, label: 'Points', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'gallery' as NotificationKey },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/assistant', icon: Sparkles, label: 'Assistant', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
-  { href: '/email', icon: Mail, label: 'Email', roles: ['Admin', 'Officer'], notificationKey: null },
   { href: '/finances', icon: Landmark, label: 'Finances', roles: ['Admin'], notificationKey: null },
 ];
 
@@ -77,7 +77,7 @@ export function AppSidebarNav({
     const filteredNavItems = allNavItems.filter(() => groupId);
 
     return filteredNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
-      const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Attendance', 'Points', 'Gallery', 'Members', 'Email', 'Finances'];
+      const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Gallery', 'Members', 'Finances'];
       return order.indexOf(a.label) - order.indexOf(b.label);
     });
   }, [groupId, role]);

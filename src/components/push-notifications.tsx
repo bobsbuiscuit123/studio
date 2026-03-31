@@ -74,9 +74,24 @@ export function PushNotificationClient() {
   const { toast } = useToast();
   const { user, loading } = useCurrentUser();
   const lastRegistrationKeyRef = useRef<string | null>(null);
+  const pathnameRef = useRef(pathname);
+  const toastRef = useRef(toast);
+  const userEmailRef = useRef(user?.email ?? null);
 
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || loading || !user) {
+    pathnameRef.current = pathname;
+  }, [pathname]);
+
+  useEffect(() => {
+    toastRef.current = toast;
+  }, [toast]);
+
+  useEffect(() => {
+    userEmailRef.current = user?.email ?? null;
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || loading || !user?.email) {
       return;
     }
 
@@ -84,7 +99,9 @@ export function PushNotificationClient() {
     const listenerHandles: PluginListenerHandle[] = [];
 
     const registerToken = async (token: string) => {
-      const registrationKey = `${user.email}:${token}`;
+      const userEmail = userEmailRef.current;
+      if (!userEmail) return;
+      const registrationKey = `${userEmail}:${token}`;
       if (!token || lastRegistrationKeyRef.current === registrationKey) return;
       const result = await safeFetchJson<{ ok: boolean }>('/api/push/register', {
         method: 'POST',
@@ -118,7 +135,7 @@ export function PushNotificationClient() {
 
     const handleReceived = (notification: PushNotificationSchema) => {
       const { route } = getPushRoute(notification);
-      if (route && shouldSuppressForegroundToast(pathname, route)) {
+      if (route && shouldSuppressForegroundToast(pathnameRef.current, route)) {
         return;
       }
 
@@ -128,7 +145,7 @@ export function PushNotificationClient() {
         return;
       }
 
-      toast({
+      toastRef.current({
         title: title || 'Notification',
         description: body || undefined,
       });
@@ -167,7 +184,7 @@ export function PushNotificationClient() {
       cancelled = true;
       void Promise.all(listenerHandles.map(handle => handle.remove()));
     };
-  }, [loading, pathname, router, toast, user]);
+  }, [loading, router, user?.email]);
 
   return null;
 }

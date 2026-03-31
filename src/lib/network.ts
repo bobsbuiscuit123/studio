@@ -1,5 +1,6 @@
 import { err, ok, type AppError, type Result } from '@/lib/result';
 import { getClientTimeZoneHeaderName } from '@/lib/day-key';
+import { startPerformanceTimer } from '@/lib/performance-guard';
 
 type RetryOptions = {
   retries: number;
@@ -33,6 +34,14 @@ const isBrowser = () => typeof window !== 'undefined';
 const getBrowserTimeZone = () => {
   if (!isBrowser()) return null;
   return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+};
+
+const getRequestPathLabel = (url: string) => {
+  try {
+    return new URL(url, 'https://caspo.local').pathname;
+  } catch {
+    return url;
+  }
 };
 
 const normalizeFetchError = (error: unknown): AppError => {
@@ -79,6 +88,12 @@ export async function safeFetchJson<T>(
     const timeoutMs =
       typeof options.timeoutMs === 'number' ? options.timeoutMs : 12_000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const performanceTimer = startPerformanceTimer('fetch json', 1_500, {
+      method,
+      path: getRequestPathLabel(url),
+      attempt: attempt + 1,
+    });
+    let status: number | 'error' = 'error';
     try {
       const headers = new Headers(options.headers || {});
       const timeZone = getBrowserTimeZone();
@@ -93,6 +108,7 @@ export async function safeFetchJson<T>(
         headers,
         signal: controller.signal,
       });
+      status = response.status;
       if (!response.ok) {
         const bodyText = await response.text().catch(() => '');
         let message = response.status >= 500
@@ -135,6 +151,7 @@ export async function safeFetchJson<T>(
       }
       await sleep(backoffDelay(attempt, retry));
     } finally {
+      performanceTimer.stop({ status });
       clearTimeout(timeout);
     }
   }

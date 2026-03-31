@@ -3,7 +3,7 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { getFirebaseAdminApp } from '@/lib/firebase-admin';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 
-type PushType = 'message' | 'announcement' | 'event';
+type PushType = 'message' | 'announcement' | 'event' | 'form';
 
 type SendPushArgs = {
   userIds: string[];

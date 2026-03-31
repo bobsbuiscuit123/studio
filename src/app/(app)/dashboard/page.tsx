@@ -329,9 +329,7 @@ export default function Dashboard() {
       });
     });
 
-    (galleryImages ?? [])
-      .filter(image => image.status === 'approved')
-      .forEach(image => {
+    (galleryImages ?? []).forEach(image => {
         if (userEmail && image.read) return;
         const date = toDate(image.date);
         if (!date) return;

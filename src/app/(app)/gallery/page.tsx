@@ -10,14 +10,13 @@ import { Share } from "@capacitor/share";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Upload, ThumbsUp, Download, X, Trash2, Check, ShieldQuestion, Loader2 } from "lucide-react";
+import { Upload, ThumbsUp, Download, X, Trash2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -36,7 +35,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
 import { resizeImage } from "@/lib/image-resizer";
 import {
   DropdownMenu,
@@ -59,7 +57,6 @@ const uploadFormSchema = z.object({
 export default function GalleryPage() {
   const {
     data: images,
-    updateData: setImages,
     updateDataAsync: setImagesAsync,
     error,
     loading,
@@ -162,8 +159,6 @@ export default function GalleryPage() {
             return;
         }
 
-        const newStatus = canEditContent ? 'approved' : 'pending';
-
         const newImages: GalleryImage[] = validImageSrcs.map((imgSrc, index) => ({
             id: createGalleryImageId(index),
             src: imgSrc,
@@ -172,8 +167,8 @@ export default function GalleryPage() {
             date: new Date().toLocaleDateString(),
             likes: 0,
             likedBy: [],
-            status: newStatus,
-            read: !canEditContent,
+            status: 'approved',
+            read: false,
         }));
         
         const saved = await setImagesAsync(prevImages => [...newImages, ...prevImages].slice(0, MAX_GALLERY_IMAGES));
@@ -187,9 +182,9 @@ export default function GalleryPage() {
             return;
         }
 
-        toast({ 
-            title: newStatus === 'approved' ? "Images displayed successfully!" : "Images submitted for approval!",
-            description: newStatus === 'pending' ? "An admin will review your submission shortly." : `${validImageSrcs.length} images were uploaded.`,
+        toast({
+            title: "Images uploaded successfully!",
+            description: `${validImageSrcs.length} images were uploaded.`,
             duration: 7000
         });
 
@@ -293,33 +288,8 @@ export default function GalleryPage() {
     setDeletingImageId(null);
   };
   
-  const handleApproval = async (imageId: number, newStatus: 'approved' | 'rejected') => {
-    if (newStatus === 'approved') {
-      const saved = await setImagesAsync(prevImages =>
-        prevImages.map(img =>
-          img.id === imageId
-            ? { ...img, status: 'approved' as const, read: false }
-            : img
-        )
-      );
-      if (!saved) {
-        toast({
-          title: "Approval failed",
-          description: "The image approval was not saved. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-      toast({ title: "Image approved!" });
-    } else { // 'rejected'
-      await handleDelete(imageId); // Use the same delete logic to ensure blob cleanup
-    }
-  };
-  
   const isValidImage = (image: GalleryImage) => typeof image.src === 'string' && image.src.startsWith('data:image/');
-
-  const approvedImages = images.filter(img => img.status === 'approved' && isValidImage(img));
-  const pendingImages = images.filter(img => img.status === 'pending' && isValidImage(img));
+  const visibleImages = images.filter(isValidImage);
 
   return (
     <div className="app-page-shell">
@@ -328,7 +298,7 @@ export default function GalleryPage() {
       <Card>
         <CardHeader>
           <CardTitle>Upload New Images</CardTitle>
-          <CardDescription>Add photos to the club's gallery. {canEditContent ? "" : "Your photo will be submitted for approval."}</CardDescription>
+          <CardDescription>Add photos to the club's gallery.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(handleUpload)} className="space-y-4">
@@ -407,57 +377,20 @@ export default function GalleryPage() {
         </CardContent>
       </Card>
       
-      {canEditContent && pendingImages.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><ShieldQuestion /> Pending Approvals</CardTitle>
-            <CardDescription>These images were submitted by members and are waiting for your review.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {pendingImages.map((image) => (
-                <Card key={`pending-${image.id}`} className="overflow-hidden flex flex-col">
-                  <CardContent className="p-0 relative">
-                    <Image
-                      src={image.src}
-                      alt={image.alt}
-                      width={400}
-                      height={400}
-                      className="aspect-square object-cover w-full"
-                    />
-                     <Badge className="absolute top-2 left-2">Pending</Badge>
-                  </CardContent>
-                  <div className="p-4 flex flex-col flex-grow">
-                    <p className="font-semibold text-sm">{image.alt || "No description"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Uploaded by {image.author} on {image.date}
-                    </p>
-                  </div>
-                   <CardFooter className="flex gap-2">
-                      <Button size="sm" className="w-full" onClick={() => handleApproval(image.id, 'approved')}><Check className="mr-2"/> Approve</Button>
-                      <Button size="sm" variant="destructive" className="w-full" onClick={() => handleApproval(image.id, 'rejected')}><X className="mr-2"/> Deny</Button>
-                   </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       <div>
         <h2 className="text-2xl font-bold mb-4">Group Gallery</h2>
         {loading ? (
           <p>Loading gallery...</p>
-        ) : error && approvedImages.length === 0 ? (
+        ) : error && visibleImages.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg space-y-3">
              <p className="text-muted-foreground">{error}</p>
              <Button variant="outline" onClick={() => void refreshData()}>
                Try again
              </Button>
           </div>
-        ) : approvedImages.length > 0 ? (
+        ) : visibleImages.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {approvedImages.map((image) => {
+            {visibleImages.map((image) => {
               const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
               const likedByCurrentUser = Boolean(user?.email && likedBy.includes(user.email));
               const likeCount = likedBy.length > 0 ? likedBy.length : Math.max(0, image.likes || 0);

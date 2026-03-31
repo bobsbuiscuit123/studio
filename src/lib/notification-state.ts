@@ -153,7 +153,7 @@ export const getNotificationActivityByKey = ({
     return Math.max(latest, getActivityTimestamp(event.date));
   }, 0);
   const latestGalleryTimestamp = safeGalleryImages.reduce((latest: number, image: GalleryImage) => {
-    if (image.status !== 'approved' || isCurrentUserActor(image.author)) {
+    if (isCurrentUserActor(image.author)) {
       return latest;
     }
     return Math.max(latest, getActivityTimestamp(image.date));

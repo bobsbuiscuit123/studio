@@ -145,4 +145,34 @@ describe('notification state', () => {
     expect(unread.attendance).toBe(true);
     expect(unread.messages).toBe(false);
   });
+
+  it('treats gallery uploads as visible activity even if older records still say pending', () => {
+    const activity = getNotificationActivityByKey({
+      announcements: [],
+      socialPosts: [],
+      allMessages: {},
+      groupChats: [],
+      events: [],
+      galleryImages: [
+        {
+          id: 42,
+          src: 'image.png',
+          alt: 'Photo',
+          author: 'friend@example.com',
+          date: '2026-03-30T12:00:00.000Z',
+          likes: 0,
+          status: 'pending',
+        },
+      ],
+      forms: [],
+      user: {
+        email: 'me@example.com',
+        name: 'Me',
+      },
+      role: 'Member',
+      loading: false,
+    });
+
+    expect(activity.gallery).toBe(new Date('2026-03-30T12:00:00.000Z').getTime());
+  });
 });

@@ -336,6 +336,11 @@ const getGalleryImageId = (item: Record<string, unknown>) => {
   return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 };
 
+const normalizeGalleryImageStatus = (image: Record<string, any>) => ({
+  ...image,
+  status: 'approved' as const,
+});
+
 const mergeGalleryImages = (
   currentGalleryImages: unknown,
   nextGalleryImages: unknown,
@@ -378,12 +383,12 @@ const mergeGalleryImages = (
       if (!currentImage || deletedGalleryImageIds.has(imageId)) {
         return [];
       }
-      return [currentImage];
+      return [normalizeGalleryImageStatus(currentImage)];
     }
     if (!currentImage) {
       const nextLikedBy = uniqueStrings(Array.isArray(nextImage.likedBy) ? nextImage.likedBy : []).map(normalizeEmail);
       return [{
-        ...nextImage,
+        ...normalizeGalleryImageStatus(nextImage),
         likedBy: nextLikedBy,
         likes: nextLikedBy.length > 0 ? nextLikedBy.length : Math.max(0, Number(nextImage.likes) || 0),
       }];
@@ -402,11 +407,10 @@ const mergeGalleryImages = (
     }
 
     return [{
-      ...currentImage,
-      ...nextImage,
+      ...normalizeGalleryImageStatus(currentImage),
+      ...normalizeGalleryImageStatus(nextImage),
       likedBy: mergedLikedBy,
       likes: mergedLikedBy.length,
-      status: typeof nextImage.status === 'string' ? nextImage.status : currentImage.status,
       read: Boolean(nextImage.read) || Boolean(currentImage.read),
     }];
   });
@@ -440,6 +444,22 @@ const stripCollaborativeAnnouncementFields = (announcements: unknown) => {
     const {
       viewedBy: _viewedBy,
       read: _read,
+      ...rest
+    } = item as Record<string, unknown>;
+
+    return rest;
+  });
+};
+
+const stripCollaborativeFormFields = (forms: unknown) => {
+  if (!Array.isArray(forms)) return [];
+
+  return forms.map(item => {
+    if (!item || typeof item !== 'object') return item;
+
+    const {
+      viewedBy: _viewedBy,
+      responses: _responses,
       ...rest
     } = item as Record<string, unknown>;
 
@@ -491,6 +511,11 @@ const getAnnouncementId = (item: Record<string, unknown>) => {
 
 const getEventId = (item: Record<string, unknown>) => {
   return typeof item.id === 'string' ? item.id : '';
+};
+
+const getFormId = (item: Record<string, unknown>) => {
+  const value = item.id;
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
 };
 
 const toDeletedIdSet = (ids: unknown) =>
@@ -827,6 +852,53 @@ const collectEventPushJobs = async ({
   return jobs;
 };
 
+const collectFormPushJobs = async ({
+  admin,
+  actorId,
+  orgId,
+  groupId,
+  currentData,
+  nextData,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  actorId: string;
+  orgId: string;
+  groupId: string;
+  currentData: Record<string, any>;
+  nextData: Record<string, any>;
+}) => {
+  const jobs: Array<Parameters<typeof sendPushToUsers>[0]> = [];
+  const currentForms = Array.isArray(currentData.forms) ? currentData.forms : [];
+  const nextForms = Array.isArray(nextData.forms) ? nextData.forms : [];
+  const currentIds = new Set(
+    currentForms
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+      .map(getFormId)
+      .filter(Boolean)
+  );
+
+  const recipientIds = await resolveGroupMemberUserIds(admin, orgId, groupId, actorId);
+  if (recipientIds.length === 0) return jobs;
+
+  nextForms.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const formId = getFormId(item);
+    if (!formId || currentIds.has(formId)) return;
+    const formTitle = typeof item.title === 'string' && item.title.trim() ? item.title.trim() : 'Open Caspo to fill it out.';
+    jobs.push({
+      userIds: recipientIds,
+      title: 'New form',
+      body: formTitle,
+      route: `/forms?formId=${encodeURIComponent(formId)}`,
+      params: { formId },
+      type: 'form',
+      entityId: formId,
+    });
+  });
+
+  return jobs;
+};
+
 export async function GET(request: Request) {
   const ip = getRequestIp(request.headers);
   const limiter = rateLimit(`org-state:${ip}`, 60, 60_000);
@@ -1033,7 +1105,7 @@ export async function POST(request: Request) {
   const currentData = (existingState?.data ?? {}) as Record<string, any>;
   const nextData = parsed.data.data as Record<string, any>;
   const deletedIds = parsed.data.deletedIds ?? {};
-  const mergedData = {
+  const mergedData: Record<string, any> = {
     ...currentData,
     ...nextData,
     messages: mergeDirectMessages(currentData.messages, nextData.messages),
@@ -1073,10 +1145,13 @@ export async function POST(request: Request) {
   const eventContentChanged =
     stableSerialize(stripCollaborativeEventFields(currentData.events)) !==
     stableSerialize(stripCollaborativeEventFields(mergedData.events));
+  const formsChanged =
+    stableSerialize(stripCollaborativeFormFields(currentData.forms)) !==
+    stableSerialize(stripCollaborativeFormFields(mergedData.forms));
 
-  if ((announcementsChanged || eventContentChanged) && !canEditGroupContent(groupRole)) {
+  if ((announcementsChanged || eventContentChanged || formsChanged) && !canEditGroupContent(groupRole)) {
     return NextResponse.json(
-      err({ code: 'VALIDATION', message: 'Only group admins or officers can change announcements or events.', source: 'app' }),
+      err({ code: 'VALIDATION', message: 'Only group admins or officers can change announcements, events, or forms.', source: 'app' }),
       { status: 403, headers: getRateLimitHeaders(limiter) }
     );
   }
@@ -1099,6 +1174,14 @@ export async function POST(request: Request) {
       nextData: mergedData,
     }),
     collectEventPushJobs({
+      admin,
+      actorId: userData.user.id,
+      orgId: parsed.data.orgId,
+      groupId: parsed.data.groupId,
+      currentData,
+      nextData: mergedData,
+    }),
+    collectFormPushJobs({
       admin,
       actorId: userData.user.id,
       orgId: parsed.data.orgId,
@@ -1146,6 +1229,7 @@ export async function POST(request: Request) {
     groupId: parsed.data.groupId,
     announcements: getCollectionCount(mergedData.announcements),
     events: getCollectionCount(mergedData.events),
+    forms: getCollectionCount(mergedData.forms),
     galleryImages: getCollectionCount(mergedData.galleryImages),
   });
 

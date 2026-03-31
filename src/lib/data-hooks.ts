@@ -135,6 +135,12 @@ const normalizeClubData = (data: ClubData): ClubData => {
             date: new Date(event.date),
         }));
     }
+    if (Array.isArray(normalized.galleryImages)) {
+        normalized.galleryImages = normalized.galleryImages.map((image: any) => ({
+            ...image,
+            status: 'approved' as const,
+        }));
+    }
     return normalized;
 };
 

@@ -43,7 +43,7 @@ type FormBuilderValues = z.infer<typeof formBuilderSchema>;
 
 function FormsPageInner() {
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
-  const { data: forms, updateData: setForms, loading } = useForms();
+  const { data: forms, updateData: setForms, updateDataAsync: setFormsAsync, loading } = useForms();
   const { data: members } = useMembers();
   const { user } = useCurrentUser();
   const { canEditContent, role } = useCurrentUserRole();
@@ -108,7 +108,7 @@ function FormsPageInner() {
     ]);
   };
 
-  const handleCreateForm = (values: FormBuilderValues) => {
+  const handleCreateForm = async (values: FormBuilderValues) => {
     const newForm: ClubForm = {
       id: crypto.randomUUID(),
       title: values.title.trim(),
@@ -126,16 +126,25 @@ function FormsPageInner() {
       responses: [],
     };
 
-    setForms(prev => {
+    const saved = await setFormsAsync(prev => {
       const list = Array.isArray(prev) ? prev : [];
       return [newForm, ...list];
     });
+    if (!saved) {
+      toast({
+        title: "Could not publish form",
+        description: "The form was not saved, so no member notification was sent.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     toast({
       title: "Form created",
       description: "You can announce or collect responses now.",
     });
 
+    setActiveFormId(newForm.id);
     builderForm.reset({
       title: "",
       description: "",

@@ -27,11 +27,84 @@ const parsePushParams = (value: unknown) => {
   }
 };
 
-const getPushRoute = (notification: PushNotificationSchema | undefined) => {
+const parseRouteUrl = (value: string) => {
+  try {
+    return new URL(value, 'https://caspo.local');
+  } catch {
+    return null;
+  }
+};
+
+const getLastPathSegment = (value: string, prefix: string) => {
+  const parsed = parseRouteUrl(value);
+  const pathname = parsed?.pathname ?? value.split('?')[0] ?? '';
+  if (!pathname.startsWith(prefix)) return '';
+  return pathname.slice(prefix.length).replace(/^\/+/, '');
+};
+
+const getQueryParamFromRoute = (value: string, key: string) => {
+  const parsed = parseRouteUrl(value);
+  return parsed?.searchParams.get(key) ?? '';
+};
+
+const buildQueryRoute = (pathname: string, key: string, value: string) =>
+  value ? `${pathname}?${key}=${encodeURIComponent(value)}` : pathname;
+
+const resolvePushRoute = (notification: PushNotificationSchema | undefined) => {
   const data = notification?.data;
-  const route = typeof data?.route === 'string' ? data.route : '';
+  const rawRoute = typeof data?.route === 'string' ? data.route : '';
   const params = parsePushParams(data?.params);
-  return { route, params };
+  const type = typeof data?.type === 'string' ? data.type : '';
+  const entityId = typeof data?.entityId === 'string' ? data.entityId : '';
+
+  if (type === 'announcement') {
+    const announcementId =
+      params.announcementId ||
+      getQueryParamFromRoute(rawRoute, 'announcementId') ||
+      getLastPathSegment(rawRoute, '/announcements/') ||
+      entityId;
+    return {
+      route: buildQueryRoute('/announcements', 'announcementId', announcementId),
+      params,
+    };
+  }
+
+  if (type === 'event') {
+    const eventId =
+      params.eventId ||
+      getQueryParamFromRoute(rawRoute, 'eventId') ||
+      getLastPathSegment(rawRoute, '/calendar/') ||
+      entityId;
+    return {
+      route: buildQueryRoute('/calendar', 'eventId', eventId),
+      params,
+    };
+  }
+
+  if (type === 'form') {
+    const formId =
+      params.formId ||
+      getQueryParamFromRoute(rawRoute, 'formId') ||
+      getLastPathSegment(rawRoute, '/forms/') ||
+      entityId;
+    return {
+      route: buildQueryRoute('/forms', 'formId', formId),
+      params,
+    };
+  }
+
+  if (type === 'message') {
+    const threadId =
+      params.threadId ||
+      getLastPathSegment(rawRoute, '/messages/') ||
+      entityId;
+    return {
+      route: threadId ? `/messages/${threadId}` : '/messages',
+      params,
+    };
+  }
+
+  return { route: rawRoute, params };
 };
 
 const normalizeRoutePath = (value: string) => {
@@ -128,13 +201,13 @@ export function PushNotificationClient() {
     };
 
     const handleAction = (event: PushNotificationActionPerformed) => {
-      const { route } = getPushRoute(event.notification);
+      const { route } = resolvePushRoute(event.notification);
       if (!route) return;
       router.push(route);
     };
 
     const handleReceived = (notification: PushNotificationSchema) => {
-      const { route } = getPushRoute(notification);
+      const { route } = resolvePushRoute(notification);
       if (route && shouldSuppressForegroundToast(pathnameRef.current, route)) {
         return;
       }

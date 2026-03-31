@@ -787,7 +787,7 @@ const collectAnnouncementPushJobs = async ({
       userIds: recipientIds,
       title: 'New announcement',
       body: title,
-      route: `/announcements/${announcementId}`,
+      route: `/announcements?announcementId=${encodeURIComponent(announcementId)}`,
       params: { announcementId },
       type: 'announcement',
       entityId: announcementId,

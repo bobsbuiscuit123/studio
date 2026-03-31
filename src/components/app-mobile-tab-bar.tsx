@@ -12,7 +12,9 @@ import type { NotificationKey } from "@/lib/data-hooks";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
-const assistantComingSoonMessage = "Caspo AI Agent coming soon 🔥..";
+const assistantComingSoonLabel = "CASPO AI Agent";
+const assistantComingSoonMessage =
+  "A smarter club copilot is on the way. It will help with announcements, answers, and busywork right from this tab.";
 const mobileNavOrder = [
   "/dashboard",
   "/announcements",
@@ -172,7 +174,13 @@ export function AppMobileTabBar() {
           <div className="relative flex items-center justify-center">
             {showAssistantBubble ? (
               <div className="assistant-bubble" role="status" aria-live="polite">
-                <span>{typedAssistantMessage}</span>
+                <div className="assistant-bubble-content">
+                  <span className="assistant-bubble-label">{assistantComingSoonLabel}</span>
+                  <p className="assistant-bubble-copy">
+                    {typedAssistantMessage}
+                    <span className="assistant-bubble-cursor" aria-hidden="true" />
+                  </p>
+                </div>
                 <span className="assistant-bubble-tail" aria-hidden="true" />
               </div>
             ) : null}

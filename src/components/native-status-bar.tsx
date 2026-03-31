@@ -5,7 +5,11 @@ import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { usePathname } from 'next/navigation';
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { SAFE_AREA_RESYNC_EVENT, STATUS_BAR_REASSERT_EVENT } from "@/lib/native-chrome";
+import {
+  DEFAULT_NATIVE_CHROME_RESYNC_DELAYS,
+  SAFE_AREA_RESYNC_EVENT,
+  STATUS_BAR_REASSERT_EVENT,
+} from "@/lib/native-chrome";
 
 export function NativeStatusBar() {
   const pathname = usePathname();
@@ -42,7 +46,7 @@ export function NativeStatusBar() {
     const scheduleApply = () => {
       applyStatusBar();
       clearScheduledApplies();
-      [140, 420, 900].forEach((delay) => {
+      DEFAULT_NATIVE_CHROME_RESYNC_DELAYS.forEach((delay) => {
         const timeoutId = window.setTimeout(applyStatusBar, delay);
         timeoutIds.add(timeoutId);
       });
@@ -61,6 +65,9 @@ export function NativeStatusBar() {
     scheduleApply();
 
     window.addEventListener("focus", scheduleApply);
+    window.addEventListener("blur", scheduleApply);
+    window.addEventListener("focusin", scheduleApply);
+    window.addEventListener("focusout", scheduleApply);
     window.addEventListener("pageshow", scheduleApply);
     window.addEventListener("orientationchange", scheduleApply);
     window.addEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);
@@ -93,6 +100,9 @@ export function NativeStatusBar() {
       disposed = true;
       clearScheduledApplies();
       window.removeEventListener("focus", scheduleApply);
+      window.removeEventListener("blur", scheduleApply);
+      window.removeEventListener("focusin", scheduleApply);
+      window.removeEventListener("focusout", scheduleApply);
       window.removeEventListener("pageshow", scheduleApply);
       window.removeEventListener("orientationchange", scheduleApply);
       window.removeEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);

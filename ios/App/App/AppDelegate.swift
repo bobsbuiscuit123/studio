@@ -14,6 +14,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         window?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
     }
 
+    private func scheduleWindowChromeReassert() {
+        let delays: [TimeInterval] = [0, 0.12, 0.42, 0.9, 1.6, 2.6]
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.reassertWindowChrome()
+            }
+        }
+    }
+
     private func publishPushToken(_ token: String) {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -29,7 +38,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
             FirebaseApp.configure()
         }
         Messaging.messaging().delegate = self
-        reassertWindowChrome()
+        scheduleWindowChromeReassert()
         return true
     }
 
@@ -45,12 +54,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     func applicationWillEnterForeground(_ application: UIApplication) {
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
-        reassertWindowChrome()
+        scheduleWindowChromeReassert()
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-        reassertWindowChrome()
+        scheduleWindowChromeReassert()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

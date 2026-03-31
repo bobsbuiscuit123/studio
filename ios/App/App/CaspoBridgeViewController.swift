@@ -5,6 +5,15 @@ import WebKit
 class CaspoBridgeViewController: CAPBridgeViewController {
     private var lifecycleObservers: [NSObjectProtocol] = []
 
+    private func scheduleNativeChromeStyle() {
+        let delays: [TimeInterval] = [0, 0.12, 0.42, 0.9, 1.6, 2.6]
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.applyNativeChromeStyle()
+            }
+        }
+    }
+
     private func applyNativeChromeStyle() {
         view.backgroundColor = .white
         webView?.backgroundColor = .white
@@ -19,6 +28,8 @@ class CaspoBridgeViewController: CAPBridgeViewController {
             webView?.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         }
         additionalSafeAreaInsets = .zero
+        webView?.setNeedsLayout()
+        webView?.layoutIfNeeded()
         setNeedsStatusBarAppearanceUpdate()
     }
 
@@ -32,7 +43,7 @@ class CaspoBridgeViewController: CAPBridgeViewController {
 
         lifecycleObservers = names.map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                self?.applyNativeChromeStyle()
+                self?.scheduleNativeChromeStyle()
             }
         }
     }
@@ -47,23 +58,23 @@ class CaspoBridgeViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
-        applyNativeChromeStyle()
+        scheduleNativeChromeStyle()
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         installLifecycleObservers()
-        applyNativeChromeStyle()
+        scheduleNativeChromeStyle()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        applyNativeChromeStyle()
+        scheduleNativeChromeStyle()
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        applyNativeChromeStyle()
+        scheduleNativeChromeStyle()
     }
 
     override func viewDidLayoutSubviews() {
@@ -73,7 +84,7 @@ class CaspoBridgeViewController: CAPBridgeViewController {
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
-        applyNativeChromeStyle()
+        scheduleNativeChromeStyle()
     }
 
     deinit {

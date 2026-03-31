@@ -446,45 +446,107 @@ main,
 
 .assistant-bubble {
   position: absolute;
-  bottom: calc(100% + 16px);
+  bottom: calc(100% + 18px);
   left: 50%;
   transform: translateX(-50%);
-  min-width: 170px;
-  max-width: min(240px, calc(100vw - 2rem));
-  border-radius: 18px;
-  background: hsl(var(--card));
+  min-width: 220px;
+  max-width: min(310px, calc(100vw - 1.5rem));
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.88)),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(241, 250, 243, 0.94));
   color: hsl(var(--foreground));
-  border: 1px solid hsl(var(--border));
-  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.16);
-  padding: 12px 14px;
-  text-align: center;
-  font-size: 0.8125rem;
-  line-height: 1.35;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow:
+    0 22px 48px rgba(15, 23, 42, 0.16),
+    0 8px 18px rgba(34, 197, 94, 0.12);
+  padding: 16px 18px 15px;
+  text-align: left;
+  font-size: 0.875rem;
+  line-height: 1.5;
   white-space: normal;
   z-index: 1002;
-  animation: assistant-bubble-in 180ms ease-out;
+  backdrop-filter: blur(20px);
+  animation:
+    assistant-bubble-in 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    assistant-bubble-float 3.8s ease-in-out 240ms infinite;
+}
+
+.assistant-bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.assistant-bubble-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(34, 94, 48, 0.88);
+}
+
+.assistant-bubble-copy {
+  margin: 0;
+  min-height: 4.5em;
+  font-size: 0.94rem;
+  font-weight: 500;
+  line-height: 1.55;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.assistant-bubble-cursor {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 0.14rem;
+  border-radius: 9999px;
+  background: rgba(34, 197, 94, 0.9);
+  vertical-align: -0.12em;
+  animation: assistant-bubble-cursor 1s steps(1) infinite;
 }
 
 .assistant-bubble-tail {
   position: absolute;
   left: 50%;
-  bottom: -7px;
-  width: 14px;
-  height: 14px;
-  background: hsl(var(--card));
-  border-right: 1px solid hsl(var(--border));
-  border-bottom: 1px solid hsl(var(--border));
+  bottom: -8px;
+  width: 16px;
+  height: 16px;
+  background: rgba(245, 252, 246, 0.96);
+  border-right: 1px solid rgba(148, 163, 184, 0.24);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
   transform: translateX(-50%) rotate(45deg);
 }
 
 @keyframes assistant-bubble-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px) scale(0.96);
+    transform: translateX(-50%) translateY(10px) scale(0.94);
   }
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes assistant-bubble-float {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-3px);
+  }
+}
+
+@keyframes assistant-bubble-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
   }
 }
 

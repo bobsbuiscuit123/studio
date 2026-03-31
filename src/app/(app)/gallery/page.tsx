@@ -36,7 +36,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { resizeImage } from "@/lib/image-resizer";
-import { scheduleNativeChromeResync } from "@/lib/native-chrome";
+import {
+  DEFAULT_NATIVE_CHROME_RESYNC_DELAYS,
+  scheduleNativeChromeResync,
+} from "@/lib/native-chrome";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +49,10 @@ import {
 
 const MAX_GALLERY_IMAGES = 20;
 const isNativeApp = Capacitor.isNativePlatform();
+const GALLERY_CHROME_RESYNC_DELAYS = [
+  ...DEFAULT_NATIVE_CHROME_RESYNC_DELAYS,
+  3600,
+];
 
 const createGalleryImageId = (offset: number = 0) =>
   Date.now() * 1000 + offset + Math.floor(Math.random() * 1000);
@@ -81,7 +88,7 @@ export default function GalleryPage() {
       return;
     }
 
-    scheduleNativeChromeResync();
+    scheduleNativeChromeResync(GALLERY_CHROME_RESYNC_DELAYS);
   };
   
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,6 +115,8 @@ export default function GalleryPage() {
   };
 
   const handleNativeImagePick = async (source: CameraSource) => {
+    reassertNativeChrome();
+
     try {
       const photo = await Camera.getPhoto({
         quality: 85,
@@ -338,7 +347,10 @@ export default function GalleryPage() {
                           <DropdownMenuItem onClick={() => handleNativeImagePick(CameraSource.Camera)}>
                             Take Photo
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                          <DropdownMenuItem onClick={() => {
+                            reassertNativeChrome();
+                            fileInputRef.current?.click();
+                          }}>
                             Choose Files
                           </DropdownMenuItem>
                         </DropdownMenuContent>

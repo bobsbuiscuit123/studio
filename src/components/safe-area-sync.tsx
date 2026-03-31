@@ -85,8 +85,8 @@ export function SafeAreaSync() {
       }
 
       const resolvedTopInset =
-        measuredTopInset <= 0 && stableInsets.top > 0 && isNativeCompactViewport
-          ? stableInsets.top
+        stableInsets.top > 0 && isNativeCompactViewport
+          ? Math.max(measuredTopInset, stableInsets.top)
           : measuredTopInset;
 
       root.style.setProperty("--safe-area-top-runtime", `${resolvedTopInset}px`);
@@ -123,6 +123,7 @@ export function SafeAreaSync() {
     window.addEventListener("resize", scheduleSync);
     window.addEventListener("orientationchange", scheduleSync);
     window.addEventListener("pageshow", scheduleSync);
+    window.addEventListener("blur", scheduleSync);
     window.addEventListener(SAFE_AREA_RESYNC_EVENT, handleSafeAreaResync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", scheduleSync);
@@ -139,6 +140,7 @@ export function SafeAreaSync() {
       window.removeEventListener("resize", scheduleSync);
       window.removeEventListener("orientationchange", scheduleSync);
       window.removeEventListener("pageshow", scheduleSync);
+      window.removeEventListener("blur", scheduleSync);
       window.removeEventListener(SAFE_AREA_RESYNC_EVENT, handleSafeAreaResync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", scheduleSync);

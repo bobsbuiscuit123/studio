@@ -94,7 +94,6 @@ export const getMemberInsights = (input: InsightsInput): OfficerInsights => {
   return {
     actionNeeded,
     engagementWarnings,
-    financeRisks: [],
     bestPracticeNudge: tipPool[tipIndex],
     weeklySnapshot: undefined,
   };

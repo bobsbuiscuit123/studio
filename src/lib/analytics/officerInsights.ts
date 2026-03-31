@@ -10,7 +10,6 @@ type InsightItem = {
 export type OfficerInsights = {
   actionNeeded: InsightItem[];
   engagementWarnings: InsightItem[];
-  financeRisks: InsightItem[];
   bestPracticeNudge?: string;
   weeklySnapshot?: {
     upcomingEventsCount?: number;
@@ -47,7 +46,6 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
 
   const actionNeeded: InsightItem[] = [];
   const engagementWarnings: InsightItem[] = [];
-  const financeRisks: InsightItem[] = [];
 
   const formatEventTitle = (event: ClubEvent) =>
     event.title && event.title.trim() ? event.title.trim() : 'Untitled event';
@@ -224,36 +222,8 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
   }
 
   const balance = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-  {
-    const text =
-      transactions.length === 0
-        ? 'No transactions logged yet.'
-        : balance < 200
-          ? 'Current balance is below $200.'
-          : `Balance is healthy at $${balance.toFixed(2)}.`;
-    financeRisks.push({
-      id: 'balance_low',
-      text,
-      actionLabel: 'Review',
-      actionHref: '/finances',
-    });
-  }
   const income = transactions.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
   const expenses = transactions.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + tx.amount, 0);
-  {
-    const text =
-      transactions.length === 0
-        ? 'No transactions logged yet.'
-        : Math.abs(expenses) > income
-          ? 'Expenses exceeded income this month.'
-          : 'Expenses are within income this month.';
-    financeRisks.push({
-      id: 'expenses_over_income',
-      text,
-      actionLabel: 'Review',
-      actionHref: '/finances',
-    });
-  }
 
   const tipPool = [
     'Tip: Announcements under 120 words tend to get higher engagement.',
@@ -283,7 +253,6 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
   return {
     actionNeeded,
     engagementWarnings,
-    financeRisks,
     bestPracticeNudge,
     weeklySnapshot,
   };

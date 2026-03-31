@@ -6,7 +6,6 @@ import {
   BadgeCheck,
   Lightbulb,
   TrendingDown,
-  Wallet,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,7 @@ import {
 import { resolveInsightRequestAction } from '@/app/(app)/assistant/actions';
 import { useGroupUserStateSection } from '@/lib/group-user-state';
 
-type InsightListKey = 'action' | 'engagement' | 'finance';
+type InsightListKey = 'action' | 'engagement';
 type InsightBoxKey = InsightListKey | string;
 
 type InsightItem = {
@@ -97,7 +96,7 @@ type AiInsightsStoredState = {
 
 const DEFAULT_AI_INSIGHTS_STATE: AiInsightsStoredState = {
   customRequests: [],
-  hiddenInsights: { action: [], engagement: [], finance: [] },
+  hiddenInsights: { action: [], engagement: [] },
   customBoxes: [],
   hiddenBoxes: [],
   promptCache: {},
@@ -190,10 +189,9 @@ const InsightList = ({
   const defaultReviewHref: Record<InsightListKey, string> = {
     action: '/calendar',
     engagement: '/announcements',
-    finance: '/finances',
   };
   const fallbackReviewHref =
-    listKey === 'action' || listKey === 'engagement' || listKey === 'finance'
+    listKey === 'action' || listKey === 'engagement'
       ? defaultReviewHref[listKey]
       : undefined;
   return (
@@ -335,18 +333,15 @@ export default function AIInsights({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     action: false,
     engagement: false,
-    finance: false,
   });
   const [hiddenInsights, setHiddenInsights] = useState<Record<string, HiddenInsight[]>>({
     action: [],
     engagement: [],
-    finance: [],
   });
   const [customRequests, setCustomRequests] = useState<CustomInsightRequest[]>([]);
   const [customInsights, setCustomInsights] = useState<Record<string, InsightItem[]>>({
     action: [],
     engagement: [],
-    finance: [],
   });
   const [customBoxes, setCustomBoxes] = useState<CustomInsightBox[]>([]);
   const [hiddenBoxes, setHiddenBoxes] = useState<HiddenInsightBox[]>([]);
@@ -399,7 +394,7 @@ export default function AIInsights({
     setHiddenInsights(
       persistedAiState.hiddenInsights && typeof persistedAiState.hiddenInsights === 'object'
         ? persistedAiState.hiddenInsights
-        : { action: [], engagement: [], finance: [] }
+        : { action: [], engagement: [] }
     );
     setPromptCache(
       persistedAiState.promptCache && typeof persistedAiState.promptCache === 'object'
@@ -416,7 +411,7 @@ export default function AIInsights({
       hiddenInsights:
         persistedAiState.hiddenInsights && typeof persistedAiState.hiddenInsights === 'object'
           ? persistedAiState.hiddenInsights
-          : { action: [], engagement: [], finance: [] },
+          : { action: [], engagement: [] },
       customBoxes: Array.isArray(persistedAiState.customBoxes) ? persistedAiState.customBoxes : [],
       hiddenBoxes: Array.isArray(persistedAiState.hiddenBoxes) ? persistedAiState.hiddenBoxes : [],
       promptCache:
@@ -634,7 +629,6 @@ export default function AIInsights({
     userId,
     insights.actionNeeded.length,
     insights.engagementWarnings.length,
-    insights.financeRisks.length,
     insights.bestPracticeNudge,
     shouldAnimate,
   ]);
@@ -700,12 +694,6 @@ export default function AIInsights({
     }));
     setExpanded(prev => ({ ...prev, [listKey]: true }));
   };
-
-  useEffect(() => {
-    if (mode === 'member' && newInsightList === 'finance') {
-      setNewInsightList('action');
-    }
-  }, [mode, newInsightList]);
 
   useEffect(() => {
     if (customBoxes.length === 0) return;
@@ -1217,7 +1205,6 @@ export default function AIInsights({
   const baseBoxTitles: Record<InsightListKey, string> = {
     action: 'Action needed',
     engagement: 'Engagement warnings',
-    finance: 'Financial risks',
   };
 
   const hiddenBoxIds = useMemo(() => new Set(hiddenBoxes.map(box => box.id)), [hiddenBoxes]);
@@ -1245,14 +1232,12 @@ export default function AIInsights({
         ...prev,
         action: prev.action ?? [],
         engagement: prev.engagement ?? [],
-        finance: prev.finance ?? [],
       }));
       return;
     }
     const next: Record<string, InsightItem[]> = {
       action: [],
       engagement: [],
-      finance: [],
     };
     customRequests.forEach(request => {
       const localResolved = resolveLocalInsightRequest(request.prompt);
@@ -1367,9 +1352,6 @@ export default function AIInsights({
               >
                 <option value="action">Action needed</option>
                 <option value="engagement">Engagement warnings</option>
-                {mode !== 'member' ? (
-                  <option value="finance">Financial risks</option>
-                ) : null}
                 {customBoxes.map(box => (
                   <option key={box.id} value={box.id}>
                     {box.title}
@@ -1452,7 +1434,7 @@ export default function AIInsights({
           </div>
         ) : null}
         */}
-        <div className={`grid gap-4 ${mode === 'member' ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
+        <div className="grid gap-4 lg:grid-cols-2">
           {!hiddenBoxIds.has('action') ? (
             <InsightList
               listKey="action"
@@ -1497,28 +1479,6 @@ export default function AIInsights({
               animationDelayMs={120}
             />
           ) : null}
-          {mode !== 'member' && !hiddenBoxIds.has('finance') ? (
-            <InsightList
-              listKey="finance"
-              title="Financial risks"
-              icon={Wallet}
-              items={getListItems('finance', insights.financeRisks)}
-              expanded={expanded.finance ?? false}
-              onToggleExpand={() =>
-                setExpanded(prev => ({ ...prev, finance: !prev.finance }))
-              }
-              emptyLabel="Not enough data yet."
-              editMode={editMode}
-              hiddenItems={hiddenInsights.finance}
-              onClearHidden={() => clearHiddenInsights('finance')}
-              onRemoveItem={item => handleRemoveItem('finance', item)}
-              onHideBox={() => handleHideBox('finance')}
-              generatedAt={generatedAt}
-              now={now}
-              shouldAnimate={shouldAnimate}
-              animationDelayMs={240}
-            />
-          ) : null}
           {customBoxes
             .filter(box => !hiddenBoxIds.has(box.id))
             .map((box, index) => (
@@ -1541,7 +1501,7 @@ export default function AIInsights({
               generatedAt={generatedAt}
               now={now}
               shouldAnimate={shouldAnimate}
-              animationDelayMs={360 + index * 120}
+              animationDelayMs={240 + index * 120}
             />
           ))}
         </div>

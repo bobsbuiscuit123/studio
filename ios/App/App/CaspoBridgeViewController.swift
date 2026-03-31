@@ -4,6 +4,7 @@ import WebKit
 
 class CaspoBridgeViewController: CAPBridgeViewController {
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var isApplyingNativeChromeStyle = false
 
     private func scheduleNativeChromeStyle() {
         let delays: [TimeInterval] = [0, 0.12, 0.42, 0.9, 1.6, 2.6]
@@ -15,6 +16,10 @@ class CaspoBridgeViewController: CAPBridgeViewController {
     }
 
     private func applyNativeChromeStyle() {
+        guard !isApplyingNativeChromeStyle else { return }
+        isApplyingNativeChromeStyle = true
+        defer { isApplyingNativeChromeStyle = false }
+
         view.backgroundColor = .white
         webView?.backgroundColor = .white
         webView?.scrollView.backgroundColor = .white
@@ -28,8 +33,6 @@ class CaspoBridgeViewController: CAPBridgeViewController {
             webView?.scrollView.automaticallyAdjustsScrollIndicatorInsets = false
         }
         additionalSafeAreaInsets = .zero
-        webView?.setNeedsLayout()
-        webView?.layoutIfNeeded()
         setNeedsStatusBarAppearanceUpdate()
     }
 
@@ -75,11 +78,6 @@ class CaspoBridgeViewController: CAPBridgeViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         scheduleNativeChromeStyle()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        applyNativeChromeStyle()
     }
 
     override func viewSafeAreaInsetsDidChange() {

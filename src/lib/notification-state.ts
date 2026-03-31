@@ -45,6 +45,20 @@ export const createEmptyUnreadNotifications = (): Record<NotificationKey, boolea
   forms: false,
 });
 
+export type GroupActivitySnapshot = {
+  members: string[];
+  events: string[];
+  rsvps: Record<string, { yes: string[]; no: string[]; maybe: string[] }>;
+  attendees: Record<string, string[]>;
+};
+
+export const createEmptyGroupActivitySnapshot = (): GroupActivitySnapshot => ({
+  members: [],
+  events: [],
+  rsvps: {},
+  attendees: {},
+});
+
 const normalizeActivityActor = (value?: string | null) =>
   String(value ?? '').trim().toLowerCase();
 
@@ -69,6 +83,58 @@ export const getRoleFromMembers = (
 
   const member = members.find(candidate => normalizeActivityActor(candidate.email) === normalizedUserEmail);
   return member?.role ?? null;
+};
+
+export const createGroupActivitySnapshot = ({
+  members,
+  events,
+}: {
+  members: Member[];
+  events: ClubEvent[];
+}): GroupActivitySnapshot => {
+  const safeMembers = Array.isArray(members) ? members : [];
+  const safeEvents = Array.isArray(events) ? events : [];
+
+  return {
+    members: safeMembers
+      .map(member => normalizeActivityActor(member.email))
+      .filter(Boolean),
+    events: safeEvents
+      .map(event => (typeof event.id === 'string' ? event.id : ''))
+      .filter(Boolean),
+    rsvps: Object.fromEntries(
+      safeEvents
+        .map(event => {
+          const eventId = typeof event.id === 'string' ? event.id : '';
+          if (!eventId) {
+            return null;
+          }
+          return [
+            eventId,
+            {
+              yes: (event.rsvps?.yes ?? []).map(normalizeActivityActor).filter(Boolean),
+              no: (event.rsvps?.no ?? []).map(normalizeActivityActor).filter(Boolean),
+              maybe: (event.rsvps?.maybe ?? []).map(normalizeActivityActor).filter(Boolean),
+            },
+          ] as const;
+        })
+        .filter((entry): entry is readonly [string, { yes: string[]; no: string[]; maybe: string[] }] => Boolean(entry))
+    ),
+    attendees: Object.fromEntries(
+      safeEvents
+        .map(event => {
+          const eventId = typeof event.id === 'string' ? event.id : '';
+          if (!eventId) {
+            return null;
+          }
+          return [
+            eventId,
+            (event.attendees ?? []).map(normalizeActivityActor).filter(Boolean),
+          ] as const;
+        })
+        .filter((entry): entry is readonly [string, string[]] => Boolean(entry))
+    ),
+  };
 };
 
 export const getNotificationActivityByKey = ({

@@ -1,5 +1,7 @@
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
 import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
@@ -17,11 +19,14 @@ import {
 } from '@/lib/message-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import {
+    createEmptyGroupActivitySnapshot,
     createEmptyNotificationActivity,
     createEmptyUnreadNotifications,
+    createGroupActivitySnapshot,
     getNotificationActivityByKey,
     getRoleFromMembers,
     getUnreadNotifications,
+    type GroupActivitySnapshot,
     type NotificationKey,
 } from '@/lib/notification-state';
 import { startPerformanceTimer } from '@/lib/performance-guard';
@@ -1036,14 +1041,20 @@ export const notifyOrgAiUsageChanged = (
 export function useNotifications() {
     const defaultClubData = useMemo(() => getDefaultClubData(), []);
     // This provider lives in the shared app layout, so it must reuse one store instance.
-    const { data, loading: clubDataLoading, updateClubData } = useClubDataStore();
+    const { clubId, data, loading: clubDataLoading, updateClubData } = useClubDataStore();
     const { user, loading: userLoading } = useCurrentUser();
     const { role: membershipRole, loading: roleLoading } = useCurrentUserRole();
     const [tabLastViewed, setTabLastViewed] = useState<Record<NotificationKey, number>>({
         ...createEmptyNotificationActivity(),
     });
+    const [groupSessionStartedAt, setGroupSessionStartedAt] = useState(0);
+    const [groupSessionEntrySnapshot, setGroupSessionEntrySnapshot] = useState<GroupActivitySnapshot>(
+        () => createEmptyGroupActivitySnapshot()
+    );
+    const [groupSessionReady, setGroupSessionReady] = useState(false);
     const selectedOrgId = getSelectedOrgId();
     const selectedGroupId = getSelectedGroupId();
+    const lastGroupSessionResetAtRef = useRef(0);
     const clubData = data ?? defaultClubData;
     const announcements = clubData.announcements;
     const socialPosts = clubData.socialPosts;
@@ -1060,6 +1071,27 @@ export function useNotifications() {
     const role = membershipRole ?? inferredRole;
 
     const loading = userLoading || clubDataLoading || roleLoading;
+
+    const resetGroupSession = useCallback(() => {
+        setGroupSessionStartedAt(0);
+        setGroupSessionEntrySnapshot(createEmptyGroupActivitySnapshot());
+        setGroupSessionReady(false);
+    }, []);
+
+    const beginGroupSession = useCallback(() => {
+        if (!user?.email || !selectedOrgId || !selectedGroupId) {
+            resetGroupSession();
+            return;
+        }
+        const now = Date.now();
+        if (now - lastGroupSessionResetAtRef.current < 150) {
+            return;
+        }
+        lastGroupSessionResetAtRef.current = now;
+        setGroupSessionStartedAt(now);
+        setGroupSessionEntrySnapshot(createEmptyGroupActivitySnapshot());
+        setGroupSessionReady(false);
+    }, [resetGroupSession, selectedGroupId, selectedOrgId, user?.email]);
 
     useEffect(() => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) {
@@ -1078,6 +1110,96 @@ export function useNotifications() {
             forms: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'forms'),
         });
     }, [selectedGroupId, selectedOrgId, user?.email]);
+
+    useEffect(() => {
+        if (!user?.email || !selectedOrgId || !selectedGroupId) {
+            resetGroupSession();
+            return;
+        }
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+            return;
+        }
+        beginGroupSession();
+    }, [beginGroupSession, resetGroupSession, selectedGroupId, selectedOrgId, user?.email]);
+
+    useEffect(() => {
+        if (!user?.email || !selectedOrgId || !selectedGroupId) {
+            resetGroupSession();
+            return;
+        }
+        if (loading || clubId !== selectedGroupId || !groupSessionStartedAt || groupSessionReady) {
+            return;
+        }
+        setGroupSessionEntrySnapshot(
+            createGroupActivitySnapshot({
+                members,
+                events,
+            })
+        );
+        setGroupSessionReady(true);
+    }, [
+        clubId,
+        events,
+        groupSessionReady,
+        groupSessionStartedAt,
+        loading,
+        members,
+        resetGroupSession,
+        selectedGroupId,
+        selectedOrgId,
+        user?.email,
+    ]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof document === 'undefined') {
+            return;
+        }
+
+        const handleVisible = () => {
+            if (document.visibilityState === 'visible') {
+                beginGroupSession();
+            }
+        };
+
+        let disposed = false;
+        const listenerRemovers: Array<() => Promise<void>> = [];
+
+        document.addEventListener('visibilitychange', handleVisible);
+        window.addEventListener('pageshow', handleVisible);
+
+        if (Capacitor.isNativePlatform()) {
+            void App.addListener('appStateChange', ({ isActive }) => {
+                if (isActive) {
+                    beginGroupSession();
+                }
+            }).then(handle => {
+                if (disposed) {
+                    void handle.remove();
+                    return;
+                }
+                listenerRemovers.push(() => handle.remove());
+            });
+
+            void App.addListener('resume', () => {
+                beginGroupSession();
+            }).then(handle => {
+                if (disposed) {
+                    void handle.remove();
+                    return;
+                }
+                listenerRemovers.push(() => handle.remove());
+            });
+        }
+
+        return () => {
+            disposed = true;
+            document.removeEventListener('visibilitychange', handleVisible);
+            window.removeEventListener('pageshow', handleVisible);
+            listenerRemovers.forEach(removeListener => {
+                void removeListener();
+            });
+        };
+    }, [beginGroupSession]);
 
     const activityByKey = useMemo<Record<NotificationKey, number>>(() => {
         return getNotificationActivityByKey({
@@ -1174,5 +1296,14 @@ export function useNotifications() {
         setTabLastViewed(prev => ({ ...prev, [key]: nextValue }));
     }, [activityByKey, selectedGroupId, selectedOrgId, user?.email]);
 
-    return { unread, loading, markAllAsRead, markTabViewed, role };
+    return {
+        unread,
+        loading,
+        markAllAsRead,
+        markTabViewed,
+        role,
+        groupSessionStartedAt,
+        groupSessionEntrySnapshot,
+        groupSessionReady,
+    };
 }

@@ -51,11 +51,20 @@ import {
   useCurrentUser,
   useCurrentUserRole,
 } from "@/lib/data-hooks";
+import { useNotificationsContext } from "@/components/notifications-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo } from "react";
 import AIInsights from "@/components/officer/ai-insights";
 import { useGroupUserStateSection } from "@/lib/group-user-state";
 import { getUtcDayKey } from "@/lib/day-key";
+import {
+  buildDashboardMissedPopupItems,
+} from "@/lib/dashboard-missed-activity";
+import {
+  createEmptyGroupActivitySnapshot,
+  createGroupActivitySnapshot,
+  type GroupActivitySnapshot,
+} from "@/lib/notification-state";
 
 type ActivityItem = {
   type: string;
@@ -63,13 +72,6 @@ type ActivityItem = {
   date: Date;
   link: string;
   actor: string | null;
-};
-
-type MissedActivitySnapshot = {
-  members: string[];
-  events: string[];
-  rsvps: Record<string, { yes: string[]; no: string[]; maybe: string[] }>;
-  attendees: Record<string, string[]>;
 };
 
 type MissedActivityCache = {
@@ -84,7 +86,7 @@ type DashboardStoredState = {
   missedLastShownDay: string | null;
   lastMissedContextVersionShown: string | null;
   shownMissedActivityKeys: string[];
-  missedSnapshot: MissedActivitySnapshot;
+  missedSnapshot: GroupActivitySnapshot;
   missedSummaryCache: MissedActivityCache | null;
 };
 
@@ -93,12 +95,7 @@ const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
   missedLastShownDay: null,
   lastMissedContextVersionShown: null,
   shownMissedActivityKeys: [],
-  missedSnapshot: {
-    members: [],
-    events: [],
-    rsvps: {},
-    attendees: {},
-  },
+  missedSnapshot: createEmptyGroupActivitySnapshot(),
   missedSummaryCache: null,
 };
 
@@ -135,8 +132,6 @@ const typewriterText = ({
 };
 
 const normalizeEmail = (email?: string | null) => (email ?? "").toLowerCase();
-const createActivityKey = (item: Pick<ActivityItem, "type" | "title" | "link" | "actor">) =>
-  [item.type, item.title, item.link, item.actor ?? ""].join("|");
 
 const toDate = (value?: string | Date | null) => {
   if (!value) return null;
@@ -158,6 +153,11 @@ export default function Dashboard() {
   const { data: pointEntries, loading: pointsLoading } = usePointEntries();
   const { user, loading: userLoading } = useCurrentUser();
   const { canEditContent, loading: roleLoading } = useCurrentUserRole();
+  const {
+    groupSessionEntrySnapshot,
+    groupSessionReady,
+    groupSessionStartedAt,
+  } = useNotificationsContext();
   const memberNameByEmail = useMemo(() => {
     return new Map(
       members.map(member => [normalizeEmail(member.email), member.name])
@@ -218,6 +218,14 @@ export default function Dashboard() {
   }, [updateDashboardState]);
 
   const upcomingEvent = events.length > 0 ? [...events].sort((a,b) => a.date.getTime() - b.date.getTime())[0] : null;
+  const currentMissedSnapshot = useMemo(
+    () =>
+      createGroupActivitySnapshot({
+        members,
+        events,
+      }),
+    [events, members]
+  );
   const upcomingWeekEvents = useMemo(() => {
     const now = new Date();
     const end = new Date(now);
@@ -545,6 +553,7 @@ export default function Dashboard() {
       pointsLoading ||
       userLoading ||
       roleLoading ||
+      !groupSessionReady ||
       !clubId ||
       !user?.email
     ) {
@@ -556,122 +565,26 @@ export default function Dashboard() {
     const userEmail = normalizeEmail(user.email);
     const snapshot = dashboardState.missedSnapshot ?? DEFAULT_DASHBOARD_STATE.missedSnapshot;
     const shownActivityKeys = new Set(dashboardState.shownMissedActivityKeys ?? []);
-
-    const deltaActivities: ActivityItem[] = [];
-    const currentMemberEmails = members.map(member =>
-      normalizeEmail(member.email)
-    );
-    const previousMembers = Array.isArray(snapshot.members) ? snapshot.members : [];
-    const newMembers = currentMemberEmails.filter(
-      email => email && !previousMembers.includes(email) && email !== userEmail
-    );
-    if (newMembers.length > 0) {
-      const displayNames = newMembers
-        .map(email => resolveMemberName(email))
-        .slice(0, 3);
-      const suffix = newMembers.length > 3 ? ", ..." : "";
-      deltaActivities.push({
-        type: "member",
-        title: `New members: ${displayNames.join(", ")}${suffix}`,
-        date: new Date(),
-        link: "/members",
-        actor: null,
-      });
-    }
-
-    const currentEventIds = events.map(event => event.id);
-    const previousEventIds = Array.isArray(snapshot.events) ? snapshot.events : [];
-    events.forEach(event => {
-      if (!previousEventIds.includes(event.id)) {
-        deltaActivities.push({
-          type: "event",
-          title: `New event: ${event.title}`,
-          date: new Date(),
-          link: "/calendar",
-          actor: null,
-        });
-      }
+    const unseen = buildDashboardMissedPopupItems({
+      announcements,
+      events,
+      forms,
+      groupChats,
+      members,
+      messages,
+      persistedSnapshot: snapshot,
+      resolveMemberName,
+      sessionSnapshot: groupSessionEntrySnapshot,
+      groupSessionStartedAt,
+      shownActivityKeys,
+      userEmail,
     });
-
-    const previousRsvps =
-      snapshot.rsvps && typeof snapshot.rsvps === "object" ? snapshot.rsvps : {};
-    const previousAttendees =
-      snapshot.attendees && typeof snapshot.attendees === "object"
-        ? snapshot.attendees
-        : {};
-    const nextRsvps: Record<string, { yes: string[]; no: string[]; maybe: string[] }> =
-      {};
-    const nextAttendees: Record<string, string[]> = {};
-
-    events.forEach(event => {
-      const currentYes = Array.isArray(event.rsvps?.yes)
-        ? event.rsvps?.yes.map(normalizeEmail).filter(Boolean)
-        : [];
-      const currentNo = Array.isArray(event.rsvps?.no)
-        ? event.rsvps?.no.map(normalizeEmail).filter(Boolean)
-        : [];
-      const currentMaybe = Array.isArray(event.rsvps?.maybe)
-        ? event.rsvps?.maybe.map(normalizeEmail).filter(Boolean)
-        : [];
-
-      const previous = previousRsvps[event.id] ?? { yes: [], no: [], maybe: [] };
-      const newYes = currentYes.filter(email => !previous.yes.includes(email));
-      const newNo = currentNo.filter(email => !previous.no.includes(email));
-      const newMaybe = currentMaybe.filter(
-        email => !previous.maybe.includes(email)
-      );
-      const newRsvpCount =
-        [...newYes, ...newNo, ...newMaybe].filter(email => email !== userEmail)
-          .length;
-
-      if (newRsvpCount > 0) {
-        deltaActivities.push({
-          type: "rsvp",
-          title: `${newRsvpCount} new RSVP${newRsvpCount === 1 ? "" : "s"} for ${
-            event.title
-          }`,
-          date: new Date(),
-          link: "/calendar",
-          actor: null,
-        });
-      }
-
-      nextRsvps[event.id] = {
-        yes: currentYes,
-        no: currentNo,
-        maybe: currentMaybe,
-      };
-
-      const currentAttendees = Array.isArray(event.attendees)
-        ? event.attendees.map(normalizeEmail).filter(Boolean)
-        : [];
-      const previousEventAttendees = previousAttendees[event.id] ?? [];
-      const newAttendees = currentAttendees.filter(
-        email => !previousEventAttendees.includes(email) && email !== userEmail
-      );
-      if (newAttendees.length > 0) {
-        deltaActivities.push({
-          type: "attendance",
-          title: `${newAttendees.length} new check-in${
-            newAttendees.length === 1 ? "" : "s"
-          } for ${event.title}`,
-          date: new Date(),
-          link: "/attendance",
-          actor: null,
-        });
-      }
-      nextAttendees[event.id] = currentAttendees;
-    });
-
-    const newDeltaActivities = deltaActivities
-      .filter(item => !shownActivityKeys.has(createActivityKey(item)))
-      .sort((a, b) => b.date.getTime() - a.date.getTime());
-    const unseen = newDeltaActivities;
     const unseenForPopup = unseen.slice(0, 6);
-    const unseenPopupKeys = unseenForPopup.map(item => createActivityKey(item));
+    const unseenPopupKeys = unseenForPopup.flatMap(item => item.keys);
 
     const missedContextVersion = stableSerialize({
       unseen: unseenForPopup.map(item => ({
+        keys: item.keys,
         type: item.type,
         title: item.title,
         link: item.link,
@@ -720,42 +633,39 @@ export default function Dashboard() {
         shownMissedActivityKeys: Array.from(
           new Set([...(prev.shownMissedActivityKeys ?? []), ...unseenPopupKeys])
         ).slice(-200),
-        missedSnapshot: {
-          members: currentMemberEmails,
-          events: currentEventIds,
-          rsvps: nextRsvps,
-          attendees: nextAttendees,
-        },
+        missedSnapshot: currentMissedSnapshot,
       }));
     } else {
       void updateDashboardState(prev => ({
         ...prev,
-        missedSnapshot: {
-          members: currentMemberEmails,
-          events: currentEventIds,
-          rsvps: nextRsvps,
-          attendees: nextAttendees,
-        },
+        missedSnapshot: currentMissedSnapshot,
       }));
     }
   }, [
+    announcements,
     announcementsLoading,
     clubId,
+    currentMissedSnapshot,
     dashboardState.shownMissedActivityKeys,
     dashboardState.missedSnapshot,
     dashboardState.missedSummaryCache,
     dashboardState.lastMissedContextVersionShown,
     events,
     eventsLoading,
+    forms,
     members,
     formsLoading,
     galleryLoading,
+    groupChats,
     groupChatsLoading,
+    groupSessionEntrySnapshot,
+    groupSessionReady,
+    groupSessionStartedAt,
     membersLoading,
+    messages,
     messagesLoading,
     missedOpen,
     pointsLoading,
-    recentActivities,
     roleLoading,
     socialPostsLoading,
     todoItems,

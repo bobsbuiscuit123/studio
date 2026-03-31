@@ -104,6 +104,9 @@ const DEFAULT_AI_INSIGHTS_STATE: AiInsightsStoredState = {
 };
 
 const stableSerialize = (value: unknown): string => {
+  if (value instanceof Date) {
+    return `Date(${value.toISOString()})`;
+  }
   if (Array.isArray(value)) {
     return `[${value.map(item => stableSerialize(item)).join(',')}]`;
   }
@@ -132,6 +135,8 @@ const areAiInsightStatesEqual = (
 ) => stableSerialize(left) === stableSerialize(right);
 
 const MAX_ITEMS = 3;
+const TYPEWRITER_TICK_MS = 80;
+const INSIGHT_TYPEWRITER_WINDOW_MS = 12_000;
 
 const typewriterText = ({
   text,
@@ -635,8 +640,15 @@ export default function AIInsights({
 
   useEffect(() => {
     if (!generatedAt) return;
-    const interval = setInterval(() => setNow(Date.now()), 40);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => setNow(Date.now()), TYPEWRITER_TICK_MS);
+    const timeout = setTimeout(() => {
+      setNow(generatedAt + INSIGHT_TYPEWRITER_WINDOW_MS);
+      clearInterval(interval);
+    }, INSIGHT_TYPEWRITER_WINDOW_MS);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
   }, [generatedAt]);
 
   const getListItems = (key: InsightListKey, baseItems: InsightItem[]) => {

@@ -2,6 +2,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import React from "react";
 import {
   Activity,
@@ -54,7 +55,6 @@ import {
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useMemo } from "react";
-import AIInsights from "@/components/officer/ai-insights";
 import { useGroupUserStateSection } from "@/lib/group-user-state";
 import { getUtcDayKey } from "@/lib/day-key";
 import {
@@ -100,6 +100,9 @@ const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
 };
 
 const stableSerialize = (value: unknown): string => {
+  if (value instanceof Date) {
+    return `Date(${value.toISOString()})`;
+  }
   if (Array.isArray(value)) {
     return `[${value.map(item => stableSerialize(item)).join(",")}]`;
   }
@@ -130,6 +133,22 @@ const typewriterText = ({
   const visibleCount = Math.min(text.length, Math.floor(elapsed / charDelayMs) + 1);
   return text.slice(0, visibleCount);
 };
+
+const TYPEWRITER_TICK_MS = 80;
+const MISSED_POPUP_ANIMATION_WINDOW_MS = 10_000;
+const AIInsights = dynamic(() => import("@/components/officer/ai-insights"), {
+  loading: () => (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-4 w-28" />
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </CardContent>
+    </Card>
+  ),
+});
 
 const normalizeEmail = (email?: string | null) => (email ?? "").toLowerCase();
 
@@ -198,8 +217,15 @@ export default function Dashboard() {
     const startAt = Date.now();
     setMissedTypingStart(startAt);
     setMissedNow(startAt);
-    const interval = setInterval(() => setMissedNow(Date.now()), 40);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => setMissedNow(Date.now()), TYPEWRITER_TICK_MS);
+    const timeout = setTimeout(() => {
+      setMissedNow(startAt + MISSED_POPUP_ANIMATION_WINDOW_MS);
+      clearInterval(interval);
+    }, MISSED_POPUP_ANIMATION_WINDOW_MS);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
   }, [missedOpen, missedLoading]);
   
   useEffect(() => {

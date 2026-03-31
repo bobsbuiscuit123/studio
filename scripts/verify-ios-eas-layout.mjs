@@ -16,9 +16,11 @@ const nestedAppDir = path.join(nestedWrapper, 'App');
 const nestedInfoPlist = path.join(nestedAppDir, 'Info.plist');
 const nestedDebugEntitlements = path.join(nestedAppDir, 'App.entitlements');
 const nestedReleaseEntitlements = path.join(nestedAppDir, 'AppRelease.entitlements');
-const nestedXcodeproj = path.join(nestedWrapper, 'App.xcodeproj');
 const nestedCapAppSpm = path.join(nestedWrapper, 'CapApp-SPM');
 const nestedPackageSwiftPath = path.join(nestedCapAppSpm, 'Package.swift');
+const nestedPublicDir = path.join(nestedAppDir, 'public');
+const nestedConfigXml = path.join(nestedAppDir, 'config.xml');
+const nestedCapacitorConfigJson = path.join(nestedAppDir, 'capacitor.config.json');
 const rootDebugXcconfig = path.join(iosRoot, 'debug.xcconfig');
 
 const requiredPaths = [
@@ -31,9 +33,11 @@ const requiredPaths = [
   nestedInfoPlist,
   nestedDebugEntitlements,
   nestedReleaseEntitlements,
-  nestedXcodeproj,
   nestedCapAppSpm,
   nestedPackageSwiftPath,
+  nestedPublicDir,
+  nestedConfigXml,
+  nestedCapacitorConfigJson,
   rootDebugXcconfig,
 ];
 

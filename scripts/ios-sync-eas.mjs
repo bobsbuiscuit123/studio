@@ -53,6 +53,14 @@ function prepareNestedLayoutForCapSync() {
     return;
   }
 
+  const hybridLayoutExists = existsSync(rootXcodeproj) && existsSync(nestedAppDir) && existsSync(nestedSpmDir);
+  if (hybridLayoutExists) {
+    renameSync(rootXcodeproj, tempXcodeproj);
+    renameSync(tempXcodeproj, nestedXcodeproj);
+    rewriteNestedProjectPaths();
+    return;
+  }
+
   const flatLayoutExists = existsSync(rootXcodeproj) && existsSync(rootAppDir) && existsSync(rootSpmDir);
   if (!flatLayoutExists) {
     throw new Error('Unable to prepare iOS sync because neither the flat nor nested Capacitor layout is present');
@@ -96,7 +104,7 @@ function ensureExpectedNestedLayout() {
 }
 
 function clearPreviousFlatTargets() {
-  for (const target of [rootXcodeproj, rootSpmDir]) {
+  for (const target of [rootXcodeproj]) {
     if (existsSync(target)) {
       rmSync(target, { recursive: true, force: true });
     }
@@ -105,25 +113,25 @@ function clearPreviousFlatTargets() {
 
 function flattenTree() {
   renameSync(nestedXcodeproj, tempXcodeproj);
-  renameSync(nestedAppDir, tempAppDir);
-  renameSync(nestedSpmDir, tempSpmDir);
-
-  rmSync(nestedWrapper, { recursive: true, force: true });
+  clearPreviousFlatTargets();
 
   renameSync(tempXcodeproj, rootXcodeproj);
-  renameSync(tempAppDir, rootAppDir);
-  renameSync(tempSpmDir, rootSpmDir);
 }
 
 function rewriteProjectPaths() {
   const pbxprojPath = path.join(rootXcodeproj, 'project.pbxproj');
-  const pbxproj = readFileSync(pbxprojPath, 'utf8').replaceAll('../debug.xcconfig', 'debug.xcconfig');
+  const pbxproj = readFileSync(pbxprojPath, 'utf8')
+    .replaceAll('../debug.xcconfig', 'debug.xcconfig')
+    .replaceAll('path = App;', 'path = App/App;')
+    .replaceAll('CODE_SIGN_ENTITLEMENTS = App/App.entitlements;', 'CODE_SIGN_ENTITLEMENTS = App/App/App.entitlements;')
+    .replaceAll('CODE_SIGN_ENTITLEMENTS = App/AppRelease.entitlements;', 'CODE_SIGN_ENTITLEMENTS = App/App/AppRelease.entitlements;')
+    .replaceAll('INFOPLIST_FILE = App/Info.plist;', 'INFOPLIST_FILE = App/App/Info.plist;')
+    .replaceAll('relativePath = "CapApp-SPM";', 'relativePath = "App/CapApp-SPM";');
   writeFileSync(pbxprojPath, pbxproj);
 
-  const packageSwiftPath = path.join(rootSpmDir, 'Package.swift');
+  const packageSwiftPath = path.join(nestedSpmDir, 'Package.swift');
   let packageSwift = readFileSync(packageSwiftPath, 'utf8');
   packageSwift = packageSwift.replaceAll('\\', '/');
-  packageSwift = packageSwift.replaceAll('../../../node_modules/', '../../node_modules/');
   writeFileSync(packageSwiftPath, packageSwift);
 }
 

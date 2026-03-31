@@ -367,7 +367,7 @@ export async function POST(request: Request) {
   }
 
   if (pushJob) {
-    await sendPushToUsers(pushJob).catch(error => {
+    void sendPushToUsers(pushJob).catch(error => {
       console.error('Message push failed', error);
     });
   }

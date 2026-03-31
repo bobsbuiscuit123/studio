@@ -612,6 +612,7 @@ export default function OrgCreatePage() {
                         </span>
                       </div>
                       <Slider
+                        className="px-2.5"
                         value={[estimatedMembers]}
                         min={1}
                         max={MAX_ESTIMATED_MEMBERS}
@@ -628,6 +629,7 @@ export default function OrgCreatePage() {
                         </span>
                       </div>
                       <Slider
+                        className="px-2.5"
                         value={[requestsPerMemberPerDay]}
                         min={0}
                         max={MAX_ESTIMATED_REQUESTS}
@@ -694,20 +696,20 @@ export default function OrgCreatePage() {
                               : ''
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <div className="flex items-center gap-2">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold text-slate-900">{plan.name}</p>
                                 {plan.id === recommendedPlan.id && !plan.isFree ? (
                                   <Badge variant="secondary">Recommended</Badge>
                                 ) : null}
                                 {activeSubscriptionProductId === plan.id ? (
-                                  <Badge variant="secondary">Current subscription</Badge>
+                                  <Badge variant="secondary">Current</Badge>
                                 ) : null}
                               </div>
                               <p className="mt-1 text-sm text-slate-600">{plan.description}</p>
                             </div>
-                            <div className="text-right">
+                            <div className="shrink-0 text-left sm:text-right">
                               <p className="font-semibold text-slate-900">{resolvedPrice}</p>
                               <p className="text-xs text-slate-500">
                                 {plan.monthlyTokenLimit.toLocaleString()} tokens/month

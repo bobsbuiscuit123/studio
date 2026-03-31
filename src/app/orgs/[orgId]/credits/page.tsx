@@ -872,16 +872,16 @@ export default function OrgCreditsPage() {
                       : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-slate-900">{plan.name}</p>
                         {plan.id === recommendedPlan.id ? <Badge variant="secondary">Recommended</Badge> : null}
-                        {isCurrent ? <Badge variant="secondary">Current subscription</Badge> : null}
+                        {isCurrent ? <Badge variant="secondary">Current</Badge> : null}
                       </div>
                       <p className="mt-1 text-sm text-slate-600">{plan.description}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-left sm:text-right">
                       <p className="font-semibold text-slate-900">{resolvedPrice}</p>
                       <p className="text-xs text-slate-500">
                         {plan.monthlyTokenLimit.toLocaleString()} tokens/month

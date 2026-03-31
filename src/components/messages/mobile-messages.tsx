@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -29,9 +29,12 @@ import {
   isMessageFromActor,
   markMessageReadByActor,
   messageIncludesReader,
+  normalizeMessage,
   normalizeGroupChats,
   normalizeMessageActor,
   normalizeMessageMap,
+  upsertConversationMessage,
+  upsertGroupChatMessage,
 } from "@/lib/message-state";
 import type { GroupChat, Member, Message } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -63,16 +66,73 @@ const messageFormSchema = z.object({
   text: z.string().min(1, "Message cannot be empty").max(500, "Message too long"),
 });
 
+type MessageAuditEnvelope = {
+  conversationType: "dm" | "group";
+  conversationKey?: string;
+  chatId?: string;
+  message: Message;
+};
+
+const parseMessageAuditEnvelope = (value: unknown): MessageAuditEnvelope | null => {
+  const parsedValue = (() => {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!parsedValue) {
+    return null;
+  }
+
+  const conversationType =
+    parsedValue.conversationType === "dm" || parsedValue.conversationType === "group"
+      ? parsedValue.conversationType
+      : null;
+  const message = normalizeMessage(parsedValue.message);
+  if (!conversationType || !message) {
+    return null;
+  }
+
+  if (conversationType === "dm") {
+    const conversationKey =
+      typeof parsedValue.conversationKey === "string" ? normalizeMessageActor(parsedValue.conversationKey) : "";
+    return conversationKey ? { conversationType, conversationKey, message } : null;
+  }
+
+  const chatId = typeof parsedValue.chatId === "string" ? parsedValue.chatId.trim() : "";
+  return chatId ? { conversationType, chatId, message } : null;
+};
+
+const dispatchGroupStateSync = (orgId: string, groupId: string) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("group-state-sync", {
+      detail: { orgId, groupId },
+    })
+  );
+};
+
 function useLiveGroupStateMessages({
   orgId,
   groupId,
   refreshMessages,
   refreshGroupChats,
+  onRealtimeMessage,
 }: {
   orgId?: string | null;
   groupId?: string | null;
   refreshMessages: () => Promise<boolean>;
   refreshGroupChats: () => Promise<boolean>;
+  onRealtimeMessage?: (envelope: MessageAuditEnvelope) => boolean;
 }) {
   useEffect(() => {
     if (!orgId || !groupId) {
@@ -98,6 +158,22 @@ function useLiveGroupStateMessages({
       const supabase = createSupabaseBrowserClient();
       const channel = supabase
         .channel(`group-state-messages:${orgId}:${groupId}`)
+        .on("postgres_changes", {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `group_id=eq.${groupId}`,
+        }, (payload: unknown) => {
+          const envelope = parseMessageAuditEnvelope(
+            payload && typeof payload === "object" && "new" in payload
+              ? (payload as { new?: { content?: unknown } }).new?.content
+              : undefined
+          );
+          if (envelope && onRealtimeMessage?.(envelope)) {
+            return;
+          }
+          scheduleRefresh();
+        })
         .on("postgres_changes", {
           event: "INSERT",
           schema: "public",
@@ -129,7 +205,7 @@ function useLiveGroupStateMessages({
       }
       removeChannel?.();
     };
-  }, [groupId, orgId, refreshGroupChats, refreshMessages]);
+  }, [groupId, onRealtimeMessage, orgId, refreshGroupChats, refreshMessages]);
 }
 
 export function MessagesListScreen() {
@@ -138,12 +214,19 @@ export function MessagesListScreen() {
   const { data: members, loading: membersLoading } = useMembers();
   const {
     data: allMessages,
+    setLocalData: setLocalMessages,
     loading: messagesLoading,
     refreshData: refreshMessages,
     clubId,
     orgId,
   } = useMessages();
-  const { data: groupChats, updateData: setGroupChats, loading: groupsLoading, refreshData: refreshGroupChats } = useGroupChats();
+  const {
+    data: groupChats,
+    updateData: setGroupChats,
+    setLocalData: setLocalGroupChats,
+    loading: groupsLoading,
+    refreshData: refreshGroupChats,
+  } = useGroupChats();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
@@ -152,11 +235,32 @@ export function MessagesListScreen() {
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
 
+  const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
+    if (envelope.conversationType === "dm" && envelope.conversationKey) {
+      setLocalMessages(prev => upsertConversationMessage(prev, envelope.conversationKey!, envelope.message));
+      if (orgId && clubId) {
+        dispatchGroupStateSync(orgId, clubId);
+      }
+      return true;
+    }
+
+    if (envelope.conversationType === "group" && envelope.chatId) {
+      setLocalGroupChats(prev => upsertGroupChatMessage(prev, envelope.chatId!, envelope.message));
+      if (orgId && clubId) {
+        dispatchGroupStateSync(orgId, clubId);
+      }
+      return true;
+    }
+
+    return false;
+  }, [clubId, orgId, setLocalGroupChats, setLocalMessages]);
+
   useLiveGroupStateMessages({
     orgId,
     groupId: clubId,
     refreshMessages,
     refreshGroupChats,
+    onRealtimeMessage: handleRealtimeMessage,
   });
 
   const newGroupForm = useForm<z.infer<typeof newGroupFormSchema>>({
@@ -166,9 +270,10 @@ export function MessagesListScreen() {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void refreshMessages();
       void refreshGroupChats();
-    }, 20000);
+    }, 5000);
     return () => window.clearInterval(interval);
   }, [refreshGroupChats, refreshMessages]);
 
@@ -394,11 +499,32 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
 
+  const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
+    if (envelope.conversationType === "dm" && envelope.conversationKey) {
+      setLocalMessages(prev => upsertConversationMessage(prev, envelope.conversationKey!, envelope.message));
+      if (orgId && clubId) {
+        dispatchGroupStateSync(orgId, clubId);
+      }
+      return true;
+    }
+
+    if (envelope.conversationType === "group" && envelope.chatId) {
+      setLocalGroupChats(prev => upsertGroupChatMessage(prev, envelope.chatId!, envelope.message));
+      if (orgId && clubId) {
+        dispatchGroupStateSync(orgId, clubId);
+      }
+      return true;
+    }
+
+    return false;
+  }, [clubId, orgId, setLocalGroupChats, setLocalMessages]);
+
   useLiveGroupStateMessages({
     orgId,
     groupId: clubId,
     refreshMessages,
     refreshGroupChats,
+    onRealtimeMessage: handleRealtimeMessage,
   });
 
   const conversation = useMemo(
@@ -460,9 +586,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void refreshMessages();
       void refreshGroupChats();
-    }, 20000);
+    }, 5000);
     return () => window.clearInterval(interval);
   }, [refreshGroupChats, refreshMessages]);
 
@@ -482,11 +609,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       readBy: [currentUserEmail || user.email],
     };
 
-    setIsSending(true);
-    const selectedOrgId = window.localStorage.getItem("selectedOrgId");
-    const selectedGroupId = window.sessionStorage.getItem("selectedGroupId");
+    const selectedOrgId = orgId ?? window.localStorage.getItem("selectedOrgId");
+    const selectedGroupId = clubId ?? window.sessionStorage.getItem("selectedGroupId");
     if (!selectedOrgId || !selectedGroupId) {
-      setIsSending(false);
       toast({
         title: "Message failed",
         description: "No active group is selected.",
@@ -494,6 +619,17 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       });
       return;
     }
+
+    if (conversation.type === "dm") {
+      const conversationKey = getConversationId(user.email, conversation.partner.email);
+      setLocalMessages(prev => upsertConversationMessage(prev, conversationKey, newMessage));
+    } else {
+      setLocalGroupChats(prev => upsertGroupChatMessage(prev, conversation.chat.id, newMessage));
+    }
+    dispatchGroupStateSync(selectedOrgId, selectedGroupId);
+    setLastMessageAt(now);
+    messageForm.reset();
+    setIsSending(true);
 
     const response = await fetch("/api/messages/send", {
       method: "POST",
@@ -522,6 +658,32 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
     setIsSending(false);
     if (!response.ok) {
+      if (conversation.type === "dm") {
+        const conversationKey = getConversationId(user.email, conversation.partner.email);
+        setLocalMessages(prev => {
+          const nextMessages = upsertConversationMessage(prev, conversationKey, null);
+          const normalizedMessages = normalizeMessageMap(nextMessages);
+          return {
+            ...normalizedMessages,
+            [conversationKey]: (normalizedMessages[conversationKey] || []).filter(
+              message => message.timestamp !== newMessage.timestamp
+            ),
+          };
+        });
+      } else {
+        setLocalGroupChats(prev =>
+          normalizeGroupChats(prev).map(chat =>
+            chat.id === conversation.chat.id
+              ? {
+                  ...chat,
+                  messages: chat.messages.filter(message => message.timestamp !== newMessage.timestamp),
+                }
+              : chat
+          )
+        );
+      }
+      dispatchGroupStateSync(selectedOrgId, selectedGroupId);
+      messageForm.reset({ text: values.text });
       toast({
         title: "Message failed",
         description: response.data?.error?.message || "Your message was not saved. Please try again.",
@@ -529,29 +691,6 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       });
       return;
     }
-
-    if (conversation.type === "dm") {
-      const conversationKey = getConversationId(user.email, conversation.partner.email);
-      setLocalMessages(prev => {
-        const normalizedMessages = normalizeMessageMap(prev);
-        return {
-          ...normalizedMessages,
-          [conversationKey]: [...(normalizedMessages[conversationKey] || []), newMessage],
-        };
-      });
-    } else {
-      setLocalGroupChats(prev =>
-        normalizeGroupChats(prev).map(chat =>
-          chat.id === conversation.chat.id
-            ? { ...chat, messages: [...chat.messages, newMessage] }
-            : chat
-        )
-      );
-    }
-    window.dispatchEvent(new CustomEvent("group-state-sync"));
-
-    setLastMessageAt(now);
-    messageForm.reset();
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {

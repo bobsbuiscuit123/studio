@@ -38,6 +38,7 @@
     --safe-area-right-runtime: env(safe-area-inset-right, 0px);
     --safe-area-bottom-runtime: env(safe-area-inset-bottom, 0px);
     --safe-area-left-runtime: env(safe-area-inset-left, 0px);
+    --mobile-tab-bar-bottom-inset: calc(clamp(0.05rem, calc(var(--safe-area-bottom-runtime) * 0.1), 0.22rem) + 0.0625rem);
     --mobile-tab-bar-clearance: calc(72px + 22px);
   }
  
@@ -398,7 +399,7 @@ main,
   align-items: center;
   width: 100%;
   height: 100%;
-  padding: 0 8px 2px;
+  padding: 0 8px calc(2px + var(--mobile-tab-bar-bottom-inset));
   column-gap: 6px;
 }
 
@@ -489,6 +490,7 @@ main,
 
 @media (min-width: 768px) {
   :root {
+    --mobile-tab-bar-bottom-inset: 0px;
     --mobile-tab-bar-clearance: 0px;
   }
 }

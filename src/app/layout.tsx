@@ -10,7 +10,6 @@ import { SecurityGuard } from "@/components/security-guard";
 import { ClientTimeZoneSync } from "@/components/client-timezone-sync";
 import { NativeStatusBar } from "@/components/native-status-bar";
 import { SafeAreaSync } from "@/components/safe-area-sync";
-import { ClubDataStoreProvider } from "@/lib/data-hooks";
 import { PT_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -53,20 +52,18 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${bodyFont.variable} font-body antialiased`} suppressHydrationWarning>
-        <ClubDataStoreProvider>
-          <div className="app-root">
-            <NativeStatusBar />
-            <SafeAreaSync />
-            <ClientTimeZoneSync />
-            <ErrorReporter />
-            <SecurityGuard />
-            <PwaRegister />
-            <NetworkStatusBanner />
-            <PolicyViolationToaster />
-            {children}
-            <Toaster />
-          </div>
-        </ClubDataStoreProvider>
+        <div className="app-root">
+          <NativeStatusBar />
+          <SafeAreaSync />
+          <ClientTimeZoneSync />
+          <ErrorReporter />
+          <SecurityGuard />
+          <PwaRegister />
+          <NetworkStatusBanner />
+          <PolicyViolationToaster />
+          {children}
+          <Toaster />
+        </div>
       </body>
     </html>
   );

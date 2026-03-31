@@ -1,6 +1,5 @@
-'use client';
 
-import { createContext, createElement, useState, useEffect, useCallback, useMemo, useRef, useContext, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
@@ -63,36 +62,18 @@ const shouldUseDemoData = (hasDemoContext: boolean) =>
 
 const getDefaultClubData = (): ClubData => getDefaultOrgState();
 const TAB_VIEW_KEY = 'tabLastViewed';
-const serializedValueCache = new WeakMap<object, string>();
 const stableSerialize = (value: unknown): string => {
-    if (value instanceof Date) {
-        return `Date(${value.toISOString()})`;
-    }
     if (Array.isArray(value)) {
-        const cached = serializedValueCache.get(value);
-        if (cached) {
-            return cached;
-        }
-        const serialized = `[${value.map(item => stableSerialize(item)).join(',')}]`;
-        serializedValueCache.set(value, serialized);
-        return serialized;
+        return `[${value.map(item => stableSerialize(item)).join(',')}]`;
     }
     if (value && typeof value === 'object') {
-        const objectValue = value as Record<string, unknown>;
-        const cached = serializedValueCache.get(objectValue);
-        if (cached) {
-            return cached;
-        }
         const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
             a.localeCompare(b)
         );
-        const serialized = `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
-        serializedValueCache.set(objectValue, serialized);
-        return serialized;
+        return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
     }
     return JSON.stringify(value);
 };
-const isSerializedEqual = (left: unknown, right: unknown) => stableSerialize(left) === stableSerialize(right);
 
 const getTabViewStorageKey = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) =>
     `${TAB_VIEW_KEY}:${userEmail}:${orgId}:${groupId}:${key}`;
@@ -111,15 +92,9 @@ const writeTabLastViewed = (userEmail: string, orgId: string, groupId: string, k
 
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
-const groupStateLoadedAt = new Map<string, number>();
 let currentUserCache: User | null = null;
 let currentUserHydrationPromise: Promise<User | null> | null = null;
 const CURRENT_USER_STORAGE_KEY = 'currentUser';
-const GROUP_STATE_REFRESH_COOLDOWN_MS = 1_500;
-let clubDataAuthReady = false;
-let clubDataAuthReadyPromise: Promise<void> | null = null;
-const roleCache = new Map<string, string | null>();
-const roleRequestCache = new Map<string, Promise<string | null>>();
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -144,38 +119,10 @@ const persistCurrentUserCache = (nextUser: User | null) => {
 };
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
-const getRoleCacheKey = (orgId: string, groupId: string, userEmail: string) =>
-  `${orgId}:${groupId}:${userEmail.toLowerCase()}`;
 const shouldRefreshOnVisibility = () =>
   typeof document !== 'undefined' &&
   document.visibilityState === 'visible' &&
   (typeof navigator === 'undefined' || navigator.onLine !== false);
-
-const setCachedGroupState = (orgId: string, groupId: string, nextData: ClubData) => {
-  const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  groupStateCache.set(cacheKey, nextData);
-  groupStateLoadedAt.set(cacheKey, Date.now());
-};
-
-const ensureClubDataAuthReady = async (supabase: ReturnType<typeof createSupabaseBrowserClient>) => {
-  if (clubDataAuthReady) {
-    return;
-  }
-  if (!clubDataAuthReadyPromise) {
-    clubDataAuthReadyPromise = supabase.auth
-      .getSession()
-      .catch((error: unknown) => {
-        console.error('Error hydrating auth session for club data store', error);
-      })
-      .then(() => {
-        clubDataAuthReady = true;
-      })
-      .finally(() => {
-        clubDataAuthReadyPromise = null;
-      });
-  }
-  await clubDataAuthReadyPromise;
-};
 
 const normalizeClubData = (data: ClubData): ClubData => {
     const defaults = getDefaultClubData();
@@ -259,9 +206,11 @@ async function requestGroupState(
   options: { forceFresh?: boolean } = {}
 ) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  const pending = groupStateRequestCache.get(cacheKey);
-  if (pending) {
-    return pending;
+  if (!options.forceFresh) {
+    const pending = groupStateRequestCache.get(cacheKey);
+    if (pending) {
+      return pending;
+    }
   }
 
   const request = (async () => {
@@ -272,7 +221,7 @@ async function requestGroupState(
     });
     try {
       const normalized = await fetchGroupStateFromServer(orgId, groupId);
-      setCachedGroupState(orgId, groupId, normalized);
+      groupStateCache.set(cacheKey, normalized);
       return normalized;
     } finally {
       performanceTimer.stop();
@@ -300,16 +249,10 @@ async function loadGroupState(orgId: string, groupId: string) {
 }
 
 async function fetchFreshGroupState(orgId: string, groupId: string) {
-  const cacheKey = getGroupStateCacheKey(orgId, groupId);
-  const cached = groupStateCache.get(cacheKey);
-  const loadedAt = groupStateLoadedAt.get(cacheKey) ?? 0;
-  if (cached && Date.now() - loadedAt < GROUP_STATE_REFRESH_COOLDOWN_MS) {
-    return cached;
-  }
   return requestGroupState(orgId, groupId, { forceFresh: true });
 }
 
-function useClubDataStoreInternal() {
+function useClubDataStore() {
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const [clubId, setClubId] = useState<string | null>(() =>
@@ -341,7 +284,7 @@ function useClubDataStoreInternal() {
         return !groupStateCache.has(getGroupStateCacheKey(initialOrgId, initialClubId));
     });
     const [error, setError] = useState<string | null>(null);
-    const [authReady, setAuthReady] = useState(() => useDemo || typeof window === 'undefined' || clubDataAuthReady);
+    const [authReady, setAuthReady] = useState(() => useDemo || typeof window === 'undefined');
     const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
 
     useEffect(() => {
@@ -351,16 +294,15 @@ function useClubDataStoreInternal() {
         }
 
         let active = true;
-        if (clubDataAuthReady) {
-            setAuthReady(true);
-            return;
-        }
         setAuthReady(false);
 
         const hydrateAuth = async () => {
-            await ensureClubDataAuthReady(supabase);
-            if (active) {
-                setAuthReady(true);
+            try {
+                await supabase.auth.getSession();
+            } finally {
+                if (active) {
+                    setAuthReady(true);
+                }
             }
         };
 
@@ -369,7 +311,6 @@ function useClubDataStoreInternal() {
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange(() => {
-            clubDataAuthReady = true;
             if (active) {
                 setAuthReady(true);
             }
@@ -441,7 +382,7 @@ function useClubDataStoreInternal() {
                 if (!cancelled) {
                     setError(null);
                     setData(prev => {
-                        if (prev && isSerializedEqual(prev, nextData)) {
+                        if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
                             return prev;
                         }
                         return nextData;
@@ -471,7 +412,7 @@ function useClubDataStoreInternal() {
                 if (cached) {
                     setError(null);
                     setData(prev => {
-                        if (prev && isSerializedEqual(prev, cached)) {
+                        if (prev && stableSerialize(prev) === stableSerialize(cached)) {
                             return prev;
                         }
                         return cached;
@@ -502,7 +443,7 @@ function useClubDataStoreInternal() {
             const nextData = await fetchFreshGroupState(orgId, clubId);
             setError(null);
             setData(prev => {
-                if (prev && isSerializedEqual(prev, nextData)) {
+                if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
                     return prev;
                 }
                 return nextData;
@@ -518,7 +459,7 @@ function useClubDataStoreInternal() {
     const setLocalClubData = useCallback((nextData: ClubData) => {
         if (!clubId || !orgId) return false;
         setData(nextData);
-        setCachedGroupState(orgId, clubId, nextData);
+        groupStateCache.set(getGroupStateCacheKey(orgId, clubId), nextData);
         return true;
     }, [clubId, orgId]);
 
@@ -545,7 +486,7 @@ function useClubDataStoreInternal() {
                 (typeof nextDataOrUpdater === 'function'
                     ? nextDataOrUpdater(currentData)
                     : nextDataOrUpdater);
-            if (isSerializedEqual(currentData, optimisticData)) {
+            if (stableSerialize(currentData) === stableSerialize(optimisticData)) {
                 return true;
             }
             const optimisticViolation = findPolicyViolation(optimisticData);
@@ -561,7 +502,7 @@ function useClubDataStoreInternal() {
             }
 
             setData(optimisticData);
-            setCachedGroupState(orgId, clubId, optimisticData);
+            groupStateCache.set(getGroupStateCacheKey(orgId, clubId), optimisticData);
 
             let freshCurrentData = currentData;
             try {
@@ -575,10 +516,10 @@ function useClubDataStoreInternal() {
                 typeof nextDataOrUpdater === 'function'
                     ? nextDataOrUpdater(freshCurrentData)
                     : nextDataOrUpdater;
-            if (isSerializedEqual(freshCurrentData, nextData)) {
-                if (!isSerializedEqual(optimisticData, freshCurrentData)) {
+            if (stableSerialize(freshCurrentData) === stableSerialize(nextData)) {
+                if (stableSerialize(optimisticData) !== stableSerialize(freshCurrentData)) {
                     setData(freshCurrentData);
-                    setCachedGroupState(orgId, clubId, freshCurrentData);
+                    groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
                 }
                 return true;
             }
@@ -586,7 +527,7 @@ function useClubDataStoreInternal() {
             const violation = findPolicyViolation(nextData);
             if (violation) {
                 setData(freshCurrentData);
-                setCachedGroupState(orgId, clubId, freshCurrentData);
+                groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(
                         new CustomEvent('policy-violation', {
@@ -611,18 +552,18 @@ function useClubDataStoreInternal() {
             if (!response.ok) {
                 console.error(`Error saving data for group ${clubId}`, response.error);
                 setData(freshCurrentData);
-                setCachedGroupState(orgId, clubId, freshCurrentData);
+                groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
                 setError(response.error.message || 'Group content could not be saved.');
                 return false;
             }
             const confirmedData = normalizeClubData(response.data.data);
             setData(prev => {
-                if (prev && isSerializedEqual(prev, confirmedData)) {
+                if (prev && stableSerialize(prev) === stableSerialize(confirmedData)) {
                     return prev;
                 }
                 return confirmedData;
             });
-            setCachedGroupState(orgId, clubId, confirmedData);
+            groupStateCache.set(getGroupStateCacheKey(orgId, clubId), confirmedData);
             setError(null);
             dispatchGroupStateSync(orgId, clubId);
             return true;
@@ -645,23 +586,6 @@ function useClubDataStoreInternal() {
     return { clubId, orgId, data, error, loading, updateClubData, refreshData, setLocalClubData };
 }
 
-type ClubDataStoreValue = ReturnType<typeof useClubDataStoreInternal>;
-
-const ClubDataStoreContext = createContext<ClubDataStoreValue | null>(null);
-
-export function ClubDataStoreProvider({ children }: { children: ReactNode }) {
-    const store = useClubDataStoreInternal();
-    return createElement(ClubDataStoreContext.Provider, { value: store }, children);
-}
-
-function useClubDataStore() {
-    const context = useContext(ClubDataStoreContext);
-    if (!context) {
-        throw new Error('useClubDataStore must be used within ClubDataStoreProvider');
-    }
-    return context;
-}
-
 
 function useSpecificClubData<K extends keyof ClubData>(key: K) {
     const { clubId, orgId, data, error, loading, updateClubData, refreshData, setLocalClubData } = useClubDataStore();
@@ -679,7 +603,7 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                 typeof newData === 'function'
                     ? (newData as (prevData: ClubData[K]) => ClubData[K])(base[key])
                     : newData;
-            if (isSerializedEqual(base[key], valueToStore)) {
+            if (stableSerialize(base[key]) === stableSerialize(valueToStore)) {
                 return true;
             }
             const updatedFullData = { ...base, [key]: valueToStore };
@@ -722,7 +646,7 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                 typeof newData === 'function'
                     ? (newData as (prevData: ClubData[K]) => ClubData[K])(base[key])
                     : newData;
-            if (isSerializedEqual(base[key], valueToStore)) {
+            if (stableSerialize(base[key]) === stableSerialize(valueToStore)) {
                 return true;
             }
             const updatedFullData = { ...base, [key]: valueToStore };
@@ -839,7 +763,7 @@ export function useMembers() {
         typeof newData === 'function'
           ? (newData as (prevData: Member[]) => Member[])(base)
           : newData;
-      if (isSerializedEqual(base, valueToStore)) {
+      if (stableSerialize(base) === stableSerialize(valueToStore)) {
         return;
       }
       setMembersData(valueToStore);
@@ -1056,59 +980,32 @@ export function useCurrentUserRole() {
             setLoading(false);
             return;
         }
-        const orgId = getSelectedOrgId();
         const groupId = getSelectedGroupId();
-        if (!user?.email || !orgId || !groupId) {
+        if (!user?.email || !groupId) {
             setRole(null);
-            setLoading(false);
-            return;
-        }
-        const roleCacheKey = getRoleCacheKey(orgId, groupId, user.email);
-        const cachedGroupData = groupStateCache.get(getGroupStateCacheKey(orgId, groupId));
-        const inferredRole = getRoleFromMembers(cachedGroupData?.members ?? [], user.email);
-        if (inferredRole) {
-            roleCache.set(roleCacheKey, inferredRole);
-            setRole(inferredRole);
-            setLoading(false);
-            return;
-        }
-        if (roleCache.has(roleCacheKey)) {
-            setRole(roleCache.get(roleCacheKey) ?? null);
             setLoading(false);
             return;
         }
         const supabase = createSupabaseBrowserClient();
         let active = true;
         const loadRole = async () => {
-            const existingRequest = roleRequestCache.get(roleCacheKey);
-            const roleRequest =
-                existingRequest ??
-                (async () => {
-                    const { data: authUser } = await supabase.auth.getUser();
-                    const userId = authUser.user?.id;
-                    if (!userId) {
-                        roleCache.set(roleCacheKey, null);
-                        return null;
-                    }
-                    const { data } = await supabase
-                        .from('group_memberships')
-                        .select('role')
-                        .eq('group_id', groupId)
-                        .eq('user_id', userId)
-                        .maybeSingle();
-                    const resolvedRole = displayGroupRole(data?.role);
-                    roleCache.set(roleCacheKey, resolvedRole);
-                    return resolvedRole;
-                })();
-
-            roleRequestCache.set(roleCacheKey, roleRequest);
-            const resolvedRole = await roleRequest.finally(() => {
-                if (roleRequestCache.get(roleCacheKey) === roleRequest) {
-                    roleRequestCache.delete(roleCacheKey);
+            const { data: authUser } = await supabase.auth.getUser();
+            const userId = authUser.user?.id;
+            if (!userId) {
+                if (active) {
+                    setRole(null);
+                    setLoading(false);
                 }
-            });
+                return;
+            }
+            const { data } = await supabase
+                .from('group_memberships')
+                .select('role')
+                .eq('group_id', groupId)
+                .eq('user_id', userId)
+                .maybeSingle();
             if (active) {
-                setRole(resolvedRole);
+                setRole(displayGroupRole(data?.role));
                 setLoading(false);
             }
         };

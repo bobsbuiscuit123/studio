@@ -1,8 +1,10 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const handler = NextAuth({
-  debug: true,
+  debug: !isProduction,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,

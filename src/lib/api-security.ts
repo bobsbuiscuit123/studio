@@ -8,6 +8,11 @@ export const getRequestIp = (headers: Headers) =>
   headers.get('x-real-ip') ||
   'unknown';
 
+export const getInternalApiUrl = (
+  request: Pick<Request, 'url'>,
+  pathname: `/${string}`
+) => new URL(pathname, request.url).toString();
+
 export const rateLimitExceededResponse = (
   result: RateLimitResult,
   message = 'Too many requests. Please slow down.'

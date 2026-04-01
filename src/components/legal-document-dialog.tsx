@@ -1,6 +1,7 @@
 "use client";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { APPLE_STANDARD_EULA_URL } from "@/lib/legal";
 
 type LegalDocumentType = "terms" | "privacy";
 
@@ -192,6 +193,22 @@ export function TermsContent() {
         <p className="font-semibold">10. Contact</p>
         <p>For questions, contact:</p>
         <p>clubhubai@gmail.com</p>
+      </div>
+
+      <div className="space-y-2">
+        <p className="font-semibold">Standard EULA</p>
+        <p>
+          Use of Caspo is also subject to the Apple Standardized End User License
+          Agreement:{" "}
+          <a
+            href={APPLE_STANDARD_EULA_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-4"
+          >
+            {APPLE_STANDARD_EULA_URL}
+          </a>
+        </p>
       </div>
 
       <p>By using CASPO, you agree to these Terms.</p>

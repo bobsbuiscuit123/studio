@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { SubscriptionLegalLinks } from '@/components/subscription-legal-links';
 import { useToast } from '@/hooks/use-toast';
 import { safeFetchJson } from '@/lib/network';
 import { useOrgSubscriptionStatus, notifyOrgSubscriptionChanged } from '@/lib/org-subscription-hooks';
@@ -29,6 +30,7 @@ import {
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
   RevenueCatPurchaseCancelledError,
+  restoreRevenueCatPurchases,
   type RevenueCatPlanPackage,
 } from '@/lib/revenuecat-subscriptions';
 import {
@@ -160,6 +162,7 @@ export default function OrgCreditsPage() {
   const [hasUserSelectedPlan, setHasUserSelectedPlan] = useState(false);
   const [managementUrl, setManagementUrl] = useState<string | null>(null);
   const [loadingPackages, setLoadingPackages] = useState(false);
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const recommendedPlan = useMemo(
@@ -549,7 +552,7 @@ export default function OrgCreditsPage() {
 
       if (decision.unassignedSubscriptionRequiresReconcile) {
         throw new Error(
-          'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before changing plans.'
+          'We found an active subscription that is not yet assigned to an organization. Restore purchases below before changing plans.'
         );
       }
 
@@ -726,6 +729,56 @@ export default function OrgCreditsPage() {
     window.open(managementUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const handleRestorePurchases = async () => {
+    if (!purchaseAvailability.supported) {
+      toast({
+        title: 'Restore unavailable',
+        description: purchaseAvailability.reason || 'Purchases are unavailable on this device.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRestoringPurchases(true);
+    try {
+      await restoreRevenueCatPurchases();
+
+      const refreshedCustomerInfo = await getCurrentRevenueCatCustomerInfo().catch((error) => {
+        console.warn('Unable to refresh RevenueCat customer info after restoring purchases', error);
+        return null;
+      });
+
+      setLiveCustomerActiveProductId(
+        refreshedCustomerInfo ? extractActiveProductIdFromCustomerInfo(refreshedCustomerInfo) : null
+      );
+      setLiveCustomerScheduledProductId(
+        refreshedCustomerInfo
+          ? extractScheduledProductIdFromCustomerInfo(refreshedCustomerInfo)
+          : null
+      );
+      setLiveCustomerCurrentPeriodEnd(
+        refreshedCustomerInfo
+          ? extractCurrentPeriodEndFromCustomerInfo(refreshedCustomerInfo)
+          : null
+      );
+      setManagementUrl(await getRevenueCatManagementUrl().catch(() => managementUrl));
+
+      await syncCurrentOrg();
+      toast({
+        title: 'Purchases restored',
+        description: 'Your App Store purchases were restored and synced to this organization.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Restore failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRestoringPurchases(false);
+    }
+  };
+
   return (
     <div className="viewport-page bg-background text-slate-900">
       <div className="viewport-scroll mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-10">
@@ -898,27 +951,48 @@ export default function OrgCreditsPage() {
           <CardHeader>
             <CardTitle>Apply to this organization</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             {!purchaseAvailability.supported ? (
-              <p className="mb-3 text-sm text-slate-600">
+              <p className="text-sm text-slate-600">
                 {purchaseAvailability.reason ?? 'Paid subscriptions require the iOS app.'}
               </p>
             ) : null}
-            <Button
-              className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => void handleApplyPlan()}
-              disabled={
-                submitting ||
-                !selectedPlanId ||
-                purchaseDecision.crossOrgBlocked ||
-                purchaseDecision.unassignedSubscriptionRequiresReconcile ||
-                purchaseDecision.sameOrgSamePlan ||
-                (!purchaseAvailability.supported && (!activeProductId || activeProductId !== selectedPlanId))
-              }
-            >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {actionLabel}
-            </Button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Button
+                className="rounded-2xl bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => void handleApplyPlan()}
+                disabled={
+                  submitting ||
+                  !selectedPlanId ||
+                  purchaseDecision.crossOrgBlocked ||
+                  purchaseDecision.unassignedSubscriptionRequiresReconcile ||
+                  purchaseDecision.sameOrgSamePlan ||
+                  (!purchaseAvailability.supported &&
+                    (!activeProductId || activeProductId !== selectedPlanId))
+                }
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {actionLabel}
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-2xl"
+                onClick={() => void handleRestorePurchases()}
+                disabled={isRestoringPurchases || !purchaseAvailability.supported}
+              >
+                {isRestoringPurchases ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Restore Purchases
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Already purchased on this Apple ID? Restore purchases to sync your subscription with
+              this organization.
+            </p>
+            <SubscriptionLegalLinks className="justify-start text-xs" />
           </CardContent>
         </Card>
       </div>

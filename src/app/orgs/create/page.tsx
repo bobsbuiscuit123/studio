@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 
 import { Logo } from '@/components/icons';
+import { SubscriptionLegalLinks } from '@/components/subscription-legal-links';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ import {
   loadRevenueCatPlanPackages,
   purchaseRevenueCatPlan,
   RevenueCatPurchaseCancelledError,
+  restoreRevenueCatPurchases,
   type RevenueCatPlanPackage,
 } from '@/lib/revenuecat-subscriptions';
 import {
@@ -89,6 +91,11 @@ type FinalizeResponse = {
     subscriptionStatus?: string | null;
   };
   error?: { message?: string };
+};
+
+type ReconcileResponse = {
+  ok: boolean;
+  data?: UserSubscriptionSummary;
 };
 
 type CompletedOrgState = {
@@ -154,6 +161,7 @@ export default function OrgCreatePage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const [completedOrg, setCompletedOrg] = useState<CompletedOrgState | null>(null);
 
   const usageEstimate = useMemo(
@@ -241,7 +249,10 @@ export default function OrgCreatePage() {
     setSelectedPlanId(FREE_PLAN_ID);
   }, [paidPlanBlockedInCreate]);
 
-  const saveDraft = async (nextPlanId?: PlanId) => {
+  const saveDraft = async (
+    nextPlanId?: PlanId,
+    subscriptionOverride: UserSubscriptionSummary | null = subscription
+  ) => {
     setSavingDraft(true);
     const planIdToPersist = nextPlanId ?? selectedPlanId ?? FREE_PLAN_ID;
     const response = await safeFetchJson<DraftResponse>('/api/orgs/create', {
@@ -256,7 +267,7 @@ export default function OrgCreatePage() {
         usageEstimateRequestsPerMember: requestsPerMemberPerDay,
         usageEstimateMonthlyTokens: usageEstimate.estimatedMonthlyTokens,
         selectedPlanId: planIdToPersist,
-        creationMode: getCreationMode(planIdToPersist, subscription),
+        creationMode: getCreationMode(planIdToPersist, subscriptionOverride),
         idempotencyKey,
       }),
       idempotencyKey,
@@ -299,7 +310,7 @@ export default function OrgCreatePage() {
         title: 'Paid plan unavailable',
         description: createPaidActionDecision.crossOrgBlocked
           ? 'You already have a subscription on another organization. Create this organization on Free or manage the paid plan from the current paid organization.'
-          : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.',
+          : 'We found an active subscription that is not yet assigned to an organization. Restore purchases below before creating another paid organization.',
         variant: 'destructive',
       });
       return;
@@ -330,7 +341,7 @@ export default function OrgCreatePage() {
         title: 'Paid plan unavailable',
         description: createPaidActionDecision.crossOrgBlocked
           ? 'This account already has a subscription on another organization. Paid plan changes are only allowed on that organization.'
-          : 'Restore purchases from Settings before choosing a paid plan for a new organization.',
+          : 'Restore purchases below before choosing a paid plan for a new organization.',
         variant: 'destructive',
       });
       return;
@@ -369,6 +380,60 @@ export default function OrgCreatePage() {
     });
   };
 
+  const handleRestorePurchases = async () => {
+    if (!purchaseAvailability.supported) {
+      toast({
+        title: 'Restore unavailable',
+        description: purchaseAvailability.reason || 'Purchases are unavailable on this device.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsRestoringPurchases(true);
+    try {
+      await restoreRevenueCatPurchases();
+
+      const reconcileResponse = await safeFetchJson<ReconcileResponse>(
+        '/api/orgs/subscription/reconcile',
+        {
+          method: 'POST',
+        }
+      );
+
+      if (!reconcileResponse.ok) {
+        throw new Error(reconcileResponse.error.message);
+      }
+
+      const reconciledSubscription = reconcileResponse.data.data ?? null;
+      setSubscription(reconciledSubscription);
+
+      if (draftId) {
+        const refreshedDraft = await saveDraft(
+          (selectedPlanId ?? FREE_PLAN_ID) as PlanId,
+          reconciledSubscription
+        );
+        if (refreshedDraft.ok) {
+          setSubscription(refreshedDraft.data.data?.subscription ?? reconciledSubscription);
+          setPaidOrg(refreshedDraft.data.data?.paidOrg ?? null);
+        }
+      }
+
+      toast({
+        title: 'Purchases restored',
+        description: 'Your App Store purchases were restored and synced to your account.',
+      });
+    } catch (error) {
+      toast({
+        title: 'Restore failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRestoringPurchases(false);
+    }
+  };
+
   const handleFinalize = async () => {
     if (!draftId) {
       toast({
@@ -385,7 +450,7 @@ export default function OrgCreatePage() {
         throw new Error(
           createPaidActionDecision.crossOrgBlocked
             ? 'You already have a subscription on another organization. Create this organization on the free plan or manage the paid plan from the current paid organization.'
-            : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.'
+            : 'We found an active subscription that is not yet assigned to an organization. Restore purchases below before creating another paid organization.'
         );
       }
 
@@ -586,7 +651,7 @@ export default function OrgCreatePage() {
                         ? paidOrg?.name
                           ? `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}. Paid plan changes are only allowed from that organization's billing screen.`
                           : 'Your account already has an active subscription linked to another organization. Paid plan changes are only allowed from that organization.'
-                        : 'We found an active subscription that is not yet assigned to an organization. Restore purchases from Settings before creating another paid organization.'}{' '}
+                        : 'We found an active subscription that is not yet assigned to an organization. Restore purchases below before creating another paid organization.'}{' '}
                       You can still create this organization on the free plan.
                     </AlertDescription>
                   </Alert>
@@ -842,6 +907,31 @@ export default function OrgCreatePage() {
               </Button>
             ) : null}
           </CardFooter>
+
+          {step >= 2 ? (
+            <div className="border-t border-slate-100 px-6 pb-6 pt-4">
+              <div className="flex flex-col items-center gap-3">
+                <Button
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={() => void handleRestorePurchases()}
+                  disabled={isRestoringPurchases || !purchaseAvailability.supported}
+                >
+                  {isRestoringPurchases ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Restore Purchases
+                </Button>
+                <p className="text-center text-xs text-slate-500">
+                  Already purchased on this Apple ID? Restore purchases before starting another
+                  subscription flow.
+                </p>
+                <SubscriptionLegalLinks className="text-xs" />
+              </div>
+            </div>
+          ) : null}
         </Card>
       </div>
 

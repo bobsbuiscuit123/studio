@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { runWithAiAction } from '@/ai/ai-action-context';
+import { getInternalApiUrl } from '@/lib/api-security';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
@@ -42,10 +43,7 @@ export async function POST(request: Request) {
           { status: 400, headers: getRateLimitHeaders(limiter) }
         );
       }
-      const origin =
-        headerList.get('origin') ||
-        `${headerList.get('x-forwarded-proto') || 'http'}://${headerList.get('x-forwarded-host') || 'localhost:3000'}`;
-      const response = await fetch(`${origin}/api/ai/consume`, {
+      const response = await fetch(getInternalApiUrl(request, '/api/ai/consume'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

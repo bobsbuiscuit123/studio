@@ -31,6 +31,7 @@ Then apply `supabase/migrations/20260304_org_billing_quota.sql` for quotas + IAP
 If you already applied an older billing migration, also apply `supabase/patches/20260313_iap_billing.sql`.
 Then apply `supabase/patches/20260328_org_subscription_refactor.sql` for the subscription-to-organization refactor.
 Then apply `supabase/patches/20260329_processed_webhooks_rls.sql` to lock down `processed_webhooks` with RLS.
+Then apply `supabase/patches/20260401_security_hardening.sql` to re-assert RLS and revoke direct access on internal webhook and billing bookkeeping tables.
 
 ## Development
 ```

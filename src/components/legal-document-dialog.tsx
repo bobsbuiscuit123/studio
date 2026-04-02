@@ -195,6 +195,8 @@ export function TermsContent() {
         <p>clubhubai@gmail.com</p>
       </div>
 
+      <p>By using CASPO, you agree to these Terms.</p>
+
       <div className="space-y-2">
         <p className="font-semibold">Standard EULA</p>
         <p>
@@ -210,8 +212,6 @@ export function TermsContent() {
           </a>
         </p>
       </div>
-
-      <p>By using CASPO, you agree to these Terms.</p>
     </>
   );
 }

@@ -61,6 +61,7 @@ export default function ClubsPage() {
   const [groupLogo, setGroupLogo] = useState<string | null>(null);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [createGroupSubmitting, setCreateGroupSubmitting] = useState(false);
   const [createdGroupPrompt, setCreatedGroupPrompt] = useState<{ groupId: string; joinCode: string } | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
@@ -68,6 +69,7 @@ export default function ClubsPage() {
   const [editGroupLogo, setEditGroupLogo] = useState<string | null>(null);
   const createGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const editGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
+  const createGroupSubmitLockRef = useRef(false);
   const [isDeleteOrgOpen, setIsDeleteOrgOpen] = useState(false);
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
   const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
@@ -224,6 +226,7 @@ export default function ClubsPage() {
 
   const handleCreateClub = async () => {
     if (!selectedOrgId) return;
+    if (createGroupSubmitLockRef.current) return;
     if (!groupName.trim()) {
       toast({ title: "Missing name", description: "Enter a group name.", variant: "destructive" });
       return;
@@ -232,42 +235,49 @@ export default function ClubsPage() {
       toast({ title: "Content blocked", description: policyErrorMessage, variant: "destructive" });
       return;
     }
+    createGroupSubmitLockRef.current = true;
+    setCreateGroupSubmitting(true);
     const joinCode = faker.string.alphanumeric(4).toUpperCase();
-    const response = await safeFetchJson<{ ok: boolean; groupId?: string; joinCode?: string; error?: { message?: string } }>(
-      "/api/groups/create",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orgId: selectedOrgId,
-          name: groupName.trim(),
-          description: groupDescription.trim(),
-          joinCode,
-          logo: groupLogo || "",
-        }),
+    try {
+      const response = await safeFetchJson<{ ok: boolean; groupId?: string; joinCode?: string; error?: { message?: string } }>(
+        "/api/groups/create",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            orgId: selectedOrgId,
+            name: groupName.trim(),
+            description: groupDescription.trim(),
+            joinCode,
+            logo: groupLogo || "",
+          }),
+        }
+      );
+      if (!response.ok || !response.data?.ok || !response.data.groupId) {
+        const message =
+          !response.ok
+            ? response.error.message
+            : response.data?.error?.message || "Failed to create group.";
+        toast({ title: "Create failed", description: message, variant: "destructive" });
+        return;
       }
-    );
-    if (!response.ok || !response.data?.ok || !response.data.groupId) {
-      const message =
-        !response.ok
-          ? response.error.message
-          : response.data?.error?.message || "Failed to create group.";
-      toast({ title: "Create failed", description: message, variant: "destructive" });
-      return;
+      setIsCreateDialogOpen(false);
+      setGroupName("");
+      setGroupDescription("");
+      setGroupLogo(null);
+      if (response.data.joinCode) {
+        setCreatedGroupPrompt({
+          groupId: response.data.groupId,
+          joinCode: response.data.joinCode,
+        });
+        return;
+      }
+      setSelectedGroupId(response.data.groupId);
+      router.push("/dashboard");
+    } finally {
+      createGroupSubmitLockRef.current = false;
+      setCreateGroupSubmitting(false);
     }
-    setIsCreateDialogOpen(false);
-    setGroupName("");
-    setGroupDescription("");
-    setGroupLogo(null);
-    if (response.data.joinCode) {
-      setCreatedGroupPrompt({
-        groupId: response.data.groupId,
-        joinCode: response.data.joinCode,
-      });
-      return;
-    }
-    setSelectedGroupId(response.data.groupId);
-    router.push("/dashboard");
   };
 
   const handleEnterClub = (groupId: string) => {
@@ -276,7 +286,7 @@ export default function ClubsPage() {
   };
 
   const canShowCreate = true;
-  const createDisabled = false;
+  const createDisabled = createGroupSubmitting;
 
   const handleBackToOrgs = () => {
     clearSelectedGroupId();
@@ -420,7 +430,13 @@ export default function ClubsPage() {
 
         <div className="space-y-3">
           {canShowCreate && (
-            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <Dialog
+              open={isCreateDialogOpen}
+              onOpenChange={(open) => {
+                if (createGroupSubmitting) return;
+                setIsCreateDialogOpen(open);
+              }}
+            >
               <DialogTrigger asChild>
                 <Button className="w-full" disabled={createDisabled}>
                   <PlusCircle className="mr-2" /> Create Group
@@ -440,7 +456,13 @@ export default function ClubsPage() {
                       height={96}
                       className="rounded-lg aspect-square object-cover border"
                     />
-                    <Button type="button" variant="outline" size="sm" onClick={() => createGroupLogoInputRef.current?.click()}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => createGroupLogoInputRef.current?.click()}
+                      disabled={createGroupSubmitting}
+                    >
                       Change Picture
                     </Button>
                     <Input
@@ -448,20 +470,33 @@ export default function ClubsPage() {
                       type="file"
                       accept="image/*"
                       className="hidden"
+                      disabled={createGroupSubmitting}
                       onChange={handleCreateGroupLogoChange}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="group-name">Group Name</Label>
-                    <Input id="group-name" value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+                    <Input
+                      id="group-name"
+                      value={groupName}
+                      onChange={(e) => setGroupName(e.target.value)}
+                      disabled={createGroupSubmitting}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="group-description">Description</Label>
-                    <Input id="group-description" value={groupDescription} onChange={(e) => setGroupDescription(e.target.value)} />
+                    <Input
+                      id="group-description"
+                      value={groupDescription}
+                      onChange={(e) => setGroupDescription(e.target.value)}
+                      disabled={createGroupSubmitting}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button onClick={handleCreateClub}>Create Group</Button>
+                  <Button onClick={handleCreateClub} disabled={createGroupSubmitting}>
+                    {createGroupSubmitting ? "Creating..." : "Create Group"}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { getSelectedGroupId } from '@/lib/selection';
+import { getSelectedGroupId, syncSelectionCookies } from '@/lib/selection';
 
 type NotificationMap = {
   announcements: boolean;
@@ -130,7 +130,10 @@ export function AppSidebarNav({
           <Link
             key={item.href}
             href={href}
-            onClick={onNavigate}
+            onClick={() => {
+              syncSelectionCookies();
+              onNavigate?.();
+            }}
             className={cn(
               'flex items-center gap-3 rounded-xl px-3 py-3 text-base text-muted-foreground transition-all hover:text-primary sm:rounded-lg sm:py-2 sm:text-sm',
               item.label === 'Assistant' &&

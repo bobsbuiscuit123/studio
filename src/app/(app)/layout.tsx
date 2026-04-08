@@ -14,7 +14,11 @@ import { OfflineCallout } from "@/components/network-status";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { PushNotificationClient } from "@/components/push-notifications";
 import { AppRouteContentBoundary } from "@/components/app-route-content-boundary";
-import { getSelectedGroupId, getSelectedOrgId } from "@/lib/selection";
+import {
+  getSelectedGroupId,
+  getSelectedOrgId,
+  syncSelectionCookies,
+} from "@/lib/selection";
 
 export default function AppLayout({
   children,
@@ -30,7 +34,26 @@ export default function AppLayout({
     pathname.startsWith("/demo/app/messages/");
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleVisibleSelectionSync = () => {
+      if (document.visibilityState === "visible") {
+        syncSelectionCookies();
+      }
+    };
+
+    syncSelectionCookies();
+    window.addEventListener("focus", syncSelectionCookies);
+    document.addEventListener("visibilitychange", handleVisibleSelectionSync);
+
+    return () => {
+      window.removeEventListener("focus", syncSelectionCookies);
+      document.removeEventListener("visibilitychange", handleVisibleSelectionSync);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
+    syncSelectionCookies();
     const orgId = getSelectedOrgId();
     const groupId = getSelectedGroupId();
     if (orgId && !groupId && pathname !== "/clubs") {

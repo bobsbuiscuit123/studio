@@ -18,6 +18,48 @@ const readCookie = (key: string) => {
   return match ? decodeURIComponent(match[1]) : null;
 };
 
+export const syncSelectionCookies = () => {
+  if (typeof window === "undefined") {
+    return { orgId: null, groupId: null };
+  }
+
+  const orgCookieValue = readCookie(ORG_ID_KEY);
+  const storedOrgId = localStorage.getItem(ORG_ID_KEY) || orgCookieValue;
+  if (storedOrgId) {
+    localStorage.setItem(ORG_ID_KEY, storedOrgId);
+    if (orgCookieValue !== storedOrgId) {
+      setCookie(ORG_ID_KEY, storedOrgId, true);
+    }
+  }
+
+  const sessionGroupValue = window.sessionStorage.getItem(GROUP_ID_KEY);
+  const cookieGroupValue = readCookie(GROUP_ID_KEY);
+  const legacyLocalGroupValue = localStorage.getItem(GROUP_ID_KEY);
+
+  if (!sessionGroupValue && legacyLocalGroupValue) {
+    window.sessionStorage.setItem(GROUP_ID_KEY, legacyLocalGroupValue);
+  }
+  if (legacyLocalGroupValue) {
+    localStorage.removeItem(GROUP_ID_KEY);
+  }
+
+  const storedGroupId =
+    window.sessionStorage.getItem(GROUP_ID_KEY) || cookieGroupValue;
+  if (storedGroupId) {
+    if (!window.sessionStorage.getItem(GROUP_ID_KEY)) {
+      window.sessionStorage.setItem(GROUP_ID_KEY, storedGroupId);
+    }
+    if (cookieGroupValue !== storedGroupId) {
+      setCookie(GROUP_ID_KEY, storedGroupId, false);
+    }
+  }
+
+  return {
+    orgId: storedOrgId || null,
+    groupId: storedGroupId || null,
+  };
+};
+
 export const getSelectedOrgId = () => {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ORG_ID_KEY) || readCookie(ORG_ID_KEY);

@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
 import type { NotificationKey } from "@/lib/data-hooks";
+import { syncSelectionCookies } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
@@ -274,7 +275,12 @@ function IconTab({
   return (
     <Link
       href={href}
-      onClick={() => item.notificationKey && onMarkViewed(item.notificationKey)}
+      onClick={() => {
+        syncSelectionCookies();
+        if (item.notificationKey) {
+          onMarkViewed(item.notificationKey);
+        }
+      }}
       className={cn(
         "tab transition-all duration-200 active:scale-95",
         active ? "text-primary" : "text-muted-foreground"

@@ -138,17 +138,10 @@ export function DarkModeAnnouncementDialog() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="rounded-[1.5rem] border border-border/60 bg-card/65 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <p className="text-sm font-medium text-foreground">You stay in control.</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Dark mode only turns on if you choose it. If not, the app stays exactly as it is.
-              </p>
-            </div>
-
             <DialogFooter className="flex-col gap-3 sm:flex-col sm:space-x-0">
               <Button
                 onClick={handleEnableDarkMode}
-                className="h-12 w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-400 to-lime-400 text-slate-950 shadow-[0_16px_32px_rgba(74,222,128,0.28)] hover:from-emerald-300 hover:via-emerald-300 hover:to-lime-300"
+                className="h-12 w-full rounded-2xl bg-emerald-500 text-slate-950 shadow-[0_16px_32px_rgba(74,222,128,0.28)] hover:bg-emerald-400"
               >
                 Enable dark mode
               </Button>

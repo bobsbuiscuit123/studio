@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { rateLimit } from '@/lib/rate-limit';
@@ -16,6 +17,96 @@ const schema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   avatar: avatarSchema.optional(),
 }).strict();
+
+const syncGroupStateMemberProfiles = async ({
+  userId,
+  userEmail,
+  displayName,
+  avatarUrl,
+}: {
+  userId: string;
+  userEmail?: string | null;
+  displayName: string;
+  avatarUrl: string;
+}) => {
+  const admin = createSupabaseAdmin();
+  const normalizedUserEmail = userEmail ? normalizeEmail(userEmail) : '';
+
+  const { data: memberships, error: membershipsError } = await admin
+    .from('group_memberships')
+    .select('org_id, group_id')
+    .eq('user_id', userId);
+
+  if (membershipsError) {
+    throw membershipsError;
+  }
+
+  for (const membership of memberships ?? []) {
+    const orgId = typeof membership.org_id === 'string' ? membership.org_id : '';
+    const groupId = typeof membership.group_id === 'string' ? membership.group_id : '';
+    if (!orgId || !groupId) {
+      continue;
+    }
+
+    const { data: stateRow, error: stateError } = await admin
+      .from('group_state')
+      .select('data')
+      .eq('org_id', orgId)
+      .eq('group_id', groupId)
+      .maybeSingle();
+
+    if (stateError) {
+      throw stateError;
+    }
+
+    const currentData =
+      stateRow?.data && typeof stateRow.data === 'object'
+        ? (stateRow.data as Record<string, unknown>)
+        : null;
+    const currentMembers = Array.isArray(currentData?.members) ? currentData.members : [];
+    let changed = false;
+
+    const nextMembers = currentMembers.map((member) => {
+      if (!member || typeof member !== 'object') {
+        return member;
+      }
+
+      const currentMember = member as Record<string, unknown>;
+      const memberId = typeof currentMember.id === 'string' ? currentMember.id : '';
+      const memberEmail =
+        typeof currentMember.email === 'string' ? normalizeEmail(currentMember.email) : '';
+      const matchesMember =
+        memberId === userId || (normalizedUserEmail.length > 0 && memberEmail === normalizedUserEmail);
+
+      if (!matchesMember) {
+        return member;
+      }
+
+      changed = true;
+      return {
+        ...currentMember,
+        id: userId,
+        email: normalizedUserEmail || currentMember.email,
+        name: displayName,
+        avatar: avatarUrl,
+      };
+    });
+
+    if (!changed || !currentData) {
+      continue;
+    }
+
+    const { error: updateError } = await admin
+      .from('group_state')
+      .update({ data: { ...currentData, members: nextMembers } })
+      .eq('org_id', orgId)
+      .eq('group_id', groupId);
+
+    if (updateError) {
+      throw updateError;
+    }
+  }
+};
 
 export async function PATCH(request: Request) {
   const ipLimiter = rateLimit(`profile-patch:${getRequestIp(request.headers)}`, 30, 60_000);
@@ -88,6 +179,17 @@ export async function PATCH(request: Request) {
       err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
       { status: 500 }
     );
+  }
+
+  try {
+    await syncGroupStateMemberProfiles({
+      userId: user.id,
+      userEmail: user.email,
+      displayName,
+      avatarUrl,
+    });
+  } catch (syncError) {
+    console.error('Failed to sync group member profile snapshots', syncError);
   }
 
   return NextResponse.json({

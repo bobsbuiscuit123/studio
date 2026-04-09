@@ -91,6 +91,68 @@ function getAuthDisplayName(
 
 const normalizeEmailForStorage = (value: string) => value.trim().toLowerCase();
 
+type BrowserSupabaseClient = ReturnType<typeof createSupabaseBrowserClient>;
+
+async function syncBrowserProfileUser(
+  supabase: BrowserSupabaseClient,
+  authUser?: { id?: string; email?: string | null; user_metadata?: Record<string, unknown> | null }
+): Promise<User | null> {
+  if (!authUser?.id || !authUser.email) {
+    return null;
+  }
+
+  const normalizedEmail = normalizeEmailForStorage(authUser.email);
+  const fallbackName = getAuthDisplayName(authUser).trim() || normalizedEmail || 'Member';
+  const fallbackAvatar = getPlaceholderImageUrl({ label: fallbackName.charAt(0) || 'M' });
+
+  try {
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      .from('profiles')
+      .select('display_name, avatar_url')
+      .eq('id', authUser.id)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      throw existingProfileError;
+    }
+
+    const displayName =
+      typeof existingProfile?.display_name === 'string' && existingProfile.display_name.trim().length > 0
+        ? existingProfile.display_name.trim()
+        : fallbackName;
+    const avatar =
+      typeof existingProfile?.avatar_url === 'string' && existingProfile.avatar_url.trim().length > 0
+        ? existingProfile.avatar_url.trim()
+        : fallbackAvatar;
+
+    const { error: upsertError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: authUser.id,
+        email: normalizedEmail,
+        display_name: displayName,
+        avatar_url: avatar,
+      });
+
+    if (upsertError) {
+      throw upsertError;
+    }
+
+    return {
+      name: displayName,
+      email: normalizedEmail,
+      avatar,
+    };
+  } catch (error) {
+    console.error('Failed to sync auth profile user', error);
+    return {
+      name: fallbackName,
+      email: normalizedEmail,
+      avatar: fallbackAvatar,
+    };
+  }
+}
+
 function SignUpForm({
   onUserSaved,
   onSwitchToLogin,
@@ -140,22 +202,13 @@ function SignUpForm({
           onSwitchToLogin();
           return;
         }
-        if (data.user) {
-          await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              email: normalizeEmailForStorage(normalizedEmail),
-              display_name: trimmedName,
-              avatar_url: getPlaceholderImageUrl({ label: trimmedName.charAt(0) || 'M' }),
-            });
-        }
-        const newUser: User = {
+        const newUser =
+          (await syncBrowserProfileUser(supabase, data.user)) ?? {
             name: trimmedName,
             email: normalizedEmail,
             password: '',
-            avatar: getPlaceholderImageUrl({ label: trimmedName.charAt(0) || 'M' })
-        };
+            avatar: getPlaceholderImageUrl({ label: trimmedName.charAt(0) || 'M' }),
+          };
         clearSelectedOrgId();
         clearSelectedGroupId();
         onUserSaved(newUser);
@@ -250,22 +303,13 @@ function LoginForm({
             return;
         }
         const displayName = getAuthDisplayName(data.user);
-        if (data.user) {
-          await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              email: normalizeEmailForStorage(normalizedEmail),
-              display_name: displayName,
-              avatar_url: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
-            });
-        }
-        const user: User = {
+        const user =
+          (await syncBrowserProfileUser(supabase, data.user)) ?? {
             name: displayName,
             email: normalizedEmail,
             password: '',
-            avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) })
-        };
+            avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
+          };
         onLogin(user);
         toast({ title: `Welcome back, ${displayName}!`});
     };
@@ -375,12 +419,10 @@ export default function HomePage() {
       const { data } = await supabase.auth.getSession();
       const sessionUser = data.session?.user;
       if (sessionUser) {
-        const displayName = getAuthDisplayName(sessionUser);
-        setLocalUser({
-          name: displayName,
-          email: sessionUser.email || '',
-          avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
-        });
+        const resolvedUser = await syncBrowserProfileUser(supabase, sessionUser);
+        if (resolvedUser) {
+          setLocalUser(resolvedUser);
+        }
       }
     };
     initAuth();
@@ -390,13 +432,12 @@ export default function HomePage() {
         clearUser();
         return;
       }
-      const sessionUser = session.user;
-      const displayName = getAuthDisplayName(sessionUser);
-      setLocalUser({
-        name: displayName,
-        email: sessionUser.email || '',
-        avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
-      });
+      void (async () => {
+        const resolvedUser = await syncBrowserProfileUser(supabase, session.user);
+        if (resolvedUser) {
+          setLocalUser(resolvedUser);
+        }
+      })();
       }
     );
     return () => {

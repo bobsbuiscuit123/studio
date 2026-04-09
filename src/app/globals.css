@@ -227,10 +227,9 @@ main,
   top: 0;
   z-index: 10;
   flex-shrink: 0;
-  background: hsl(var(--background) / 0.96);
+  background: hsl(var(--background));
   padding-top: 0;
   padding-bottom: 0.5rem;
-  backdrop-filter: blur(14px);
 }
 
 .app-header-inner {

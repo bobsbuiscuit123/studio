@@ -277,7 +277,7 @@ export function AppHeader() {
 
   return (
     <>
-    <header className={`sticky top-0 z-30 border-b border-border/70 bg-background/95 backdrop-blur ${isMessagesRoute ? "hidden md:block" : ""}`}>
+    <header className={`sticky top-0 z-30 border-b border-border/70 bg-background ${isMessagesRoute ? "hidden md:block" : ""}`}>
       <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6">
         <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
           <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">

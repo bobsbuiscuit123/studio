@@ -5,7 +5,7 @@ export const APP_THEME_CHANGE_EVENT = 'caspo-app-theme-change';
 
 const APP_THEME_META_COLORS: Record<AppTheme, string> = {
   light: '#ffffff',
-  dark: '#1b1f1c',
+  dark: '#171c17',
 };
 
 export const resolveAppTheme = (value: unknown): AppTheme =>

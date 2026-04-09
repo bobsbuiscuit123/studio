@@ -619,7 +619,17 @@ main,
 .prose {
     color: black !important;
 }
-h2, h3, h4, h5, h6 {
+
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6,
+.print-slide-page h2,
+.print-slide-page h3,
+.print-slide-page h4,
+.print-slide-page h5,
+.print-slide-page h6 {
     color: black !important;
 }
 

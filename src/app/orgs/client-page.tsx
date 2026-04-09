@@ -131,16 +131,16 @@ export default function OrgsPage() {
   };
 
   return (
-    <div className="viewport-page bg-background text-slate-900">
+    <div className="viewport-page bg-background text-foreground">
       <div className="viewport-scroll relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
         <header className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 shadow-lg">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 shadow-lg dark:bg-emerald-500/15 dark:text-emerald-300">
               <Logo className="h-6 w-6 text-emerald-700" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
-              <h1 className="text-3xl font-semibold">Your organizations</h1>
+              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">CASPO</p>
+              <h1 className="text-3xl font-semibold text-foreground">Your organizations</h1>
             </div>
           </div>
           <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
@@ -149,7 +149,7 @@ export default function OrgsPage() {
         </header>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="rounded-[28px] border-0 bg-white/85 shadow-xl backdrop-blur">
+          <Card className="rounded-[28px] border border-border/70 bg-card/95 shadow-xl backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Create organization</CardTitle>
               <CardDescription>Set up a new organization.</CardDescription>
@@ -161,7 +161,7 @@ export default function OrgsPage() {
             </CardFooter>
           </Card>
 
-          <Card className="rounded-[28px] border border-slate-200 bg-white/75 shadow-lg backdrop-blur">
+          <Card className="rounded-[28px] border border-border/70 bg-card/90 shadow-lg backdrop-blur">
             <CardHeader>
               <CardTitle className="text-xl">Join organization</CardTitle>
               <CardDescription>Already invited? Enter a join code to get started.</CardDescription>
@@ -176,13 +176,13 @@ export default function OrgsPage() {
 
         <section className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">Your organizations</h2>
+            <h2 className="text-xl font-semibold text-foreground">Your organizations</h2>
           </div>
 
           {loading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, idx) => (
-                <Card key={idx} className="rounded-[28px] border border-slate-200 bg-white/80 shadow-sm">
+                <Card key={idx} className="rounded-[28px] border border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="space-y-3">
                     <Skeleton className="h-5 w-32" />
                     <Skeleton className="h-3 w-24" />
@@ -204,7 +204,7 @@ export default function OrgsPage() {
                 const isOwner = org.role === 'owner';
 
                 return (
-                  <Card key={org.id} className="rounded-[28px] border border-slate-200 bg-white/85 shadow-sm">
+                  <Card key={org.id} className="rounded-[28px] border border-border/70 bg-card/95 shadow-sm">
                     <CardHeader>
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -214,27 +214,27 @@ export default function OrgsPage() {
                             <Badge variant={aiBadgeVariant(status)}>{aiBadgeLabel(status)}</Badge>
                           </CardDescription>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-500">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Users className="h-4 w-4" />
                           <span>{status?.activeUsers ?? 0}</span>
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4 text-sm text-slate-600">
-                      <div className="rounded-[24px] bg-slate-50 px-4 py-3">
+                    <CardContent className="space-y-4 text-sm text-muted-foreground">
+                      <div className="rounded-[24px] border border-border/60 bg-secondary/35 px-4 py-3">
                         <div className="flex items-center justify-between">
                           <span>Plan</span>
-                          <span className="font-semibold text-slate-900">{status?.planName ?? 'Free'}</span>
+                          <span className="font-semibold text-foreground">{status?.planName ?? 'Free'}</span>
                         </div>
                         <div className="mt-2 flex items-center justify-between">
                           <span>Monthly allowance</span>
-                          <span className="font-semibold text-slate-900">
+                          <span className="font-semibold text-foreground">
                             {(status?.monthlyTokenLimit ?? 0).toLocaleString()} tokens
                           </span>
                         </div>
                       </div>
                       {isOwner && status && status.ownerHasActiveSubscription && !status.isSubscribedOrg ? (
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-muted-foreground">
                           This account's paid subscription is assigned to another organization.
                         </p>
                       ) : null}
@@ -259,14 +259,14 @@ export default function OrgsPage() {
               })}
             </div>
           ) : (
-            <Card className="rounded-[28px] border border-dashed border-slate-200 bg-white/75 shadow-sm">
+            <Card className="rounded-[28px] border border-dashed border-border/70 bg-card/90 shadow-sm">
               <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
                   <Users className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-base font-medium text-slate-900">No organizations yet</p>
-                  <p className="text-sm text-slate-600">Create a new workspace or join with a code to get started.</p>
+                  <p className="text-base font-medium text-foreground">No organizations yet</p>
+                  <p className="text-sm text-muted-foreground">Create a new workspace or join with a code to get started.</p>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={() => router.push('/orgs/create')} className="rounded-2xl">

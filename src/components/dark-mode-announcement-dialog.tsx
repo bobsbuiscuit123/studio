@@ -47,7 +47,7 @@ const isEligibleAppPath = (pathname: string) => {
 export function DarkModeAnnouncementDialog() {
   const pathname = usePathname();
   const { user, loading } = useCurrentUser();
-  const { isDarkMode, setTheme } = useAppTheme();
+  const { setTheme } = useAppTheme();
   const [isOpen, setIsOpen] = useState(false);
 
   const announcementKey = useMemo(
@@ -91,14 +91,8 @@ export function DarkModeAnnouncementDialog() {
       // Fall through and show the dialog if storage cannot be read.
     }
 
-    if (isDarkMode) {
-      markSeen();
-      setIsOpen(false);
-      return;
-    }
-
     setIsOpen(true);
-  }, [announcementKey, isDarkMode, loading, pathname, user?.email]);
+  }, [announcementKey, loading, pathname, user?.email]);
 
   const handleClose = () => {
     markSeen();

@@ -115,8 +115,13 @@ export async function safeFetchJson<T>(
           ? 'Server error. Please try again.'
           : 'Request failed. Please try again.';
         try {
-          const parsed = JSON.parse(bodyText) as { error?: { message?: string }; message?: string };
-          if (parsed?.error?.message) {
+          const parsed = JSON.parse(bodyText) as {
+            error?: { message?: string } | string;
+            message?: string;
+          };
+          if (typeof parsed?.error === 'string' && parsed.error) {
+            message = parsed.error;
+          } else if (parsed?.error && typeof parsed.error === 'object' && parsed.error.message) {
             message = parsed.error.message;
           } else if (parsed?.message) {
             message = parsed.message;

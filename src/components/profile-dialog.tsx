@@ -15,13 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +25,7 @@ import {
   getSubscriptionPurchaseAvailability,
   restoreRevenueCatPurchases,
 } from "@/lib/revenuecat-subscriptions";
+import { DeleteAccountAction } from "@/components/delete-account-action";
 
 type ProfileDialogProps = {
   isOpen: boolean;
@@ -41,25 +35,6 @@ type ProfileDialogProps = {
   onDeleted: () => Promise<void> | void;
   onLogout?: () => Promise<void> | void;
   mode?: 'live' | 'demo';
-};
-
-type AdminMember = {
-  userId: string;
-  email: string;
-  name: string;
-  role: 'Admin' | 'Officer' | 'Member';
-};
-
-type AdminGroup = {
-  groupId: string;
-  groupName: string;
-  members: AdminMember[];
-};
-
-type PlanItem = {
-  groupId: string;
-  action: 'transfer' | 'delete';
-  newAdminUserId?: string;
 };
 
 const AVATAR_MAX_DIMENSION = 512;
@@ -139,14 +114,8 @@ export function ProfileDialog({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(
     user?.avatar || null
   );
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [confirmDeleteFinalOpen, setConfirmDeleteFinalOpen] = useState(false);
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
   const [legalDialog, setLegalDialog] = useState<"terms" | "privacy" | null>(null);
-  const [adminGroups, setAdminGroups] = useState<AdminGroup[]>([]);
-  const [deletePlans, setDeletePlans] = useState<Record<string, PlanItem>>({});
-  const [planDialogOpen, setPlanDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -271,103 +240,10 @@ export function ProfileDialog({
     onOpenChange(false);
   };
 
-  const handleDeleteConfirm = async () => {
-    setConfirmDeleteFinalOpen(false);
-    setConfirmDeleteOpen(false);
-    if (mode === 'demo') {
-      await onDeleted();
-      return;
-    }
-    setIsDeleting(true);
-    const check = await safeFetchJson<{ ok: boolean; adminGroups?: AdminGroup[]; error?: string }>(
-      '/api/auth/delete/check',
-      { method: 'POST' }
-    );
-    if (!check.ok || !check.data?.ok) {
-      const message =
-        !check.ok ? check.error.message : check.data?.error || 'Delete check failed.';
-      toast({ title: 'Delete failed', description: message, variant: 'destructive' });
-      setIsDeleting(false);
-      return;
-    }
-    const groups = check.data.adminGroups || [];
-    if (groups.length === 0) {
-      const deleted = await safeFetchJson<{ ok: boolean; error?: string }>(
-        '/api/auth/delete',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ plans: [] }),
-        }
-      );
-      if (!deleted.ok || !deleted.data?.ok) {
-        const message =
-          !deleted.ok ? deleted.error.message : deleted.data?.error || 'Delete failed.';
-        toast({ title: 'Delete failed', description: message, variant: 'destructive' });
-        setIsDeleting(false);
-        return;
-      }
-      setIsDeleting(false);
-      await onDeleted();
-      return;
-    }
-    setAdminGroups(groups);
-    setDeletePlans({});
-    setPlanDialogOpen(true);
-    setIsDeleting(false);
-  };
-
-  const updatePlan = (groupId: string, next: Partial<PlanItem>) => {
-    setDeletePlans((prev) => ({
-      ...prev,
-      [groupId]: {
-        ...(prev[groupId] ?? { groupId, action: 'transfer' }),
-        ...next,
-      },
-    }));
-  };
-
   const handleLogoutConfirm = async () => {
     setConfirmLogoutOpen(false);
     onOpenChange(false);
     await onLogout?.();
-  };
-
-  const handlePlanSubmit = async () => {
-    const plans = adminGroups.map((group) => deletePlans[group.groupId]).filter(Boolean) as PlanItem[];
-    const allReady = adminGroups.every((group) => {
-      const plan = deletePlans[group.groupId];
-      if (!plan) return false;
-      if (plan.action === 'delete') return true;
-      return Boolean(plan.newAdminUserId);
-    });
-    if (!allReady) {
-      toast({
-        title: 'Select an action',
-        description: 'Choose a transfer target or delete the group for each admin group.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    setIsDeleting(true);
-    const deleted = await safeFetchJson<{ ok: boolean; error?: string }>(
-      '/api/auth/delete',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plans }),
-      }
-    );
-    if (!deleted.ok || !deleted.data?.ok) {
-      const message =
-        !deleted.ok ? deleted.error.message : deleted.data?.error || 'Delete failed.';
-      toast({ title: 'Delete failed', description: message, variant: 'destructive' });
-      setIsDeleting(false);
-      return;
-    }
-    setIsDeleting(false);
-    setPlanDialogOpen(false);
-    await onDeleted();
   };
 
   return (
@@ -475,13 +351,15 @@ export function ProfileDialog({
                   Log Out
                 </Button>
               ) : null}
-              <Button
-                variant="destructive"
-                onClick={() => setConfirmDeleteOpen(true)}
+              <DeleteAccountAction
+                mode={mode}
+                userEmail={email || user?.email || null}
+                onDeleted={async () => {
+                  onOpenChange(false);
+                  await onDeleted();
+                }}
                 className="sm:mt-2"
-              >
-                Delete Account
-              </Button>
+              />
             </div>
             <div className="flex gap-2 sm:justify-end">
               <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -489,28 +367,6 @@ export function ProfileDialog({
               </Button>
                <Button onClick={handleSave} disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</Button>
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete account?</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete your account?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={() => {
-              setConfirmDeleteOpen(false);
-              setConfirmDeleteFinalOpen(true);
-            }}>
-              Yes
-            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -529,90 +385,6 @@ export function ProfileDialog({
             </Button>
             <Button variant="destructive" onClick={handleLogoutConfirm}>
               Log Out
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={confirmDeleteFinalOpen} onOpenChange={setConfirmDeleteFinalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm deletion</DialogTitle>
-            <DialogDescription>
-              This action is permanent. Delete your account?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setConfirmDeleteFinalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>
-              Yes, delete account
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Admin ownership required</DialogTitle>
-            <DialogDescription>
-              You are the admin of one or more groups. Transfer admin to someone else or delete
-              the group before deleting your account.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            {adminGroups.map((group) => {
-              const plan = deletePlans[group.groupId];
-              return (
-                <div key={group.groupId} className="rounded-md border p-3 space-y-3">
-                  <div className="font-medium">{group.groupName}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant={plan?.action === 'transfer' ? 'secondary' : 'outline'}
-                      onClick={() => updatePlan(group.groupId, { action: 'transfer' })}
-                    >
-                      Transfer admin
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={plan?.action === 'delete' ? 'destructive' : 'outline'}
-                      onClick={() => updatePlan(group.groupId, { action: 'delete', newAdminUserId: undefined })}
-                    >
-                      Delete group
-                    </Button>
-                  </div>
-                  {plan?.action === 'transfer' && (
-                    <Select
-                      value={plan.newAdminUserId || ''}
-                      onValueChange={(value) => updatePlan(group.groupId, { newAdminUserId: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select new admin" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {group.members
-                          .filter((member) => member.email !== user?.email)
-                          .map((member) => (
-                            <SelectItem key={member.userId} value={member.userId}>
-                              {member.name} ({member.email})
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPlanDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handlePlanSubmit} disabled={isDeleting}>
-              Continue
             </Button>
           </DialogFooter>
         </DialogContent>

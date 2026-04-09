@@ -16,7 +16,9 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { DeleteAccountAction } from '@/components/delete-account-action';
 import { useToast } from '@/hooks/use-toast';
+import { useCurrentUser } from '@/lib/data-hooks';
 import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { OrgSubscriptionStatus } from '@/lib/org-subscription';
@@ -44,6 +46,7 @@ export default function OrgsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user, clearUser } = useCurrentUser();
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgSubscriptionStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -130,6 +133,17 @@ export default function OrgsPage() {
     router.replace('/login');
   };
 
+  const handleAccountDeleted = async () => {
+    clearUser();
+    clearSelectedOrgId();
+    clearSelectedGroupId();
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.warn('Failed to sign out after account deletion', error);
+    }
+    router.replace('/login');
+  };
+
   return (
     <div className="viewport-page bg-background text-slate-900">
       <div className="viewport-scroll relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
@@ -143,9 +157,22 @@ export default function OrgsPage() {
               <h1 className="text-3xl font-semibold">Your organizations</h1>
             </div>
           </div>
-          <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
-            {signOutSubmitting ? 'Switching...' : 'Switch account'}
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button
+              variant="outline"
+              onClick={handleSwitchAccount}
+              disabled={signOutSubmitting}
+              className="rounded-2xl"
+            >
+              {signOutSubmitting ? 'Switching...' : 'Switch account'}
+            </Button>
+            <DeleteAccountAction
+              userEmail={user?.email ?? null}
+              onDeleted={handleAccountDeleted}
+              className="rounded-2xl"
+              disabled={signOutSubmitting}
+            />
+          </div>
         </header>
 
         <div className="grid gap-6 md:grid-cols-2">

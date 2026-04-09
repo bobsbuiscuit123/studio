@@ -36,11 +36,15 @@ import { safeFetchJson } from '@/lib/network';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 import { LegalDocumentDialog } from '@/components/legal-document-dialog';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { normalizeAuthEmail, SIGNUP_PASSWORD_MIN_LENGTH } from '@/lib/auth-signup';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
     email: z.string().email("Please enter a valid email address."),
-    password: z.string().min(6, "Password must be at least 6 characters."),
+    password: z.string().min(
+      SIGNUP_PASSWORD_MIN_LENGTH,
+      `Password must be at least ${SIGNUP_PASSWORD_MIN_LENGTH} characters.`
+    ),
     confirmPassword: z.string(),
 }).refine(data => data.password === data.confirmPassword, {
     message: "Passwords do not match",
@@ -104,14 +108,16 @@ function SignUpForm({
     const [legalDialog, setLegalDialog] = useState<'terms' | 'privacy' | null>(null);
 
     const handleSaveUser = async (values: z.infer<typeof userFormSchema>) => {
+        const trimmedName = values.name.trim();
+        const normalizedEmail = normalizeAuthEmail(values.email);
         const signupResponse = await safeFetchJson<{ ok: boolean; userId?: string; error?: string }>(
           '/api/auth/signup',
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              name: values.name,
-              email: values.email,
+              name: trimmedName,
+              email: normalizedEmail,
               password: values.password,
             }),
           }
@@ -126,7 +132,7 @@ function SignUpForm({
         }
 
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: values.email,
+          email: normalizedEmail,
           password: values.password,
         });
         if (error) {
@@ -139,21 +145,21 @@ function SignUpForm({
             .from('profiles')
             .upsert({
               id: data.user.id,
-              email: normalizeEmailForStorage(values.email),
-              display_name: values.name,
-              avatar_url: getPlaceholderImageUrl({ label: values.name.charAt(0) }),
+              email: normalizeEmailForStorage(normalizedEmail),
+              display_name: trimmedName,
+              avatar_url: getPlaceholderImageUrl({ label: trimmedName.charAt(0) || 'M' }),
             });
         }
         const newUser: User = {
-            name: values.name,
-            email: values.email,
+            name: trimmedName,
+            email: normalizedEmail,
             password: '',
-            avatar: getPlaceholderImageUrl({ label: values.name.charAt(0) })
+            avatar: getPlaceholderImageUrl({ label: trimmedName.charAt(0) || 'M' })
         };
         clearSelectedOrgId();
         clearSelectedGroupId();
         onUserSaved(newUser);
-        toast({ title: `Welcome, ${values.name}!` });
+        toast({ title: `Welcome, ${trimmedName}!` });
     };
     
     return (
@@ -172,7 +178,14 @@ function SignUpForm({
                     </div>
                     <div>
                        <Label htmlFor="email-signup">Email Address</Label>
-                       <Input id="email-signup" {...form.register('email')} placeholder="e.g., alex.j@example.com" />
+                       <Input
+                         id="email-signup"
+                         {...form.register('email')}
+                         placeholder="e.g., alex.j@example.com"
+                         autoCapitalize="none"
+                         autoCorrect="off"
+                         spellCheck={false}
+                       />
                         {form.formState.errors.email && <p className="text-red-500 text-sm mt-1">{form.formState.errors.email.message}</p>}
                     </div>
                     <div>
@@ -227,8 +240,9 @@ function LoginForm({
     const { toast } = useToast();
 
      const handleLogin = async (values: z.infer<typeof loginFormSchema>) => {
+        const normalizedEmail = normalizeAuthEmail(values.email);
         const { data, error } = await supabase.auth.signInWithPassword({
-            email: values.email,
+            email: normalizedEmail,
             password: values.password,
         });
         if (error) {
@@ -241,14 +255,14 @@ function LoginForm({
             .from('profiles')
             .upsert({
               id: data.user.id,
-              email: normalizeEmailForStorage(values.email),
+              email: normalizeEmailForStorage(normalizedEmail),
               display_name: displayName,
               avatar_url: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
             });
         }
         const user: User = {
             name: displayName,
-            email: values.email,
+            email: normalizedEmail,
             password: '',
             avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) })
         };
@@ -268,7 +282,13 @@ function LoginForm({
                 <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-3.5">
                     <div>
                         <Label htmlFor="email-login">Email</Label>
-                        <Input id="email-login" {...loginForm.register('email')} />
+                        <Input
+                          id="email-login"
+                          {...loginForm.register('email')}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          spellCheck={false}
+                        />
                         {loginForm.formState.errors.email && <p className="text-red-500 text-sm mt-1">{loginForm.formState.errors.email.message}</p>}
                     </div>
                     <div>

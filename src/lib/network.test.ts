@@ -105,4 +105,28 @@ describe('safeFetchJson', () => {
       Intl.DateTimeFormat = originalDateTimeFormat;
     }
   });
+
+  it('reads string error payloads from non-2xx responses', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    globalThis.fetch = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: false, error: 'Email already in use.' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await safeFetchJson('https://example.com');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('Email already in use.');
+    }
+  });
 });

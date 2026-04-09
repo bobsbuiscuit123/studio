@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/icons";
+import { SIGNUP_PASSWORD_MIN_LENGTH } from "@/lib/auth-signup";
 
 export default function ResetPasswordPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -51,10 +52,10 @@ export default function ResetPasswordPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (password.length < 6) {
+    if (password.length < SIGNUP_PASSWORD_MIN_LENGTH) {
       toast({
         title: "Password too short",
-        description: "Password must be at least 6 characters.",
+        description: `Password must be at least ${SIGNUP_PASSWORD_MIN_LENGTH} characters.`,
         variant: "destructive",
       });
       return;

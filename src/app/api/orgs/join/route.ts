@@ -6,6 +6,7 @@ import { parseOptionalPositiveInt } from '@/lib/org-settings';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
+import { normalizeJoinCode } from '@/lib/join-code';
 
 export async function POST(request: Request) {
   try {
@@ -28,10 +29,18 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const schema = z.object({
-      joinCode: z.string().min(3),
+      joinCode: z.string().min(1),
     }).strict();
     const parsed = schema.safeParse(body);
     if (!parsed.success) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'Invalid join code.', source: 'app' }),
+        { status: 400, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
+    const joinCode = normalizeJoinCode(parsed.data.joinCode);
+    if (joinCode.length < 3) {
       return NextResponse.json(
         err({ code: 'VALIDATION', message: 'Invalid join code.', source: 'app' }),
         { status: 400, headers: getRateLimitHeaders(limiter) }
@@ -60,7 +69,6 @@ export async function POST(request: Request) {
     }
 
     const admin = createSupabaseAdmin();
-    const joinCode = parsed.data.joinCode.toUpperCase();
     const { data: orgRow } = await admin
       .from('orgs')
       .select('*')
@@ -130,10 +138,13 @@ export async function POST(request: Request) {
       { headers: getRateLimitHeaders(limiter) }
     );
   } catch (error) {
-    const message =
+    const rawMessage =
       error && typeof error === 'object' && 'message' in error
         ? String((error as { message?: string }).message)
         : 'Join failed.';
+    const message = /missing supabase admin env vars/i.test(rawMessage)
+      ? 'Joining organizations is temporarily unavailable. Please try again later.'
+      : rawMessage;
     return NextResponse.json(
       err({ code: 'NETWORK_HTTP_ERROR', message, source: 'network' }),
       { status: 500 }

@@ -11,6 +11,7 @@ import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
 import { UpgradePlanDialog } from '@/components/orgs/upgrade-plan-dialog';
 import { Logo } from '@/components/icons';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { normalizeJoinCode } from '@/lib/join-code';
 
 export default function OrgJoinPage() {
   const router = useRouter();
@@ -19,7 +20,14 @@ export default function OrgJoinPage() {
   const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
-  const joinViaRpc = async (normalizedCode: string) => {
+  const completeJoin = (orgId: string) => {
+    setSelectedOrgId(orgId);
+    clearSelectedGroupId();
+    router.push('/clubs');
+  };
+
+  const joinViaRpc = async (value: string) => {
+    const normalizedCode = normalizeJoinCode(value);
     const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase.rpc('join_org', { p_join_code: normalizedCode });
     if (error) {
@@ -32,7 +40,7 @@ export default function OrgJoinPage() {
   };
 
   const handleJoinOrg = async () => {
-    const normalized = joinCode.trim().toUpperCase();
+    const normalized = normalizeJoinCode(joinCode);
     if (!normalized) {
       toast({ title: 'Missing code', description: 'Enter a join code.', variant: 'destructive' });
       return;
@@ -50,6 +58,16 @@ export default function OrgJoinPage() {
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {
+        const shouldRetryViaRpc =
+          response.status === 401 ||
+          result?.error?.message === 'Unauthorized.';
+        if (shouldRetryViaRpc) {
+          const fallback = await joinViaRpc(normalized);
+          if (fallback.ok) {
+            completeJoin(fallback.orgId);
+            return;
+          }
+        }
         const isFull = result?.error?.code === 'ORG_FULL';
         if (isFull) setUpgradeOpen(true);
         toast({
@@ -69,15 +87,11 @@ export default function OrgJoinPage() {
         });
         return;
       }
-      setSelectedOrgId(result.orgId);
-      clearSelectedGroupId();
-      router.push('/clubs');
+      completeJoin(result.orgId);
     } catch (error) {
       const fallback = await joinViaRpc(normalized);
       if (fallback.ok) {
-        setSelectedOrgId(fallback.orgId);
-        clearSelectedGroupId();
-        router.push('/clubs');
+        completeJoin(fallback.orgId);
         return;
       }
       const message =
@@ -124,9 +138,12 @@ export default function OrgJoinPage() {
               <Input
                 id="join-code"
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
+                onChange={(e) => setJoinCode(normalizeJoinCode(e.target.value))}
                 placeholder="ABCD"
                 maxLength={8}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
               />
               <p className="text-xs text-slate-500">Letters and numbers only.</p>
             </div>

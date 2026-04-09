@@ -47,6 +47,7 @@ import { Member } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId } from "@/lib/selection";
 import { displayGroupRole, type GroupRole } from "@/lib/group-permissions";
+import { normalizeMessageActor } from "@/lib/message-state";
 
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId, orgId } = useMembers();
@@ -211,8 +212,13 @@ export default function MembersPage() {
     router.refresh();
   };
   
-  const handleMessageClick = () => {
-    router.push('/messages');
+  const handleMessageClick = (memberEmail: string) => {
+    const normalizedEmail = normalizeMessageActor(memberEmail);
+    if (!normalizedEmail) {
+      return;
+    }
+
+    router.push(`/messages/dm__${encodeURIComponent(normalizedEmail)}`);
   }
 
   return (
@@ -274,7 +280,7 @@ export default function MembersPage() {
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
                    {member.email !== user?.email && (
-                     <Button variant="outline" className="w-full" onClick={handleMessageClick}>
+                     <Button variant="outline" className="w-full" onClick={() => handleMessageClick(member.email)}>
                         <MessageSquare className="mr-2" /> Message
                      </Button>
                    )}

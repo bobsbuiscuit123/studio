@@ -691,7 +691,7 @@ const collectMessagePushJobs = async ({
         actorId
       );
       if (recipientIds.length === 0) continue;
-      const threadId = `dm__${encodeURIComponent(recipientEmail)}`;
+      const threadId = `dm__${encodeURIComponent(sender)}`;
       jobs.push({
         userIds: recipientIds,
         title: 'New message',

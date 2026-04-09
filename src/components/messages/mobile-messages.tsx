@@ -329,7 +329,7 @@ export function MessagesListScreen() {
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold">Messages</h2>
+          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Loading messages...</div>
@@ -342,7 +342,7 @@ export function MessagesListScreen() {
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold">Messages</h2>
+          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
@@ -355,7 +355,7 @@ export function MessagesListScreen() {
     <div className="messages-screen messages-list-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
       <div className="header tab-page-header page-header-safe-inset relative space-y-3 px-4">
         <div className="flex items-center justify-between">
-          <h2 className="w-full text-center text-xl font-semibold">Messages</h2>
+          <h2 className="w-full text-center text-xl font-semibold text-foreground">Messages</h2>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-11 w-11 rounded-2xl">
@@ -731,7 +731,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold">Messages</h2>
+          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Loading conversation...</div>
@@ -744,7 +744,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold">Messages</h2>
+          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
         </div>
         <div className="tab-page-content px-4">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
@@ -781,7 +781,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
           isGroup={conversation.type === "group"}
         />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-semibold">{title}</p>
+          <p className="truncate text-base font-semibold text-foreground">{title}</p>
         </div>
       </div>
 

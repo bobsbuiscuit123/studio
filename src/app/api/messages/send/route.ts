@@ -263,7 +263,7 @@ export async function POST(request: Request) {
       );
     }
     if (recipientIds.length > 0) {
-      const threadId = `dm__${encodeURIComponent(partnerEmail)}`;
+      const threadId = `dm__${encodeURIComponent(normalizedActorEmail)}`;
       pushJob = {
         userIds: recipientIds,
         title: 'New message',

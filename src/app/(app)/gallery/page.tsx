@@ -403,7 +403,7 @@ export default function GalleryPage() {
       </Card>
       
       <div>
-        <h2 className="text-2xl font-bold mb-4">Group Gallery</h2>
+        <h2 className="mb-4 text-2xl font-bold text-foreground">Group Gallery</h2>
         {loading ? (
           <p>Loading gallery...</p>
         ) : error && visibleImages.length === 0 ? (

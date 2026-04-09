@@ -66,6 +66,8 @@ const messageFormSchema = z.object({
   text: z.string().min(1, "Message cannot be empty").max(500, "Message too long"),
 });
 
+const MESSAGE_SEND_THROTTLE_MS = 500;
+
 type MessageAuditEnvelope = {
   conversationType: "dm" | "group";
   conversationKey?: string;
@@ -124,14 +126,12 @@ const dispatchGroupStateSync = (orgId: string, groupId: string) => {
 function useLiveGroupStateMessages({
   orgId,
   groupId,
-  refreshMessages,
-  refreshGroupChats,
+  refreshState,
   onRealtimeMessage,
 }: {
   orgId?: string | null;
   groupId?: string | null;
-  refreshMessages: () => Promise<boolean>;
-  refreshGroupChats: () => Promise<boolean>;
+  refreshState: () => Promise<boolean>;
   onRealtimeMessage?: (envelope: MessageAuditEnvelope) => boolean;
 }) {
   useEffect(() => {
@@ -149,8 +149,7 @@ function useLiveGroupStateMessages({
       }
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
-        void refreshMessages();
-        void refreshGroupChats();
+        void refreshState();
       }, 40);
     };
 
@@ -205,7 +204,7 @@ function useLiveGroupStateMessages({
       }
       removeChannel?.();
     };
-  }, [groupId, onRealtimeMessage, orgId, refreshGroupChats, refreshMessages]);
+  }, [groupId, onRealtimeMessage, orgId, refreshState]);
 }
 
 export function MessagesListScreen() {
@@ -234,6 +233,16 @@ export function MessagesListScreen() {
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
+  const refreshConversationState = useCallback(
+    async () => {
+      const refreshed = await refreshMessages();
+      if (refreshed) {
+        return true;
+      }
+      return refreshGroupChats();
+    },
+    [refreshGroupChats, refreshMessages]
+  );
 
   const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
     if (envelope.conversationType === "dm" && envelope.conversationKey) {
@@ -258,10 +267,13 @@ export function MessagesListScreen() {
   useLiveGroupStateMessages({
     orgId,
     groupId: clubId,
-    refreshMessages,
-    refreshGroupChats,
+    refreshState: refreshConversationState,
     onRealtimeMessage: handleRealtimeMessage,
   });
+
+  useEffect(() => {
+    void refreshConversationState();
+  }, [refreshConversationState]);
 
   const newGroupForm = useForm<z.infer<typeof newGroupFormSchema>>({
     resolver: zodResolver(newGroupFormSchema),
@@ -271,11 +283,10 @@ export function MessagesListScreen() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void refreshMessages();
-      void refreshGroupChats();
+      void refreshConversationState();
     }, 5000);
     return () => window.clearInterval(interval);
-  }, [refreshGroupChats, refreshMessages]);
+  }, [refreshConversationState]);
 
   const conversationSummaries = useMemo(
     () =>
@@ -498,6 +509,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
+  const refreshConversationState = useCallback(
+    async () => {
+      const refreshed = await refreshMessages();
+      if (refreshed) {
+        return true;
+      }
+      return refreshGroupChats();
+    },
+    [refreshGroupChats, refreshMessages]
+  );
 
   const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
     if (envelope.conversationType === "dm" && envelope.conversationKey) {
@@ -522,10 +543,13 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   useLiveGroupStateMessages({
     orgId,
     groupId: clubId,
-    refreshMessages,
-    refreshGroupChats,
+    refreshState: refreshConversationState,
     onRealtimeMessage: handleRealtimeMessage,
   });
+
+  useEffect(() => {
+    void refreshConversationState();
+  }, [refreshConversationState]);
 
   const conversation = useMemo(
     () => resolveConversationFromRoute(conversationId, safeMembers, safeGroupChats),
@@ -587,17 +611,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   useEffect(() => {
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void refreshMessages();
-      void refreshGroupChats();
+      void refreshConversationState();
     }, 5000);
     return () => window.clearInterval(interval);
-  }, [refreshGroupChats, refreshMessages]);
+  }, [refreshConversationState]);
 
   const handleSendMessage = async (values: z.infer<typeof messageFormSchema>) => {
     if (!user || !conversation) return;
     if (isSending) return;
     const now = Date.now();
-    if (now - lastMessageAt < 1500) {
+    if (now - lastMessageAt < MESSAGE_SEND_THROTTLE_MS) {
       toast({ title: "Slow down", description: "Please wait a moment before sending another message." });
       return;
     }
@@ -640,6 +663,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
               orgId: selectedOrgId,
               groupId: selectedGroupId,
               conversationType: "dm",
+              clientTimestamp: newMessage.timestamp,
               partnerEmail: conversation.partner.email,
               text: values.text,
             }
@@ -648,6 +672,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
               groupId: selectedGroupId,
               conversationType: "group",
               chatId: conversation.chat.id,
+              clientTimestamp: newMessage.timestamp,
               text: values.text,
             }
       ),
@@ -691,6 +716,15 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       });
       return;
     }
+
+    const savedMessage = normalizeMessage(response.data?.data?.message) ?? newMessage;
+    if (conversation.type === "dm") {
+      const conversationKey = getConversationId(user.email, conversation.partner.email);
+      setLocalMessages(prev => upsertConversationMessage(prev, conversationKey, savedMessage));
+    } else {
+      setLocalGroupChats(prev => upsertGroupChatMessage(prev, conversation.chat.id, savedMessage));
+    }
+    dispatchGroupStateSync(selectedOrgId, selectedGroupId);
   };
 
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
@@ -785,7 +819,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         )}
       </div>
 
-      <div className="header shrink-0 border-t bg-background px-4 py-3">
+      <div className="header shrink-0 border-t bg-background px-4 pt-3 pb-[calc(0.85rem+var(--safe-area-bottom-runtime))]">
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
           <Input
             {...messageForm.register("text")}
@@ -831,6 +865,29 @@ function ConversationAvatar({
   );
 }
 
+function getConversationPreviewText(
+  conversation: Conversation,
+  lastMessage: Message | undefined,
+  members: Member[],
+  currentUserEmail: string
+) {
+  if (!lastMessage) {
+    return conversation.type === "group" ? "Group chat" : "Tap to start chatting";
+  }
+
+  const isMine = isMessageFromActor(lastMessage, currentUserEmail);
+  if (conversation.type === "dm") {
+    return isMine ? `You: ${lastMessage.text}` : lastMessage.text;
+  }
+
+  const senderName = isMine
+    ? "You"
+    : members.find(member => member.email === normalizeMessageActor(lastMessage.sender))?.name ||
+      lastMessage.sender;
+
+  return `${senderName}: ${lastMessage.text}`;
+}
+
 function buildConversationSummaries({
   members,
   groupChats,
@@ -858,7 +915,7 @@ function buildConversationSummaries({
         id: getRouteConversationId(conversation),
         href: getConversationHref(conversation),
         name,
-        subtitle: lastMessage?.text || (conversation.type === "group" ? "Group chat" : "Tap to start chatting"),
+        subtitle: getConversationPreviewText(conversation, lastMessage, members, currentUserEmail),
         timestampLabel: lastMessage ? formatTimestamp(lastMessage.timestamp) : "",
         lastTimestamp: getMessageTimestampMs(lastMessage),
         unread: messages.some(

@@ -9,6 +9,8 @@ import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subs
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 const creationModes = [
   'free',
   'purchase',

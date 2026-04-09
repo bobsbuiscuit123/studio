@@ -14,6 +14,8 @@ import {
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 const listSchema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),

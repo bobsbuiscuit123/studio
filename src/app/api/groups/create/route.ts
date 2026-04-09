@@ -10,6 +10,8 @@ import { getDefaultOrgState } from '@/lib/org-state';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { displayGroupRole } from '@/lib/group-permissions';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =

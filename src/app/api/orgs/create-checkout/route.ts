@@ -8,6 +8,8 @@ import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 const bodySchema = z.object({
   draftId: z.string().uuid(),
 }).strict();

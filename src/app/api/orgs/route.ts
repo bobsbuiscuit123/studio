@@ -6,6 +6,8 @@ import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   const ipLimiter = rateLimit(`orgs-list:${getRequestIp(request.headers)}`, 60, 60_000);
   if (!ipLimiter.allowed) {

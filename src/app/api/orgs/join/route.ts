@@ -8,6 +8,8 @@ import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { normalizeJoinCode } from '@/lib/join-code';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const headerList = await headers();

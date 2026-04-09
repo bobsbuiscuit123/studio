@@ -7,6 +7,8 @@ import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: Request) {
   const headerList = await headers();
   const ip =

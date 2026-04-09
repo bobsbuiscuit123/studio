@@ -8,6 +8,8 @@ import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
 import { sendPushToUsers } from '@/lib/send-push';
 
+export const dynamic = 'force-dynamic';
+
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const stableSerialize = (value: unknown): string => {
   if (Array.isArray(value)) {

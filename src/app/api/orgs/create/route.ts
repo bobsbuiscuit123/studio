@@ -9,6 +9,8 @@ import { err } from '@/lib/result';
 import { getPlanById } from '@/lib/pricing';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 
+export const dynamic = 'force-dynamic';
+
 const creationModes = [
   'free',
   'purchase',

@@ -11,6 +11,8 @@ import {
   updateGroupStateMemberRole,
 } from '@/lib/group-permissions';
 
+export const dynamic = 'force-dynamic';
+
 const schema = z.object({
   orgId: z.string().uuid(),
   groupId: z.string().uuid(),

@@ -13,6 +13,8 @@ import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/li
 import {
     isMessageFromActor,
     markMessageReadByActor,
+    mergeGroupChatLists,
+    mergeMessageMaps,
     messageIncludesReader,
     normalizeGroupChats,
     normalizeMessageMap,
@@ -149,6 +151,18 @@ const normalizeClubData = (data: ClubData): ClubData => {
     return normalized;
 };
 
+const reconcileClubData = (currentData: ClubData | null | undefined, incomingData: ClubData): ClubData => {
+    const current = normalizeClubData(currentData ?? getDefaultClubData());
+    const incoming = normalizeClubData(incomingData);
+
+    return {
+        ...current,
+        ...incoming,
+        messages: mergeMessageMaps(current.messages, incoming.messages),
+        groupChats: mergeGroupChatLists(current.groupChats, incoming.groupChats),
+    };
+};
+
 type GroupStateDeletionMap = Partial<
   Record<'announcements' | 'events' | 'galleryImages', string[]>
 >;
@@ -190,6 +204,7 @@ async function fetchGroupStateFromServer(orgId: string, groupId: string) {
   const params = new URLSearchParams({ orgId, groupId });
   const response = await safeFetchJson<GroupStateResponse>(`/api/org-state?${params.toString()}`, {
     method: 'GET',
+    cache: 'no-store',
     timeoutMs: 10_000,
     retry: { retries: 1 },
   });
@@ -221,8 +236,9 @@ async function requestGroupState(
     });
     try {
       const normalized = await fetchGroupStateFromServer(orgId, groupId);
-      groupStateCache.set(cacheKey, normalized);
-      return normalized;
+      const merged = reconcileClubData(groupStateCache.get(cacheKey), normalized);
+      groupStateCache.set(cacheKey, merged);
+      return merged;
     } finally {
       performanceTimer.stop();
     }
@@ -448,6 +464,7 @@ function useClubDataStore() {
                 }
                 return nextData;
             });
+            dispatchGroupStateSync(orgId, clubId);
             return true;
         } catch (error) {
             console.error(`Error refreshing data for group ${clubId}`, error);
@@ -456,12 +473,24 @@ function useClubDataStore() {
         }
     }, [authReady, clubId, orgId, supabase, useDemo]);
 
-    const setLocalClubData = useCallback((nextData: ClubData) => {
+    const setLocalClubData = useCallback((nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => {
         if (!clubId || !orgId) return false;
-        setData(nextData);
-        groupStateCache.set(getGroupStateCacheKey(orgId, clubId), nextData);
+        const cacheKey = getGroupStateCacheKey(orgId, clubId);
+        const baseData = groupStateCache.get(cacheKey) ?? data ?? getDefaultClubData();
+        const nextData =
+            typeof nextDataOrUpdater === 'function'
+                ? nextDataOrUpdater(baseData)
+                : nextDataOrUpdater;
+        const mergedData = reconcileClubData(baseData, nextData);
+        setData(prev => {
+            if (prev && stableSerialize(prev) === stableSerialize(mergedData)) {
+                return prev;
+            }
+            return mergedData;
+        });
+        groupStateCache.set(cacheKey, mergedData);
         return true;
-    }, [clubId, orgId]);
+    }, [clubId, data, orgId]);
 
     const updateClubData = useCallback(
         async (
@@ -480,7 +509,8 @@ function useClubDataStore() {
                 return true;
             }
             if (!clubId || !orgId || !supabase) return false;
-            const currentData = data ?? getDefaultClubData();
+            const cacheKey = getGroupStateCacheKey(orgId, clubId);
+            const currentData = groupStateCache.get(cacheKey) ?? data ?? getDefaultClubData();
             const optimisticData =
                 options?.optimisticData ??
                 (typeof nextDataOrUpdater === 'function'
@@ -598,7 +628,10 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
     const updateDataAsync = useCallback(
         async (newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
             if (!clubId) return false;
-            const base = data ?? getDefaultClubData();
+            const base =
+                orgId && clubId
+                    ? groupStateCache.get(getGroupStateCacheKey(orgId, clubId)) ?? data ?? getDefaultClubData()
+                    : data ?? getDefaultClubData();
             const valueToStore =
                 typeof newData === 'function'
                     ? (newData as (prevData: ClubData[K]) => ClubData[K])(base[key])
@@ -628,7 +661,7 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                 }
             );
         },
-        [clubId, data, key, updateClubData]
+        [clubId, data, key, orgId, updateClubData]
     );
 
     const updateData = useCallback(
@@ -641,18 +674,19 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
     const setLocalData = useCallback(
         (newData: ClubData[K] | ((prevData: ClubData[K]) => ClubData[K])) => {
             if (!clubId) return false;
-            const base = data ?? getDefaultClubData();
-            const valueToStore =
-                typeof newData === 'function'
-                    ? (newData as (prevData: ClubData[K]) => ClubData[K])(base[key])
-                    : newData;
-            if (stableSerialize(base[key]) === stableSerialize(valueToStore)) {
-                return true;
-            }
-            const updatedFullData = { ...base, [key]: valueToStore };
-            return setLocalClubData(updatedFullData);
+            return setLocalClubData(base => {
+                const currentValue = base[key];
+                const valueToStore =
+                    typeof newData === 'function'
+                        ? (newData as (prevData: ClubData[K]) => ClubData[K])(currentValue)
+                        : newData;
+                if (stableSerialize(currentValue) === stableSerialize(valueToStore)) {
+                    return base;
+                }
+                return { ...base, [key]: valueToStore };
+            });
         },
-        [clubId, data, key, setLocalClubData]
+        [clubId, key, setLocalClubData]
     );
 
     return { data: specificData as ClubData[K], error, loading, updateData, updateDataAsync, setLocalData, refreshData, clubId, orgId };

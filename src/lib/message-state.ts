@@ -85,6 +85,57 @@ export const normalizeGroupChats = (value: unknown): GroupChat[] =>
     }];
   });
 
+export const mergeMessageLists = (currentMessages: unknown, incomingMessages: unknown): Message[] =>
+  normalizeMessageList(incomingMessages).reduce(
+    (messages, message) => upsertMessageInList(messages, message),
+    normalizeMessageList(currentMessages)
+  );
+
+export const mergeMessageMaps = (
+  currentMessagesByConversation: unknown,
+  incomingMessagesByConversation: unknown
+) => {
+  const currentMessages = normalizeMessageMap(currentMessagesByConversation);
+  const incomingMessages = normalizeMessageMap(incomingMessagesByConversation);
+  const merged: Record<string, Message[]> = {};
+
+  Array.from(new Set([...Object.keys(currentMessages), ...Object.keys(incomingMessages)])).forEach(
+    conversationKey => {
+      merged[conversationKey] = mergeMessageLists(
+        currentMessages[conversationKey],
+        incomingMessages[conversationKey]
+      );
+    }
+  );
+
+  return merged;
+};
+
+export const mergeGroupChatLists = (currentGroupChats: unknown, incomingGroupChats: unknown) => {
+  const currentChats = normalizeGroupChats(currentGroupChats);
+  const incomingChats = normalizeGroupChats(incomingGroupChats);
+  const currentById = new Map(currentChats.map(chat => [chat.id, chat] as const));
+  const incomingById = new Map(incomingChats.map(chat => [chat.id, chat] as const));
+  const orderedIds = Array.from(
+    new Set([...incomingChats.map(chat => chat.id), ...currentChats.map(chat => chat.id)])
+  );
+
+  return orderedIds.map(chatId => {
+    const currentChat = currentById.get(chatId);
+    const incomingChat = incomingById.get(chatId);
+
+    return {
+      id: chatId,
+      name: incomingChat?.name || currentChat?.name || 'Group chat',
+      members: normalizeStringList(
+        [...(currentChat?.members ?? []), ...(incomingChat?.members ?? [])],
+        { lowercase: true }
+      ),
+      messages: mergeMessageLists(currentChat?.messages, incomingChat?.messages),
+    };
+  });
+};
+
 const compareMessages = (left: Message, right: Message) => {
   const leftTime = getMessageTimestampMs(left);
   const rightTime = getMessageTimestampMs(right);

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   markMessageReadByActor,
+  mergeGroupChatLists,
+  mergeMessageMaps,
   normalizeGroupChats,
   normalizeMessageMap,
 } from '@/lib/message-state';
@@ -108,5 +110,85 @@ describe('message state normalization', () => {
       timestamp: '2026-03-26T13:00:00.000Z',
       readBy: ['bob@example.com'],
     });
+  });
+
+  it('merges direct-message maps without dropping optimistic messages', () => {
+    expect(
+      mergeMessageMaps(
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              sender: 'alice@example.com',
+              text: 'On my way',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['alice@example.com'],
+            },
+          ],
+        },
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              sender: 'alice@example.com',
+              text: 'On my way',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['bob@example.com'],
+            },
+          ],
+        }
+      )
+    ).toEqual({
+      'alice@example.com_bob@example.com': [
+        {
+          sender: 'alice@example.com',
+          text: 'On my way',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com', 'bob@example.com'],
+        },
+      ],
+    });
+  });
+
+  it('merges group chats by id and preserves optimistic messages', () => {
+    expect(
+      mergeGroupChatLists(
+        [
+          {
+            id: 'chat-1',
+            name: 'Core Team',
+            members: ['alice@example.com', 'bob@example.com'],
+            messages: [
+              {
+                sender: 'alice@example.com',
+                text: 'Draft is ready',
+                timestamp: '2026-03-26T15:00:00.000Z',
+                readBy: ['alice@example.com'],
+              },
+            ],
+          },
+        ],
+        [
+          {
+            id: 'chat-1',
+            name: 'Core Team',
+            members: ['alice@example.com', 'bob@example.com', 'carol@example.com'],
+            messages: [],
+          },
+        ]
+      )
+    ).toEqual([
+      {
+        id: 'chat-1',
+        name: 'Core Team',
+        members: ['alice@example.com', 'bob@example.com', 'carol@example.com'],
+        messages: [
+          {
+            sender: 'alice@example.com',
+            text: 'Draft is ready',
+            timestamp: '2026-03-26T15:00:00.000Z',
+            readBy: ['alice@example.com'],
+          },
+        ],
+      },
+    ]);
   });
 });

@@ -8,6 +8,8 @@ import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { headers } from 'next/headers';
 import { displayGroupRole } from '@/lib/group-permissions';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   const headerList = await headers();
   const ip =

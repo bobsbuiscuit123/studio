@@ -7,6 +7,8 @@ import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 const querySchema = z.object({
   orgId: z.string().uuid(),
 }).strict();

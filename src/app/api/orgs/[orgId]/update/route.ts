@@ -4,6 +4,8 @@ import { err } from "@/lib/result";
 import { rateLimit } from "@/lib/rate-limit";
 import { getRequestIp, rateLimitExceededResponse } from "@/lib/api-security";
 
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(request: Request) {
   const limiter = rateLimit(`org-update-retired:${getRequestIp(request.headers)}`, 15, 60_000);
   if (!limiter.allowed) {

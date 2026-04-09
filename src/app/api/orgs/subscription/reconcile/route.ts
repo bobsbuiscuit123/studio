@@ -7,6 +7,8 @@ import { getUserSubscriptionSummary, syncRevenueCatSubscriber } from '@/lib/subs
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   const ipLimiter = rateLimit(`org-subscription-reconcile:${getRequestIp(request.headers)}`, 15, 60_000);
   if (!ipLimiter.allowed) {

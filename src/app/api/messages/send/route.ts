@@ -16,6 +16,7 @@ const schema = z.discriminatedUnion('conversationType', [
     groupId: z.string().uuid(),
     conversationType: z.literal('dm'),
     partnerEmail: z.string().trim().email().max(320),
+    clientTimestamp: z.string().trim().max(64).optional(),
     text: z.string().trim().min(1).max(500),
   }).strict(),
   z.object({
@@ -23,6 +24,7 @@ const schema = z.discriminatedUnion('conversationType', [
     groupId: z.string().uuid(),
     conversationType: z.literal('group'),
     chatId: z.string().trim().min(1).max(200),
+    clientTimestamp: z.string().trim().max(64).optional(),
     text: z.string().trim().min(1).max(500),
   }).strict(),
 ]);
@@ -31,6 +33,17 @@ const getConversationId = (email1: string, email2: string) => [email1, email2].s
 
 const getMessagePreview = (value: string) =>
   value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+
+const resolveMessageTimestamp = (value?: string) => {
+  if (!value) {
+    return new Date().toISOString();
+  }
+  const timestampMs = Date.parse(value);
+  if (!Number.isFinite(timestampMs)) {
+    return new Date().toISOString();
+  }
+  return new Date(timestampMs).toISOString();
+};
 
 const resolveGroupMemberUserIdsByEmails = async ({
   admin,
@@ -188,7 +201,7 @@ export async function POST(request: Request) {
   const newMessage = {
     sender: actingUser.email,
     text: parsed.data.text,
-    timestamp: new Date().toISOString(),
+    timestamp: resolveMessageTimestamp(parsed.data.clientTimestamp),
     readBy: [actingUser.email],
   };
 

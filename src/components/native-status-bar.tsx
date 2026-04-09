@@ -6,6 +6,11 @@ import { Capacitor } from '@capacitor/core';
 import { usePathname } from 'next/navigation';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import {
+  APP_THEME_CHANGE_EVENT,
+  getAppliedAppTheme,
+  getThemeMetaColor,
+} from '@/lib/app-theme';
+import {
   DEFAULT_NATIVE_CHROME_RESYNC_DELAYS,
   SAFE_AREA_RESYNC_EVENT,
   STATUS_BAR_REASSERT_EVENT,
@@ -37,9 +42,10 @@ export function NativeStatusBar() {
     };
 
     const applyStatusBar = () => {
+      const theme = getAppliedAppTheme();
       void StatusBar.setOverlaysWebView({ overlay: false }).catch(() => undefined);
-      void StatusBar.setBackgroundColor({ color: "#ffffff" }).catch(() => undefined);
-      void StatusBar.setStyle({ style: Style.Dark }).catch(() => undefined);
+      void StatusBar.setBackgroundColor({ color: getThemeMetaColor(theme) }).catch(() => undefined);
+      void StatusBar.setStyle({ style: theme === 'dark' ? Style.Light : Style.Dark }).catch(() => undefined);
       dispatchSafeAreaResync();
     };
 
@@ -71,6 +77,7 @@ export function NativeStatusBar() {
     window.addEventListener("pageshow", scheduleApply);
     window.addEventListener("orientationchange", scheduleApply);
     window.addEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);
+    window.addEventListener(APP_THEME_CHANGE_EVENT, scheduleApply as EventListener);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.visualViewport?.addEventListener("resize", scheduleApply);
 
@@ -106,6 +113,7 @@ export function NativeStatusBar() {
       window.removeEventListener("pageshow", scheduleApply);
       window.removeEventListener("orientationchange", scheduleApply);
       window.removeEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);
+      window.removeEventListener(APP_THEME_CHANGE_EVENT, scheduleApply as EventListener);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.visualViewport?.removeEventListener("resize", scheduleApply);
       listenerRemovers.forEach((removeListener) => {

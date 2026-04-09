@@ -10,7 +10,9 @@ import { SecurityGuard } from "@/components/security-guard";
 import { ClientTimeZoneSync } from "@/components/client-timezone-sync";
 import { NativeStatusBar } from "@/components/native-status-bar";
 import { SafeAreaSync } from "@/components/safe-area-sync";
+import { ThemeController } from "@/components/theme-controller";
 import { PT_Sans } from "next/font/google";
+import { themeInitScript } from "@/lib/app-theme";
 import "./globals.css";
 
 const bodyFont = PT_Sans({
@@ -52,7 +54,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${bodyFont.variable} font-body antialiased`} suppressHydrationWarning>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
         <div className="app-root">
+          <ThemeController />
           <NativeStatusBar />
           <SafeAreaSync />
           <ClientTimeZoneSync />

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { ChevronRight, Loader2, Moon, RefreshCw } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,9 +15,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import type { User as UserType } from "@/lib/mock-data";
 import { safeFetchJson } from "@/lib/network";
 import { useToast } from "@/hooks/use-toast";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { LegalDocumentDialog } from "@/components/legal-document-dialog";
 import { notifyOrgSubscriptionChanged, useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { getSelectedOrgId } from "@/lib/selection";
@@ -120,6 +122,7 @@ export function ProfileDialog({
   const [isRestoringPurchases, setIsRestoringPurchases] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const { isDarkMode, setTheme } = useAppTheme();
   const selectedOrgId = getSelectedOrgId();
   const purchaseAvailability = useMemo(() => getSubscriptionPurchaseAvailability(), []);
   const { status: orgStatus, refresh: refreshOrgStatus } = useOrgSubscriptionStatus(selectedOrgId);
@@ -287,17 +290,36 @@ export function ProfileDialog({
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" value={email} readOnly disabled />
             </div>
+            <div className="flex items-center justify-between rounded-xl border bg-muted/40 px-4 py-3">
+              <div className="pr-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Moon className="h-4 w-4 text-muted-foreground" />
+                  <Label htmlFor="dark-mode-toggle" className="cursor-pointer">
+                    Dark mode
+                  </Label>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use the darker app theme on this device.
+                </p>
+              </div>
+              <Switch
+                id="dark-mode-toggle"
+                checked={isDarkMode}
+                onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                aria-label="Toggle dark mode"
+              />
+            </div>
             {orgStatus?.role === "owner" && selectedOrgId ? (
               <div className="rounded-xl border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
                 <div className="flex items-center justify-between">
                   <span>Current plan</span>
-                  <span className="font-semibold text-slate-900">
+                  <span className="font-semibold text-foreground">
                     {orgStatus.planName}
                   </span>
                 </div>
                 <div className="mt-2 flex items-center justify-between">
                   <span>Monthly allowance</span>
-                  <span className="font-semibold text-slate-900">
+                  <span className="font-semibold text-foreground">
                     {orgStatus.monthlyTokenLimit.toLocaleString()} tokens
                   </span>
                 </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { MoonStar } from "lucide-react";
+import { MoonStar, Sparkles } from "lucide-react";
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useCurrentUser } from "@/lib/data-hooks";
@@ -113,24 +113,55 @@ export function DarkModeAnnouncementDialog() {
         }
       }}
     >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MoonStar className="h-5 w-5 text-primary" />
-            Dark mode is here
-          </DialogTitle>
-          <DialogDescription>
-            CASPO now supports dark mode. You can turn it on now or keep the current theme.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="flex gap-2 sm:justify-end">
-          <Button variant="ghost" onClick={handleClose}>
-            Close
-          </Button>
-          <Button onClick={handleEnableDarkMode}>
-            Enable dark mode
-          </Button>
-        </DialogFooter>
+      <DialogContent className="top-[50%] max-h-[calc(100dvh-2.5rem)] w-[calc(100%-2rem)] max-w-[28rem] translate-y-[-50%] overflow-hidden rounded-[2rem] border-border/70 bg-background p-0 shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:top-[50%] sm:translate-y-[-50%]">
+        <div className="relative overflow-hidden rounded-[2rem]">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(74,222,128,0.22),transparent_45%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--background)))]" />
+          <div className="absolute left-[-3.5rem] top-[-3.5rem] h-32 w-32 rounded-full bg-emerald-400/18 blur-3xl" />
+          <div className="absolute right-[-2rem] top-16 h-24 w-24 rounded-full bg-lime-300/12 blur-3xl" />
+          <div className="relative flex flex-col gap-6 px-6 pb-6 pt-8 sm:px-7 sm:pb-7 sm:pt-9">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[1.75rem] border border-emerald-300/30 bg-gradient-to-br from-emerald-300/25 via-emerald-400/10 to-transparent shadow-[0_18px_40px_rgba(74,222,128,0.18)]">
+              <div className="flex h-14 w-14 items-center justify-center rounded-[1.2rem] bg-emerald-400/15 text-emerald-300">
+                <MoonStar className="h-8 w-8" />
+              </div>
+            </div>
+
+            <DialogHeader className="space-y-3 text-center sm:text-center">
+              <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-emerald-300">
+                <Sparkles className="h-3.5 w-3.5" />
+                New theme option
+              </div>
+              <DialogTitle className="text-3xl font-semibold tracking-tight text-foreground sm:text-[2.15rem]">
+                Dark mode is now here!
+              </DialogTitle>
+              <DialogDescription className="mx-auto max-w-sm text-base leading-7 text-muted-foreground">
+                Give CASPO a sleeker nighttime look. Turn it on now, or keep your current theme and change it later in Settings.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-[1.5rem] border border-border/60 bg-card/65 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+              <p className="text-sm font-medium text-foreground">You stay in control.</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                Dark mode only turns on if you choose it. If not, the app stays exactly as it is.
+              </p>
+            </div>
+
+            <DialogFooter className="flex-col gap-3 sm:flex-col sm:space-x-0">
+              <Button
+                onClick={handleEnableDarkMode}
+                className="h-12 w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-400 to-lime-400 text-slate-950 shadow-[0_16px_32px_rgba(74,222,128,0.28)] hover:from-emerald-300 hover:via-emerald-300 hover:to-lime-300"
+              >
+                Enable dark mode
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleClose}
+                className="h-11 w-full rounded-2xl text-muted-foreground hover:text-foreground"
+              >
+                Maybe later
+              </Button>
+            </DialogFooter>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

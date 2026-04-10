@@ -10,6 +10,7 @@ import {
   normalizeAuthEmail,
   SIGNUP_PASSWORD_MIN_LENGTH,
 } from '@/lib/auth-signup';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 const signupSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -50,6 +51,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: false, error: 'Email already in use.' }, { status: 409 });
       }
       return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    }
+
+    const createdUserId = data.user?.id;
+    if (createdUserId) {
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: createdUserId,
+        email,
+        display_name: name,
+        avatar_url: getPlaceholderImageUrl({ label: name.charAt(0) || 'M' }),
+      });
+
+      if (profileError) {
+        console.error('Failed to create signup profile row', profileError);
+      }
     }
 
     return NextResponse.json({ ok: true, userId: data.user?.id });

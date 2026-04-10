@@ -28,7 +28,7 @@ export function AppSidebar() {
             <AppSidebarNav 
               role={role || 'Member'}
               notifications={unread}
-              onLinkClick={(key) => markTabViewed(key)}
+              onLinkClick={(key, href) => markTabViewed(key, href)}
             />
           </nav>
         </div>

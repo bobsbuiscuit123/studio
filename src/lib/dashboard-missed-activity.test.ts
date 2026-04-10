@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildDashboardMissedPopupItems } from '@/lib/dashboard-missed-activity';
-import { createGroupActivitySnapshot } from '@/lib/notification-state';
+import {
+  createEmptyGroupActivitySnapshot,
+  createGroupActivitySnapshot,
+} from '@/lib/notification-state';
 import type { Announcement, ClubEvent, ClubForm, GroupChat, Member, Message } from '@/lib/mock-data';
 
 const baseMembers: Member[] = [
@@ -96,6 +99,106 @@ describe('dashboard missed activity', () => {
       'message:dm:alex@example.com_me@example.com:2026-03-30T10:05:00.000Z:alex@example.com',
       'announcement:1',
     ]);
+  });
+
+  it('does not show missed activity before a baseline has been established', () => {
+    const items = buildDashboardMissedPopupItems({
+      announcements: [
+        {
+          id: 1,
+          title: 'Important update',
+          content: 'Please read',
+          author: 'alex@example.com',
+          date: '2026-03-30T10:00:00.000Z',
+          read: false,
+          viewedBy: [],
+        },
+      ],
+      baselineReady: false,
+      events: baseEvents,
+      forms: [
+        {
+          id: 'form-1',
+          title: 'RSVP form',
+          description: '',
+          questions: [],
+          createdBy: 'alex@example.com',
+          createdAt: '2026-03-30T10:10:00.000Z',
+          viewedBy: [],
+          responses: [],
+        },
+      ],
+      groupChats: [],
+      members: baseMembers,
+      messages: {
+        'alex@example.com_me@example.com': [
+          {
+            sender: 'alex@example.com',
+            text: 'Can you review this?',
+            timestamp: '2026-03-30T10:05:00.000Z',
+            readBy: [],
+          },
+        ],
+      },
+      persistedSnapshot: createGroupActivitySnapshot({ members: baseMembers, events: baseEvents }),
+      resolveMemberName,
+      sessionSnapshot: createGroupActivitySnapshot({ members: baseMembers, events: baseEvents }),
+      groupSessionStartedAt: new Date('2026-03-30T11:00:00.000Z').getTime(),
+      shownActivityKeys: new Set(),
+      userEmail: 'me@example.com',
+    });
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('does not resurface old time-based activity from before the last-seen baseline', () => {
+    const items = buildDashboardMissedPopupItems({
+      announcements: [
+        {
+          id: 1,
+          title: 'Important update',
+          content: 'Please read',
+          author: 'alex@example.com',
+          date: '2026-03-30T10:00:00.000Z',
+          read: false,
+          viewedBy: [],
+        },
+      ],
+      events: baseEvents,
+      forms: [
+        {
+          id: 'form-1',
+          title: 'RSVP form',
+          description: '',
+          questions: [],
+          createdBy: 'alex@example.com',
+          createdAt: '2026-03-30T10:10:00.000Z',
+          viewedBy: [],
+          responses: [],
+        },
+      ],
+      groupChats: [],
+      members: baseMembers,
+      messages: {
+        'alex@example.com_me@example.com': [
+          {
+            sender: 'alex@example.com',
+            text: 'Can you review this?',
+            timestamp: '2026-03-30T10:05:00.000Z',
+            readBy: [],
+          },
+        ],
+      },
+      persistedSnapshot: createGroupActivitySnapshot({ members: baseMembers, events: baseEvents }),
+      resolveMemberName,
+      sessionSnapshot: createGroupActivitySnapshot({ members: baseMembers, events: baseEvents }),
+      groupSessionStartedAt: new Date('2026-03-30T11:00:00.000Z').getTime(),
+      shownActivityKeys: new Set(),
+      timeBaselineStartedAt: new Date('2026-03-30T11:00:00.000Z').getTime(),
+      userEmail: 'me@example.com',
+    });
+
+    expect(items).toHaveLength(0);
   });
 
   it('suppresses announcement, message, and form deltas created during the current visible group session', () => {
@@ -245,6 +348,109 @@ describe('dashboard missed activity', () => {
       sessionSnapshot: createGroupActivitySnapshot({ members: baseMembers, events: baseEvents }),
       groupSessionStartedAt: new Date('2026-03-30T11:00:00.000Z').getTime(),
       shownActivityKeys: new Set(),
+      userEmail: 'me@example.com',
+    });
+
+    expect(items).toHaveLength(0);
+  });
+
+  it('suppresses sections the user already opened during the current session', () => {
+    const items = buildDashboardMissedPopupItems({
+      announcements: [
+        {
+          id: 1,
+          title: 'Important update',
+          content: 'Please read',
+          author: 'alex@example.com',
+          date: '2026-03-30T10:00:00.000Z',
+          read: false,
+          viewedBy: [],
+        },
+      ],
+      events: [
+        {
+          ...baseEvents[0],
+          attendees: ['alex@example.com', 'taylor@example.com'],
+          rsvps: {
+            yes: ['alex@example.com', 'taylor@example.com'],
+            no: [],
+            maybe: [],
+          },
+        },
+      ],
+      forms: [
+        {
+          id: 'form-1',
+          title: 'RSVP form',
+          description: '',
+          questions: [],
+          createdBy: 'alex@example.com',
+          createdAt: '2026-03-30T10:10:00.000Z',
+          viewedBy: [],
+          responses: [],
+        },
+      ],
+      groupChats: [
+        {
+          id: 'leaders',
+          name: 'Leaders',
+          members: ['me@example.com', 'alex@example.com'],
+          messages: [
+            {
+              sender: 'alex@example.com',
+              text: 'Seen already',
+              timestamp: '2026-03-30T10:07:00.000Z',
+              readBy: [],
+            },
+          ],
+        },
+      ],
+      members: [
+        ...baseMembers,
+        {
+          name: 'Taylor',
+          email: 'taylor@example.com',
+          role: 'Member',
+          avatar: 'taylor.png',
+        },
+      ],
+      messages: {
+        'alex@example.com_me@example.com': [
+          {
+            sender: 'alex@example.com',
+            text: 'Can you review this?',
+            timestamp: '2026-03-30T10:05:00.000Z',
+            readBy: [],
+          },
+        ],
+      },
+      persistedSnapshot: createEmptyGroupActivitySnapshot(),
+      resolveMemberName,
+      sessionSnapshot: createGroupActivitySnapshot({
+        members: [
+          ...baseMembers,
+          {
+            name: 'Taylor',
+            email: 'taylor@example.com',
+            role: 'Member',
+            avatar: 'taylor.png',
+          },
+        ],
+        events: [
+          {
+            ...baseEvents[0],
+            attendees: ['alex@example.com', 'taylor@example.com'],
+            rsvps: {
+              yes: ['alex@example.com', 'taylor@example.com'],
+              no: [],
+              maybe: [],
+            },
+          },
+        ],
+      }),
+      groupSessionStartedAt: new Date('2026-03-30T11:00:00.000Z').getTime(),
+      shownActivityKeys: new Set(),
+      suppressedRoutes: new Set(['/announcements', '/messages', '/forms', '/calendar', '/attendance', '/members']),
       userEmail: 'me@example.com',
     });
 

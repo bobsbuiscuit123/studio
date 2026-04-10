@@ -63,6 +63,7 @@ import {
 import {
   createEmptyGroupActivitySnapshot,
   createGroupActivitySnapshot,
+  isGroupActivitySnapshotEmpty,
   type GroupActivitySnapshot,
 } from "@/lib/notification-state";
 
@@ -157,6 +158,7 @@ export default function Dashboard() {
     groupSessionEntrySnapshot,
     groupSessionReady,
     groupSessionStartedAt,
+    sessionViewedRoutes,
   } = useNotificationsContext();
   const memberNameByEmail = useMemo(() => {
     return new Map(
@@ -565,8 +567,24 @@ export default function Dashboard() {
     const userEmail = normalizeEmail(user.email);
     const snapshot = dashboardState.missedSnapshot ?? DEFAULT_DASHBOARD_STATE.missedSnapshot;
     const shownActivityKeys = new Set(dashboardState.shownMissedActivityKeys ?? []);
+    const hasMissedBaseline =
+      dashboardState.missedLastSeenAt > 0 ||
+      dashboardState.lastMissedContextVersionShown !== null ||
+      (dashboardState.shownMissedActivityKeys?.length ?? 0) > 0 ||
+      !isGroupActivitySnapshotEmpty(snapshot);
+
+    if (!hasMissedBaseline) {
+      void updateDashboardState(prev => ({
+        ...prev,
+        missedLastSeenAt: prev.missedLastSeenAt || Date.now(),
+        missedSnapshot: currentMissedSnapshot,
+      }));
+      return;
+    }
+
     const unseen = buildDashboardMissedPopupItems({
       announcements,
+      baselineReady: hasMissedBaseline,
       events,
       forms,
       groupChats,
@@ -577,39 +595,36 @@ export default function Dashboard() {
       sessionSnapshot: groupSessionEntrySnapshot,
       groupSessionStartedAt,
       shownActivityKeys,
+      suppressedRoutes: new Set(sessionViewedRoutes),
+      timeBaselineStartedAt: dashboardState.missedLastSeenAt,
       userEmail,
     });
     const unseenForPopup = unseen.slice(0, 6);
     const unseenPopupKeys = unseenForPopup.flatMap(item => item.keys);
 
-    const missedContextVersion = stableSerialize({
+    const missedUnseenVersion = stableSerialize({
       unseen: unseenForPopup.map(item => ({
         keys: item.keys,
         type: item.type,
         title: item.title,
         link: item.link,
         actor: item.actor,
+        date: item.date.toISOString(),
       })),
-      upcoming: upcomingWeekEvents.slice(0, 5).map(event => ({
-        id: event.id,
-        title: event.title,
-        date: event.date.toISOString(),
-      })),
-      todo: todoItems.slice(0, 5),
     });
 
     if (
       unseen.length >= 3 &&
       !missedOpen &&
-      dashboardState.lastMissedContextVersionShown !== missedContextVersion
+      dashboardState.lastMissedContextVersionShown !== missedUnseenVersion
     ) {
       setMissedLoading(true);
       const cachedSummary = dashboardState.missedSummaryCache;
       const nextSummary =
-        cachedSummary?.contextVersion === missedContextVersion
+        cachedSummary?.contextVersion === missedUnseenVersion
           ? cachedSummary
           : {
-              contextVersion: missedContextVersion,
+              contextVersion: missedUnseenVersion,
               title: "What you missed",
               bullets: unseenForPopup.map(item => `${item.title} (${item.date.toLocaleDateString()})`),
               actions: Array.from(new Set(unseenForPopup.map(item => item.link)))
@@ -628,7 +643,7 @@ export default function Dashboard() {
 
       void updateDashboardState(prev => ({
         ...prev,
-        lastMissedContextVersionShown: missedContextVersion,
+        lastMissedContextVersionShown: missedUnseenVersion,
         missedSummaryCache: nextSummary,
         shownMissedActivityKeys: Array.from(
           new Set([...(prev.shownMissedActivityKeys ?? []), ...unseenPopupKeys])
@@ -646,6 +661,7 @@ export default function Dashboard() {
     announcementsLoading,
     clubId,
     currentMissedSnapshot,
+    dashboardState.missedLastSeenAt,
     dashboardState.shownMissedActivityKeys,
     dashboardState.missedSnapshot,
     dashboardState.missedSummaryCache,
@@ -667,10 +683,9 @@ export default function Dashboard() {
     missedOpen,
     pointsLoading,
     roleLoading,
+    sessionViewedRoutes,
     socialPostsLoading,
-    todoItems,
     transactionsLoading,
-    upcomingWeekEvents,
     updateDashboardState,
     user?.email,
     userLoading,

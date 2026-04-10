@@ -24,7 +24,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, PlusSquare, Award, Sparkles, Check } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, PlusSquare, Award, Sparkles, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -38,6 +38,16 @@ import {
     DialogTitle,
     DialogFooter
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Accordion,
   AccordionContent,
@@ -108,6 +118,36 @@ const manualEventSchema = z.object({
   rsvpRequired: z.boolean().optional(),
 });
 
+const formatDateTimeLocalValue = (value: Date) => format(value, "yyyy-MM-dd'T'HH:mm");
+
+const parseDateTimeLocalValue = (value: string) => {
+  const [datePart, timePart = "00:00"] = String(value).split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hours, minutes] = timePart.split(":").map(Number);
+
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes)
+  ) {
+    return new Date(value);
+  }
+
+  return new Date(year, month - 1, day, hours, minutes, 0, 0);
+};
+
+const parseManualEventDateTime = (date: string, time?: string) => {
+  const normalizedDate = String(date).trim();
+  if (!normalizedDate) {
+    return new Date();
+  }
+
+  const normalizedTime = String(time ?? "").trim() || "00:00";
+  return parseDateTimeLocalValue(`${normalizedDate}T${normalizedTime}`);
+};
+
 export default function CalendarPage() {
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -119,6 +159,8 @@ export default function CalendarPage() {
   const [editingDraftEvent, setEditingDraftEvent] = useState(false);
   const [savingEvent, setSavingEvent] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<ClubEvent | null>(null);
+  const [deleteCandidateEvent, setDeleteCandidateEvent] = useState<ClubEvent | null>(null);
+  const [deletingEvent, setDeletingEvent] = useState(false);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const { data: members } = useMembers();
@@ -174,7 +216,7 @@ export default function CalendarPage() {
       title: event.title,
       description: event.description,
       location: event.location,
-      date: event.date.toISOString().slice(0, 16), // Format for datetime-local input
+      date: formatDateTimeLocalValue(event.date),
       points: event.points || 0,
       rsvpRequired: Boolean(event.rsvpRequired),
     });
@@ -192,7 +234,7 @@ export default function CalendarPage() {
       title: values.title,
       description: values.description,
       location: values.location?.trim() || "",
-      date: new Date(values.date),
+      date: parseDateTimeLocalValue(values.date),
       hasTime: true,
       points: values.points,
       rsvpRequired: Boolean(values.rsvpRequired),
@@ -236,6 +278,37 @@ export default function CalendarPage() {
     setEditingDraftEvent(false);
     setEditingEvent(null);
     setSavingEvent(false);
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!deleteCandidateEvent || deletingEvent) return;
+
+    setDeletingEvent(true);
+    const eventId = deleteCandidateEvent.id;
+    const eventTitle = deleteCandidateEvent.title;
+    const deleted = await saveEvents(prevEvents =>
+      prevEvents.filter(event => event.id !== eventId)
+    );
+
+    if (!deleted) {
+      toast({
+        title: "Could not delete event",
+        description: "The event was not deleted. Please try again.",
+        variant: "destructive",
+      });
+      setDeletingEvent(false);
+      return;
+    }
+
+    setDeleteCandidateEvent(null);
+    setSelectedEvent(current => (current?.id === eventId ? null : current));
+    setEditingEvent(current => (current?.id === eventId ? null : current));
+    setEditingDraftEvent(false);
+    setDeletingEvent(false);
+    toast({
+      title: "Event deleted",
+      description: `${eventTitle} was removed from the calendar.`,
+    });
   };
 
   const markEventViewed = (eventId: string) => {
@@ -387,9 +460,7 @@ export default function CalendarPage() {
   };
   
   const handleManualAdd = async (values: z.infer<typeof manualEventSchema>) => {
-    const dateTime = values.time
-      ? new Date(`${values.date}T${values.time}`)
-      : new Date(`${values.date}T00:00`);
+    const dateTime = parseManualEventDateTime(values.date, values.time);
     const hasTime = Boolean(values.time && values.time.trim());
     const newEvent: ClubEvent = {
       id: createClientEventId(),
@@ -925,12 +996,23 @@ export default function CalendarPage() {
                       ) : null
                     )}
                 </div>
-                <DialogFooter className="sm:justify-between gap-2">
-                    <Link href={generateGoogleCalendarLink(selectedEvent)} target="_blank" rel="noopener noreferrer">
-                        <Button variant="outline">
-                            <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
+                <DialogFooter className="flex-row flex-wrap justify-between gap-2 sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link href={generateGoogleCalendarLink(selectedEvent)} target="_blank" rel="noopener noreferrer">
+                          <Button variant="outline">
+                              <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
+                          </Button>
+                      </Link>
+                      {canEditContent && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setDeleteCandidateEvent(selectedEvent)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" /> Delete Event
                         </Button>
-                    </Link>
+                      )}
+                    </div>
                     {canEditContent && (
                         <Button onClick={() => handleEditClick(selectedEvent)}>
                             <Pencil className="mr-2 h-4 w-4" /> Edit Event
@@ -940,6 +1022,36 @@ export default function CalendarPage() {
             </DialogContent>
         </Dialog>
     )}
+    <AlertDialog
+      open={Boolean(deleteCandidateEvent)}
+      onOpenChange={(open) => {
+        if (!deletingEvent && !open) {
+          setDeleteCandidateEvent(null);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete event?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will permanently remove {deleteCandidateEvent?.title || "this event"} from the calendar.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deletingEvent}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            disabled={deletingEvent}
+            onClick={(event) => {
+              event.preventDefault();
+              void handleDeleteEvent();
+            }}
+          >
+            {deletingEvent ? "Deleting..." : "Delete event"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     {editingEvent && (
         <Dialog
           open={!!editingEvent}

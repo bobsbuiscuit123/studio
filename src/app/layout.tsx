@@ -12,6 +12,7 @@ import { NativeStatusBar } from "@/components/native-status-bar";
 import { SafeAreaSync } from "@/components/safe-area-sync";
 import { ThemeController } from "@/components/theme-controller";
 import { DarkModeAnnouncementDialog } from "@/components/dark-mode-announcement-dialog";
+import { ModalLayerRepair } from "@/components/modal-layer-repair";
 import { PT_Sans } from "next/font/google";
 import { themeInitScript } from "@/lib/app-theme";
 import "./globals.css";
@@ -60,6 +61,7 @@ export default function RootLayout({
           <ThemeController />
           <NativeStatusBar />
           <SafeAreaSync />
+          <ModalLayerRepair />
           <ClientTimeZoneSync />
           <ErrorReporter />
           <SecurityGuard />

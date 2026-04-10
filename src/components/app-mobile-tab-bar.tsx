@@ -190,7 +190,7 @@ export function AppMobileTabBar() {
               onClick={() => {
                 setShowAssistantBubble(current => !current);
                 if (assistantItem.notificationKey) {
-                  markTabViewed(assistantItem.notificationKey);
+                  markTabViewed(assistantItem.notificationKey, assistantItem.href);
                 }
               }}
               className="ai-button z-[1001]"
@@ -202,7 +202,7 @@ export function AppMobileTabBar() {
             {/*
             <Link
               href={buildHref(assistantItem.href)}
-              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey)}
+              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey, assistantItem.href)}
               className="ai-button z-[1001]"
               aria-label={assistantItem.label}
             >
@@ -267,7 +267,7 @@ function IconTab({
   href: string;
   active: boolean;
   unread: Record<string, boolean>;
-  onMarkViewed: (key: NotificationKey) => void;
+  onMarkViewed: (key: NotificationKey | null, href?: string) => void;
 }) {
   const Icon = item.icon;
   const hasNotification = Boolean(item.notificationKey && unread[item.notificationKey] && !active);
@@ -277,9 +277,7 @@ function IconTab({
       href={href}
       onClick={() => {
         syncSelectionCookies();
-        if (item.notificationKey) {
-          onMarkViewed(item.notificationKey);
-        }
+        onMarkViewed(item.notificationKey ?? null, item.href);
       }}
       className={cn(
         "tab transition-all duration-200 active:scale-95",

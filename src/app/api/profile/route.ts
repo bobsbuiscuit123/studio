@@ -6,6 +6,7 @@ import { err } from '@/lib/result';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
 
 const avatarSchema = z.string().trim().max(2_000_000).refine(
   (value) => value.length === 0 || value.startsWith('data:image/') || /^https?:\/\//.test(value),
@@ -138,14 +139,9 @@ export async function PATCH(request: Request) {
     return rateLimitExceededResponse(userLimiter);
   }
 
-  const displayName =
-    parsed.data.name?.trim() ||
-    (user.user_metadata?.display_name as string | undefined) ||
-    user.email ||
-    'Member';
   const { data: existingProfile, error: existingProfileError } = await supabase
     .from('profiles')
-    .select('avatar_url')
+    .select('display_name, avatar_url')
     .eq('id', user.id)
     .maybeSingle();
   if (existingProfileError) {
@@ -154,6 +150,13 @@ export async function PATCH(request: Request) {
       { status: 500 }
     );
   }
+
+  const displayName = resolveStoredDisplayName({
+    preferredName: parsed.data.name,
+    existingProfileName: existingProfile?.display_name,
+    authDisplayName: getAuthMetadataDisplayName(user),
+    email: user.email,
+  });
 
   const requestedAvatar =
     typeof parsed.data.avatar === 'string' && parsed.data.avatar.trim().length > 0

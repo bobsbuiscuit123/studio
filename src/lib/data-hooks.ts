@@ -20,6 +20,7 @@ import {
     normalizeMessageMap,
 } from '@/lib/message-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
 import {
     createEmptyGroupActivitySnapshot,
     createEmptyNotificationActivity,
@@ -90,6 +91,20 @@ const readTabLastViewed = (userEmail: string, orgId: string, groupId: string, ke
 const writeTabLastViewed = (userEmail: string, orgId: string, groupId: string, key: NotificationKey, value: number) => {
     if (typeof window === 'undefined') return;
     localStorage.setItem(getTabViewStorageKey(userEmail, orgId, groupId, key), String(value));
+};
+
+const normalizeViewedRoute = (value?: string | null) => {
+    const rawValue = String(value ?? '').trim();
+    if (!rawValue) return '';
+    const [rawPath] = rawValue.split('?');
+    let pathname = rawPath || '';
+    if (pathname === '/demo/app') {
+        pathname = '/dashboard';
+    } else if (pathname.startsWith('/demo/app/')) {
+        pathname = pathname.slice('/demo/app'.length) || '/dashboard';
+    }
+    const [firstSegment] = pathname.split('/').filter(Boolean);
+    return firstSegment ? `/${firstSegment}` : '/dashboard';
 };
 
 const groupStateCache = new Map<string, ClubData>();
@@ -904,11 +919,11 @@ export function useCurrentUser() {
             .select('email, display_name, avatar_url')
             .eq('id', sessionUser.id)
             .maybeSingle();
-          const displayName =
-            profile?.display_name ||
-            (sessionUser.user_metadata?.display_name as string | undefined) ||
-            sessionUser.email ||
-            'Member';
+          const displayName = resolveStoredDisplayName({
+            existingProfileName: profile?.display_name,
+            authDisplayName: getAuthMetadataDisplayName(sessionUser),
+            email: profile?.email || sessionUser.email || '',
+          });
           const hydratedUser = {
             name: displayName,
             email: profile?.email || sessionUser.email || '',
@@ -1086,6 +1101,7 @@ export function useNotifications() {
         () => createEmptyGroupActivitySnapshot()
     );
     const [groupSessionReady, setGroupSessionReady] = useState(false);
+    const [sessionViewedRoutes, setSessionViewedRoutes] = useState<string[]>([]);
     const selectedOrgId = getSelectedOrgId();
     const selectedGroupId = getSelectedGroupId();
     const lastGroupSessionResetAtRef = useRef(0);
@@ -1110,6 +1126,7 @@ export function useNotifications() {
         setGroupSessionStartedAt(0);
         setGroupSessionEntrySnapshot(createEmptyGroupActivitySnapshot());
         setGroupSessionReady(false);
+        setSessionViewedRoutes([]);
     }, []);
 
     const beginGroupSession = useCallback(() => {
@@ -1250,6 +1267,36 @@ export function useNotifications() {
         });
     }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms]);
 
+    useEffect(() => {
+        if (
+            loading ||
+            !user?.email ||
+            !selectedOrgId ||
+            !selectedGroupId ||
+            typeof window === 'undefined'
+        ) {
+            return;
+        }
+
+        const missingKeys = (Object.keys(activityByKey) as NotificationKey[]).filter(key =>
+            localStorage.getItem(getTabViewStorageKey(user.email, selectedOrgId, selectedGroupId, key)) === null
+        );
+
+        if (missingKeys.length === 0) {
+            return;
+        }
+
+        setTabLastViewed(prev => {
+            const next = { ...prev };
+            missingKeys.forEach(key => {
+                const nextValue = activityByKey[key];
+                writeTabLastViewed(user.email, selectedOrgId, selectedGroupId, key, nextValue);
+                next[key] = nextValue;
+            });
+            return next;
+        });
+    }, [activityByKey, loading, selectedGroupId, selectedOrgId, user?.email]);
+
     const unread = useMemo(() => {
         return getUnreadNotifications({
             activityByKey,
@@ -1323,8 +1370,14 @@ export function useNotifications() {
         });
     }, [updateClubData, user?.email]);
 
-    const markTabViewed = useCallback((key: NotificationKey) => {
-        if (!user?.email || !selectedOrgId || !selectedGroupId) return;
+    const markTabViewed = useCallback((key: NotificationKey | null, href?: string | null) => {
+        const normalizedRoute = normalizeViewedRoute(href);
+        if (normalizedRoute) {
+            setSessionViewedRoutes(prev =>
+                prev.includes(normalizedRoute) ? prev : [...prev, normalizedRoute]
+            );
+        }
+        if (!key || !user?.email || !selectedOrgId || !selectedGroupId) return;
         const nextValue = activityByKey[key];
         writeTabLastViewed(user.email, selectedOrgId, selectedGroupId, key, nextValue);
         setTabLastViewed(prev => ({ ...prev, [key]: nextValue }));
@@ -1336,6 +1389,7 @@ export function useNotifications() {
         markAllAsRead,
         markTabViewed,
         role,
+        sessionViewedRoutes,
         groupSessionStartedAt,
         groupSessionEntrySnapshot,
         groupSessionReady,

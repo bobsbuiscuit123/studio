@@ -37,6 +37,10 @@ import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 import { LegalDocumentDialog } from '@/components/legal-document-dialog';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { normalizeAuthEmail, SIGNUP_PASSWORD_MIN_LENGTH } from '@/lib/auth-signup';
+import {
+  getAuthMetadataDisplayName,
+  resolveStoredDisplayName,
+} from '@/lib/user-display-name';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
@@ -78,32 +82,18 @@ function LegalNotice({
     );
 }
 
-function getAuthDisplayName(
-  user?: { user_metadata?: Record<string, unknown> | null; email?: string | null }
-) {
-  const meta = user?.user_metadata || {};
-  const fromMeta =
-    (meta['full_name'] as string | undefined) ||
-    (meta['name'] as string | undefined) ||
-    (meta['display_name'] as string | undefined);
-  return fromMeta || user?.email || 'Member';
-}
-
-const normalizeEmailForStorage = (value: string) => value.trim().toLowerCase();
-
 type BrowserSupabaseClient = ReturnType<typeof createSupabaseBrowserClient>;
 
 async function syncBrowserProfileUser(
   supabase: BrowserSupabaseClient,
-  authUser?: { id?: string; email?: string | null; user_metadata?: Record<string, unknown> | null }
+  authUser?: { id?: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
+  preferredName?: string | null,
 ): Promise<User | null> {
   if (!authUser?.id || !authUser.email) {
     return null;
   }
 
-  const normalizedEmail = normalizeEmailForStorage(authUser.email);
-  const fallbackName = getAuthDisplayName(authUser).trim() || normalizedEmail || 'Member';
-  const fallbackAvatar = getPlaceholderImageUrl({ label: fallbackName.charAt(0) || 'M' });
+  const normalizedEmail = normalizeAuthEmail(authUser.email);
 
   try {
     const { data: existingProfile, error: existingProfileError } = await supabase
@@ -116,10 +106,13 @@ async function syncBrowserProfileUser(
       throw existingProfileError;
     }
 
-    const displayName =
-      typeof existingProfile?.display_name === 'string' && existingProfile.display_name.trim().length > 0
-        ? existingProfile.display_name.trim()
-        : fallbackName;
+    const displayName = resolveStoredDisplayName({
+      preferredName,
+      existingProfileName: existingProfile?.display_name,
+      authDisplayName: getAuthMetadataDisplayName(authUser),
+      email: normalizedEmail,
+    });
+    const fallbackAvatar = getPlaceholderImageUrl({ label: displayName.charAt(0) || 'M' });
     const avatar =
       typeof existingProfile?.avatar_url === 'string' && existingProfile.avatar_url.trim().length > 0
         ? existingProfile.avatar_url.trim()
@@ -145,8 +138,14 @@ async function syncBrowserProfileUser(
     };
   } catch (error) {
     console.error('Failed to sync auth profile user', error);
+    const displayName = resolveStoredDisplayName({
+      preferredName,
+      authDisplayName: getAuthMetadataDisplayName(authUser),
+      email: normalizedEmail,
+    });
+    const fallbackAvatar = getPlaceholderImageUrl({ label: displayName.charAt(0) || 'M' });
     return {
-      name: fallbackName,
+      name: displayName,
       email: normalizedEmail,
       avatar: fallbackAvatar,
     };
@@ -203,7 +202,7 @@ function SignUpForm({
           return;
         }
         const newUser =
-          (await syncBrowserProfileUser(supabase, data.user)) ?? {
+          (await syncBrowserProfileUser(supabase, data.user, trimmedName)) ?? {
             name: trimmedName,
             email: normalizedEmail,
             password: '',
@@ -302,16 +301,15 @@ function LoginForm({
             toast({ title: "Login failed", description: error.message, variant: "destructive" });
             return;
         }
-        const displayName = getAuthDisplayName(data.user);
         const user =
           (await syncBrowserProfileUser(supabase, data.user)) ?? {
-            name: displayName,
+            name: getAuthMetadataDisplayName(data.user) || 'Member',
             email: normalizedEmail,
             password: '',
-            avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) }),
+            avatar: getPlaceholderImageUrl({ label: (getAuthMetadataDisplayName(data.user) || 'M').charAt(0) }),
           };
         onLogin(user);
-        toast({ title: `Welcome back, ${displayName}!`});
+        toast({ title: `Welcome back, ${user.name}!`});
     };
     
     return (

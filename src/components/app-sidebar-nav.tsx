@@ -59,7 +59,7 @@ export function AppSidebarNav({
 }: {
   role: string;
   notifications: NotificationMap;
-  onLinkClick: (key: NotificationKey) => void;
+  onLinkClick: (key: NotificationKey | null, href?: string) => void;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -84,8 +84,8 @@ export function AppSidebarNav({
 
   const shouldAutoClearNotification = (key: NotificationKey | null) => Boolean(key);
 
-  const activeNotificationKey = useMemo(() => {
-    const activeItem = navItems.find(item => {
+  const activeItem = useMemo(() => {
+    return navItems.find(item => {
       const demoHref =
         item.href === '/dashboard' ? '/demo/app' : `/demo/app${item.href}`;
       const href = isDemoApp ? demoHref : item.href;
@@ -95,10 +95,14 @@ export function AppSidebarNav({
           : pathname === href || pathname.startsWith(`${href}/`)
         : pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
     });
-    return activeItem?.notificationKey ?? null;
   }, [isDemoApp, navItems, pathname]);
+  const activeNotificationKey = activeItem?.notificationKey ?? null;
 
   useEffect(() => {
+    if (!activeItem) {
+      lastAutoClearedRef.current = null;
+      return;
+    }
     if (!activeNotificationKey || !shouldAutoClearNotification(activeNotificationKey)) {
       lastAutoClearedRef.current = null;
       return;
@@ -108,8 +112,8 @@ export function AppSidebarNav({
       return;
     }
     lastAutoClearedRef.current = autoClearKey;
-    onLinkClick(activeNotificationKey);
-  }, [activeNotificationKey, onLinkClick, pathname]);
+    onLinkClick(activeNotificationKey, activeItem.href);
+  }, [activeItem, activeNotificationKey, onLinkClick, pathname]);
 
   return (
     <>
@@ -132,6 +136,7 @@ export function AppSidebarNav({
             href={href}
             onClick={() => {
               syncSelectionCookies();
+              onLinkClick(item.notificationKey ?? null, item.href);
               onNavigate?.();
             }}
             className={cn(

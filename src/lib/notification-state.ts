@@ -59,6 +59,16 @@ export const createEmptyGroupActivitySnapshot = (): GroupActivitySnapshot => ({
   attendees: {},
 });
 
+export const isGroupActivitySnapshotEmpty = (snapshot?: GroupActivitySnapshot | null) => {
+  if (!snapshot) return true;
+  return (
+    snapshot.members.length === 0 &&
+    snapshot.events.length === 0 &&
+    Object.keys(snapshot.rsvps).length === 0 &&
+    Object.keys(snapshot.attendees).length === 0
+  );
+};
+
 const normalizeActivityActor = (value?: string | null) =>
   String(value ?? '').trim().toLowerCase();
 

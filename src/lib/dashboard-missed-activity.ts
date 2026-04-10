@@ -71,6 +71,7 @@ const hasSnapshotAttendance = (
 
 type BuildDashboardMissedPopupItemsArgs = {
   announcements: Announcement[];
+  baselineReady?: boolean;
   events: ClubEvent[];
   forms: ClubForm[];
   groupChats: GroupChat[];
@@ -81,11 +82,14 @@ type BuildDashboardMissedPopupItemsArgs = {
   sessionSnapshot?: GroupActivitySnapshot | null;
   groupSessionStartedAt: number;
   shownActivityKeys: Set<string>;
+  suppressedRoutes?: Set<string>;
+  timeBaselineStartedAt?: number;
   userEmail: string;
 };
 
 export const buildDashboardMissedPopupItems = ({
   announcements,
+  baselineReady = true,
   events,
   forms,
   groupChats,
@@ -96,13 +100,23 @@ export const buildDashboardMissedPopupItems = ({
   sessionSnapshot,
   groupSessionStartedAt,
   shownActivityKeys,
+  suppressedRoutes,
+  timeBaselineStartedAt = 0,
   userEmail,
 }: BuildDashboardMissedPopupItemsArgs) => {
+  if (!baselineReady) {
+    return [];
+  }
+
   const baselineSnapshot = persistedSnapshot ?? createEmptyGroupActivitySnapshot();
   const activeSessionSnapshot = sessionSnapshot ?? createEmptyGroupActivitySnapshot();
   const popupItems: DashboardMissedPopupItem[] = [];
   const now = new Date();
   const normalizedUserEmail = normalizeEmail(userEmail);
+  const normalizedSuppressedRoutes = new Set(Array.from(suppressedRoutes ?? []).filter(Boolean));
+  const isRouteSuppressed = (route: string) => normalizedSuppressedRoutes.has(route);
+  const isBeforeOrAtBaseline = (date: Date) =>
+    timeBaselineStartedAt > 0 && date.getTime() <= timeBaselineStartedAt;
 
   const safeMembers = Array.isArray(members) ? members : [];
   const safeEvents = Array.isArray(events) ? events : [];
@@ -111,29 +125,31 @@ export const buildDashboardMissedPopupItems = ({
   const safeGroupChats = normalizeGroupChats(groupChats);
   const safeMessages = normalizeMessageMap(messages);
 
-  const firstMemberTime = new Date(now);
-  const currentMemberEmails = safeMembers
-    .map(member => normalizeEmail(member.email))
-    .filter(Boolean);
-  const unseenMemberEmails = currentMemberEmails.filter(email => {
-    const key = `member:${email}`;
-    return (
-      !baselineSnapshot.members.includes(email) &&
-      hasSnapshotMember(activeSessionSnapshot, email) &&
-      !shownActivityKeys.has(key)
-    );
-  });
-  if (unseenMemberEmails.length > 0) {
-    const displayNames = unseenMemberEmails.map(email => resolveMemberName(email)).slice(0, 3);
-    const suffix = unseenMemberEmails.length > 3 ? ', ...' : '';
-    popupItems.push({
-      keys: unseenMemberEmails.map(email => `member:${email}`),
-      type: 'member',
-      title: `New members: ${displayNames.join(', ')}${suffix}`,
-      date: firstMemberTime,
-      link: '/members',
-      actor: null,
+  if (!isRouteSuppressed('/members')) {
+    const firstMemberTime = new Date(now);
+    const currentMemberEmails = safeMembers
+      .map(member => normalizeEmail(member.email))
+      .filter(Boolean);
+    const unseenMemberEmails = currentMemberEmails.filter(email => {
+      const key = `member:${email}`;
+      return (
+        !baselineSnapshot.members.includes(email) &&
+        hasSnapshotMember(activeSessionSnapshot, email) &&
+        !shownActivityKeys.has(key)
+      );
     });
+    if (unseenMemberEmails.length > 0) {
+      const displayNames = unseenMemberEmails.map(email => resolveMemberName(email)).slice(0, 3);
+      const suffix = unseenMemberEmails.length > 3 ? ', ...' : '';
+      popupItems.push({
+        keys: unseenMemberEmails.map(email => `member:${email}`),
+        type: 'member',
+        title: `New members: ${displayNames.join(', ')}${suffix}`,
+        date: firstMemberTime,
+        link: '/members',
+        actor: null,
+      });
+    }
   }
 
   safeEvents.forEach(event => {
@@ -142,6 +158,7 @@ export const buildDashboardMissedPopupItems = ({
 
     const eventKey = `event:${eventId}`;
     if (
+      !isRouteSuppressed('/calendar') &&
       !baselineSnapshot.events.includes(eventId) &&
       hasSnapshotEvent(activeSessionSnapshot, eventId) &&
       !shownActivityKeys.has(eventKey)
@@ -174,7 +191,7 @@ export const buildDashboardMissedPopupItems = ({
       );
     });
 
-    if (newRsvpEmails.length > 0) {
+    if (!isRouteSuppressed('/calendar') && newRsvpEmails.length > 0) {
       popupItems.push({
         keys: newRsvpEmails.map(email => `rsvp:${eventId}:${email}`),
         type: 'rsvp',
@@ -198,7 +215,7 @@ export const buildDashboardMissedPopupItems = ({
       );
     });
 
-    if (newAttendanceEmails.length > 0) {
+    if (!isRouteSuppressed('/attendance') && newAttendanceEmails.length > 0) {
       popupItems.push({
         keys: newAttendanceEmails.map(email => `attendance:${eventId}:${email}`),
         type: 'attendance',
@@ -212,120 +229,130 @@ export const buildDashboardMissedPopupItems = ({
     }
   });
 
-  safeAnnouncements.forEach(announcement => {
-    const announcementId =
-      typeof announcement.id === 'string' || typeof announcement.id === 'number'
-        ? String(announcement.id)
-        : '';
-    const announcementDate = toDate(announcement.date);
-    const authorEmail = normalizeEmail(announcement.author);
-    const key = `announcement:${announcementId}`;
-
-    if (
-      !announcementId ||
-      !announcementDate ||
-      !authorEmail ||
-      authorEmail === normalizedUserEmail ||
-      shownActivityKeys.has(key) ||
-      hasViewed(announcement.viewedBy, normalizedUserEmail) ||
-      announcementDate.getTime() >= groupSessionStartedAt
-    ) {
-      return;
-    }
-
-    popupItems.push({
-      keys: [key],
-      type: 'announcement',
-      title: announcement.title,
-      date: announcementDate,
-      link: '/announcements',
-      actor: authorEmail,
-    });
-  });
-
-  Object.entries(safeMessages).forEach(([conversationKey, conversationMessages]) => {
-    conversationMessages.forEach(message => {
-      const messageDate = toDate(message.timestamp);
-      const senderEmail = normalizeEmail(message.sender);
-      const key = `message:dm:${conversationKey}:${message.timestamp}:${senderEmail}`;
+  if (!isRouteSuppressed('/announcements')) {
+    safeAnnouncements.forEach(announcement => {
+      const announcementId =
+        typeof announcement.id === 'string' || typeof announcement.id === 'number'
+          ? String(announcement.id)
+          : '';
+      const announcementDate = toDate(announcement.date);
+      const authorEmail = normalizeEmail(announcement.author);
+      const key = `announcement:${announcementId}`;
 
       if (
-        !messageDate ||
-        !senderEmail ||
+        !announcementId ||
+        !announcementDate ||
+        !authorEmail ||
+        authorEmail === normalizedUserEmail ||
         shownActivityKeys.has(key) ||
-        isMessageFromActor(message, normalizedUserEmail) ||
-        messageIncludesReader(message, normalizedUserEmail) ||
-        messageDate.getTime() >= groupSessionStartedAt
+        hasViewed(announcement.viewedBy, normalizedUserEmail) ||
+        isBeforeOrAtBaseline(announcementDate) ||
+        announcementDate.getTime() >= groupSessionStartedAt
       ) {
         return;
       }
 
       popupItems.push({
         keys: [key],
-        type: 'message',
-        title: `Message from ${resolveMemberName(senderEmail)}`,
-        date: messageDate,
-        link: '/messages',
-        actor: senderEmail,
+        type: 'announcement',
+        title: announcement.title,
+        date: announcementDate,
+        link: '/announcements',
+        actor: authorEmail,
       });
     });
-  });
+  }
 
-  safeGroupChats.forEach(chat => {
-    chat.messages.forEach(message => {
-      const messageDate = toDate(message.timestamp);
-      const senderEmail = normalizeEmail(message.sender);
-      const key = `message:group:${chat.id}:${message.timestamp}:${senderEmail}`;
+  if (!isRouteSuppressed('/messages')) {
+    Object.entries(safeMessages).forEach(([conversationKey, conversationMessages]) => {
+      conversationMessages.forEach(message => {
+        const messageDate = toDate(message.timestamp);
+        const senderEmail = normalizeEmail(message.sender);
+        const key = `message:dm:${conversationKey}:${message.timestamp}:${senderEmail}`;
+
+        if (
+          !messageDate ||
+          !senderEmail ||
+          shownActivityKeys.has(key) ||
+          isMessageFromActor(message, normalizedUserEmail) ||
+          messageIncludesReader(message, normalizedUserEmail) ||
+          isBeforeOrAtBaseline(messageDate) ||
+          messageDate.getTime() >= groupSessionStartedAt
+        ) {
+          return;
+        }
+
+        popupItems.push({
+          keys: [key],
+          type: 'message',
+          title: `Message from ${resolveMemberName(senderEmail)}`,
+          date: messageDate,
+          link: '/messages',
+          actor: senderEmail,
+        });
+      });
+    });
+
+    safeGroupChats.forEach(chat => {
+      chat.messages.forEach(message => {
+        const messageDate = toDate(message.timestamp);
+        const senderEmail = normalizeEmail(message.sender);
+        const key = `message:group:${chat.id}:${message.timestamp}:${senderEmail}`;
+
+        if (
+          !messageDate ||
+          !senderEmail ||
+          shownActivityKeys.has(key) ||
+          isMessageFromActor(message, normalizedUserEmail) ||
+          messageIncludesReader(message, normalizedUserEmail) ||
+          isBeforeOrAtBaseline(messageDate) ||
+          messageDate.getTime() >= groupSessionStartedAt
+        ) {
+          return;
+        }
+
+        popupItems.push({
+          keys: [key],
+          type: 'message',
+          title: `${chat.name} message from ${resolveMemberName(senderEmail)}`,
+          date: messageDate,
+          link: '/messages',
+          actor: senderEmail,
+        });
+      });
+    });
+  }
+
+  if (!isRouteSuppressed('/forms')) {
+    safeForms.forEach(form => {
+      const formId = typeof form.id === 'string' ? form.id : '';
+      const createdAt = toDate(form.createdAt);
+      const creatorEmail = normalizeEmail(form.createdBy);
+      const key = `form:${formId}`;
 
       if (
-        !messageDate ||
-        !senderEmail ||
+        !formId ||
+        !createdAt ||
+        !creatorEmail ||
+        creatorEmail === normalizedUserEmail ||
         shownActivityKeys.has(key) ||
-        isMessageFromActor(message, normalizedUserEmail) ||
-        messageIncludesReader(message, normalizedUserEmail) ||
-        messageDate.getTime() >= groupSessionStartedAt
+        hasViewed(form.viewedBy, normalizedUserEmail) ||
+        isBeforeOrAtBaseline(createdAt) ||
+        createdAt.getTime() >= groupSessionStartedAt
       ) {
         return;
       }
 
       popupItems.push({
         keys: [key],
-        type: 'message',
-        title: `${chat.name} message from ${resolveMemberName(senderEmail)}`,
-        date: messageDate,
-        link: '/messages',
-        actor: senderEmail,
+        type: 'form',
+        title: `New form: ${form.title}`,
+        date: createdAt,
+        link: '/forms',
+        actor: creatorEmail,
       });
     });
-  });
-
-  safeForms.forEach(form => {
-    const formId = typeof form.id === 'string' ? form.id : '';
-    const createdAt = toDate(form.createdAt);
-    const creatorEmail = normalizeEmail(form.createdBy);
-    const key = `form:${formId}`;
-
-    if (
-      !formId ||
-      !createdAt ||
-      !creatorEmail ||
-      creatorEmail === normalizedUserEmail ||
-      shownActivityKeys.has(key) ||
-      hasViewed(form.viewedBy, normalizedUserEmail) ||
-      createdAt.getTime() >= groupSessionStartedAt
-    ) {
-      return;
-    }
-
-    popupItems.push({
-      keys: [key],
-      type: 'form',
-      title: `New form: ${form.title}`,
-      date: createdAt,
-      link: '/forms',
-      actor: creatorEmail,
-    });
-  });
+  }
 
   return popupItems.sort((left, right) => right.date.getTime() - left.date.getTime());
 };

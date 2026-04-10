@@ -2,6 +2,7 @@
 "use client";
 
 import { Suspense, useState, useEffect, useRef, useMemo } from "react";
+import Image from "next/image";
 import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -88,6 +89,20 @@ const normalizeAnnouncementForDisplay = <T extends { title?: string | null; cont
     ...announcement,
     title: nextTitle,
   };
+};
+
+const isImageAttachment = (attachment: Attachment) => {
+  const attachmentType = String(attachment.type ?? "").toLowerCase();
+  if (attachmentType.startsWith("image/")) {
+    return true;
+  }
+
+  const dataUri = String(attachment.dataUri ?? "").toLowerCase();
+  if (dataUri.startsWith("data:image/")) {
+    return true;
+  }
+
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(attachment.name ?? ""));
 };
 
 function AnnouncementsPageInner() {
@@ -882,21 +897,36 @@ function AnnouncementsPageInner() {
                               <div className="space-y-2">
                                   {announcement.attachments.map((file, index) => {
                                     const isButton = file.type === "button";
+                                    const isImage = !isButton && isImageAttachment(file);
                                     return (
-                                      <div key={index} className="flex items-center justify-between text-sm p-2 border rounded-md">
-                                          <div className="flex items-center gap-2 truncate">
-                                              {isButton ? <Megaphone className="h-4 w-4 shrink-0" /> : <FileIcon className="h-4 w-4 shrink-0" />}
-                                              <span className="truncate">{file.name}</span>
+                                      <div key={index} className="space-y-3 rounded-md border p-3">
+                                          <div className="flex items-center justify-between gap-3 text-sm">
+                                            <div className="flex min-w-0 items-center gap-2 truncate">
+                                                {isButton ? <Megaphone className="h-4 w-4 shrink-0" /> : <FileIcon className="h-4 w-4 shrink-0" />}
+                                                <span className="truncate">{file.name}</span>
+                                            </div>
+                                            {isButton ? (
+                                              <Button size="sm" className={aiSparkle} onClick={() => handleDownloadAttachment(file)}>
+                                                Open form
+                                              </Button>
+                                            ) : (
+                                              <Button variant="ghost" size="icon" onClick={() => handleDownloadAttachment(file)}>
+                                                  <Download className="h-4 w-4" />
+                                              </Button>
+                                            )}
                                           </div>
-                                          {isButton ? (
-                                            <Button size="sm" className={aiSparkle} onClick={() => handleDownloadAttachment(file)}>
-                                              Open form
-                                            </Button>
-                                          ) : (
-                                            <Button variant="ghost" size="icon" onClick={() => handleDownloadAttachment(file)}>
-                                                <Download className="h-4 w-4" />
-                                            </Button>
-                                          )}
+                                          {isImage ? (
+                                            <div className="overflow-hidden rounded-lg border bg-muted/30 p-2">
+                                              <Image
+                                                src={file.dataUri}
+                                                alt={file.name}
+                                                width={1200}
+                                                height={900}
+                                                unoptimized
+                                                className="mx-auto max-h-52 w-auto max-w-full rounded-md object-contain"
+                                              />
+                                            </div>
+                                          ) : null}
                                       </div>
                                     );
                                   })}

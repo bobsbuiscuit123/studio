@@ -66,6 +66,7 @@ import {
   isGroupActivitySnapshotEmpty,
   type GroupActivitySnapshot,
 } from "@/lib/notification-state";
+import { stableSerialize } from "@/lib/stable-serialize";
 
 type ActivityItem = {
   type: string;
@@ -98,21 +99,6 @@ const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
   shownMissedActivityKeys: [],
   missedSnapshot: createEmptyGroupActivitySnapshot(),
   missedSummaryCache: null,
-};
-
-const stableSerialize = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableSerialize(item)).join(",")}]`;
-  }
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a.localeCompare(b)
-    );
-    return `{${entries
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
 };
 
 const typewriterText = ({

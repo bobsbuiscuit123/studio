@@ -7,23 +7,11 @@ import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
 import { sendPushToUsers } from '@/lib/send-push';
+import { stableSerialize } from '@/lib/stable-serialize';
 
 export const dynamic = 'force-dynamic';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const stableSerialize = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableSerialize(item)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a.localeCompare(b)
-    );
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
-  }
-  return JSON.stringify(value);
-};
-
 const uniqueStrings = (values: unknown[]) =>
   Array.from(
     new Set(

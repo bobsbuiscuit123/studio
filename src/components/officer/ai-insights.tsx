@@ -29,6 +29,7 @@ import {
 } from '@/lib/data-hooks';
 import { resolveInsightRequestAction } from '@/app/(app)/assistant/actions';
 import { useGroupUserStateSection } from '@/lib/group-user-state';
+import { stableSerialize } from '@/lib/stable-serialize';
 
 type InsightListKey = 'action' | 'engagement';
 type InsightBoxKey = InsightListKey | string;
@@ -101,21 +102,6 @@ const DEFAULT_AI_INSIGHTS_STATE: AiInsightsStoredState = {
   hiddenBoxes: [],
   promptCache: {},
   requestCache: {},
-};
-
-const stableSerialize = (value: unknown): string => {
-  if (Array.isArray(value)) {
-    return `[${value.map(item => stableSerialize(item)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-      a.localeCompare(b)
-    );
-    return `{${entries
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
 };
 
 const hashString = (value: string) => {

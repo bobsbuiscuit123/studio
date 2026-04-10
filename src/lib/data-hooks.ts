@@ -21,6 +21,7 @@ import {
 } from '@/lib/message-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
+import { stableSerialize } from '@/lib/stable-serialize';
 import {
     createEmptyGroupActivitySnapshot,
     createEmptyNotificationActivity,
@@ -65,18 +66,6 @@ const shouldUseDemoData = (hasDemoContext: boolean) =>
 
 const getDefaultClubData = (): ClubData => getDefaultOrgState();
 const TAB_VIEW_KEY = 'tabLastViewed';
-const stableSerialize = (value: unknown): string => {
-    if (Array.isArray(value)) {
-        return `[${value.map(item => stableSerialize(item)).join(',')}]`;
-    }
-    if (value && typeof value === 'object') {
-        const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
-            a.localeCompare(b)
-        );
-        return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`).join(',')}}`;
-    }
-    return JSON.stringify(value);
-};
 
 const getTabViewStorageKey = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) =>
     `${TAB_VIEW_KEY}:${userEmail}:${orgId}:${groupId}:${key}`;

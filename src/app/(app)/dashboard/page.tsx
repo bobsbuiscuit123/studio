@@ -680,9 +680,6 @@ export default function Dashboard() {
   if (isAuthLoading) {
     return (
       <div className="tab-page-shell">
-        <div className="tab-page-header">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-        </div>
         <div className="tab-page-content">
       <div className="flex flex-col gap-4 pt-2 md:gap-8">
         <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
@@ -710,9 +707,6 @@ export default function Dashboard() {
   if (!hasClub) {
     return (
       <div className="tab-page-shell">
-        <div className="tab-page-header">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-        </div>
         <div className="tab-page-content">
       <div className="flex flex-col gap-6 pt-2">
         <Card>
@@ -740,9 +734,6 @@ export default function Dashboard() {
   if (isDataLoading) {
     return (
       <div className="tab-page-shell">
-        <div className="tab-page-header">
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-        </div>
         <div className="tab-page-content">
        <div className="flex flex-col gap-4 pt-2 md:gap-8">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
@@ -769,9 +760,6 @@ export default function Dashboard() {
 
   return (
     <div className="tab-page-shell">
-      <div className="tab-page-header">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-      </div>
       <div className="tab-page-content">
     <div className="flex flex-col gap-4 pt-2 md:gap-8">
       <Dialog

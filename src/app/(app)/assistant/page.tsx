@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Send } from 'lucide-react';
 
@@ -292,15 +292,9 @@ export default function AssistantPage() {
 export default function AssistantPage() {
   return (
     <div className="tab-page-shell">
-      <div className="tab-page-header">
-        <h1 className="text-2xl font-semibold">Assistant</h1>
-      </div>
       <div className="tab-page-content">
     <div className="space-y-6 pt-2">
       <Card>
-        <CardHeader>
-          <CardTitle>Assistant</CardTitle>
-        </CardHeader>
         <CardContent>
           <div className="space-y-6">
             <div className="rounded-xl border bg-muted/20 px-6 py-10 text-center">

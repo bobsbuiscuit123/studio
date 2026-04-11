@@ -328,10 +328,7 @@ export function MessagesListScreen() {
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
-        </div>
-        <div className="tab-page-content px-4">
+        <div className="tab-page-content px-4 pt-2">
           <div className="text-sm text-muted-foreground">Loading messages...</div>
         </div>
       </div>
@@ -341,10 +338,7 @@ export function MessagesListScreen() {
   if (!user) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
-        </div>
-        <div className="tab-page-content px-4">
+        <div className="tab-page-content px-4 pt-2">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
         </div>
       </div>
@@ -353,12 +347,11 @@ export function MessagesListScreen() {
 
   return (
     <div className="messages-screen messages-list-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
-      <div className="header tab-page-header page-header-safe-inset relative space-y-3 px-4">
-        <div className="flex items-center justify-between">
-          <h2 className="w-full text-center text-xl font-semibold text-foreground">Messages</h2>
+      <div className="header tab-page-header page-header-safe-inset space-y-3 px-4">
+        <div className="flex justify-end">
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="absolute right-0 top-0 h-11 w-11 rounded-2xl">
+              <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl">
                 <MessageSquarePlus className="h-5 w-5" />
                 <span className="sr-only">Create new group chat</span>
               </Button>
@@ -730,10 +723,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   if (userLoading || membersLoading || messagesLoading || groupsLoading) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
-        </div>
-        <div className="tab-page-content px-4">
+        <div className="tab-page-content px-4 pt-2">
           <div className="text-sm text-muted-foreground">Loading conversation...</div>
         </div>
       </div>
@@ -743,10 +733,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   if (!user) {
     return (
       <div className="tab-page-shell bg-background">
-        <div className="tab-page-header page-header-safe-inset px-4">
-          <h2 className="text-xl font-semibold text-foreground">Messages</h2>
-        </div>
-        <div className="tab-page-content px-4">
+        <div className="tab-page-content px-4 pt-2">
           <div className="text-sm text-muted-foreground">Please log in to see messages.</div>
         </div>
       </div>

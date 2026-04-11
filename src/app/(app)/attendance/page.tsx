@@ -119,10 +119,6 @@ export default function AttendancePage() {
       <div className="app-page-shell">
         <div className="app-page-scroll">
       <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
-        <div className="shrink-0">
-          <h1 className="text-3xl font-bold">Event Attendance</h1>
-          <p className="text-muted-foreground">Manage check-in codes and view attendance records for club events.</p>
-        </div>
         <div className="min-h-0 flex-1">
         <Card>
           <CardHeader>
@@ -201,10 +197,6 @@ export default function AttendancePage() {
     <div className="app-page-shell">
       <div className="app-page-scroll">
     <div className="flex min-h-0 flex-1 flex-col gap-3 justify-start">
-        <div className="shrink-0 space-y-1">
-            <h1 className="text-2xl font-semibold">Attendance</h1>
-            <p className="text-sm text-muted-foreground">Check in to events and review the attendance you have logged.</p>
-        </div>
         <div className="min-h-0 flex-1">
     <div className="grid gap-3 md:grid-cols-3">
         <div className="md:col-span-2 space-y-6">

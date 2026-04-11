@@ -140,11 +140,6 @@ export default function FinancesPage() {
   if (role !== 'Admin') {
     return (
         <div className="tab-page-shell">
-            <div className="tab-page-header">
-              <h1 className="flex items-center gap-2 text-2xl font-semibold">
-                <Landmark className="h-6 w-6" /> Finances
-              </h1>
-            </div>
             <div className="tab-page-content">
             <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
@@ -158,16 +153,6 @@ export default function FinancesPage() {
   return (
     <>
     <div className="tab-page-shell">
-      <div className="tab-page-header">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Landmark className="h-6 w-6" /> Finances
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Review balances and transaction history without the page shifting as records load.
-          </p>
-        </div>
-      </div>
       <div className="tab-page-content">
     <div className="grid gap-4 pt-2 md:grid-cols-3 md:gap-6">
         <div className="md:col-span-2 space-y-8">

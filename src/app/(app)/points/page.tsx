@@ -6,7 +6,7 @@ import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { BarChart, Loader2, PlusCircle, MinusCircle, Award } from "lucide-react";
+import { Loader2, PlusCircle, MinusCircle, Award } from "lucide-react";
 
 import {
   Card,
@@ -143,12 +143,8 @@ export default function PointsPage() {
     <div className="app-page-shell">
       <div className="app-page-scroll">
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-                <h1 className="text-3xl font-bold flex items-center gap-2"><BarChart/> Member Points</h1>
-                <p className="text-muted-foreground">View and manage points awarded to club members.</p>
-            </div>
-            {canEditContent && (
+        {canEditContent ? (
+            <div className="flex justify-end">
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                         <Button><PlusCircle className="mr-2"/> Adjust Points</Button>
@@ -192,8 +188,8 @@ export default function PointsPage() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
-            )}
-        </div>
+            </div>
+        ) : null}
         
         <Card>
           <CardHeader>

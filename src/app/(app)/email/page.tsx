@@ -168,11 +168,6 @@ function EmailPageInner() {
   if (role && role === 'Member') {
     return (
         <div className="tab-page-shell">
-            <div className="tab-page-header">
-              <h1 className="flex items-center gap-2 text-2xl font-semibold">
-                <Mail className="h-6 w-6" /> Email
-              </h1>
-            </div>
             <div className="tab-page-content">
             <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
@@ -185,16 +180,6 @@ function EmailPageInner() {
 
   return (
     <div className="tab-page-shell">
-      <div className="tab-page-header">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Mail className="h-6 w-6" /> Email
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Draft a message once and send it to the whole group from Gmail.
-          </p>
-        </div>
-      </div>
       <div className="tab-page-content">
     <div className="grid gap-6 pt-2">
       <Card>

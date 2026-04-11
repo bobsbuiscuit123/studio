@@ -582,16 +582,6 @@ function AnnouncementsPageInner() {
   return (
     <>
     <div className="tab-page-shell">
-      <div className="tab-page-header">
-        <div className="space-y-1">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Megaphone className="h-6 w-6" /> Announcements
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Share updates with members and keep the latest posts anchored at the top.
-          </p>
-        </div>
-      </div>
       <div className="tab-page-content">
     <div className="grid gap-4 pt-2 md:grid-cols-3 md:gap-6">
       {canEditContent && (

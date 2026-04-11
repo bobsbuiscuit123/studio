@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useForm } from "react-hook-form";
-import { ClipboardList, Loader2, Plus, Send, Eye, Sparkles } from "lucide-react";
+import { Loader2, Plus, Send, Eye, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -210,18 +210,6 @@ function FormsPageInner() {
 
   return (
     <div className="tab-page-shell">
-      <header className="tab-page-header -mx-4 border-b border-border/70 px-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="h-6 w-6 shrink-0" />
-            <h1 className="text-2xl font-semibold">Forms</h1>
-            <span className="truncate text-sm font-normal text-muted-foreground">
-              Collect responses and track reads
-            </span>
-          </div>
-        </div>
-      </header>
-
       <div className="tab-page-content">
       <div className="grid gap-3 pt-3 lg:grid-cols-3">
         {canEditContent && (

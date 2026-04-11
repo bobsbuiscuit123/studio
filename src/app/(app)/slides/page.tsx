@@ -213,11 +213,6 @@ export default function SlidesPage() {
   if (role && role === 'Member') {
     return (
         <div className="tab-page-shell">
-            <div className="tab-page-header">
-              <h1 className="flex items-center gap-2 text-2xl font-semibold">
-                <Presentation className="h-6 w-6" /> Slides
-              </h1>
-            </div>
             <div className="tab-page-content">
             <Card className="p-8 text-center">
                 <CardTitle>Access Denied</CardTitle>
@@ -231,16 +226,6 @@ export default function SlidesPage() {
   return (
     <>
       <div className="tab-page-shell">
-        <div className="tab-page-header">
-          <div className="space-y-1">
-            <h1 className="flex items-center gap-2 text-2xl font-semibold">
-              <Presentation className="h-6 w-6" /> Slides
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Generate meeting decks without the page recentring as new content arrives.
-            </p>
-          </div>
-        </div>
         <div className="tab-page-content">
       <div id="interactive-content" className="pt-2">
         <div className="grid gap-4 md:grid-cols-3 md:gap-6">

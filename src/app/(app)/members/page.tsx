@@ -224,38 +224,35 @@ export default function MembersPage() {
   return (
     <div className="app-page-shell">
       <div className="app-page-scroll">
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-semibold">Member Directory</h1>
-        <div className="flex gap-2">
-          {canEditContent && (
-              <Dialog>
-                  <DialogTrigger asChild>
-                  <Button variant="outline">
-                      <Share2 className="mr-2" /> Invite Members
-                  </Button>
-                  </DialogTrigger>
-                  <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] sm:top-[50%] sm:max-h-[calc(100dvh-2rem)]">
-                  <DialogHeader>
-                      <DialogTitle>Invite Members with Join Code</DialogTitle>
-                      <DialogDescription>
-                      Share this code with people you want to invite to your group. This code is unique to your group and will not change.
-                      </DialogDescription>
-                  </DialogHeader>
-                  <div className="py-4">
-                      {joinCode ? (
-                          <p className="text-center text-4xl font-bold tracking-[0.5em] bg-muted p-4 rounded-lg">{joinCode}</p>
-                      ) : (
-                          <p className="text-center text-muted-foreground">Loading join code...</p>
-                      )}
-                  </div>
-                  <DialogFooter>
-                      <Button onClick={handleCopyToClipboard} disabled={!joinCode}>Copy Code</Button>
-                  </DialogFooter>
-                  </DialogContent>
-              </Dialog>
-          )}
+      {canEditContent ? (
+        <div className="mb-4 flex justify-end">
+          <Dialog>
+              <DialogTrigger asChild>
+              <Button variant="outline">
+                  <Share2 className="mr-2" /> Invite Members
+              </Button>
+              </DialogTrigger>
+              <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] sm:top-[50%] sm:max-h-[calc(100dvh-2rem)]">
+              <DialogHeader>
+                  <DialogTitle>Invite Members with Join Code</DialogTitle>
+                  <DialogDescription>
+                  Share this code with people you want to invite to your group. This code is unique to your group and will not change.
+                  </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                  {joinCode ? (
+                      <p className="text-center text-4xl font-bold tracking-[0.5em] bg-muted p-4 rounded-lg">{joinCode}</p>
+                  ) : (
+                      <p className="text-center text-muted-foreground">Loading join code...</p>
+                  )}
+              </div>
+              <DialogFooter>
+                  <Button onClick={handleCopyToClipboard} disabled={!joinCode}>Copy Code</Button>
+              </DialogFooter>
+              </DialogContent>
+          </Dialog>
         </div>
-      </div>
+      ) : null}
 
        {loading ? <p>Loading...</p> : 
           safeMembers.length > 0 ? (

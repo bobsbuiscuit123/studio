@@ -28,6 +28,15 @@ type OrgSummary = {
   role: string;
 };
 
+const ORGS_CACHE_TTL_MS = 60_000;
+const ORG_STATUS_CACHE_TTL_MS = 60_000;
+let orgListCache: OrgSummary[] | null = null;
+let orgListLoadedAt = 0;
+const orgStatusCache = new Map<string, OrgSubscriptionStatus>();
+const orgStatusLoadedAt = new Map<string, number>();
+
+const isFresh = (loadedAt: number, ttlMs: number) => Date.now() - loadedAt < ttlMs;
+
 const aiBadgeVariant = (status: OrgSubscriptionStatus | null) => {
   if (!status?.aiAvailable) return 'destructive' as const;
   if (status.effectiveAvailableTokens <= 100) return 'secondary' as const;
@@ -50,8 +59,26 @@ export default function OrgsPage() {
   const [signOutSubmitting, setSignOutSubmitting] = useState(false);
 
   const loadStatuses = useCallback(async (orgsToLoad: OrgSummary[]) => {
+    const cachedStatuses = orgsToLoad.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
+      const cachedStatus = orgStatusCache.get(org.id);
+      const loadedAt = orgStatusLoadedAt.get(org.id) ?? 0;
+      if (cachedStatus && isFresh(loadedAt, ORG_STATUS_CACHE_TTL_MS)) {
+        acc[org.id] = cachedStatus;
+      }
+      return acc;
+    }, {});
+
+    if (Object.keys(cachedStatuses).length > 0) {
+      setStatusByOrg(prev => ({ ...prev, ...cachedStatuses }));
+    }
+
+    const orgsNeedingStatus = orgsToLoad.filter(org => !cachedStatuses[org.id]);
+    if (orgsNeedingStatus.length === 0) {
+      return;
+    }
+
     const statusEntries = await Promise.all(
-      orgsToLoad.map(async (org) => {
+      orgsNeedingStatus.map(async (org) => {
         const result = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
           `/api/orgs/${org.id}/status`,
           { method: 'GET' }
@@ -64,15 +91,33 @@ export default function OrgsPage() {
       statusEntries.reduce<Record<string, OrgSubscriptionStatus>>((acc, entry) => {
         if (entry) {
           const [orgId, orgStatus] = entry;
+          orgStatusCache.set(orgId, orgStatus);
+          orgStatusLoadedAt.set(orgId, Date.now());
           acc[orgId] = orgStatus;
         }
         return acc;
-      }, {})
+      }, { ...cachedStatuses })
     );
   }, []);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    const cachedOrgList =
+      orgListCache && isFresh(orgListLoadedAt, ORGS_CACHE_TTL_MS) ? orgListCache : null;
+
+    if (cachedOrgList) {
+      setOrgs(cachedOrgList);
+      setLoading(false);
+      void loadStatuses(cachedOrgList);
+      return;
+    }
+
+    if (!orgListCache) {
+      setLoading(true);
+    } else {
+      setOrgs(orgListCache);
+      setLoading(false);
+    }
+
     const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
       method: 'GET',
     });
@@ -87,6 +132,8 @@ export default function OrgsPage() {
     }
 
     const orgList = Array.isArray(result.data.data) ? result.data.data : [];
+    orgListCache = orgList;
+    orgListLoadedAt = Date.now();
     setOrgs(orgList);
     setLoading(false);
     if (orgList.length === 0) {
@@ -106,10 +153,8 @@ export default function OrgsPage() {
     };
 
     window.addEventListener('org-subscription-changed', handleRefresh);
-    window.addEventListener('focus', handleRefresh);
     return () => {
       window.removeEventListener('org-subscription-changed', handleRefresh);
-      window.removeEventListener('focus', handleRefresh);
     };
   }, [load]);
 

@@ -90,14 +90,10 @@ export function useOrgSubscriptionStatus(orgIdOverride?: string | null) {
       void refresh({ force: true, silent: true });
     };
 
-    window.addEventListener('focus', handleRefresh);
-    window.addEventListener('visibilitychange', handleRefresh);
     window.addEventListener('online', handleRefresh);
     window.addEventListener('org-subscription-changed', handleRefresh);
 
     return () => {
-      window.removeEventListener('focus', handleRefresh);
-      window.removeEventListener('visibilitychange', handleRefresh);
       window.removeEventListener('online', handleRefresh);
       window.removeEventListener('org-subscription-changed', handleRefresh);
     };

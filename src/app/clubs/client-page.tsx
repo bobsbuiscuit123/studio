@@ -48,6 +48,20 @@ type GroupsResponse = {
   };
 };
 
+const GROUPS_CACHE_TTL_MS = 60_000;
+const groupListCache = new Map<string, { groups: Group[]; loadedAt: number }>();
+
+const getCachedGroups = (orgId: string) => {
+  const cached = groupListCache.get(orgId);
+  if (!cached) {
+    return null;
+  }
+  if (Date.now() - cached.loadedAt >= GROUPS_CACHE_TTL_MS) {
+    return null;
+  }
+  return cached.groups;
+};
+
 export default function ClubsPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -152,6 +166,13 @@ export default function ClubsPage() {
 
     let active = true;
     const load = async () => {
+      const cachedGroups = getCachedGroups(selectedOrgId);
+      if (cachedGroups) {
+        setGroups(cachedGroups);
+        setLoading(false);
+        return;
+      }
+
       const groupsResult = await safeFetchJson<GroupsResponse>(
         `/api/groups?orgId=${encodeURIComponent(selectedOrgId)}`,
         { method: "GET" }
@@ -183,7 +204,12 @@ export default function ClubsPage() {
         setLoading(false);
         return;
       }
-      setGroups(groupsResult.data?.data?.groups ?? []);
+      const nextGroups = groupsResult.data?.data?.groups ?? [];
+      groupListCache.set(selectedOrgId, {
+        groups: nextGroups,
+        loadedAt: Date.now(),
+      });
+      setGroups(nextGroups);
       setLoading(false);
     };
     void load();

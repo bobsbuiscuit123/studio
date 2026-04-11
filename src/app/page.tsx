@@ -31,7 +31,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/current-user';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import { safeFetchJson } from '@/lib/network';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 import { LegalDocumentDialog } from '@/components/legal-document-dialog';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
@@ -106,7 +105,7 @@ function SignUpForm({
   onSwitchToLogin,
   supabase,
 }: {
-  onUserSaved: (user: User) => void;
+  onUserSaved: (user: User) => void | Promise<void>;
   onSwitchToLogin: () => void;
   supabase: ReturnType<typeof createSupabaseBrowserClient>;
 }) {
@@ -159,7 +158,7 @@ function SignUpForm({
           };
         clearSelectedOrgId();
         clearSelectedGroupId();
-        onUserSaved(newUser);
+        await onUserSaved(newUser);
         toast({ title: `Welcome, ${trimmedName}!` });
     };
     
@@ -228,7 +227,7 @@ function LoginForm({
   onSwitchToSignUp,
   supabase,
 }: {
-  onLogin: (user: User) => void;
+  onLogin: (user: User) => void | Promise<void>;
   onSwitchToSignUp: () => void;
   supabase: ReturnType<typeof createSupabaseBrowserClient>;
 }) {
@@ -257,7 +256,7 @@ function LoginForm({
             password: '',
             avatar: getPlaceholderImageUrl({ label: (getAuthMetadataDisplayName(data.user) || 'M').charAt(0) }),
           };
-        onLogin(user);
+        await onLogin(user);
         toast({ title: `Welcome back, ${user.name}!`});
     };
     
@@ -332,7 +331,7 @@ function LoginForm({
 }
 
 export default function HomePage() {
-  const { user, loading: userLoading, saveUser } = useCurrentUser();
+  const { user, loading: userLoading, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -368,7 +367,6 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!isClient || userLoading) return;
-    let active = true;
 
     const routeUser = async () => {
       if (isDemoMode) {
@@ -376,26 +374,7 @@ export default function HomePage() {
         return;
       }
       if (user) {
-        if (!selectedOrgId) {
-          navigateWithFallback('/orgs');
-          return;
-        }
-
-        const statusResult = await safeFetchJson<{ ok: true; data: { orgId: string } }>(
-          `/api/orgs/${selectedOrgId}/status`,
-          { method: 'GET' }
-        );
-        if (!active) return;
-
-        if (statusResult.ok) {
-          navigateWithFallback('/clubs');
-          return;
-        }
-
-        clearSelectedOrgId();
-        clearSelectedGroupId();
-        setSelectedOrgId(null);
-        navigateWithFallback('/orgs');
+        navigateWithFallback(selectedOrgId ? '/clubs' : '/orgs');
         return;
       }
       if (pathname === '/') {
@@ -404,10 +383,14 @@ export default function HomePage() {
     };
 
     void routeUser();
-    return () => {
-      active = false;
-    };
   }, [isClient, isDemoMode, pathname, router, selectedOrgId, user, userLoading]);
+
+  const handleAuthenticatedUser = async (nextUser: User) => {
+    setLocalUser(nextUser);
+    const nextSelectedOrgId = typeof window === 'undefined' ? null : localStorage.getItem('selectedOrgId');
+    setSelectedOrgId(nextSelectedOrgId);
+    navigateWithFallback(nextSelectedOrgId ? '/clubs' : '/orgs');
+  };
 
   
   if (!isClient || userLoading) {
@@ -440,9 +423,9 @@ export default function HomePage() {
 
                 <div className="px-5 pb-5 pt-0 sm:px-6 sm:pb-6">
                    {authMode === 'login' ? (
-                        <LoginForm onLogin={saveUser} onSwitchToSignUp={() => setAuthMode('signup')} supabase={supabase} />
+                        <LoginForm onLogin={handleAuthenticatedUser} onSwitchToSignUp={() => setAuthMode('signup')} supabase={supabase} />
                    ) : (
-                        <SignUpForm onUserSaved={saveUser} onSwitchToLogin={() => setAuthMode('login')} supabase={supabase} />
+                        <SignUpForm onUserSaved={handleAuthenticatedUser} onSwitchToLogin={() => setAuthMode('login')} supabase={supabase} />
                    )}
                 </div>
             </Card>

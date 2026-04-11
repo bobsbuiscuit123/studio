@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { MoonStar, Sparkles } from "lucide-react";
 
 import { useAppTheme } from "@/hooks/use-app-theme";
-import { useCurrentUser } from "@/lib/data-hooks";
+import { useCurrentUser } from "@/lib/current-user";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

@@ -51,6 +51,7 @@ export function SafeAreaSync() {
       string,
       { top: number; right: number; bottom: number; left: number }
     >();
+    let lastScheduleAt = 0;
 
     const clearScheduledSyncs = () => {
       timeoutIds.forEach((timeoutId) => {
@@ -96,13 +97,18 @@ export function SafeAreaSync() {
     };
 
     const scheduleSync = () => {
+      const now = Date.now();
+      if (now - lastScheduleAt < 120) {
+        return;
+      }
+      lastScheduleAt = now;
       applyInsetVars();
       if (animationFrameId !== null) {
         window.cancelAnimationFrame(animationFrameId);
       }
       animationFrameId = window.requestAnimationFrame(applyInsetVars);
       clearScheduledSyncs();
-      [120, 360, 900].forEach((delay) => {
+      [120, 360].forEach((delay) => {
         const timeoutId = window.setTimeout(applyInsetVars, delay);
         timeoutIds.add(timeoutId);
       });
@@ -123,14 +129,9 @@ export function SafeAreaSync() {
     window.addEventListener("resize", scheduleSync);
     window.addEventListener("orientationchange", scheduleSync);
     window.addEventListener("pageshow", scheduleSync);
-    window.addEventListener("blur", scheduleSync);
     window.addEventListener(SAFE_AREA_RESYNC_EVENT, handleSafeAreaResync);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", scheduleSync);
-    window.addEventListener("focusin", scheduleSync);
-    window.addEventListener("focusout", scheduleSync);
-    window.visualViewport?.addEventListener("resize", scheduleSync);
-    window.visualViewport?.addEventListener("scroll", scheduleSync);
 
     return () => {
       if (animationFrameId !== null) {
@@ -140,14 +141,9 @@ export function SafeAreaSync() {
       window.removeEventListener("resize", scheduleSync);
       window.removeEventListener("orientationchange", scheduleSync);
       window.removeEventListener("pageshow", scheduleSync);
-      window.removeEventListener("blur", scheduleSync);
       window.removeEventListener(SAFE_AREA_RESYNC_EVENT, handleSafeAreaResync);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", scheduleSync);
-      window.removeEventListener("focusin", scheduleSync);
-      window.removeEventListener("focusout", scheduleSync);
-      window.visualViewport?.removeEventListener("resize", scheduleSync);
-      window.visualViewport?.removeEventListener("scroll", scheduleSync);
       probe.remove();
     };
   }, []);
@@ -163,11 +159,9 @@ export function SafeAreaSync() {
 
     dispatchResync();
     const earlyResyncId = window.setTimeout(dispatchResync, 120);
-    const lateResyncId = window.setTimeout(dispatchResync, 480);
 
     return () => {
       window.clearTimeout(earlyResyncId);
-      window.clearTimeout(lateResyncId);
     };
   }, [pathname]);
 

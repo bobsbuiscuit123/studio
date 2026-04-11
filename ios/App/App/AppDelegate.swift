@@ -7,6 +7,12 @@ import FirebaseMessaging
 class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     var window: UIWindow?
+    private var pendingChromeTasks: [DispatchWorkItem] = []
+
+    private func cancelPendingChromeTasks() {
+        pendingChromeTasks.forEach { $0.cancel() }
+        pendingChromeTasks.removeAll()
+    }
 
     private func reassertWindowChrome() {
         window?.backgroundColor = .white
@@ -15,11 +21,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     }
 
     private func scheduleWindowChromeReassert() {
-        let delays: [TimeInterval] = [0, 0.12, 0.42, 0.9, 1.6, 2.6]
+        cancelPendingChromeTasks()
+        let delays: [TimeInterval] = [0, 0.12, 0.42]
         for delay in delays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            let workItem = DispatchWorkItem { [weak self] in
                 self?.reassertWindowChrome()
             }
+            pendingChromeTasks.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         }
     }
 

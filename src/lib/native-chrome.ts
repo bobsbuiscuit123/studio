@@ -1,6 +1,6 @@
 export const SAFE_AREA_RESYNC_EVENT = "caspo:safe-area-resync";
 export const STATUS_BAR_REASSERT_EVENT = "caspo:status-bar-reassert";
-export const DEFAULT_NATIVE_CHROME_RESYNC_DELAYS = [0, 120, 420, 900, 1600, 2600];
+export const DEFAULT_NATIVE_CHROME_RESYNC_DELAYS = [0, 120, 420];
 
 export function dispatchNativeChromeResync() {
   if (typeof window === "undefined") {

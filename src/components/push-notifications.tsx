@@ -12,7 +12,7 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import { usePathname, useRouter } from 'next/navigation';
 
 import { useToast } from '@/hooks/use-toast';
-import { useCurrentUser } from '@/lib/data-hooks';
+import { useCurrentUser } from '@/lib/current-user';
 import { safeFetchJson } from '@/lib/network';
 
 const parsePushParams = (value: unknown) => {

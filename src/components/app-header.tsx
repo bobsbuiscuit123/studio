@@ -96,6 +96,8 @@ export function AppHeader() {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
+  const selectedOrgId = useMemo(() => getSelectedOrgId(), [pathname]);
+  const selectedGroupId = useMemo(() => getSelectedGroupId(), [pathname]);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -116,9 +118,7 @@ export function AppHeader() {
         setClubName(demoCtx.clubName);
         return;
       }
-      const orgId = getSelectedOrgId();
-      const groupId = getSelectedGroupId();
-      if (!orgId || !supabase) {
+      if (!selectedOrgId || !supabase) {
         setClubName("");
         setOrgName("");
         return;
@@ -126,22 +126,22 @@ export function AppHeader() {
       const { data: orgRow } = await supabase
         .from('orgs')
         .select('name')
-        .eq('id', orgId)
+        .eq('id', selectedOrgId)
         .maybeSingle();
       setOrgName(orgRow?.name || "");
-      if (!groupId) {
+      if (!selectedGroupId) {
         setClubName("");
         return;
       }
       const { data: groupRow } = await supabase
         .from('groups')
         .select('name')
-        .eq('id', groupId)
+        .eq('id', selectedGroupId)
         .maybeSingle();
       setClubName(groupRow?.name || "");
     };
     load();
-  }, [demoCtx, pathname, supabase, useDemo]);
+  }, [demoCtx, selectedGroupId, selectedOrgId, supabase, useDemo]);
   
   const handleLogout = async () => {
     if (useDemo) {
@@ -195,7 +195,7 @@ export function AppHeader() {
   
   const avatarBgColor = (user?.name && !user?.avatar) ? stringToColor(user.name) : undefined;
   const isAdminRole = role === 'Admin';
-  const hasGroupContext = Boolean(!useDemo && getSelectedOrgId() && getSelectedGroupId() && clubName);
+  const hasGroupContext = Boolean(!useDemo && selectedOrgId && selectedGroupId && clubName);
   const mobileTitle = title;
 
   const loadTransferCandidates = async () => {

@@ -5,13 +5,22 @@ import WebKit
 class CaspoBridgeViewController: CAPBridgeViewController {
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var isApplyingNativeChromeStyle = false
+    private var pendingChromeTasks: [DispatchWorkItem] = []
+
+    private func cancelPendingChromeTasks() {
+        pendingChromeTasks.forEach { $0.cancel() }
+        pendingChromeTasks.removeAll()
+    }
 
     private func scheduleNativeChromeStyle() {
-        let delays: [TimeInterval] = [0, 0.12, 0.42, 0.9, 1.6, 2.6]
+        cancelPendingChromeTasks()
+        let delays: [TimeInterval] = [0, 0.12, 0.42]
         for delay in delays {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            let workItem = DispatchWorkItem { [weak self] in
                 self?.applyNativeChromeStyle()
             }
+            pendingChromeTasks.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
         }
     }
 
@@ -86,6 +95,7 @@ class CaspoBridgeViewController: CAPBridgeViewController {
     }
 
     deinit {
+        cancelPendingChromeTasks()
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
     }
 }

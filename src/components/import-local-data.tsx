@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useCurrentUser } from "@/lib/data-hooks";
+import { useCurrentUser } from "@/lib/current-user";
 import { useToast } from "@/hooks/use-toast";
 
 type LegacyClub = {

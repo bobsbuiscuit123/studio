@@ -27,6 +27,7 @@ export function NativeStatusBar() {
     const timeoutIds = new Set<number>();
     const listenerRemovers: Array<() => Promise<void>> = [];
     let disposed = false;
+    let lastScheduleAt = 0;
 
     const clearScheduledApplies = () => {
       timeoutIds.forEach((timeoutId) => {
@@ -50,6 +51,11 @@ export function NativeStatusBar() {
     };
 
     const scheduleApply = () => {
+      const now = Date.now();
+      if (now - lastScheduleAt < 120) {
+        return;
+      }
+      lastScheduleAt = now;
       applyStatusBar();
       clearScheduledApplies();
       DEFAULT_NATIVE_CHROME_RESYNC_DELAYS.forEach((delay) => {
@@ -71,15 +77,11 @@ export function NativeStatusBar() {
     scheduleApply();
 
     window.addEventListener("focus", scheduleApply);
-    window.addEventListener("blur", scheduleApply);
-    window.addEventListener("focusin", scheduleApply);
-    window.addEventListener("focusout", scheduleApply);
     window.addEventListener("pageshow", scheduleApply);
     window.addEventListener("orientationchange", scheduleApply);
     window.addEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);
     window.addEventListener(APP_THEME_CHANGE_EVENT, scheduleApply as EventListener);
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.visualViewport?.addEventListener("resize", scheduleApply);
 
     void App.addListener("appStateChange", ({ isActive }) => {
       if (isActive) {
@@ -107,15 +109,11 @@ export function NativeStatusBar() {
       disposed = true;
       clearScheduledApplies();
       window.removeEventListener("focus", scheduleApply);
-      window.removeEventListener("blur", scheduleApply);
-      window.removeEventListener("focusin", scheduleApply);
-      window.removeEventListener("focusout", scheduleApply);
       window.removeEventListener("pageshow", scheduleApply);
       window.removeEventListener("orientationchange", scheduleApply);
       window.removeEventListener(STATUS_BAR_REASSERT_EVENT, handleStatusBarReassert);
       window.removeEventListener(APP_THEME_CHANGE_EVENT, scheduleApply as EventListener);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.visualViewport?.removeEventListener("resize", scheduleApply);
       listenerRemovers.forEach((removeListener) => {
         void removeListener();
       });
@@ -133,11 +131,9 @@ export function NativeStatusBar() {
 
     dispatchReassert();
     const earlyReassertId = window.setTimeout(dispatchReassert, 120);
-    const lateReassertId = window.setTimeout(dispatchReassert, 480);
 
     return () => {
       window.clearTimeout(earlyReassertId);
-      window.clearTimeout(lateReassertId);
     };
   }, [pathname]);
 

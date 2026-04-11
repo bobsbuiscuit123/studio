@@ -28,6 +28,7 @@ import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
+import { readLocalViewCache, writeLocalViewCache } from "@/lib/local-view-cache";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import type { OrgSettings } from "@/lib/org-settings";
 import { generateRandomCode } from "@/lib/random-code";
@@ -49,12 +50,22 @@ type GroupsResponse = {
 };
 
 const GROUPS_CACHE_TTL_MS = 60_000;
+const GROUPS_REQUEST_TIMEOUT_MS = 4_500;
 const groupListCache = new Map<string, { groups: Group[]; loadedAt: number }>();
+const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
 
 const getCachedGroups = (orgId: string) => {
   const cached = groupListCache.get(orgId);
   if (!cached) {
-    return null;
+    const persisted = readLocalViewCache<Group[]>(groupsCacheKey(orgId), GROUPS_CACHE_TTL_MS);
+    if (!persisted) {
+      return null;
+    }
+    groupListCache.set(orgId, {
+      groups: persisted,
+      loadedAt: Date.now(),
+    });
+    return persisted;
   }
   if (Date.now() - cached.loadedAt >= GROUPS_CACHE_TTL_MS) {
     return null;
@@ -67,8 +78,9 @@ export default function ClubsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
   const { user, saveUser, clearUser } = useCurrentUser();
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [loading, setLoading] = useState(true);
+  const selectedOrgId = getSelectedOrgId();
+  const [groups, setGroups] = useState<Group[]>(() => (selectedOrgId ? getCachedGroups(selectedOrgId) ?? [] : []));
+  const [loading, setLoading] = useState(() => (selectedOrgId ? !getCachedGroups(selectedOrgId) : true));
   const [joinCode, setJoinCode] = useState("");
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
@@ -90,7 +102,6 @@ export default function ClubsPage() {
   const [orgSettingsLoading, setOrgSettingsLoading] = useState(false);
   const [orgJoinCode, setOrgJoinCode] = useState("");
 
-  const selectedOrgId = getSelectedOrgId();
   const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
@@ -175,7 +186,7 @@ export default function ClubsPage() {
 
       const groupsResult = await safeFetchJson<GroupsResponse>(
         `/api/groups?orgId=${encodeURIComponent(selectedOrgId)}`,
-        { method: "GET" }
+        { method: "GET", timeoutMs: GROUPS_REQUEST_TIMEOUT_MS }
       );
       if (!active) {
         return;
@@ -196,6 +207,9 @@ export default function ClubsPage() {
           router.replace("/orgs");
           return;
         }
+        if (cachedGroups) {
+          return;
+        }
         toast({
           title: "Group lookup failed",
           description: groupsResult.error.message,
@@ -209,6 +223,7 @@ export default function ClubsPage() {
         groups: nextGroups,
         loadedAt: Date.now(),
       });
+      writeLocalViewCache(groupsCacheKey(selectedOrgId), nextGroups);
       setGroups(nextGroups);
       setLoading(false);
     };

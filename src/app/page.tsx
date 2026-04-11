@@ -30,6 +30,8 @@ import { Logo } from '@/components/icons';
 import { usePathname, useRouter } from 'next/navigation';
 import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/current-user';
+import { writeLocalViewCache } from '@/lib/local-view-cache';
+import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
 import { LegalDocumentDialog } from '@/components/legal-document-dialog';
@@ -57,6 +59,10 @@ const loginFormSchema = z.object({
     email: z.string().email("Please enter a valid email address."),
     password: z.string().min(1, "Password is required."),
 });
+
+const AUTH_PRIME_REQUEST_TIMEOUT_MS = 4_500;
+const ORGS_CACHE_KEY = 'view-cache:orgs:list';
+const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
 
 function LegalNotice({
   onOpenTerms,
@@ -388,8 +394,31 @@ export default function HomePage() {
   const handleAuthenticatedUser = async (nextUser: User) => {
     setLocalUser(nextUser);
     const nextSelectedOrgId = typeof window === 'undefined' ? null : localStorage.getItem('selectedOrgId');
+    const targetPath = nextSelectedOrgId ? '/clubs' : '/orgs';
     setSelectedOrgId(nextSelectedOrgId);
-    navigateWithFallback(nextSelectedOrgId ? '/clubs' : '/orgs');
+    router.prefetch(targetPath);
+
+    if (nextSelectedOrgId) {
+      void safeFetchJson<{ ok: boolean; data?: { groups: Array<Record<string, unknown>> } }>(
+        `/api/groups?orgId=${encodeURIComponent(nextSelectedOrgId)}`,
+        { method: 'GET', timeoutMs: AUTH_PRIME_REQUEST_TIMEOUT_MS }
+      ).then(result => {
+        if (result.ok) {
+          writeLocalViewCache(groupsCacheKey(nextSelectedOrgId), result.data?.data?.groups ?? []);
+        }
+      });
+    } else {
+      void safeFetchJson<{ ok: boolean; data?: Array<Record<string, unknown>> }>('/api/orgs', {
+        method: 'GET',
+        timeoutMs: AUTH_PRIME_REQUEST_TIMEOUT_MS,
+      }).then(result => {
+        if (result.ok) {
+          writeLocalViewCache(ORGS_CACHE_KEY, result.data?.data ?? []);
+        }
+      });
+    }
+
+    navigateWithFallback(targetPath);
   };
 
   

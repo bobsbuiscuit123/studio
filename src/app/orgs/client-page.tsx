@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { readLocalViewCache, writeLocalViewCache } from '@/lib/local-view-cache';
 import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { OrgSubscriptionStatus } from '@/lib/org-subscription';
@@ -30,6 +31,10 @@ type OrgSummary = {
 
 const ORGS_CACHE_TTL_MS = 60_000;
 const ORG_STATUS_CACHE_TTL_MS = 60_000;
+const ORGS_REQUEST_TIMEOUT_MS = 4_500;
+const ORG_STATUS_REQUEST_TIMEOUT_MS = 4_500;
+const ORGS_CACHE_KEY = 'view-cache:orgs:list';
+const orgStatusCacheKey = (orgId: string) => `view-cache:orgs:status:${orgId}`;
 let orgListCache: OrgSummary[] | null = null;
 let orgListLoadedAt = 0;
 const orgStatusCache = new Map<string, OrgSubscriptionStatus>();
@@ -53,16 +58,37 @@ export default function OrgsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
-  const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgSubscriptionStatus>>({});
-  const [loading, setLoading] = useState(true);
+  const [orgs, setOrgs] = useState<OrgSummary[]>(() => readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS) ?? []);
+  const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgSubscriptionStatus>>(() => {
+    const initialOrgs = readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS) ?? [];
+    return initialOrgs.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
+      const cachedStatus = readLocalViewCache<OrgSubscriptionStatus>(
+        orgStatusCacheKey(org.id),
+        ORG_STATUS_CACHE_TTL_MS
+      );
+      if (cachedStatus) {
+        acc[org.id] = cachedStatus;
+      }
+      return acc;
+    }, {});
+  });
+  const [loading, setLoading] = useState(() => {
+    const initialOrgs = readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS);
+    return !initialOrgs;
+  });
   const [signOutSubmitting, setSignOutSubmitting] = useState(false);
 
   const loadStatuses = useCallback(async (orgsToLoad: OrgSummary[]) => {
     const cachedStatuses = orgsToLoad.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
-      const cachedStatus = orgStatusCache.get(org.id);
-      const loadedAt = orgStatusLoadedAt.get(org.id) ?? 0;
+      const cachedStatus =
+        orgStatusCache.get(org.id) ??
+        readLocalViewCache<OrgSubscriptionStatus>(orgStatusCacheKey(org.id), ORG_STATUS_CACHE_TTL_MS);
+      const loadedAt =
+        orgStatusLoadedAt.get(org.id) ??
+        (cachedStatus ? Date.now() : 0);
       if (cachedStatus && isFresh(loadedAt, ORG_STATUS_CACHE_TTL_MS)) {
+        orgStatusCache.set(org.id, cachedStatus);
+        orgStatusLoadedAt.set(org.id, loadedAt || Date.now());
         acc[org.id] = cachedStatus;
       }
       return acc;
@@ -81,7 +107,7 @@ export default function OrgsPage() {
       orgsNeedingStatus.map(async (org) => {
         const result = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
           `/api/orgs/${org.id}/status`,
-          { method: 'GET' }
+          { method: 'GET', timeoutMs: ORG_STATUS_REQUEST_TIMEOUT_MS }
         );
         return result.ok ? ([org.id, result.data.data] as const) : null;
       })
@@ -93,6 +119,7 @@ export default function OrgsPage() {
           const [orgId, orgStatus] = entry;
           orgStatusCache.set(orgId, orgStatus);
           orgStatusLoadedAt.set(orgId, Date.now());
+          writeLocalViewCache(orgStatusCacheKey(orgId), orgStatus);
           acc[orgId] = orgStatus;
         }
         return acc;
@@ -102,9 +129,12 @@ export default function OrgsPage() {
 
   const load = useCallback(async () => {
     const cachedOrgList =
-      orgListCache && isFresh(orgListLoadedAt, ORGS_CACHE_TTL_MS) ? orgListCache : null;
+      (orgListCache && isFresh(orgListLoadedAt, ORGS_CACHE_TTL_MS) ? orgListCache : null) ??
+      readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS);
 
     if (cachedOrgList) {
+      orgListCache = cachedOrgList;
+      orgListLoadedAt = Date.now();
       setOrgs(cachedOrgList);
       setLoading(false);
       void loadStatuses(cachedOrgList);
@@ -120,10 +150,14 @@ export default function OrgsPage() {
 
     const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
       method: 'GET',
+      timeoutMs: ORGS_REQUEST_TIMEOUT_MS,
     });
     if (!result.ok) {
       if (/unauthorized/i.test(result.error.message)) {
         router.replace('/login');
+        return;
+      }
+      if (cachedOrgList) {
         return;
       }
       toast({ title: 'Error', description: result.error.message, variant: 'destructive' });
@@ -134,6 +168,7 @@ export default function OrgsPage() {
     const orgList = Array.isArray(result.data.data) ? result.data.data : [];
     orgListCache = orgList;
     orgListLoadedAt = Date.now();
+    writeLocalViewCache(ORGS_CACHE_KEY, orgList);
     setOrgs(orgList);
     setLoading(false);
     if (orgList.length === 0) {

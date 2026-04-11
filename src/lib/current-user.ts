@@ -64,11 +64,44 @@ const persistCurrentUserCache = (nextUser: User | null) => {
   }
 };
 
+const readStoredCurrentUser = () => {
+  if (currentUserCache) {
+    return currentUserCache;
+  }
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const storedUser = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    const parsedUser = JSON.parse(storedUser) as User;
+    currentUserCache = parsedUser;
+    return parsedUser;
+  } catch {
+    window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+    return null;
+  }
+};
+
 function useCurrentUserState(): CurrentUserContextValue {
   const demoCtx = useOptionalDemoCtx();
   const useDemo = shouldUseDemoData(Boolean(demoCtx));
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
+    if (useDemo && demoCtx) {
+      return demoCtx.user;
+    }
+    return readStoredCurrentUser();
+  });
+  const [loading, setLoading] = useState(() => {
+    if (useDemo && demoCtx) {
+      return false;
+    }
+    return !readStoredCurrentUser();
+  });
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -81,16 +114,10 @@ function useCurrentUserState(): CurrentUserContextValue {
 
     const supabase = createSupabaseBrowserClient();
     const hydrate = async () => {
-      const storedUser = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser) as User;
-          currentUserCache = parsedUser;
-          setUser(parsedUser);
-          setLoading(false);
-        } catch {
-          localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-        }
+      const cachedUser = readStoredCurrentUser();
+      if (cachedUser) {
+        setUser(cachedUser);
+        setLoading(false);
       } else if (currentUserCache) {
         setUser(currentUserCache);
         setLoading(false);

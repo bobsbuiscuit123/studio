@@ -346,7 +346,7 @@ export function AppHeader() {
   return (
     <>
     <header className={`sticky top-0 z-30 border-b border-border/70 bg-background ${isMessagesRoute ? "hidden md:block" : ""}`}>
-      <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6">
+      <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:min-h-[84px] md:max-w-none md:items-start lg:px-6">
         <div className="hidden min-w-0 flex-1 sm:flex">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1">

@@ -72,16 +72,14 @@ export default function OrgsPage() {
   }, []);
 
   const load = useCallback(async () => {
-    const { data: authUser } = await supabase.auth.getUser();
-    if (!authUser.user) {
-      router.replace('/login');
-      return;
-    }
-
     const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
       method: 'GET',
     });
     if (!result.ok) {
+      if (/unauthorized/i.test(result.error.message)) {
+        router.replace('/login');
+        return;
+      }
       toast({ title: 'Error', description: result.error.message, variant: 'destructive' });
       setLoading(false);
       return;
@@ -91,7 +89,7 @@ export default function OrgsPage() {
     setOrgs(orgList);
     await loadStatuses(orgList);
     setLoading(false);
-  }, [loadStatuses, router, supabase, toast]);
+  }, [loadStatuses, router, toast]);
 
   useEffect(() => {
     void load();

@@ -6,7 +6,6 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { faker } from "@faker-js/faker";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +16,7 @@ import type { ClubEvent, Member } from "@/lib/mock-data";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { CheckCircle, KeyRound, Loader2, Users } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { generateRandomCode } from "@/lib/random-code";
 
 const checkInFormSchema = z.object({
   code: z.string().length(4, "Code must be 4 characters.").regex(/^[A-Z0-9]{4}$/, "Invalid code format."),
@@ -36,7 +36,7 @@ export default function AttendancePage() {
   });
 
   const handleGenerateCode = async (eventId: string) => {
-    const code = faker.string.alphanumeric(4).toUpperCase();
+    const code = generateRandomCode(4);
     const saved = await saveEvents(prevEvents =>
       prevEvents.map(event =>
         event.id === eventId ? { ...event, checkInCode: code } : event

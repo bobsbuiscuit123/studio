@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -30,7 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Logo } from '@/components/icons';
 import { usePathname, useRouter } from 'next/navigation';
 import { User } from '@/lib/mock-data';
-import { useCurrentUser } from '@/lib/data-hooks';
+import { useCurrentUser } from '@/lib/current-user';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
@@ -81,75 +80,25 @@ function LegalNotice({
         </p>
     );
 }
-
-type BrowserSupabaseClient = ReturnType<typeof createSupabaseBrowserClient>;
-
-async function syncBrowserProfileUser(
-  supabase: BrowserSupabaseClient,
+function buildBrowserProfileUser(
   authUser?: { id?: string; email?: string | null; user_metadata?: Record<string, unknown> | null },
   preferredName?: string | null,
-): Promise<User | null> {
-  if (!authUser?.id || !authUser.email) {
+) {
+  if (!authUser?.email) {
     return null;
   }
 
   const normalizedEmail = normalizeAuthEmail(authUser.email);
-
-  try {
-    const { data: existingProfile, error: existingProfileError } = await supabase
-      .from('profiles')
-      .select('display_name, avatar_url')
-      .eq('id', authUser.id)
-      .maybeSingle();
-
-    if (existingProfileError) {
-      throw existingProfileError;
-    }
-
-    const displayName = resolveStoredDisplayName({
-      preferredName,
-      existingProfileName: existingProfile?.display_name,
-      authDisplayName: getAuthMetadataDisplayName(authUser),
-      email: normalizedEmail,
-    });
-    const fallbackAvatar = getPlaceholderImageUrl({ label: displayName.charAt(0) || 'M' });
-    const avatar =
-      typeof existingProfile?.avatar_url === 'string' && existingProfile.avatar_url.trim().length > 0
-        ? existingProfile.avatar_url.trim()
-        : fallbackAvatar;
-
-    const { error: upsertError } = await supabase
-      .from('profiles')
-      .upsert({
-        id: authUser.id,
-        email: normalizedEmail,
-        display_name: displayName,
-        avatar_url: avatar,
-      });
-
-    if (upsertError) {
-      throw upsertError;
-    }
-
-    return {
-      name: displayName,
-      email: normalizedEmail,
-      avatar,
-    };
-  } catch (error) {
-    console.error('Failed to sync auth profile user', error);
-    const displayName = resolveStoredDisplayName({
-      preferredName,
-      authDisplayName: getAuthMetadataDisplayName(authUser),
-      email: normalizedEmail,
-    });
-    const fallbackAvatar = getPlaceholderImageUrl({ label: displayName.charAt(0) || 'M' });
-    return {
-      name: displayName,
-      email: normalizedEmail,
-      avatar: fallbackAvatar,
-    };
-  }
+  const displayName = resolveStoredDisplayName({
+    preferredName,
+    authDisplayName: getAuthMetadataDisplayName(authUser),
+    email: normalizedEmail,
+  });
+  return {
+    name: displayName,
+    email: normalizedEmail,
+    avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) || 'M' }),
+  };
 }
 
 function SignUpForm({
@@ -202,7 +151,7 @@ function SignUpForm({
           return;
         }
         const newUser =
-          (await syncBrowserProfileUser(supabase, data.user, trimmedName)) ?? {
+          buildBrowserProfileUser(data.user, trimmedName) ?? {
             name: trimmedName,
             email: normalizedEmail,
             password: '',
@@ -302,7 +251,7 @@ function LoginForm({
             return;
         }
         const user =
-          (await syncBrowserProfileUser(supabase, data.user)) ?? {
+          buildBrowserProfileUser(data.user) ?? {
             name: getAuthMetadataDisplayName(data.user) || 'Member',
             email: normalizedEmail,
             password: '',
@@ -383,7 +332,7 @@ function LoginForm({
 }
 
 export default function HomePage() {
-  const { user, loading: userLoading, saveUser, clearUser, setLocalUser } = useCurrentUser();
+  const { user, loading: userLoading, saveUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -411,37 +360,6 @@ export default function HomePage() {
     if (!isClient) return;
     setSelectedOrgId(localStorage.getItem('selectedOrgId'));
   }, [isClient]);
-
-  useEffect(() => {
-    const initAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      const sessionUser = data.session?.user;
-      if (sessionUser) {
-        const resolvedUser = await syncBrowserProfileUser(supabase, sessionUser);
-        if (resolvedUser) {
-          setLocalUser(resolvedUser);
-        }
-      }
-    };
-    initAuth();
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
-      if (!session) {
-        clearUser();
-        return;
-      }
-      void (async () => {
-        const resolvedUser = await syncBrowserProfileUser(supabase, session.user);
-        if (resolvedUser) {
-          setLocalUser(resolvedUser);
-        }
-      })();
-      }
-    );
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, [clearUser, setLocalUser, supabase]);
 
   useEffect(() => {
     if (!isClient || userLoading || didLogNavigationRef.current) return;
@@ -489,7 +407,7 @@ export default function HomePage() {
     return () => {
       active = false;
     };
-  }, [isClient, isDemoMode, pathname, router, selectedOrgId, supabase, user, userLoading]);
+  }, [isClient, isDemoMode, pathname, router, selectedOrgId, user, userLoading]);
 
   
   if (!isClient || userLoading) {

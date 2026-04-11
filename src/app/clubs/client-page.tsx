@@ -23,7 +23,6 @@ import { useToast } from "@/hooks/use-toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId, clearSelectedOrgId, getSelectedOrgId, setSelectedGroupId } from "@/lib/selection";
 import { safeFetchJson } from "@/lib/network";
-import { faker } from "@faker-js/faker";
 import { useCurrentUser } from "@/lib/data-hooks";
 import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { Logo } from "@/components/icons";
@@ -31,6 +30,7 @@ import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import type { OrgSettings } from "@/lib/org-settings";
+import { generateRandomCode } from "@/lib/random-code";
 
 type Group = {
   id: string;
@@ -150,16 +150,15 @@ export default function ClubsPage() {
       return;
     }
     const load = async () => {
-      const { data: authUser } = await supabase.auth.getUser();
-      if (!authUser.user) {
-        router.replace("/login");
-        return;
-      }
       const orgStatusResult = await safeFetchJson<{ ok: true; data: { orgId: string } }>(
         `/api/orgs/${selectedOrgId}/status`,
         { method: "GET" }
       );
       if (!orgStatusResult.ok) {
+        if (/unauthorized/i.test(orgStatusResult.error.message)) {
+          router.replace("/login");
+          return;
+        }
         toast({
           title: "Organization lookup failed",
           description: orgStatusResult.error.message,
@@ -184,6 +183,10 @@ export default function ClubsPage() {
         { method: "GET" }
       );
       if (!groupsResult.ok) {
+        if (/unauthorized/i.test(groupsResult.error.message)) {
+          router.replace("/login");
+          return;
+        }
         toast({
           title: "Group lookup failed",
           description: groupsResult.error.message,
@@ -237,7 +240,7 @@ export default function ClubsPage() {
     }
     createGroupSubmitLockRef.current = true;
     setCreateGroupSubmitting(true);
-    const joinCode = faker.string.alphanumeric(4).toUpperCase();
+    const joinCode = generateRandomCode(4);
     try {
       const response = await safeFetchJson<{ ok: boolean; groupId?: string; joinCode?: string; error?: { message?: string } }>(
         "/api/groups/create",

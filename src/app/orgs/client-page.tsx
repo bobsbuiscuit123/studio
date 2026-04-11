@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { readLocalViewCache, writeLocalViewCache } from '@/lib/local-view-cache';
+import { readLocalViewCacheRecord, writeLocalViewCache } from '@/lib/local-view-cache';
 import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { OrgSubscriptionStatus } from '@/lib/org-subscription';
@@ -29,10 +29,14 @@ type OrgSummary = {
   role: string;
 };
 
-const ORGS_CACHE_TTL_MS = 60_000;
-const ORG_STATUS_CACHE_TTL_MS = 60_000;
-const ORGS_REQUEST_TIMEOUT_MS = 4_500;
-const ORG_STATUS_REQUEST_TIMEOUT_MS = 4_500;
+const ORGS_CACHE_TTL_MS = 5 * 60_000;
+const ORGS_STALE_CACHE_TTL_MS = 24 * 60 * 60_000;
+const ORG_STATUS_CACHE_TTL_MS = 2 * 60_000;
+const ORG_STATUS_STALE_CACHE_TTL_MS = 30 * 60_000;
+const ORGS_REQUEST_TIMEOUT_MS = 8_000;
+const ORG_STATUS_REQUEST_TIMEOUT_MS = 6_500;
+const BACKGROUND_LOOKUP_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_200 };
+const ORG_STATUS_REQUEST_RETRY = { retries: 1, baseDelayMs: 400, maxDelayMs: 1_200 };
 const ORGS_CACHE_KEY = 'view-cache:orgs:list';
 const orgStatusCacheKey = (orgId: string) => `view-cache:orgs:status:${orgId}`;
 let orgListCache: OrgSummary[] | null = null;
@@ -41,6 +45,38 @@ const orgStatusCache = new Map<string, OrgSubscriptionStatus>();
 const orgStatusLoadedAt = new Map<string, number>();
 
 const isFresh = (loadedAt: number, ttlMs: number) => Date.now() - loadedAt < ttlMs;
+
+const readCachedOrgList = (maxAgeMs: number = ORGS_CACHE_TTL_MS) => {
+  if (orgListCache && isFresh(orgListLoadedAt, maxAgeMs)) {
+    return orgListCache;
+  }
+
+  const persisted = readLocalViewCacheRecord<OrgSummary[]>(ORGS_CACHE_KEY);
+  if (!persisted || !isFresh(persisted.savedAt, maxAgeMs)) {
+    return null;
+  }
+
+  orgListCache = persisted.value;
+  orgListLoadedAt = persisted.savedAt;
+  return persisted.value;
+};
+
+const readCachedOrgStatus = (orgId: string, maxAgeMs: number = ORG_STATUS_CACHE_TTL_MS) => {
+  const cachedStatus = orgStatusCache.get(orgId);
+  const loadedAt = orgStatusLoadedAt.get(orgId) ?? 0;
+  if (cachedStatus && isFresh(loadedAt, maxAgeMs)) {
+    return cachedStatus;
+  }
+
+  const persisted = readLocalViewCacheRecord<OrgSubscriptionStatus>(orgStatusCacheKey(orgId));
+  if (!persisted || !isFresh(persisted.savedAt, maxAgeMs)) {
+    return null;
+  }
+
+  orgStatusCache.set(orgId, persisted.value);
+  orgStatusLoadedAt.set(orgId, persisted.savedAt);
+  return persisted.value;
+};
 
 const aiBadgeVariant = (status: OrgSubscriptionStatus | null) => {
   if (!status?.aiAvailable) return 'destructive' as const;
@@ -58,14 +94,11 @@ export default function OrgsPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [orgs, setOrgs] = useState<OrgSummary[]>(() => readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS) ?? []);
+  const [orgs, setOrgs] = useState<OrgSummary[]>(() => readCachedOrgList(ORGS_STALE_CACHE_TTL_MS) ?? []);
   const [statusByOrg, setStatusByOrg] = useState<Record<string, OrgSubscriptionStatus>>(() => {
-    const initialOrgs = readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS) ?? [];
+    const initialOrgs = readCachedOrgList(ORGS_STALE_CACHE_TTL_MS) ?? [];
     return initialOrgs.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
-      const cachedStatus = readLocalViewCache<OrgSubscriptionStatus>(
-        orgStatusCacheKey(org.id),
-        ORG_STATUS_CACHE_TTL_MS
-      );
+      const cachedStatus = readCachedOrgStatus(org.id, ORG_STATUS_STALE_CACHE_TTL_MS);
       if (cachedStatus) {
         acc[org.id] = cachedStatus;
       }
@@ -73,23 +106,24 @@ export default function OrgsPage() {
     }, {});
   });
   const [loading, setLoading] = useState(() => {
-    const initialOrgs = readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS);
+    const initialOrgs = readCachedOrgList(ORGS_STALE_CACHE_TTL_MS);
     return !initialOrgs;
   });
   const [signOutSubmitting, setSignOutSubmitting] = useState(false);
 
   const loadStatuses = useCallback(async (orgsToLoad: OrgSummary[]) => {
+    const freshStatusIds = new Set<string>();
     const cachedStatuses = orgsToLoad.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
-      const cachedStatus =
-        orgStatusCache.get(org.id) ??
-        readLocalViewCache<OrgSubscriptionStatus>(orgStatusCacheKey(org.id), ORG_STATUS_CACHE_TTL_MS);
-      const loadedAt =
-        orgStatusLoadedAt.get(org.id) ??
-        (cachedStatus ? Date.now() : 0);
-      if (cachedStatus && isFresh(loadedAt, ORG_STATUS_CACHE_TTL_MS)) {
-        orgStatusCache.set(org.id, cachedStatus);
-        orgStatusLoadedAt.set(org.id, loadedAt || Date.now());
-        acc[org.id] = cachedStatus;
+      const freshStatus = readCachedOrgStatus(org.id, ORG_STATUS_CACHE_TTL_MS);
+      if (freshStatus) {
+        freshStatusIds.add(org.id);
+        acc[org.id] = freshStatus;
+        return acc;
+      }
+
+      const staleStatus = readCachedOrgStatus(org.id, ORG_STATUS_STALE_CACHE_TTL_MS);
+      if (staleStatus) {
+        acc[org.id] = staleStatus;
       }
       return acc;
     }, {});
@@ -98,7 +132,7 @@ export default function OrgsPage() {
       setStatusByOrg(prev => ({ ...prev, ...cachedStatuses }));
     }
 
-    const orgsNeedingStatus = orgsToLoad.filter(org => !cachedStatuses[org.id]);
+    const orgsNeedingStatus = orgsToLoad.filter(org => !freshStatusIds.has(org.id));
     if (orgsNeedingStatus.length === 0) {
       return;
     }
@@ -107,7 +141,11 @@ export default function OrgsPage() {
       orgsNeedingStatus.map(async (org) => {
         const result = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
           `/api/orgs/${org.id}/status`,
-          { method: 'GET', timeoutMs: ORG_STATUS_REQUEST_TIMEOUT_MS }
+          {
+            method: 'GET',
+            timeoutMs: ORG_STATUS_REQUEST_TIMEOUT_MS,
+            retry: ORG_STATUS_REQUEST_RETRY,
+          }
         );
         return result.ok ? ([org.id, result.data.data] as const) : null;
       })
@@ -128,36 +166,33 @@ export default function OrgsPage() {
   }, []);
 
   const load = useCallback(async () => {
-    const cachedOrgList =
-      (orgListCache && isFresh(orgListLoadedAt, ORGS_CACHE_TTL_MS) ? orgListCache : null) ??
-      readLocalViewCache<OrgSummary[]>(ORGS_CACHE_KEY, ORGS_CACHE_TTL_MS);
+    const freshOrgList = readCachedOrgList(ORGS_CACHE_TTL_MS);
+    const fallbackOrgList = freshOrgList ?? readCachedOrgList(ORGS_STALE_CACHE_TTL_MS);
 
-    if (cachedOrgList) {
-      orgListCache = cachedOrgList;
-      orgListLoadedAt = Date.now();
-      setOrgs(cachedOrgList);
+    if (fallbackOrgList) {
+      setOrgs(fallbackOrgList);
       setLoading(false);
-      void loadStatuses(cachedOrgList);
-      return;
+      void loadStatuses(fallbackOrgList);
+      if (freshOrgList) {
+        return;
+      }
     }
 
-    if (!orgListCache) {
+    if (!fallbackOrgList) {
       setLoading(true);
-    } else {
-      setOrgs(orgListCache);
-      setLoading(false);
     }
 
     const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
       method: 'GET',
       timeoutMs: ORGS_REQUEST_TIMEOUT_MS,
+      retry: fallbackOrgList ? BACKGROUND_LOOKUP_RETRY : { retries: 0 },
     });
     if (!result.ok) {
       if (/unauthorized/i.test(result.error.message)) {
         router.replace('/login');
         return;
       }
-      if (cachedOrgList) {
+      if (fallbackOrgList) {
         return;
       }
       toast({ title: 'Error', description: result.error.message, variant: 'destructive' });

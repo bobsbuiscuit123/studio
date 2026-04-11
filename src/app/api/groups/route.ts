@@ -49,12 +49,29 @@ export async function GET(request: Request) {
 
   const admin = createSupabaseAdmin();
 
-  const { data: orgMembership } = await admin
-    .from('memberships')
-    .select('org_id')
-    .eq('org_id', parsed.data.orgId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const [
+    { data: orgMembership, error: orgMembershipError },
+    { data: membershipRows, error: membershipError },
+  ] = await Promise.all([
+    admin
+      .from('memberships')
+      .select('org_id')
+      .eq('org_id', parsed.data.orgId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    admin
+      .from('group_memberships')
+      .select('group_id, role')
+      .eq('org_id', parsed.data.orgId)
+      .eq('user_id', userId),
+  ]);
+
+  if (orgMembershipError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgMembershipError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
 
   if (!orgMembership) {
     return NextResponse.json(
@@ -62,12 +79,6 @@ export async function GET(request: Request) {
       { status: 403 }
     );
   }
-
-  const { data: membershipRows, error: membershipError } = await admin
-    .from('group_memberships')
-    .select('group_id, role')
-    .eq('org_id', parsed.data.orgId)
-    .eq('user_id', userId);
 
   if (membershipError) {
     return NextResponse.json(

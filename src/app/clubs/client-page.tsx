@@ -28,7 +28,7 @@ import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
-import { readLocalViewCache, writeLocalViewCache } from "@/lib/local-view-cache";
+import { readLocalViewCacheRecord, writeLocalViewCache } from "@/lib/local-view-cache";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import type { OrgSettings } from "@/lib/org-settings";
 import { generateRandomCode } from "@/lib/random-code";
@@ -49,28 +49,29 @@ type GroupsResponse = {
   };
 };
 
-const GROUPS_CACHE_TTL_MS = 60_000;
-const GROUPS_REQUEST_TIMEOUT_MS = 4_500;
+const GROUPS_CACHE_TTL_MS = 5 * 60_000;
+const GROUPS_STALE_CACHE_TTL_MS = 24 * 60 * 60_000;
+const GROUPS_REQUEST_TIMEOUT_MS = 8_000;
+const BACKGROUND_LOOKUP_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_200 };
 const groupListCache = new Map<string, { groups: Group[]; loadedAt: number }>();
 const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
 
-const getCachedGroups = (orgId: string) => {
+const getCachedGroups = (orgId: string, maxAgeMs: number = GROUPS_CACHE_TTL_MS) => {
   const cached = groupListCache.get(orgId);
-  if (!cached) {
-    const persisted = readLocalViewCache<Group[]>(groupsCacheKey(orgId), GROUPS_CACHE_TTL_MS);
-    if (!persisted) {
-      return null;
-    }
-    groupListCache.set(orgId, {
-      groups: persisted,
-      loadedAt: Date.now(),
-    });
-    return persisted;
+  if (cached && Date.now() - cached.loadedAt < maxAgeMs) {
+    return cached.groups;
   }
-  if (Date.now() - cached.loadedAt >= GROUPS_CACHE_TTL_MS) {
+
+  const persisted = readLocalViewCacheRecord<Group[]>(groupsCacheKey(orgId));
+  if (!persisted || Date.now() - persisted.savedAt >= maxAgeMs) {
     return null;
   }
-  return cached.groups;
+
+  groupListCache.set(orgId, {
+    groups: persisted.value,
+    loadedAt: persisted.savedAt,
+  });
+  return persisted.value;
 };
 
 export default function ClubsPage() {
@@ -79,8 +80,12 @@ export default function ClubsPage() {
   const { toast } = useToast();
   const { user, saveUser, clearUser } = useCurrentUser();
   const selectedOrgId = getSelectedOrgId();
-  const [groups, setGroups] = useState<Group[]>(() => (selectedOrgId ? getCachedGroups(selectedOrgId) ?? [] : []));
-  const [loading, setLoading] = useState(() => (selectedOrgId ? !getCachedGroups(selectedOrgId) : true));
+  const [groups, setGroups] = useState<Group[]>(() =>
+    selectedOrgId ? getCachedGroups(selectedOrgId, GROUPS_STALE_CACHE_TTL_MS) ?? [] : []
+  );
+  const [loading, setLoading] = useState(
+    () => (selectedOrgId ? !getCachedGroups(selectedOrgId, GROUPS_STALE_CACHE_TTL_MS) : true)
+  );
   const [joinCode, setJoinCode] = useState("");
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
@@ -177,16 +182,25 @@ export default function ClubsPage() {
 
     let active = true;
     const load = async () => {
-      const cachedGroups = getCachedGroups(selectedOrgId);
-      if (cachedGroups) {
-        setGroups(cachedGroups);
+      const freshGroups = getCachedGroups(selectedOrgId, GROUPS_CACHE_TTL_MS);
+      const fallbackGroups = freshGroups ?? getCachedGroups(selectedOrgId, GROUPS_STALE_CACHE_TTL_MS);
+      if (fallbackGroups) {
+        setGroups(fallbackGroups);
         setLoading(false);
-        return;
+        if (freshGroups) {
+          return;
+        }
+      } else {
+        setLoading(true);
       }
 
       const groupsResult = await safeFetchJson<GroupsResponse>(
         `/api/groups?orgId=${encodeURIComponent(selectedOrgId)}`,
-        { method: "GET", timeoutMs: GROUPS_REQUEST_TIMEOUT_MS }
+        {
+          method: "GET",
+          timeoutMs: GROUPS_REQUEST_TIMEOUT_MS,
+          retry: fallbackGroups ? BACKGROUND_LOOKUP_RETRY : { retries: 0 },
+        }
       );
       if (!active) {
         return;
@@ -207,7 +221,7 @@ export default function ClubsPage() {
           router.replace("/orgs");
           return;
         }
-        if (cachedGroups) {
+        if (fallbackGroups) {
           return;
         }
         toast({

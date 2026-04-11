@@ -43,6 +43,14 @@ export const readLocalViewCache = <T>(key: string, maxAgeMs: number) => {
   return parsed.value;
 };
 
+export const readLocalViewCacheRecord = <T>(key: string) => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return parseCacheRecord<T>(window.localStorage.getItem(key));
+};
+
 export const writeLocalViewCache = <T>(key: string, value: T) => {
   if (typeof window === 'undefined') {
     return;

@@ -60,7 +60,8 @@ const loginFormSchema = z.object({
     password: z.string().min(1, "Password is required."),
 });
 
-const AUTH_PRIME_REQUEST_TIMEOUT_MS = 4_500;
+const AUTH_PRIME_REQUEST_TIMEOUT_MS = 8_000;
+const AUTH_PRIME_REQUEST_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_500 };
 const ORGS_CACHE_KEY = 'view-cache:orgs:list';
 const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
 
@@ -401,7 +402,11 @@ export default function HomePage() {
     if (nextSelectedOrgId) {
       void safeFetchJson<{ ok: boolean; data?: { groups: Array<Record<string, unknown>> } }>(
         `/api/groups?orgId=${encodeURIComponent(nextSelectedOrgId)}`,
-        { method: 'GET', timeoutMs: AUTH_PRIME_REQUEST_TIMEOUT_MS }
+        {
+          method: 'GET',
+          timeoutMs: AUTH_PRIME_REQUEST_TIMEOUT_MS,
+          retry: AUTH_PRIME_REQUEST_RETRY,
+        }
       ).then(result => {
         if (result.ok) {
           writeLocalViewCache(groupsCacheKey(nextSelectedOrgId), result.data?.data?.groups ?? []);
@@ -411,6 +416,7 @@ export default function HomePage() {
       void safeFetchJson<{ ok: boolean; data?: Array<Record<string, unknown>> }>('/api/orgs', {
         method: 'GET',
         timeoutMs: AUTH_PRIME_REQUEST_TIMEOUT_MS,
+        retry: AUTH_PRIME_REQUEST_RETRY,
       }).then(result => {
         if (result.ok) {
           writeLocalViewCache(ORGS_CACHE_KEY, result.data?.data ?? []);

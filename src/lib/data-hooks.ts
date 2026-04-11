@@ -2,9 +2,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { usePathname } from 'next/navigation';
+import { useCurrentUser } from '@/lib/current-user';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
-import type { Member, User, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
+import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
@@ -19,8 +21,6 @@ import {
     normalizeGroupChats,
     normalizeMessageMap,
 } from '@/lib/message-state';
-import { getPlaceholderImageUrl } from '@/lib/placeholders';
-import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
 import { stableSerialize } from '@/lib/stable-serialize';
 import {
     createEmptyGroupActivitySnapshot,
@@ -98,37 +98,72 @@ const normalizeViewedRoute = (value?: string | null) => {
 
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
-let currentUserCache: User | null = null;
-let currentUserHydrationPromise: Promise<User | null> | null = null;
-const CURRENT_USER_STORAGE_KEY = 'currentUser';
-
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
-
-const getResolvedAvatar = (displayName: string, avatar?: string | null) =>
-  isNonEmptyString(avatar)
-    ? avatar
-    : getPlaceholderImageUrl({ label: displayName.charAt(0) });
-
-const persistCurrentUserCache = (nextUser: User | null) => {
-  currentUserCache = nextUser;
-  if (typeof window === 'undefined') return;
-  if (!nextUser) {
-    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-    return;
-  }
-  try {
-    localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(nextUser));
-  } catch (error) {
-    console.error('Failed to cache current user locally', error);
-  }
-};
+const currentUserRoleCache = new Map<string, { role: string | null; expiresAt: number }>();
+const currentUserRoleRequestCache = new Map<string, Promise<string | null>>();
+const CURRENT_USER_ROLE_CACHE_TTL_MS = 30_000;
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
+const getCurrentUserRoleCacheKey = (groupId: string, userId: string) => `${groupId}:${userId}`;
 const shouldRefreshOnVisibility = () =>
   typeof document !== 'undefined' &&
   document.visibilityState === 'visible' &&
   (typeof navigator === 'undefined' || navigator.onLine !== false);
+
+const readCurrentUserRoleCache = (cacheKey: string) => {
+  const cached = currentUserRoleCache.get(cacheKey);
+  if (!cached) {
+    return { hit: false, role: null as string | null };
+  }
+  if (cached.expiresAt <= Date.now()) {
+    currentUserRoleCache.delete(cacheKey);
+    return { hit: false, role: null as string | null };
+  }
+  return { hit: true, role: cached.role };
+};
+
+const persistCurrentUserRoleCache = (cacheKey: string, role: string | null) => {
+  currentUserRoleCache.set(cacheKey, {
+    role,
+    expiresAt: Date.now() + CURRENT_USER_ROLE_CACHE_TTL_MS,
+  });
+  return role;
+};
+
+async function requestCurrentUserRole(
+  supabase: ReturnType<typeof createSupabaseBrowserClient>,
+  groupId: string,
+  userId: string
+) {
+  const cacheKey = getCurrentUserRoleCacheKey(groupId, userId);
+  const cached = readCurrentUserRoleCache(cacheKey);
+  if (cached.hit) {
+    return cached.role;
+  }
+
+  const pending = currentUserRoleRequestCache.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  const request = (async () => {
+    const { data } = await supabase
+      .from('group_memberships')
+      .select('role')
+      .eq('group_id', groupId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    return persistCurrentUserRoleCache(cacheKey, displayGroupRole(data?.role));
+  })();
+
+  currentUserRoleRequestCache.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    if (currentUserRoleRequestCache.get(cacheKey) === request) {
+      currentUserRoleRequestCache.delete(cacheKey);
+    }
+  }
+}
 
 const normalizeClubData = (data: ClubData): ClubData => {
     const defaults = getDefaultClubData();
@@ -859,152 +894,11 @@ export function useMindMapData() {
     return useSpecificClubData('mindmap');
 }
 
-
-export function useCurrentUser() {
-  const demoCtx = useOptionalDemoCtx();
-  const useDemo = shouldUseDemoData(Boolean(demoCtx));
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-    if (useDemo && demoCtx) {
-      setUser(demoCtx.user);
-      setLoading(false);
-      return;
-    }
-    const supabase = createSupabaseBrowserClient();
-    const hydrate = async () => {
-      const storedUser = localStorage.getItem(CURRENT_USER_STORAGE_KEY);
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser) as User;
-          currentUserCache = parsedUser;
-          setUser(parsedUser);
-          setLoading(false);
-        } catch {
-          localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-        }
-      } else if (currentUserCache) {
-        setUser(currentUserCache);
-        setLoading(false);
-      }
-
-      if (currentUserHydrationPromise) {
-        const cachedUser = await currentUserHydrationPromise;
-        setUser(cachedUser);
-        setLoading(false);
-        return;
-      }
-
-      currentUserHydrationPromise = (async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const sessionUser = data.session?.user;
-        if (sessionUser) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('email, display_name, avatar_url')
-            .eq('id', sessionUser.id)
-            .maybeSingle();
-          const displayName = resolveStoredDisplayName({
-            existingProfileName: profile?.display_name,
-            authDisplayName: getAuthMetadataDisplayName(sessionUser),
-            email: profile?.email || sessionUser.email || '',
-          });
-          const hydratedUser = {
-            name: displayName,
-            email: profile?.email || sessionUser.email || '',
-            avatar: getResolvedAvatar(displayName, profile?.avatar_url),
-          } as User;
-          persistCurrentUserCache(hydratedUser);
-          return hydratedUser;
-        }
-        persistCurrentUserCache(null);
-        return null;
-      } catch (error) {
-        console.error('Error reading user from storage on init', error);
-        return currentUserCache;
-      }
-      })();
-
-      try {
-        const hydratedUser = await currentUserHydrationPromise;
-        setUser(hydratedUser);
-      } finally {
-        currentUserHydrationPromise = null;
-        setLoading(false);
-      }
-    };
-    void hydrate();
-  }, [demoCtx, useDemo]);
-
-  const setLocalUser = useCallback((nextUser: User | null) => {
-    if (useDemo) {
-      setUser(nextUser);
-      return;
-    }
-    setUser(nextUser);
-    persistCurrentUserCache(nextUser);
-  }, [useDemo]);
-
-  useEffect(() => {
-    if (!useDemo || !demoCtx) return;
-    setUser(demoCtx.user);
-    setLoading(false);
-  }, [demoCtx, useDemo]);
-
-  const saveUser = useCallback(async (newUser: Partial<User> | ((currentUser: User | null) => User)) => {
-    if (useDemo && demoCtx) {
-      demoCtx.updateUser(currentUser =>
-        typeof newUser === 'function'
-          ? (newUser as (currentUser: User | null) => User)(currentUser)
-          : ({ ...(currentUser || {}), ...newUser } as User)
-      );
-      return;
-    }
-    const previousUser = user;
-    const updatedUser =
-      typeof newUser === 'function'
-        ? (newUser as (currentUser: User | null) => User)(user)
-        : ({ ...(user || {}), ...newUser } as User);
-    persistCurrentUserCache(updatedUser);
-    setUser(updatedUser);
-    const response = await safeFetchJson<{ ok: boolean; data?: User }>('/api/profile', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: updatedUser.name,
-        avatar: updatedUser.avatar,
-      }),
-    });
-    if (response.ok && response.data?.data) {
-      persistCurrentUserCache(response.data.data);
-      setUser(response.data.data);
-      return;
-    }
-    console.error('Failed to persist profile', response.ok ? response.data : response.error);
-    persistCurrentUserCache(previousUser);
-    setUser(previousUser);
-    throw new Error(response.ok ? 'Failed to persist profile.' : response.error.message);
-  }, [demoCtx, useDemo, user]);
-  
-  const clearUser = useCallback(() => {
-    if (useDemo) {
-      setUser(null);
-      return;
-    }
-    setUser(null);
-    persistCurrentUserCache(null);
-  }, [useDemo]);
-
-  return { user: isMounted ? user : null, loading, saveUser, clearUser, setLocalUser };
-}
-
+export { useCurrentUser };
 
 // Hook to get the current user's group role
 export function useCurrentUserRole() {
+    const pathname = usePathname();
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const { user, loading: userLoading } = useCurrentUser();
@@ -1027,8 +921,8 @@ export function useCurrentUserRole() {
         const supabase = createSupabaseBrowserClient();
         let active = true;
         const loadRole = async () => {
-            const { data: authUser } = await supabase.auth.getUser();
-            const userId = authUser.user?.id;
+            const { data: sessionData } = await supabase.auth.getSession();
+            const userId = sessionData.session?.user?.id;
             if (!userId) {
                 if (active) {
                     setRole(null);
@@ -1036,14 +930,9 @@ export function useCurrentUserRole() {
                 }
                 return;
             }
-            const { data } = await supabase
-                .from('group_memberships')
-                .select('role')
-                .eq('group_id', groupId)
-                .eq('user_id', userId)
-                .maybeSingle();
+            const nextRole = await requestCurrentUserRole(supabase, groupId, userId);
             if (active) {
-                setRole(displayGroupRole(data?.role));
+                setRole(nextRole);
                 setLoading(false);
             }
         };
@@ -1051,7 +940,7 @@ export function useCurrentUserRole() {
         return () => {
             active = false;
         };
-    }, [demoCtx, useDemo, user?.email, userLoading]);
+    }, [demoCtx, pathname, useDemo, user?.email, userLoading]);
 
     const normalizedRole = role?.toLowerCase() ?? null;
     const canEdit = canEditGroupContent(normalizedRole);

@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+"use client";
+
+import {
+  createElement,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import type { User } from '@/lib/mock-data';
@@ -25,8 +35,20 @@ const getResolvedAvatar = (displayName: string, avatar?: string | null) =>
     ? avatar
     : getPlaceholderImageUrl({ label: displayName.charAt(0) });
 
+type SaveUserInput = Partial<User> | ((currentUser: User | null) => User);
+
+type CurrentUserContextValue = {
+  user: User | null;
+  loading: boolean;
+  saveUser: (newUser: SaveUserInput) => Promise<void>;
+  clearUser: () => void;
+  setLocalUser: (nextUser: User | null) => void;
+};
+
 let currentUserCache: User | null = null;
 let currentUserHydrationPromise: Promise<User | null> | null = null;
+
+const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
 
 const persistCurrentUserCache = (nextUser: User | null) => {
   currentUserCache = nextUser;
@@ -42,7 +64,7 @@ const persistCurrentUserCache = (nextUser: User | null) => {
   }
 };
 
-export function useCurrentUser() {
+function useCurrentUserState(): CurrentUserContextValue {
   const demoCtx = useOptionalDemoCtx();
   const useDemo = shouldUseDemoData(Boolean(demoCtx));
   const [user, setUser] = useState<User | null>(null);
@@ -143,7 +165,7 @@ export function useCurrentUser() {
   }, [demoCtx, useDemo]);
 
   const saveUser = useCallback(
-    async (newUser: Partial<User> | ((currentUser: User | null) => User)) => {
+    async (newUser: SaveUserInput) => {
       if (useDemo && demoCtx) {
         demoCtx.updateUser(currentUser =>
           typeof newUser === 'function'
@@ -191,4 +213,18 @@ export function useCurrentUser() {
   }, [useDemo]);
 
   return { user: isMounted ? user : null, loading, saveUser, clearUser, setLocalUser };
+}
+
+export function CurrentUserProvider({ children }: { children: ReactNode }) {
+  const value = useCurrentUserState();
+
+  return createElement(CurrentUserContext.Provider, { value }, children);
+}
+
+export function useCurrentUser() {
+  const context = useContext(CurrentUserContext);
+  if (!context) {
+    throw new Error('useCurrentUser must be used within CurrentUserProvider.');
+  }
+  return context;
 }

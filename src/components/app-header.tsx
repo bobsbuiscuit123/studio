@@ -77,6 +77,43 @@ const pageTitles: { [key: string]: string } = {
   "/forms": "Forms",
 };
 
+const orgNameCache = new Map<string, string>();
+const orgNameRequestCache = new Map<string, Promise<string>>();
+const groupNameCache = new Map<string, string>();
+const groupNameRequestCache = new Map<string, Promise<string>>();
+
+async function requestCachedName(
+  cache: Map<string, string>,
+  requestCache: Map<string, Promise<string>>,
+  key: string,
+  load: () => Promise<string>,
+) {
+  const cached = cache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const pending = requestCache.get(key);
+  if (pending) {
+    return pending;
+  }
+
+  const request = (async () => {
+    const name = await load();
+    cache.set(key, name);
+    return name;
+  })();
+
+  requestCache.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (requestCache.get(key) === request) {
+      requestCache.delete(key);
+    }
+  }
+}
+
 export function AppHeader() {
   const pathname = usePathname();
   const isMessagesRoute =
@@ -113,6 +150,8 @@ export function AppHeader() {
 
 
   useEffect(() => {
+    let active = true;
+
     const load = async () => {
       if (useDemo && demoCtx) {
         setClubName(demoCtx.clubName);
@@ -123,24 +162,55 @@ export function AppHeader() {
         setOrgName("");
         return;
       }
-      const { data: orgRow } = await supabase
-        .from('orgs')
-        .select('name')
-        .eq('id', selectedOrgId)
-        .maybeSingle();
-      setOrgName(orgRow?.name || "");
+
+      setOrgName(orgNameCache.get(selectedOrgId) ?? "");
+      if (selectedGroupId) {
+        setClubName(groupNameCache.get(selectedGroupId) ?? "");
+      }
+
+      const nextOrgName = await requestCachedName(
+        orgNameCache,
+        orgNameRequestCache,
+        selectedOrgId,
+        async () => {
+          const { data: orgRow } = await supabase
+            .from('orgs')
+            .select('name')
+            .eq('id', selectedOrgId)
+            .maybeSingle();
+          return orgRow?.name || "";
+        }
+      );
+      if (!active) return;
+      setOrgName(nextOrgName);
+
       if (!selectedGroupId) {
         setClubName("");
         return;
       }
-      const { data: groupRow } = await supabase
-        .from('groups')
-        .select('name')
-        .eq('id', selectedGroupId)
-        .maybeSingle();
-      setClubName(groupRow?.name || "");
+
+      const nextClubName = await requestCachedName(
+        groupNameCache,
+        groupNameRequestCache,
+        selectedGroupId,
+        async () => {
+          const { data: groupRow } = await supabase
+            .from('groups')
+            .select('name')
+            .eq('id', selectedGroupId)
+            .maybeSingle();
+          return groupRow?.name || "";
+        }
+      );
+      if (!active) return;
+      setClubName(nextClubName);
     };
-    load();
+
+    void load();
+
+    return () => {
+      active = false;
+    };
   }, [demoCtx, selectedGroupId, selectedOrgId, supabase, useDemo]);
   
   const handleLogout = async () => {

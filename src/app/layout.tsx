@@ -13,6 +13,7 @@ import { SafeAreaSync } from "@/components/safe-area-sync";
 import { ThemeController } from "@/components/theme-controller";
 import { DarkModeAnnouncementDialog } from "@/components/dark-mode-announcement-dialog";
 import { ModalLayerRepair } from "@/components/modal-layer-repair";
+import { CurrentUserProvider } from "@/lib/current-user";
 import { PT_Sans } from "next/font/google";
 import { themeInitScript } from "@/lib/app-theme";
 import "./globals.css";
@@ -57,21 +58,23 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${bodyFont.variable} font-body antialiased`} suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        <div className="app-root">
-          <ThemeController />
-          <NativeStatusBar />
-          <SafeAreaSync />
-          <ModalLayerRepair />
-          <ClientTimeZoneSync />
-          <ErrorReporter />
-          <SecurityGuard />
-          <PwaRegister />
-          <NetworkStatusBanner />
-          <PolicyViolationToaster />
-          <DarkModeAnnouncementDialog />
-          {children}
-          <Toaster />
-        </div>
+        <CurrentUserProvider>
+          <div className="app-root">
+            <ThemeController />
+            <NativeStatusBar />
+            <SafeAreaSync />
+            <ModalLayerRepair />
+            <ClientTimeZoneSync />
+            <ErrorReporter />
+            <SecurityGuard />
+            <PwaRegister />
+            <NetworkStatusBanner />
+            <PolicyViolationToaster />
+            <DarkModeAnnouncementDialog />
+            {children}
+            <Toaster />
+          </div>
+        </CurrentUserProvider>
       </body>
     </html>
   );

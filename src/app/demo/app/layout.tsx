@@ -7,6 +7,7 @@ import { AppMobileTabBar } from '@/components/app-mobile-tab-bar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DemoDataProvider } from '@/lib/demo/DemoDataProvider';
+import { CurrentUserProvider } from '@/lib/current-user';
 import {
   DEMO_MODE_ENABLED,
   getStoredDemoSession,
@@ -63,20 +64,22 @@ export default function DemoAppLayout({
 
   return (
     <DemoDataProvider initialSession={session}>
-      <div className="app-shell w-full md:grid md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
-        <AppSidebar />
-        <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-          <div className="shrink-0">
-            <AppHeader />
-          </div>
-          <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-clip bg-background px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0">
-            {children}
-          </main>
-          <div className="shrink-0 md:hidden">
-            <AppMobileTabBar />
+      <CurrentUserProvider>
+        <div className="app-shell w-full md:grid md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr]">
+          <AppSidebar />
+          <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+            <div className="shrink-0">
+              <AppHeader />
+            </div>
+            <main className="main-container safe-bottom-space mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-x-clip bg-background px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0">
+              {children}
+            </main>
+            <div className="shrink-0 md:hidden">
+              <AppMobileTabBar />
+            </div>
           </div>
         </div>
-      </div>
+      </CurrentUserProvider>
     </DemoDataProvider>
   );
 }

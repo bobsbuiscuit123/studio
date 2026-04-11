@@ -38,6 +38,9 @@ export async function GET(
     );
   }
 
+  const requestUrl = new URL(request.url);
+  const shouldRefreshSubscription = requestUrl.searchParams.get('refresh') === '1';
+
   const supabase = await createSupabaseServerClient();
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
@@ -54,16 +57,20 @@ export async function GET(
   }
 
   const admin = createSupabaseAdmin();
+  const membershipPromise = admin
+    .from('memberships')
+    .select('role')
+    .eq('org_id', parsed.data)
+    .eq('user_id', userId)
+    .maybeSingle();
+  const refreshPromise = shouldRefreshSubscription
+    ? admin.rpc('refresh_org_subscription_period', {
+        p_org_id: parsed.data,
+      })
+    : Promise.resolve({ data: null, error: null });
   const [{ data: membership, error: membershipError }, refreshResponse] = await Promise.all([
-    admin
-      .from('memberships')
-      .select('role')
-      .eq('org_id', parsed.data)
-      .eq('user_id', userId)
-      .maybeSingle(),
-    admin.rpc('refresh_org_subscription_period', {
-      p_org_id: parsed.data,
-    }),
+    membershipPromise,
+    refreshPromise,
   ]);
 
   if (membershipError) {
@@ -80,7 +87,7 @@ export async function GET(
     );
   }
 
-  if (refreshResponse.error) {
+  if (shouldRefreshSubscription && refreshResponse.error) {
     return NextResponse.json(
       err({ code: 'NETWORK_HTTP_ERROR', message: refreshResponse.error.message, source: 'network' }),
       { status: 500, headers: noStoreHeaders }

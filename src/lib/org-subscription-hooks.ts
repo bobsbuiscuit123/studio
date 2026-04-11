@@ -7,6 +7,10 @@ import { getSelectedOrgId } from '@/lib/selection';
 const ORG_STATUS_REFRESH_TTL_MS = 60_000;
 const orgStatusCache = new Map<string, OrgSubscriptionStatus>();
 const orgStatusLoadedAt = new Map<string, number>();
+const orgStatusRequestCache = new Map<string, Promise<OrgSubscriptionStatus | null>>();
+
+const getOrgStatusRequestKey = (orgId: string, force: boolean) =>
+  `${orgId}:${force ? 'force' : 'cached'}`;
 
 export function useOrgSubscriptionStatus(orgIdOverride?: string | null) {
   const [status, setStatus] = useState<OrgSubscriptionStatus | null>(null);
@@ -36,17 +40,38 @@ export function useOrgSubscriptionStatus(orgIdOverride?: string | null) {
         setLoading(true);
       }
 
-      const response = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
-        `/api/orgs/${orgId}/status`,
-        { method: 'GET' }
-      );
+      const requestKey = getOrgStatusRequestKey(orgId, Boolean(options?.force));
+      const pending = orgStatusRequestCache.get(requestKey);
+      const request =
+        pending ??
+        (async () => {
+          const response = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
+            `/api/orgs/${orgId}/status`,
+            { method: 'GET' }
+          );
 
-      if (response.ok) {
-        orgStatusCache.set(orgId, response.data.data);
-        orgStatusLoadedAt.set(orgId, Date.now());
-        setStatus(response.data.data);
+          if (!response.ok) {
+            return null;
+          }
+
+          orgStatusCache.set(orgId, response.data.data);
+          orgStatusLoadedAt.set(orgId, Date.now());
+          return response.data.data;
+        })();
+
+      if (!pending) {
+        orgStatusRequestCache.set(requestKey, request);
+      }
+
+      const nextStatus = await request;
+      if (!pending && orgStatusRequestCache.get(requestKey) === request) {
+        orgStatusRequestCache.delete(requestKey);
+      }
+
+      if (nextStatus) {
+        setStatus(nextStatus);
         setLoading(false);
-        return response.data.data;
+        return nextStatus;
       }
 
       setStatus(cached);

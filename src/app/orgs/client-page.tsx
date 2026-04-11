@@ -72,6 +72,7 @@ export default function OrgsPage() {
   }, []);
 
   const load = useCallback(async () => {
+    setLoading(true);
     const result = await safeFetchJson<{ ok: true; data: OrgSummary[] }>('/api/orgs', {
       method: 'GET',
     });
@@ -87,8 +88,12 @@ export default function OrgsPage() {
 
     const orgList = Array.isArray(result.data.data) ? result.data.data : [];
     setOrgs(orgList);
-    await loadStatuses(orgList);
     setLoading(false);
+    if (orgList.length === 0) {
+      setStatusByOrg({});
+      return;
+    }
+    void loadStatuses(orgList);
   }, [loadStatuses, router, toast]);
 
   useEffect(() => {

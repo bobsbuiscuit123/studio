@@ -149,42 +149,30 @@ export default function ClubsPage() {
       router.replace("/orgs");
       return;
     }
+
+    let active = true;
     const load = async () => {
-      const orgStatusResult = await safeFetchJson<{ ok: true; data: { orgId: string } }>(
-        `/api/orgs/${selectedOrgId}/status`,
-        { method: "GET" }
-      );
-      if (!orgStatusResult.ok) {
-        if (/unauthorized/i.test(orgStatusResult.error.message)) {
-          router.replace("/login");
-          return;
-        }
-        toast({
-          title: "Organization lookup failed",
-          description: orgStatusResult.error.message,
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-      if (!orgStatusResult.data?.data?.orgId) {
-        clearSelectedGroupId();
-        clearSelectedOrgId();
-        toast({
-          title: "Organization missing",
-          description: "Select or create an organization first.",
-          variant: "destructive",
-        });
-        router.replace("/orgs");
-        return;
-      }
       const groupsResult = await safeFetchJson<GroupsResponse>(
         `/api/groups?orgId=${encodeURIComponent(selectedOrgId)}`,
         { method: "GET" }
       );
+      if (!active) {
+        return;
+      }
       if (!groupsResult.ok) {
         if (/unauthorized/i.test(groupsResult.error.message)) {
           router.replace("/login");
+          return;
+        }
+        if (/organization missing|not a member/i.test(groupsResult.error.message)) {
+          clearSelectedGroupId();
+          clearSelectedOrgId();
+          toast({
+            title: "Organization missing",
+            description: "Select or create an organization first.",
+            variant: "destructive",
+          });
+          router.replace("/orgs");
           return;
         }
         toast({
@@ -198,7 +186,10 @@ export default function ClubsPage() {
       setGroups(groupsResult.data?.data?.groups ?? []);
       setLoading(false);
     };
-    load();
+    void load();
+    return () => {
+      active = false;
+    };
   }, [router, selectedOrgId, supabase, toast]);
 
   const handleJoinClub = async () => {

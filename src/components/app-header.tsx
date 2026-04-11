@@ -29,7 +29,6 @@ import { Button } from "@/components/ui/button";
 import { LogOut, Home, Settings, ChevronDown } from "lucide-react";
 import Link from 'next/link';
 import { usePathname, useRouter } from "next/navigation";
-import { Logo } from "./icons";
 import { useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { User as UserType } from "@/lib/mock-data";
@@ -126,8 +125,7 @@ export function AppHeader() {
   const demoCtx = useOptionalDemoCtx();
   const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
-  const appName = useDemo ? 'CASPO' : 'CASPO';
-  const title = pageTitles[pathname] || appName;
+  const title = pageTitles[pathname] || 'CASPO';
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const router = useRouter();
@@ -349,11 +347,7 @@ export function AppHeader() {
     <>
     <header className={`sticky top-0 z-30 border-b border-border/70 bg-background ${isMessagesRoute ? "hidden md:block" : ""}`}>
       <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:max-w-none lg:px-6">
-        <div className="hidden min-w-0 flex-1 items-center gap-2 sm:flex">
-          <Link href={useDemo ? '/demo/app' : '/orgs'} className="hidden items-center gap-2 font-semibold md:flex">
-            <Logo className="h-6 w-6" />
-            <span>{appName}</span>
-          </Link>
+        <div className="hidden min-w-0 flex-1 sm:flex">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1">
               <h1 className="truncate text-lg font-semibold leading-tight md:text-2xl">{title}</h1>

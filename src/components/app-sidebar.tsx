@@ -17,7 +17,7 @@ export function AppSidebar() {
   return (
     <div className="hidden h-full border-r md:block">
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex min-h-[84px] shrink-0 items-start border-b bg-background px-4 py-4 lg:px-6">
+        <div className="flex min-h-[84px] shrink-0 items-center border-b bg-background px-4 py-4 lg:px-6">
           <Link href={homeHref} className="flex items-center gap-2 font-semibold">
             <Logo className="h-6 w-6" />
             <span className="">{appName}</span>

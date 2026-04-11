@@ -125,7 +125,7 @@ export function AppHeader() {
   const demoCtx = useOptionalDemoCtx();
   const isDemoRoute = pathname === '/demo' || pathname.startsWith('/demo/');
   const useDemo = process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && isDemoRoute && Boolean(demoCtx);
-  const title = pageTitles[pathname] || 'CASPO';
+  const title = pageTitles[pathname] || (isMessagesRoute ? 'Messages' : 'CASPO');
   const { role } = useCurrentUserRole();
   const { user, saveUser, clearUser } = useCurrentUser();
   const router = useRouter();
@@ -345,7 +345,7 @@ export function AppHeader() {
 
   return (
     <>
-    <header className={`sticky top-0 z-30 border-b border-border/70 bg-background ${isMessagesRoute ? "hidden md:block" : ""}`}>
+    <header className="sticky top-0 z-30 border-b border-border/70 bg-background">
       <div className="app-header-inner mx-auto flex min-h-14 max-w-screen-md items-center justify-between gap-3 px-4 md:min-h-[84px] md:max-w-none md:items-start lg:px-6">
         <div className="hidden min-w-0 flex-1 sm:flex">
           <div className="min-w-0">

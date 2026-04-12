@@ -347,11 +347,20 @@ export function MessagesListScreen() {
 
   return (
     <div className="messages-screen messages-list-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
-      <div className="header tab-page-header page-header-safe-inset space-y-3 px-4">
-        <div className="flex justify-end">
+      <div className="header tab-page-header page-header-safe-inset px-4">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchTerm}
+              onChange={event => setSearchTerm(event.target.value)}
+              placeholder="Search conversations"
+              className="h-12 rounded-xl border-border/70 pl-11"
+            />
+          </div>
           <Dialog open={isNewGroupDialogOpen} onOpenChange={setIsNewGroupDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl">
+              <Button variant="outline" size="icon" className="h-12 w-12 shrink-0 rounded-xl border-border/70">
                 <MessageSquarePlus className="h-5 w-5" />
                 <span className="sr-only">Create new group chat</span>
               </Button>
@@ -401,16 +410,6 @@ export function MessagesListScreen() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={searchTerm}
-            onChange={event => setSearchTerm(event.target.value)}
-            placeholder="Search conversations"
-            className="h-12 rounded-xl border-border/70 pl-11"
-          />
         </div>
       </div>
 

@@ -5,9 +5,11 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
 import { rateLimit, getRateLimitHeaders } from '@/lib/rate-limit';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
-import { canEditGroupContent, canManageGroupRoles, normalizeGroupRole } from '@/lib/group-permissions';
+import { canEditGroupContent, canManageGroupRoles, displayGroupRole, normalizeGroupRole } from '@/lib/group-permissions';
 import { sendPushToUsers } from '@/lib/send-push';
 import { stableSerialize } from '@/lib/stable-serialize';
+import { getDefaultOrgState } from '@/lib/org-state';
+import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 export const dynamic = 'force-dynamic';
 
@@ -982,13 +984,100 @@ export async function GET(request: Request) {
       orgId: parsed.data.orgId,
       groupId: parsed.data.groupId,
     });
-    return NextResponse.json(
-      err({
-        code: 'VALIDATION',
-        message: 'Group content could not be loaded.',
-        source: 'app',
+
+    const { data: membershipRows, error: membershipRowsError } = await admin
+      .from('group_memberships')
+      .select('user_id, role')
+      .eq('org_id', parsed.data.orgId)
+      .eq('group_id', parsed.data.groupId);
+
+    if (membershipRowsError) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: membershipRowsError.message,
+          source: 'network',
+        }),
+        { status: 500, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
+    const memberIds = (membershipRows ?? [])
+      .map(row => row.user_id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+    const profileById = new Map<
+      string,
+      { email?: string | null; display_name?: string | null; avatar_url?: string | null }
+    >();
+
+    if (memberIds.length > 0) {
+      const { data: profileRows, error: profileRowsError } = await admin
+        .from('profiles')
+        .select('id, email, display_name, avatar_url')
+        .in('id', memberIds);
+
+      if (profileRowsError) {
+        return NextResponse.json(
+          err({
+            code: 'NETWORK_HTTP_ERROR',
+            message: profileRowsError.message,
+            source: 'network',
+          }),
+          { status: 500, headers: getRateLimitHeaders(limiter) }
+        );
+      }
+
+      (profileRows ?? []).forEach(profile => {
+        profileById.set(profile.id, {
+          email: profile.email,
+          display_name: profile.display_name,
+          avatar_url: profile.avatar_url,
+        });
+      });
+    }
+
+    const repairedData = {
+      ...getDefaultOrgState(),
+      members: (membershipRows ?? []).map(row => {
+        const profile = profileById.get(row.user_id);
+        const name = profile?.display_name || profile?.email || 'Member';
+        return {
+          id: row.user_id,
+          name,
+          email: profile?.email || '',
+          role: displayGroupRole(row.role),
+          avatar: profile?.avatar_url || getPlaceholderImageUrl({ label: name.charAt(0) || 'M' }),
+        };
       }),
-      { status: 404, headers: getRateLimitHeaders(limiter) }
+    };
+
+    const { error: repairError } = await admin
+      .from('group_state')
+      .upsert(
+        {
+          org_id: parsed.data.orgId,
+          group_id: parsed.data.groupId,
+          data: repairedData,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'group_id' }
+      );
+
+    if (repairError) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: repairError.message,
+          source: 'network',
+        }),
+        { status: 500, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
+    return NextResponse.json(
+      { ok: true, data: repairedData },
+      { headers: getRateLimitHeaders(limiter) }
     );
   }
 

@@ -65,23 +65,6 @@ const shouldUseDemoData = (hasDemoContext: boolean) =>
   DEMO_MODE_ENABLED && hasDemoContext && isDemoRoute();
 
 const getDefaultClubData = (): ClubData => getDefaultOrgState();
-const TAB_VIEW_KEY = 'tabLastViewed';
-
-const getTabViewStorageKey = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) =>
-    `${TAB_VIEW_KEY}:${userEmail}:${orgId}:${groupId}:${key}`;
-
-const readTabLastViewed = (userEmail: string, orgId: string, groupId: string, key: NotificationKey) => {
-    if (typeof window === 'undefined') return 0;
-    const raw = localStorage.getItem(getTabViewStorageKey(userEmail, orgId, groupId, key));
-    const parsed = raw ? Number.parseInt(raw, 10) : 0;
-    return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const writeTabLastViewed = (userEmail: string, orgId: string, groupId: string, key: NotificationKey, value: number) => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(getTabViewStorageKey(userEmail, orgId, groupId, key), String(value));
-};
-
 const normalizeViewedRoute = (value?: string | null) => {
     const rawValue = String(value ?? '').trim();
     if (!rawValue) return '';
@@ -96,6 +79,27 @@ const normalizeViewedRoute = (value?: string | null) => {
     return firstSegment ? `/${firstSegment}` : '/dashboard';
 };
 
+const normalizeActivityActor = (value?: string | null) =>
+    String(value ?? '').trim().toLowerCase();
+
+const getActivityTimestamp = (value?: string | Date | null) => {
+    if (!value) return 0;
+    const timestamp = value instanceof Date ? value.getTime() : new Date(value).getTime();
+    return Number.isFinite(timestamp) ? timestamp : 0;
+};
+
+const getRecordActivityTimestamp = (item: Record<string, unknown>) =>
+    getActivityTimestamp(
+        (item.created_at as string | undefined) ??
+            (item.createdAt as string | undefined) ??
+            (item.timestamp as string | undefined) ??
+            (item.submittedAt as string | undefined) ??
+            (item.date as string | Date | undefined)
+    );
+
+const viewedByCurrentUser = (viewedBy: string[] | undefined, userEmail: string) =>
+    Array.isArray(viewedBy) &&
+    viewedBy.some(email => normalizeActivityActor(email) === userEmail);
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
 const currentUserRoleCache = new Map<string, { role: string | null; expiresAt: number }>();
@@ -950,6 +954,57 @@ export function useCurrentUserRole() {
 }
 
 export type { NotificationKey } from '@/lib/notification-state';
+type TabLastSeenState = Record<NotificationKey, string | null>;
+
+const DEFAULT_TAB_LAST_SEEN: TabLastSeenState = {
+    announcements: null,
+    social: null,
+    messages: null,
+    calendar: null,
+    gallery: null,
+    attendance: null,
+    forms: null,
+};
+
+export function hasUnseenActivity<T extends Record<string, unknown>>(
+    _tab: NotificationKey,
+    items: T[],
+    lastSeenAt: string | null,
+    getItemTimestamp: (item: T) => number = item => getRecordActivityTimestamp(item)
+) {
+    if (!Array.isArray(items) || items.length === 0) {
+        return false;
+    }
+
+    const lastSeenTimestamp = getActivityTimestamp(lastSeenAt);
+    return items.some(item => getItemTimestamp(item) > lastSeenTimestamp);
+}
+
+export type OrgAiQuotaStatus = {
+    orgId: string;
+    orgName: string;
+    role: string;
+    memberLimit: number;
+    dailyAiLimitPerUser: number;
+    activeUsers: number;
+    requestsUsedToday: number;
+    aiAvailability: 'available' | 'limited' | 'paused';
+    estimatedMonthlyTokens: number;
+    estimatedDailyTokens: number;
+    tokenHealth: 'healthy' | 'low' | 'urgent' | 'depleted';
+    tokenBalance?: number;
+    estimatedDaysRemaining?: number;
+    recentTokenActivity?: Array<{
+        id: string;
+        amount: number;
+        type: string;
+        description: string;
+        metadata?: Record<string, unknown> | null;
+        created_at: string;
+    }>;
+    createdAt: string | null;
+    updatedAt: string | null;
+};
 
 export const notifyOrgAiUsageChanged = (
     orgId?: string | null,
@@ -967,13 +1022,12 @@ export const notifyOrgAiUsageChanged = (
 
 export function useNotifications() {
     const defaultClubData = useMemo(() => getDefaultClubData(), []);
-    // This provider lives in the shared app layout, so it must reuse one store instance.
-    const { clubId, data, loading: clubDataLoading, updateClubData } = useClubDataStore();
+    const pathname = usePathname();
+    const { clubId, data, loading: clubDataLoading } = useClubDataStore();
     const { user, loading: userLoading } = useCurrentUser();
     const { role: membershipRole, loading: roleLoading } = useCurrentUserRole();
-    const [tabLastViewed, setTabLastViewed] = useState<Record<NotificationKey, number>>({
-        ...createEmptyNotificationActivity(),
-    });
+    const [tabLastSeenAt, setTabLastSeenAt] = useState<TabLastSeenState>(DEFAULT_TAB_LAST_SEEN);
+    const [lastSeenLoaded, setLastSeenLoaded] = useState(false);
     const [groupSessionStartedAt, setGroupSessionStartedAt] = useState(0);
     const [groupSessionEntrySnapshot, setGroupSessionEntrySnapshot] = useState<GroupActivitySnapshot>(
         () => createEmptyGroupActivitySnapshot()
@@ -983,6 +1037,7 @@ export function useNotifications() {
     const selectedOrgId = getSelectedOrgId();
     const selectedGroupId = getSelectedGroupId();
     const lastGroupSessionResetAtRef = useRef(0);
+    const markInFlightRef = useRef<Partial<Record<NotificationKey, boolean>>>({});
     const clubData = data ?? defaultClubData;
     const announcements = clubData.announcements;
     const socialPosts = clubData.socialPosts;
@@ -993,11 +1048,8 @@ export function useNotifications() {
     const forms = clubData.forms;
     const members = clubData.members;
 
-    const inferredRole = useMemo(() => {
-        return getRoleFromMembers(members, user?.email);
-    }, [members, user?.email]);
+    const inferredRole = useMemo(() => getRoleFromMembers(members, user?.email), [members, user?.email]);
     const role = membershipRole ?? inferredRole;
-
     const loading = userLoading || clubDataLoading || roleLoading;
 
     const resetGroupSession = useCallback(() => {
@@ -1024,20 +1076,32 @@ export function useNotifications() {
 
     useEffect(() => {
         if (!user?.email || !selectedOrgId || !selectedGroupId) {
-            setTabLastViewed({
-                ...createEmptyNotificationActivity(),
-            });
+            setTabLastSeenAt(DEFAULT_TAB_LAST_SEEN);
+            setLastSeenLoaded(false);
             return;
         }
-        setTabLastViewed({
-            announcements: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'announcements'),
-            social: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'social'),
-            messages: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'messages'),
-            calendar: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'calendar'),
-            gallery: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'gallery'),
-            attendance: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'attendance'),
-            forms: readTabLastViewed(user.email, selectedOrgId, selectedGroupId, 'forms'),
+
+        let cancelled = false;
+        setLastSeenLoaded(false);
+
+        void safeFetchJson<{ ok: boolean; data?: { lastSeenByTab?: Partial<TabLastSeenState> } }>(
+            `/api/tab-activity?orgId=${encodeURIComponent(selectedOrgId)}&groupId=${encodeURIComponent(selectedGroupId)}`,
+            { retry: { retries: 1 } }
+        ).then(result => {
+            if (cancelled) {
+                return;
+            }
+
+            setTabLastSeenAt({
+                ...DEFAULT_TAB_LAST_SEEN,
+                ...((result.ok && result.data?.data?.lastSeenByTab) || {}),
+            });
+            setLastSeenLoaded(true);
         });
+
+        return () => {
+            cancelled = true;
+        };
     }, [selectedGroupId, selectedOrgId, user?.email]);
 
     useEffect(() => {
@@ -1130,123 +1194,84 @@ export function useNotifications() {
         };
     }, [beginGroupSession]);
 
-    const activityByKey = useMemo<Record<NotificationKey, number>>(() => {
-        return getNotificationActivityByKey({
-            announcements,
-            socialPosts,
-            allMessages,
-            groupChats,
-            events,
-            galleryImages,
-            forms,
-            user,
-            role,
-            loading,
-        });
-    }, [loading, user, announcements, socialPosts, allMessages, groupChats, events, galleryImages, role, forms]);
+    const activityByKey = useMemo<Record<NotificationKey, number>>(
+        () =>
+            getNotificationActivityByKey({
+                announcements,
+                socialPosts,
+                allMessages,
+                groupChats,
+                events,
+                galleryImages,
+                forms,
+                user,
+                role,
+                loading,
+            }),
+        [allMessages, announcements, events, forms, galleryImages, groupChats, loading, role, socialPosts, user]
+    );
 
-    useEffect(() => {
-        if (
-            loading ||
-            !user?.email ||
-            !selectedOrgId ||
-            !selectedGroupId ||
-            typeof window === 'undefined'
-        ) {
-            return;
-        }
+    const tabReadyByKey = useMemo<Record<NotificationKey, boolean>>(
+        () => ({
+            announcements: !loading,
+            social: !loading,
+            messages: !loading,
+            calendar: !loading,
+            gallery: !loading,
+            forms: !loading,
+            attendance: !loading,
+        }),
+        [loading]
+    );
 
-        const missingKeys = (Object.keys(activityByKey) as NotificationKey[]).filter(key =>
-            localStorage.getItem(getTabViewStorageKey(user.email, selectedOrgId, selectedGroupId, key)) === null
-        );
+    const activeNotificationKey = useMemo<NotificationKey | null>(() => {
+        const currentPath = pathname ?? '';
+        const normalizedPath =
+            currentPath === '/demo/app'
+                ? '/dashboard'
+                : currentPath.startsWith('/demo/app/')
+                    ? currentPath.replace('/demo/app', '')
+                    : currentPath;
 
-        if (missingKeys.length === 0) {
-            return;
-        }
-
-        setTabLastViewed(prev => {
-            const next = { ...prev };
-            missingKeys.forEach(key => {
-                const nextValue = activityByKey[key];
-                writeTabLastViewed(user.email, selectedOrgId, selectedGroupId, key, nextValue);
-                next[key] = nextValue;
-            });
-            return next;
-        });
-    }, [activityByKey, loading, selectedGroupId, selectedOrgId, user?.email]);
+        if (normalizedPath === '/announcements' || normalizedPath.startsWith('/announcements/')) return 'announcements';
+        if (normalizedPath === '/messages' || normalizedPath.startsWith('/messages/')) return 'messages';
+        if (normalizedPath === '/calendar' || normalizedPath.startsWith('/calendar/')) return 'calendar';
+        if (normalizedPath === '/gallery' || normalizedPath.startsWith('/gallery/')) return 'gallery';
+        if (normalizedPath === '/forms' || normalizedPath.startsWith('/forms/')) return 'forms';
+        if (normalizedPath === '/attendance' || normalizedPath.startsWith('/attendance/')) return 'attendance';
+        return null;
+    }, [pathname]);
 
     const unread = useMemo(() => {
-        return getUnreadNotifications({
-            activityByKey,
-            tabLastViewed,
-            loading,
-            user,
-            role,
-        });
-    }, [activityByKey, loading, role, tabLastViewed, user]);
-    
-    const markAllAsRead = useCallback((key: NotificationKey) => {
-        if (!user?.email) return;
-        const userEmail = user.email;
-        void updateClubData(prev => {
-            switch (key) {
-                case 'announcements':
-                    return {
-                        ...prev,
-                        announcements: prev.announcements.map(item => ({ ...item, read: true })),
-                    };
-                case 'social':
-                    return {
-                        ...prev,
-                        socialPosts: prev.socialPosts.map(item => ({ ...item, read: true })),
-                    };
-                case 'messages':
-                    return {
-                        ...prev,
-                        messages: Object.fromEntries(
-                            Object.entries(normalizeMessageMap(prev.messages)).map(([convoId, messages]) => [
-                                convoId,
-                                messages.map(msg => markMessageReadByActor(msg, userEmail)),
-                            ])
-                        ),
-                        groupChats: normalizeGroupChats(prev.groupChats).map(chat => ({
-                            ...chat,
-                            messages: chat.messages.map(msg => markMessageReadByActor(msg, userEmail)),
-                        })),
-                    };
-                case 'calendar':
-                    return {
-                        ...prev,
-                        events: prev.events.map(item => ({ ...item, read: true })),
-                    };
-                case 'gallery':
-                    return {
-                        ...prev,
-                        galleryImages: prev.galleryImages.map(item => ({ ...item, read: true })),
-                    };
-                case 'forms':
-                    return {
-                        ...prev,
-                        forms: prev.forms.map(item => {
-                            const viewedBy = Array.isArray(item.viewedBy) ? item.viewedBy : [];
-                            return viewedBy.includes(userEmail)
-                                ? item
-                                : { ...item, viewedBy: [...viewedBy, userEmail] };
-                        }),
-                    };
-                case 'attendance':
-                    return {
-                        ...prev,
-                        events: prev.events.map(item => ({
-                            ...item,
-                            lastViewedAttendees: item.attendees?.length || 0,
-                        })),
-                    };
-                default:
-                    return prev;
-            }
-        });
-    }, [updateClubData, user?.email]);
+        if (loading || !user || !lastSeenLoaded) {
+            return createEmptyUnreadNotifications();
+        }
+
+        return {
+            announcements:
+                tabReadyByKey.announcements &&
+                activityByKey.announcements > getActivityTimestamp(tabLastSeenAt.announcements),
+            social:
+                tabReadyByKey.social &&
+                activityByKey.social > getActivityTimestamp(tabLastSeenAt.social),
+            messages:
+                tabReadyByKey.messages &&
+                activityByKey.messages > getActivityTimestamp(tabLastSeenAt.messages),
+            calendar:
+                tabReadyByKey.calendar &&
+                activityByKey.calendar > getActivityTimestamp(tabLastSeenAt.calendar),
+            gallery:
+                tabReadyByKey.gallery &&
+                activityByKey.gallery > getActivityTimestamp(tabLastSeenAt.gallery),
+            forms:
+                tabReadyByKey.forms &&
+                activityByKey.forms > getActivityTimestamp(tabLastSeenAt.forms),
+            attendance:
+                role === 'Admin' &&
+                tabReadyByKey.attendance &&
+                activityByKey.attendance > getActivityTimestamp(tabLastSeenAt.attendance),
+        };
+    }, [activityByKey, lastSeenLoaded, loading, role, tabLastSeenAt, tabReadyByKey, user]);
 
     const markTabViewed = useCallback((key: NotificationKey | null, href?: string | null) => {
         const normalizedRoute = normalizeViewedRoute(href);
@@ -1255,15 +1280,64 @@ export function useNotifications() {
                 prev.includes(normalizedRoute) ? prev : [...prev, normalizedRoute]
             );
         }
-        if (!key || !user?.email || !selectedOrgId || !selectedGroupId) return;
-        const nextValue = activityByKey[key];
-        writeTabLastViewed(user.email, selectedOrgId, selectedGroupId, key, nextValue);
-        setTabLastViewed(prev => ({ ...prev, [key]: nextValue }));
-    }, [activityByKey, selectedGroupId, selectedOrgId, user?.email]);
+        if (
+            !key ||
+            !user?.email ||
+            !selectedOrgId ||
+            !selectedGroupId ||
+            !lastSeenLoaded ||
+            !tabReadyByKey[key] ||
+            markInFlightRef.current[key]
+        ) {
+            return;
+        }
+
+        markInFlightRef.current[key] = true;
+        void safeFetchJson<{
+            ok: boolean;
+            data?: { lastSeenByTab?: Partial<TabLastSeenState> };
+            lastSeenAt?: string;
+        }>('/api/tab-activity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                orgId: selectedOrgId,
+                groupId: selectedGroupId,
+                tab: key,
+            }),
+        }).then(result => {
+            if (!result.ok || !result.data?.lastSeenAt) {
+                return;
+            }
+
+            setTabLastSeenAt(prev => ({
+                ...prev,
+                ...(result.data?.data?.lastSeenByTab ?? {}),
+                [key]: result.data?.lastSeenAt ?? prev[key],
+            }));
+        }).finally(() => {
+            markInFlightRef.current[key] = false;
+        });
+    }, [lastSeenLoaded, selectedGroupId, selectedOrgId, tabReadyByKey, user?.email]);
+
+    const markAllAsRead = useCallback((key: NotificationKey) => {
+        markTabViewed(key);
+    }, [markTabViewed]);
+
+    useEffect(() => {
+        if (!activeNotificationKey || !lastSeenLoaded || !tabReadyByKey[activeNotificationKey]) {
+            return;
+        }
+        if (!unread[activeNotificationKey]) {
+            return;
+        }
+
+        markTabViewed(activeNotificationKey, pathname);
+    }, [activeNotificationKey, lastSeenLoaded, markTabViewed, pathname, tabReadyByKey, unread]);
 
     return {
         unread,
-        loading,
+        loading: loading || !lastSeenLoaded,
         markAllAsRead,
         markTabViewed,
         role,
@@ -1271,5 +1345,7 @@ export function useNotifications() {
         groupSessionStartedAt,
         groupSessionEntrySnapshot,
         groupSessionReady,
+        tabLastSeenAt,
     };
 }
+

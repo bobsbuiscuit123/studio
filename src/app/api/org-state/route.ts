@@ -140,6 +140,33 @@ const mergeGroupChats = (currentChats: unknown, nextChats: unknown) => {
   });
 };
 
+const normalizeAttendanceRecords = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+
+  const byEmail = new Map<string, { email: string; checkedInAt: string }>();
+  value.forEach(item => {
+    if (!item || typeof item !== 'object') return;
+    const email =
+      typeof (item as { email?: unknown }).email === 'string'
+        ? normalizeEmail((item as { email: string }).email)
+        : '';
+    const checkedInAt =
+      typeof (item as { checkedInAt?: unknown }).checkedInAt === 'string'
+        ? (item as { checkedInAt: string }).checkedInAt
+        : '';
+    if (!email || !checkedInAt) return;
+
+    const existing = byEmail.get(email);
+    if (!existing || checkedInAt > existing.checkedInAt) {
+      byEmail.set(email, { email, checkedInAt });
+    }
+  });
+
+  return Array.from(byEmail.values()).sort((left, right) =>
+    left.email.localeCompare(right.email)
+  );
+};
+
 const mergeAnnouncements = (
   currentAnnouncements: unknown,
   nextAnnouncements: unknown,
@@ -263,6 +290,15 @@ const mergeEvents = (
     const nextViewed = uniqueStrings(Array.isArray(nextEvent.viewedBy) ? nextEvent.viewedBy : []);
     const currentAttendees = uniqueStrings(Array.isArray(currentEvent.attendees) ? currentEvent.attendees : []);
     const nextAttendees = uniqueStrings(Array.isArray(nextEvent.attendees) ? nextEvent.attendees : []);
+    const mergedAttendanceRecords = normalizeAttendanceRecords([
+      ...normalizeAttendanceRecords(currentEvent.attendanceRecords),
+      ...normalizeAttendanceRecords(nextEvent.attendanceRecords),
+    ]);
+    const mergedAttendees = uniqueStrings([
+      ...currentAttendees,
+      ...nextAttendees,
+      ...mergedAttendanceRecords.map(record => record.email),
+    ]);
 
     const currentRsvps = currentEvent.rsvps && typeof currentEvent.rsvps === 'object' ? currentEvent.rsvps : {};
     const nextRsvps = nextEvent.rsvps && typeof nextEvent.rsvps === 'object' ? nextEvent.rsvps : {};
@@ -308,7 +344,8 @@ const mergeEvents = (
       ...currentEvent,
       ...nextEvent,
       viewedBy: uniqueStrings([...currentViewed, ...nextViewed]),
-      attendees: uniqueStrings([...currentAttendees, ...nextAttendees]),
+      attendees: mergedAttendees,
+      attendanceRecords: mergedAttendanceRecords,
       rsvps: {
         yes: mergedYes,
         no: mergedNo,
@@ -417,6 +454,7 @@ const stripCollaborativeEventFields = (events: unknown) => {
     const {
       viewedBy: _viewedBy,
       attendees: _attendees,
+      attendanceRecords: _attendanceRecords,
       rsvps: _rsvps,
       read: _read,
       lastViewedAttendees: _lastViewedAttendees,

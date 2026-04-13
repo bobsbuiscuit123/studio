@@ -57,9 +57,7 @@ import { useEffect, useMemo } from "react";
 import AIInsights from "@/components/officer/ai-insights";
 import { useGroupUserStateSection } from "@/lib/group-user-state";
 import { getUtcDayKey } from "@/lib/day-key";
-import {
-  buildDashboardMissedPopupItems,
-} from "@/lib/dashboard-missed-activity";
+import { buildDashboardMissedPopupItems } from "@/lib/dashboard-missed-activity";
 import {
   createEmptyGroupActivitySnapshot,
   createGroupActivitySnapshot,
@@ -67,13 +65,21 @@ import {
   type GroupActivitySnapshot,
 } from "@/lib/notification-state";
 import { stableSerialize } from "@/lib/stable-serialize";
+import {
+  buildNotificationHref,
+  getMessageEntityId,
+  routeFromNotification,
+  type AppNotification,
+} from "@/lib/notification-routing";
+import { getSelectedOrgId } from "@/lib/selection";
 
 type ActivityItem = {
   type: string;
   title: string;
   date: Date;
-  link: string;
+  href: string;
   actor: string | null;
+  notification?: AppNotification;
 };
 
 type MissedActivityCache = {
@@ -146,6 +152,9 @@ export default function Dashboard() {
     groupSessionStartedAt,
     sessionViewedRoutes,
   } = useNotificationsContext();
+  const selectedOrgId = getSelectedOrgId();
+  const buildEntityHref = (notification: AppNotification | null, fallbackHref: string) =>
+    notification ? buildNotificationHref(routeFromNotification(notification)) : fallbackHref;
   const memberNameByEmail = useMemo(() => {
     return new Map(
       members.map(member => [normalizeEmail(member.email), member.name])
@@ -225,16 +234,56 @@ export default function Dashboard() {
 
   const mostRecentActivity = useMemo(() => {
     const allActivities = [
-        ...announcements.map(a => ({...a, type: 'announcement', date: new Date(a.date), link: '/announcements' })),
-        ...socialPosts.map(p => ({...p, type: 'social', date: new Date(p.date), link: '/social' })),
-        ...events.map(e => ({...e, type: 'event', date: e.date, link: '/calendar' }))
+        ...announcements.map(a => ({
+          ...a,
+          type: 'announcement',
+          date: new Date(a.date),
+          href: buildEntityHref(
+            selectedOrgId && clubId
+              ? {
+                  schema_version: 1,
+                  id: `announcement-${a.id}`,
+                  user_id: user?.email ?? 'current-user',
+                  org_id: selectedOrgId,
+                  group_id: clubId,
+                  type: 'announcement',
+                  entity_id: String(a.id),
+                  created_at: a.date,
+                  read: Boolean(a.read),
+                }
+              : null,
+            '/announcements'
+          ),
+        })),
+        ...socialPosts.map(p => ({...p, type: 'social', date: new Date(p.date), href: '/gallery' })),
+        ...events.map(e => ({
+          ...e,
+          type: 'event',
+          date: e.date,
+          href: buildEntityHref(
+            selectedOrgId && clubId
+              ? {
+                  schema_version: 1,
+                  id: `event-${e.id}`,
+                  user_id: user?.email ?? 'current-user',
+                  org_id: selectedOrgId,
+                  group_id: clubId,
+                  type: 'event',
+                  entity_id: e.id,
+                  created_at: e.date.toISOString(),
+                  read: Boolean(e.read),
+                }
+              : null,
+            '/calendar'
+          ),
+        }))
     ];
 
     if (allActivities.length === 0) return null;
 
     return allActivities.sort((a, b) => b.date.getTime() - a.date.getTime())[0];
 
-  }, [announcements, socialPosts, events]);
+  }, [announcements, buildEntityHref, clubId, events, selectedOrgId, socialPosts, user?.email]);
 
   const activityIcon = useMemo(() => {
     if (!mostRecentActivity) return Activity;
@@ -265,7 +314,22 @@ export default function Dashboard() {
         type: 'announcement',
         title: announcement.title,
         date,
-        link: '/announcements',
+        href: buildEntityHref(
+          selectedOrgId && clubId
+            ? {
+                schema_version: 1,
+                id: `announcement-${announcement.id}`,
+                user_id: user?.email ?? 'current-user',
+                org_id: selectedOrgId,
+                group_id: clubId,
+                type: 'announcement',
+                entity_id: String(announcement.id),
+                created_at: announcement.date,
+                read: Boolean(announcement.read),
+              }
+            : null,
+          '/announcements'
+        ),
         actor: normalizeEmail(announcement.author) || null,
       });
     });
@@ -278,7 +342,7 @@ export default function Dashboard() {
         type: 'social',
         title: post.title ?? 'Social post',
         date,
-        link: '/gallery',
+        href: '/gallery',
         actor: normalizeEmail(post.author) || null,
       });
     });
@@ -292,7 +356,22 @@ export default function Dashboard() {
         type: 'event',
         title: event.title,
         date: event.date,
-        link: '/calendar',
+        href: buildEntityHref(
+          selectedOrgId && clubId
+            ? {
+                schema_version: 1,
+                id: `event-${event.id}`,
+                user_id: user?.email ?? 'current-user',
+                org_id: selectedOrgId,
+                group_id: clubId,
+                type: 'event',
+                entity_id: event.id,
+                created_at: event.date.toISOString(),
+                read: Boolean(event.read),
+              }
+            : null,
+          '/calendar'
+        ),
         actor: null,
       });
     });
@@ -307,7 +386,7 @@ export default function Dashboard() {
           type: 'form',
           title: `New form: ${form.title}`,
           date: createdAt,
-          link: '/forms',
+          href: '/forms',
           actor: normalizeEmail(form.createdBy) || null,
         });
       }
@@ -319,7 +398,7 @@ export default function Dashboard() {
           type: 'form',
           title: `${form.title} response`,
           date,
-          link: '/forms',
+          href: '/forms',
           actor: normalizeEmail(response.respondentEmail) || null,
         });
       });
@@ -333,7 +412,7 @@ export default function Dashboard() {
           type: 'gallery',
           title: `${resolveMemberName(image.author)} uploaded ${image.alt ?? "a photo"}`,
           date,
-          link: '/gallery',
+          href: '/gallery',
           actor: normalizeEmail(image.author) || null,
         });
       });
@@ -350,7 +429,24 @@ export default function Dashboard() {
         type: 'message',
         title: `Message from ${resolveMemberName(message.sender)}`,
         date,
-        link: '/messages',
+        href: buildEntityHref(
+          selectedOrgId && clubId
+            ? {
+                schema_version: 1,
+                id: `message-${getMessageEntityId(message)}`,
+                user_id: user?.email ?? 'current-user',
+                org_id: selectedOrgId,
+                group_id: clubId,
+                type: 'message',
+                entity_id: getMessageEntityId(message),
+                parent_id: message.sender,
+                parent_type: 'dm',
+                created_at: message.timestamp,
+                read: false,
+              }
+            : null,
+          '/messages'
+        ),
         actor: normalizeEmail(message.sender) || null,
       });
     });
@@ -368,7 +464,24 @@ export default function Dashboard() {
           type: 'group message',
           title: `${chat.name} message from ${resolveMemberName(message.sender)}`,
           date,
-          link: '/messages',
+          href: buildEntityHref(
+            selectedOrgId && clubId
+              ? {
+                  schema_version: 1,
+                  id: `message-${getMessageEntityId(message)}`,
+                  user_id: user?.email ?? 'current-user',
+                  org_id: selectedOrgId,
+                  group_id: clubId,
+                  type: 'message',
+                  entity_id: getMessageEntityId(message),
+                  parent_id: chat.id,
+                  parent_type: 'group',
+                  created_at: message.timestamp,
+                  read: false,
+                }
+              : null,
+            '/messages'
+          ),
           actor: normalizeEmail(message.sender) || null,
         });
       });
@@ -382,7 +495,7 @@ export default function Dashboard() {
           type: 'finance',
           title: transaction.description ?? 'Transaction',
           date,
-          link: '/finances',
+          href: '/finances',
           actor: null,
         });
       });
@@ -396,7 +509,7 @@ export default function Dashboard() {
         type: 'points',
         title: `${resolveMemberName(entry.memberEmail)} earned ${entry.points} points`,
         date,
-        link: '/points',
+        href: '/points',
         actor: normalizeEmail(entry.awardedBy) || null,
       });
     });
@@ -419,6 +532,9 @@ export default function Dashboard() {
     canEditContent,
     user?.email,
     memberNameByEmail,
+    buildEntityHref,
+    clubId,
+    selectedOrgId,
   ]);
 
   const todoItems = useMemo(() => {
@@ -593,7 +709,7 @@ export default function Dashboard() {
         keys: item.keys,
         type: item.type,
         title: item.title,
-        link: item.link,
+        href: item.link,
         actor: item.actor,
         date: item.date.toISOString(),
       })),
@@ -615,9 +731,9 @@ export default function Dashboard() {
               bullets: unseenForPopup.map(item => `${item.title} (${item.date.toLocaleDateString()})`),
               actions: Array.from(new Set(unseenForPopup.map(item => item.link)))
                 .slice(0, 3)
-                .map(link => ({
-                  href: link,
-                  label: getActionLabel(link),
+                .map(href => ({
+                  href,
+                  label: getActionLabel(href),
                 })),
             };
 
@@ -943,7 +1059,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {mostRecentActivity ? (
-                 <Link href={mostRecentActivity.link}>
+                 <Link href={mostRecentActivity.href}>
                     <div className="text-lg font-bold leading-tight hover:underline sm:text-2xl" title={mostRecentActivity.title}>
                         {mostRecentActivity.title}
                     </div>

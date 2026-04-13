@@ -17,6 +17,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { CheckCircle, KeyRound, Loader2, Users } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { generateRandomCode } from "@/lib/random-code";
+import { safeFetchJson } from "@/lib/network";
+import { getSelectedGroupId, getSelectedOrgId } from "@/lib/selection";
 
 const checkInFormSchema = z.object({
   code: z.string().length(4, "Code must be 4 characters.").regex(/^[A-Z0-9]{4}$/, "Invalid code format."),
@@ -71,13 +73,45 @@ export default function AttendancePage() {
       toast({ title: "Already Checked In", description: "You have already been marked as attended for this event." });
       return;
     }
-    
-    // Note: Point allocation logic happens implicitly via useEffect on the Points page
-    // when the 'events' data changes.
 
-    const saved = await saveEvents(prevEvents =>
-      prevEvents.map(e =>
-        e.id === eventId ? { ...e, attendees: [...attendees, user.email] } : e
+    const orgId = getSelectedOrgId();
+    const groupId = getSelectedGroupId();
+    if (!orgId || !groupId) {
+      toast({ title: "Error", description: "No group selected.", variant: "destructive" });
+      return;
+    }
+
+    const result = await safeFetchJson<{ ok: boolean; data?: { event?: ClubEvent } }>(
+      '/api/attendance/check-in',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orgId,
+          groupId,
+          eventId,
+          code: values.code.toUpperCase(),
+        }),
+      }
+    );
+
+    if (!result.ok || !result.data?.data?.event) {
+      toast({
+        title: "Check-in failed",
+        description: result.ok ? "Unable to mark attendance." : result.error.message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const saved = await saveEvents(prev =>
+      prev.map(item =>
+        item.id === eventId
+          ? {
+              ...result.data!.data!.event!,
+              date: new Date(result.data!.data!.event!.date),
+            }
+          : item
       )
     );
     if (!saved) {

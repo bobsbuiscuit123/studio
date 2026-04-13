@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -36,6 +36,7 @@ import {
   upsertConversationMessage,
   upsertGroupChatMessage,
 } from "@/lib/message-state";
+import { getMessageEntityId } from "@/lib/notification-routing";
 import type { GroupChat, Member, Message } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -475,6 +476,7 @@ export function MessagesListScreen() {
 
 export function MessageChatScreen({ conversationId }: { conversationId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: userLoading } = useCurrentUser();
   const { data: members, loading: membersLoading } = useMembers();
   const {
@@ -501,6 +503,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
+  const focusedMessageId = searchParams.get("messageId");
   const refreshConversationState = useCallback(
     async () => {
       const refreshed = await refreshMessages();
@@ -597,8 +600,33 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   }, [conversation, currentUserEmail, setAllMessages, setGroupChats]);
 
   useEffect(() => {
+    if (!focusedMessageId || messagesLoading || groupsLoading) {
+      return;
+    }
+
+    const hasTargetMessage = activeMessages.some(
+      message => getMessageEntityId(message) === focusedMessageId
+    );
+    if (!hasTargetMessage) {
+      toast({
+        title: "Message unavailable",
+        description: "This item is no longer available.",
+        variant: "destructive",
+      });
+      router.replace(`/messages/${conversationId}`);
+    }
+  }, [activeMessages, conversationId, focusedMessageId, groupsLoading, messagesLoading, router, toast]);
+
+  useEffect(() => {
+    if (focusedMessageId) {
+      const messageElement = document.getElementById(`message-${encodeURIComponent(focusedMessageId)}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
+    }
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeMessages]);
+  }, [activeMessages, focusedMessageId]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -618,6 +646,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     }
 
     const newMessage: Message = {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       sender: currentUserEmail || user.email,
       text: values.text,
       timestamp: new Date().toISOString(),
@@ -781,12 +813,19 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
             {activeMessages.map((message, index) => {
               const isMine = isMessageFromActor(message, currentUserEmail);
               const sender = safeMembers.find(member => member.email === normalizeMessageActor(message.sender));
+              const messageId = getMessageEntityId(message);
+              const isFocusedMessage = focusedMessageId === messageId;
               return (
-                <div key={`${message.timestamp}-${index}`} className={cn("flex w-full", isMine ? "justify-end" : "justify-start")}>
+                <div
+                  key={`${messageId}-${index}`}
+                  id={`message-${encodeURIComponent(messageId)}`}
+                  className={cn("flex w-full scroll-mt-24", isMine ? "justify-end" : "justify-start")}
+                >
                   <div
                     className={cn(
-                      "max-w-[82%] rounded-2xl px-4 py-3 text-sm break-words",
-                      isMine ? "bg-primary text-primary-foreground" : "bg-muted"
+                      "max-w-[82%] rounded-2xl px-4 py-3 text-sm break-words transition-colors",
+                      isMine ? "bg-primary text-primary-foreground" : "bg-muted",
+                      isFocusedMessage && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
                     )}
                   >
                     {conversation.type === "group" && !isMine ? (

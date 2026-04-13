@@ -13,6 +13,7 @@ import { ImportLocalData } from "@/components/import-local-data";
 import { OfflineCallout } from "@/components/network-status";
 import { NotificationsProvider } from "@/components/notifications-provider";
 import { PushNotificationClient } from "@/components/push-notifications";
+import { NotificationDeepLinkHandler } from "@/components/notification-deep-link-handler";
 import { AppRouteContentBoundary } from "@/components/app-route-content-boundary";
 import {
   getSelectedGroupId,
@@ -74,9 +75,10 @@ export default function AppLayout({
 
   return (
     <NotificationsProvider>
+      <NotificationDeepLinkHandler />
       <PushNotificationClient />
-      <div className="app-shell w-full md:grid md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
-        <div className="hidden print:hidden md:block">
+      <div className="app-root app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
+        <div className="print:hidden">
           <AppSidebar />
         </div>
         <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">

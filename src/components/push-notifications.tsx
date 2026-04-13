@@ -237,7 +237,7 @@ export function PushNotificationClient() {
 
       listenerHandles.push(await PushNotifications.addListener('registration', handleRegistration));
       listenerHandles.push(
-        await PushNotifications.addListener('registrationError', error => {
+        await PushNotifications.addListener('registrationError', (error: unknown) => {
           console.error('Push registration error', error);
         })
       );

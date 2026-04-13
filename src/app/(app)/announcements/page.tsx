@@ -44,6 +44,7 @@ import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { safeFetchJson } from "@/lib/network";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
+import { cn } from "@/lib/utils";
 
 const isNativeApp = Capacitor.isNativePlatform();
 
@@ -152,6 +153,7 @@ function AnnouncementsPageInner() {
   const [showAi, setShowAi] = useState(false);
   const [handledFormId, setHandledFormId] = useState<string | null>(null);
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
+  const [highlightedAnnouncementId, setHighlightedAnnouncementId] = useState<string | null>(null);
   const aiRequestInFlightRef = useRef(false);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -307,6 +309,37 @@ function AnnouncementsPageInner() {
 
     prefillFromForm();
   }, [announcementForm, canEditContent, handledFormId, formsLoading, safeForms, searchParams, toast]);
+
+  useEffect(() => {
+    const announcementId = searchParams.get('announcementId');
+    if (!announcementId || loading) return;
+
+    const targetAnnouncement = safeAnnouncements.find(
+      announcement => String(announcement.id) === announcementId
+    );
+
+    if (!targetAnnouncement) {
+      toast({
+        title: 'Announcement unavailable',
+        description: 'This item is no longer available.',
+        variant: 'destructive',
+      });
+      router.replace('/announcements');
+      return;
+    }
+
+    setHighlightedAnnouncementId(announcementId);
+    const element = document.getElementById(`announcement-${announcementId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    const timeoutId = window.setTimeout(() => setHighlightedAnnouncementId(current =>
+      current === announcementId ? null : current
+    ), 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loading, router, safeAnnouncements, searchParams, toast]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -827,7 +860,15 @@ function AnnouncementsPageInner() {
                 const recipientNames = recipientsList.map(resolveMemberName);
                 const viewedByNames = viewedByList.map(resolveMemberName);
                 return (
-                  <Card key={announcement.id}>
+                  <Card
+                    key={announcement.id}
+                    id={`announcement-${announcement.id}`}
+                    className={cn(
+                      "scroll-mt-24 transition-shadow",
+                      highlightedAnnouncementId === String(announcement.id) &&
+                        "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+                    )}
+                  >
                     <CardHeader>
                       <div className="flex justify-between items-start">
                           <div>

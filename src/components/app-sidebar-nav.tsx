@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getSelectedGroupId, syncSelectionCookies } from '@/lib/selection';
 
 type NotificationMap = {
@@ -64,7 +64,6 @@ export function AppSidebarNav({
 }) {
   const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
-  const lastAutoClearedRef = useRef<string | null>(null);
 
   useEffect(() => {
     setIsClient(true);
@@ -81,39 +80,6 @@ export function AppSidebarNav({
       return order.indexOf(a.label) - order.indexOf(b.label);
     });
   }, [groupId, role]);
-
-  const shouldAutoClearNotification = (key: NotificationKey | null) => Boolean(key);
-
-  const activeItem = useMemo(() => {
-    return navItems.find(item => {
-      const demoHref =
-        item.href === '/dashboard' ? '/demo/app' : `/demo/app${item.href}`;
-      const href = isDemoApp ? demoHref : item.href;
-      return isDemoApp
-        ? item.href === '/dashboard'
-          ? pathname === '/demo/app' || pathname === '/demo/app/dashboard'
-          : pathname === href || pathname.startsWith(`${href}/`)
-        : pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
-    });
-  }, [isDemoApp, navItems, pathname]);
-  const activeNotificationKey = activeItem?.notificationKey ?? null;
-
-  useEffect(() => {
-    if (!activeItem) {
-      lastAutoClearedRef.current = null;
-      return;
-    }
-    if (!activeNotificationKey || !shouldAutoClearNotification(activeNotificationKey)) {
-      lastAutoClearedRef.current = null;
-      return;
-    }
-    const autoClearKey = `${pathname}:${activeNotificationKey}`;
-    if (lastAutoClearedRef.current === autoClearKey) {
-      return;
-    }
-    lastAutoClearedRef.current = autoClearKey;
-    onLinkClick(activeNotificationKey, activeItem.href);
-  }, [activeItem, activeNotificationKey, onLinkClick, pathname]);
 
   return (
     <>

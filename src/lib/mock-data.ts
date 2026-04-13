@@ -64,6 +64,10 @@ export type ClubEvent = {
   points?: number;
   checkInCode?: string;
   attendees?: string[];
+  attendanceRecords?: Array<{
+    email: string;
+    checkedInAt: string;
+  }>;
   lastViewedAttendees?: number;
   rsvps?: RSVPRecord;
   rsvpRequired?: boolean;
@@ -158,6 +162,7 @@ export type GalleryImage = {
 };
 
 export type Message = {
+    id?: string;
     sender: string;
     text: string;
     timestamp: string;

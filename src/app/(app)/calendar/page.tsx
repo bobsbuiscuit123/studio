@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -149,6 +150,8 @@ const parseManualEventDateTime = (date: string, time?: string) => {
 };
 
 export default function CalendarPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [date, setDate] = useState<Date | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isClient, setIsClient] = useState(false);
@@ -166,6 +169,7 @@ export default function CalendarPage() {
   const { data: members } = useMembers();
   const currentEmail = user?.email || "";
   const safeEvents = Array.isArray(events) ? events : [];
+  const highlightedEventId = searchParams.get("eventId");
   const [showAi, setShowAi] = useState(false);
   const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
@@ -184,6 +188,27 @@ export default function CalendarPage() {
       setSelectedEvent(updated);
     }
   }, [safeEvents, selectedEvent]);
+
+  useEffect(() => {
+    if (!highlightedEventId || loading) return;
+
+    const targetEvent = safeEvents.find(event => event.id === highlightedEventId);
+    if (!targetEvent) {
+      toast({
+        title: 'Event unavailable',
+        description: 'This item is no longer available.',
+        variant: 'destructive',
+      });
+      router.replace('/calendar');
+      return;
+    }
+
+    setSelectedEvent(targetEvent);
+    const element = document.getElementById(`event-${highlightedEventId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightedEventId, loading, router, safeEvents, toast]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -796,7 +821,16 @@ export default function CalendarPage() {
                 upcomingEvents.length > 0 ? (
                   <Accordion type="single" collapsible className="w-full space-y-3">
                     {upcomingEvents.map((event) => (
-                      <AccordionItem value={`item-${event.id}`} key={event.id} className="overflow-hidden rounded-xl border border-border/70 bg-background/70 px-4">
+                      <AccordionItem
+                        value={`item-${event.id}`}
+                        key={event.id}
+                        id={`event-${event.id}`}
+                        className={cn(
+                          "overflow-hidden rounded-xl border border-border/70 bg-background/70 px-4 scroll-mt-24 transition-shadow",
+                          highlightedEventId === event.id &&
+                            "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
+                        )}
+                      >
                         <div className="flex w-full items-start justify-between gap-3 py-4">
                             <AccordionTrigger className="min-w-0 flex-grow p-0" onClick={() => markEventViewed(event.id)}>
                                 <div className="min-w-0 text-left">

@@ -3,8 +3,10 @@ import imageCompression from 'browser-image-compression';
 
 export async function resizeImage(file: File): Promise<string> {
   const options = {
-    maxSizeMB: 0.1, // Max file size in MB
-    maxWidthOrHeight: 800, // Max width or height
+    maxSizeMB: 0.03,
+    maxWidthOrHeight: 480,
+    initialQuality: 0.65,
+    fileType: 'image/webp',
     useWebWorker: true,
   };
 
@@ -13,19 +15,7 @@ export async function resizeImage(file: File): Promise<string> {
     const dataUrl = await imageCompression.getDataUrlFromFile(compressedFile);
     return dataUrl;
   } catch (error) {
-    console.error('Image compression failed, falling back to original file:', error);
-    // Fallback to reading the original file if compression fails
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            if (typeof reader.result === 'string') {
-                resolve(reader.result);
-            } else {
-                reject(new Error('Failed to read file as data URL.'));
-            }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+    console.error('Image compression failed:', error);
+    throw new Error('Image compression failed. Please try a smaller image.');
   }
 }

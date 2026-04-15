@@ -100,14 +100,32 @@ const getRecordActivityTimestamp = (item: Record<string, unknown>) =>
 const viewedByCurrentUser = (viewedBy: string[] | undefined, userEmail: string) =>
     Array.isArray(viewedBy) &&
     viewedBy.some(email => normalizeActivityActor(email) === userEmail);
+
 const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
+const groupStateFetchedAtCache = new Map<string, number>();
+const groupStateIncludesMediaCache = new Map<string, boolean>();
 const currentUserRoleCache = new Map<string, { role: string | null; expiresAt: number }>();
 const currentUserRoleRequestCache = new Map<string, Promise<string | null>>();
 const CURRENT_USER_ROLE_CACHE_TTL_MS = 30_000;
+const GROUP_STATE_REFRESH_TTL_MS = 5 * 60_000;
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
 const getCurrentUserRoleCacheKey = (groupId: string, userId: string) => `${groupId}:${userId}`;
+const routeNeedsMedia = (pathname?: string | null) => {
+  const value = pathname ?? '';
+  return (
+    value === '/gallery' ||
+    value.startsWith('/gallery/') ||
+    value === '/social' ||
+    value.startsWith('/social/') ||
+    value === '/announcements' ||
+    value.startsWith('/announcements/') ||
+    value.startsWith('/demo/app/gallery') ||
+    value.startsWith('/demo/app/social') ||
+    value.startsWith('/demo/app/announcements')
+  );
+};
 const shouldRefreshOnVisibility = () =>
   typeof document !== 'undefined' &&
   document.visibilityState === 'visible' &&
@@ -241,10 +259,17 @@ const dispatchGroupStateSync = (orgId: string, groupId: string) => {
   );
 };
 
-type GroupStateResponse = { ok: true; data: ClubData };
+type GroupStateResponse = { ok: true; data: ClubData | null };
 
-async function fetchGroupStateFromServer(orgId: string, groupId: string) {
+async function fetchGroupStateFromServer(
+  orgId: string,
+  groupId: string,
+  options: { includeMedia?: boolean } = {}
+) {
   const params = new URLSearchParams({ orgId, groupId });
+  if (options.includeMedia) {
+    params.set('media', '1');
+  }
   const response = await safeFetchJson<GroupStateResponse>(`/api/org-state?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store',
@@ -254,6 +279,9 @@ async function fetchGroupStateFromServer(orgId: string, groupId: string) {
   if (!response.ok) {
     throw new Error(response.error.message || 'Group content could not be loaded.');
   }
+  if (!response.data.data) {
+    throw new Error('Group content response was empty.');
+  }
 
   return normalizeClubData(response.data.data);
 }
@@ -261,11 +289,28 @@ async function fetchGroupStateFromServer(orgId: string, groupId: string) {
 async function requestGroupState(
   orgId: string,
   groupId: string,
-  options: { forceFresh?: boolean } = {}
+  options: { forceFresh?: boolean; bypassCache?: boolean; includeMedia?: boolean } = {}
 ) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
+  const requestCacheKey = `${cacheKey}:${options.includeMedia ? 'media' : 'lite'}`;
+  const cached = groupStateCache.get(cacheKey);
+  const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
+  const cacheSatisfiesMedia = !options.includeMedia || cachedIncludesMedia;
+  const fetchedAt = groupStateFetchedAtCache.get(cacheKey) ?? 0;
+  const cacheAge = Date.now() - fetchedAt;
+  if (
+    cached &&
+    cacheSatisfiesMedia &&
+    (
+      !options.forceFresh ||
+      (!options.bypassCache && cacheAge < GROUP_STATE_REFRESH_TTL_MS)
+    )
+  ) {
+    return cached;
+  }
+
   if (!options.forceFresh) {
-    const pending = groupStateRequestCache.get(cacheKey);
+    const pending = groupStateRequestCache.get(requestCacheKey);
     if (pending) {
       return pending;
     }
@@ -278,42 +323,53 @@ async function requestGroupState(
       mode: options.forceFresh ? 'fresh' : 'cached-miss',
     });
     try {
-      const normalized = await fetchGroupStateFromServer(orgId, groupId);
+      const normalized = await fetchGroupStateFromServer(orgId, groupId, {
+        includeMedia: options.includeMedia,
+      });
       const merged = reconcileClubData(groupStateCache.get(cacheKey), normalized);
       groupStateCache.set(cacheKey, merged);
+      groupStateFetchedAtCache.set(cacheKey, Date.now());
+      groupStateIncludesMediaCache.set(cacheKey, cachedIncludesMedia || Boolean(options.includeMedia));
       return merged;
     } finally {
       performanceTimer.stop();
     }
   })();
 
-  groupStateRequestCache.set(cacheKey, request);
+  groupStateRequestCache.set(requestCacheKey, request);
   try {
     return await request;
   } finally {
-    if (groupStateRequestCache.get(cacheKey) === request) {
-      groupStateRequestCache.delete(cacheKey);
+    if (groupStateRequestCache.get(requestCacheKey) === request) {
+      groupStateRequestCache.delete(requestCacheKey);
     }
   }
 }
 
-async function loadGroupState(orgId: string, groupId: string) {
+async function loadGroupState(orgId: string, groupId: string, options: { includeMedia?: boolean } = {}) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
   const cached = groupStateCache.get(cacheKey);
-  if (cached) {
+  const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
+  if (cached && (!options.includeMedia || cachedIncludesMedia)) {
     return cached;
   }
 
-  return requestGroupState(orgId, groupId);
+  return requestGroupState(orgId, groupId, options);
 }
 
-async function fetchFreshGroupState(orgId: string, groupId: string) {
-  return requestGroupState(orgId, groupId, { forceFresh: true });
+async function fetchFreshGroupState(
+  orgId: string,
+  groupId: string,
+  options: { includeMedia?: boolean; bypassCache?: boolean } = {}
+) {
+  return requestGroupState(orgId, groupId, { forceFresh: true, ...options });
 }
 
 function useClubDataStore() {
+    const pathname = usePathname();
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
+    const includeMedia = routeNeedsMedia(pathname);
     const [clubId, setClubId] = useState<string | null>(() =>
         useDemo || typeof window === 'undefined' ? null : getSelectedGroupId()
     );
@@ -340,7 +396,11 @@ function useClubDataStore() {
         if (!initialOrgId || !initialClubId) {
             return false;
         }
-        return !groupStateCache.has(getGroupStateCacheKey(initialOrgId, initialClubId));
+        const cacheKey = getGroupStateCacheKey(initialOrgId, initialClubId);
+        return (
+            !groupStateCache.has(cacheKey) ||
+            (includeMedia && groupStateIncludesMediaCache.get(cacheKey) !== true)
+        );
     });
     const [error, setError] = useState<string | null>(null);
     const [authReady, setAuthReady] = useState(() => useDemo || typeof window === 'undefined');
@@ -407,16 +467,19 @@ function useClubDataStore() {
         const load = async () => {
             const cacheKey = getGroupStateCacheKey(orgId, clubId);
             const cached = groupStateCache.get(cacheKey);
-            if (cached) {
+            const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
+            if (cached && (!includeMedia || cachedIncludesMedia)) {
                 setData(cached);
                 setLoading(false);
                 setError(null);
                 return;
             }
-            setData(null);
+            if (!cached) {
+                setData(null);
+            }
             setLoading(true);
             try {
-                const nextData = await loadGroupState(orgId, clubId);
+                const nextData = await loadGroupState(orgId, clubId, { includeMedia });
                 setData(nextData);
                 setError(null);
             } catch (error) {
@@ -426,7 +489,7 @@ function useClubDataStore() {
             setLoading(false);
         };
         load();
-    }, [authReady, clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
 
     useEffect(() => {
         if (useDemo || !supabase || !clubId || !orgId || typeof window === 'undefined' || !authReady) {
@@ -437,7 +500,7 @@ function useClubDataStore() {
         const refreshFromBackend = async () => {
             if (!shouldRefreshOnVisibility()) return;
             try {
-                const nextData = await fetchFreshGroupState(orgId, clubId);
+                const nextData = await fetchFreshGroupState(orgId, clubId, { includeMedia });
                 if (!cancelled) {
                     setError(null);
                     setData(prev => {
@@ -494,12 +557,15 @@ function useClubDataStore() {
             window.removeEventListener('online', handleVisibilityChange);
             window.removeEventListener('group-state-sync', handleGroupStateSync);
         };
-    }, [authReady, clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
 
     const refreshData = useCallback(async () => {
         if (useDemo || !supabase || !clubId || !orgId || !authReady) return false;
         try {
-            const nextData = await fetchFreshGroupState(orgId, clubId);
+            const nextData = await fetchFreshGroupState(orgId, clubId, {
+                includeMedia,
+                bypassCache: true,
+            });
             setError(null);
             setData(prev => {
                 if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
@@ -514,7 +580,7 @@ function useClubDataStore() {
             setError(error instanceof Error ? error.message : 'Group content could not be refreshed.');
             return false;
         }
-    }, [authReady, clubId, orgId, supabase, useDemo]);
+    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
 
     const setLocalClubData = useCallback((nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => {
         if (!clubId || !orgId) return false;
@@ -532,8 +598,11 @@ function useClubDataStore() {
             return mergedData;
         });
         groupStateCache.set(cacheKey, mergedData);
+        if (includeMedia) {
+            groupStateIncludesMediaCache.set(cacheKey, true);
+        }
         return true;
-    }, [clubId, data, orgId]);
+    }, [clubId, data, includeMedia, orgId]);
 
     const updateClubData = useCallback(
         async (
@@ -576,14 +645,11 @@ function useClubDataStore() {
 
             setData(optimisticData);
             groupStateCache.set(getGroupStateCacheKey(orgId, clubId), optimisticData);
-
-            let freshCurrentData = currentData;
-            try {
-                freshCurrentData = await fetchFreshGroupState(orgId, clubId);
-                setError(null);
-            } catch (error) {
-                console.error(`Error refreshing latest data for group ${clubId} before save`, error);
+            if (includeMedia) {
+                groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
             }
+
+            const freshCurrentData = currentData;
 
             const nextData =
                 typeof nextDataOrUpdater === 'function'
@@ -601,6 +667,9 @@ function useClubDataStore() {
             if (violation) {
                 setData(freshCurrentData);
                 groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
+                if (includeMedia) {
+                    groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
+                }
                 if (typeof window !== 'undefined') {
                     window.dispatchEvent(
                         new CustomEvent('policy-violation', {
@@ -610,7 +679,7 @@ function useClubDataStore() {
                 }
                 return false;
             }
-            const response = await safeFetchJson<GroupStateResponse>('/api/org-state', {
+            const response = await safeFetchJson<GroupStateResponse>('/api/org-state?return=minimal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -626,10 +695,13 @@ function useClubDataStore() {
                 console.error(`Error saving data for group ${clubId}`, response.error);
                 setData(freshCurrentData);
                 groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
+                if (includeMedia) {
+                    groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
+                }
                 setError(response.error.message || 'Group content could not be saved.');
                 return false;
             }
-            const confirmedData = normalizeClubData(response.data.data);
+            const confirmedData = normalizeClubData(response.data.data ?? nextData);
             setData(prev => {
                 if (prev && stableSerialize(prev) === stableSerialize(confirmedData)) {
                     return prev;
@@ -637,11 +709,14 @@ function useClubDataStore() {
                 return confirmedData;
             });
             groupStateCache.set(getGroupStateCacheKey(orgId, clubId), confirmedData);
+            if (includeMedia) {
+                groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
+            }
             setError(null);
             dispatchGroupStateSync(orgId, clubId);
             return true;
         },
-        [clubId, data, demoCtx, orgId, supabase, useDemo]
+        [clubId, data, demoCtx, includeMedia, orgId, supabase, useDemo]
     );
 
     if (useDemo && demoCtx) {
@@ -1348,4 +1423,3 @@ export function useNotifications() {
         tabLastSeenAt,
     };
 }
-

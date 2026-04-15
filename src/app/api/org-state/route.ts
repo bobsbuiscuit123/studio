@@ -370,6 +370,21 @@ const normalizeGalleryImageStatus = (image: Record<string, any>) => ({
   status: 'approved' as const,
 });
 
+const stripHeavyMediaFromOrgState = (data: unknown) => {
+  if (!data || typeof data !== 'object') return data;
+  const source = data as Record<string, any>;
+  return {
+    ...source,
+    galleryImages: Array.isArray(source.galleryImages)
+      ? source.galleryImages.map(image => {
+          if (!image || typeof image !== 'object') return image;
+          const { src: _src, ...rest } = image as Record<string, unknown>;
+          return rest;
+        })
+      : source.galleryImages,
+  };
+};
+
 const mergeGalleryImages = (
   currentGalleryImages: unknown,
   nextGalleryImages: unknown,
@@ -438,6 +453,10 @@ const mergeGalleryImages = (
     return [{
       ...normalizeGalleryImageStatus(currentImage),
       ...normalizeGalleryImageStatus(nextImage),
+      src:
+        typeof nextImage.src === 'string' && nextImage.src
+          ? nextImage.src
+          : currentImage.src,
       likedBy: mergedLikedBy,
       likes: mergedLikedBy.length,
       read: Boolean(nextImage.read) || Boolean(currentImage.read),
@@ -944,6 +963,7 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const includeMedia = url.searchParams.get('media') === '1';
   const schema = z.object({
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
@@ -1114,18 +1134,19 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, data: repairedData },
+      { ok: true, data: includeMedia ? repairedData : stripHeavyMediaFromOrgState(repairedData) },
       { headers: getRateLimitHeaders(limiter) }
     );
   }
 
   return NextResponse.json(
-    { ok: true, data: existingState.data },
+    { ok: true, data: includeMedia ? existingState.data : stripHeavyMediaFromOrgState(existingState.data) },
     { headers: getRateLimitHeaders(limiter) }
   );
 }
 
 export async function POST(request: Request) {
+  const returnMode = new URL(request.url).searchParams.get('return');
   const ip = getRequestIp(request.headers);
   const limiter = rateLimit(`org-state:${ip}`, 60, 60_000);
   if (!limiter.allowed) {
@@ -1351,7 +1372,19 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json(
-    { ok: true, data: mergedData },
+    {
+      ok: true,
+      data: returnMode === 'minimal' ? null : mergedData,
+      counts:
+        returnMode === 'minimal'
+          ? {
+              announcements: getCollectionCount(mergedData.announcements),
+              events: getCollectionCount(mergedData.events),
+              forms: getCollectionCount(mergedData.forms),
+              galleryImages: getCollectionCount(mergedData.galleryImages),
+            }
+          : undefined,
+    },
     { headers: getRateLimitHeaders(limiter) }
   );
 }

@@ -68,6 +68,7 @@ const messageFormSchema = z.object({
 });
 
 const MESSAGE_SEND_THROTTLE_MS = 500;
+const MESSAGE_BACKGROUND_REFRESH_MS = 2 * 60_000;
 
 type MessageAuditEnvelope = {
   conversationType: "dm" | "group";
@@ -285,7 +286,7 @@ export function MessagesListScreen() {
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       void refreshConversationState();
-    }, 5000);
+    }, MESSAGE_BACKGROUND_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [refreshConversationState]);
 
@@ -632,7 +633,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     const interval = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       void refreshConversationState();
-    }, 5000);
+    }, MESSAGE_BACKGROUND_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [refreshConversationState]);
 

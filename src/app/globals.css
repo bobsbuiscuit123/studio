@@ -152,6 +152,20 @@ main,
   overflow: hidden;
 }
 
+@media (min-width: 768px) {
+  .app-root.app-shell {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    flex-direction: initial;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-root.app-shell {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+}
+
 .main-container {
   display: flex;
   flex-direction: column;

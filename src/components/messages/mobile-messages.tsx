@@ -492,7 +492,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const { toast } = useToast();
   const [lastMessageAt, setLastMessageAt] = useState(0);
   const [isSending, setIsSending] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasAutoScrolledOnOpenRef = useRef(false);
   const safeMembers = useMemo(() => normalizeMembersForMessages(members), [members]);
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
@@ -606,14 +608,34 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   }, [activeMessages, conversationId, focusedMessageId, loading, router, toast]);
 
   useEffect(() => {
+    hasAutoScrolledOnOpenRef.current = false;
+  }, [conversationId, focusedMessageId]);
+
+  useEffect(() => {
     if (focusedMessageId) {
       const messageElement = document.getElementById(`message-${encodeURIComponent(focusedMessageId)}`);
       if (messageElement) {
         messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        hasAutoScrolledOnOpenRef.current = true;
         return;
       }
     }
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+    if (!hasAutoScrolledOnOpenRef.current) {
+      const container = messagesContainerRef.current;
+      if (!container) return;
+
+      const scrollToBottom = () => {
+        container.scrollTop = container.scrollHeight;
+      };
+
+      scrollToBottom();
+      const frameId = window.requestAnimationFrame(scrollToBottom);
+      hasAutoScrolledOnOpenRef.current = true;
+      return () => window.cancelAnimationFrame(frameId);
+    }
+
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeMessages, focusedMessageId]);
 
   useEffect(() => {
@@ -796,7 +818,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         </div>
       </div>
 
-      <div className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pt-4">
+      <div
+        ref={messagesContainerRef}
+        className="messages-content flex min-h-0 flex-1 flex-col items-stretch justify-start overflow-y-auto px-4 pt-4"
+      >
         {activeMessages.length === 0 ? (
           <div className="tab-empty-state text-sm text-muted-foreground">
             Start the conversation with {title}

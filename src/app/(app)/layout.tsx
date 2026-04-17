@@ -57,10 +57,11 @@ export default function AppLayout({
     syncSelectionCookies();
     const orgId = getSelectedOrgId();
     const groupId = getSelectedGroupId();
-    if (orgId && !groupId && pathname !== "/clubs") {
+    const isClubsRoute = pathname === "/clubs";
+    if (orgId && !groupId && !isClubsRoute && !isMessagesRoute) {
       router.replace("/clubs");
     }
-  }, [pathname, router]);
+  }, [isMessagesRoute, pathname, router]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) {

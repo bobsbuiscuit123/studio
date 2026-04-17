@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -611,7 +611,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     hasAutoScrolledOnOpenRef.current = false;
   }, [conversationId, focusedMessageId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (focusedMessageId) {
       const messageElement = document.getElementById(`message-${encodeURIComponent(focusedMessageId)}`);
       if (messageElement) {
@@ -630,9 +630,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       };
 
       scrollToBottom();
-      const frameId = window.requestAnimationFrame(scrollToBottom);
+      const frameId = window.requestAnimationFrame(() => {
+        scrollToBottom();
+        messagesEndRef.current?.scrollIntoView({ block: "end" });
+      });
+      const timeoutId = window.setTimeout(scrollToBottom, 80);
       hasAutoScrolledOnOpenRef.current = true;
-      return () => window.cancelAnimationFrame(frameId);
+      return () => {
+        window.cancelAnimationFrame(frameId);
+        window.clearTimeout(timeoutId);
+      };
     }
 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

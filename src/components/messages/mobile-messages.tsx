@@ -23,7 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useCurrentUser, useGroupChats, useMembers, useMessages } from "@/lib/data-hooks";
+import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
 import {
   getMessageTimestampMs,
   isMessageFromActor,
@@ -212,22 +212,18 @@ function useLiveGroupStateMessages({
 export function MessagesListScreen() {
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
-  const { data: members, loading: membersLoading } = useMembers();
   const {
-    data: allMessages,
-    setLocalData: setLocalMessages,
-    loading: messagesLoading,
-    refreshData: refreshMessages,
+    members,
+    messages: allMessages,
+    setLocalMessages,
+    groupChats,
+    updateGroupChats: setGroupChats,
+    setLocalGroupChats,
+    loading,
+    refreshData: refreshConversationState,
     clubId,
     orgId,
-  } = useMessages();
-  const {
-    data: groupChats,
-    updateData: setGroupChats,
-    setLocalData: setLocalGroupChats,
-    loading: groupsLoading,
-    refreshData: refreshGroupChats,
-  } = useGroupChats();
+  } = useMessagingData();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [isNewGroupDialogOpen, setIsNewGroupDialogOpen] = useState(false);
@@ -235,16 +231,6 @@ export function MessagesListScreen() {
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
   const currentUserEmail = normalizeMessageActor(user?.email);
-  const refreshConversationState = useCallback(
-    async () => {
-      const refreshed = await refreshMessages();
-      if (refreshed) {
-        return true;
-      }
-      return refreshGroupChats();
-    },
-    [refreshGroupChats, refreshMessages]
-  );
 
   const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
     if (envelope.conversationType === "dm" && envelope.conversationKey) {
@@ -273,10 +259,6 @@ export function MessagesListScreen() {
     onRealtimeMessage: handleRealtimeMessage,
   });
 
-  useEffect(() => {
-    void refreshConversationState();
-  }, [refreshConversationState]);
-
   const newGroupForm = useForm<z.infer<typeof newGroupFormSchema>>({
     resolver: zodResolver(newGroupFormSchema),
     defaultValues: { name: "", members: [] },
@@ -301,14 +283,16 @@ export function MessagesListScreen() {
     [currentUserEmail, safeAllMessages, safeGroupChats, safeMembers]
   );
 
-  const filteredConversations = conversationSummaries.filter(conversation => {
+  const filteredConversations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
-    if (!query) return true;
-    return (
+    if (!query) {
+      return conversationSummaries;
+    }
+    return conversationSummaries.filter(conversation =>
       conversation.name.toLowerCase().includes(query) ||
       conversation.subtitle.toLowerCase().includes(query)
     );
-  });
+  }, [conversationSummaries, searchTerm]);
   const availableDirectMessages = safeMembers.filter(member => member.email !== currentUserEmail);
 
   const handleCreateGroup = (values: z.infer<typeof newGroupFormSchema>) => {
@@ -327,7 +311,7 @@ export function MessagesListScreen() {
     router.push(getConversationHref({ type: "group", chat: newGroup }));
   };
 
-  if (userLoading || membersLoading || messagesLoading || groupsLoading) {
+  if (userLoading || loading) {
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-content px-4 pt-2">
@@ -479,23 +463,19 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useCurrentUser();
-  const { data: members, loading: membersLoading } = useMembers();
   const {
-    data: allMessages,
-    updateData: setAllMessages,
-    setLocalData: setLocalMessages,
-    refreshData: refreshMessages,
-    loading: messagesLoading,
+    members,
+    messages: allMessages,
+    updateMessages: setAllMessages,
+    setLocalMessages,
+    groupChats,
+    updateGroupChats: setGroupChats,
+    setLocalGroupChats,
+    refreshData: refreshConversationState,
+    loading,
     clubId,
     orgId,
-  } = useMessages();
-  const {
-    data: groupChats,
-    updateData: setGroupChats,
-    setLocalData: setLocalGroupChats,
-    refreshData: refreshGroupChats,
-    loading: groupsLoading,
-  } = useGroupChats();
+  } = useMessagingData();
   const { toast } = useToast();
   const [lastMessageAt, setLastMessageAt] = useState(0);
   const [isSending, setIsSending] = useState(false);
@@ -503,18 +483,16 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const safeMembers = useMemo(() => normalizeMembersForMessages(members), [members]);
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
   const safeGroupChats = useMemo(() => normalizeGroupChats(groupChats), [groupChats]);
+  const memberByEmail = useMemo(
+    () => new Map(safeMembers.map(member => [member.email, member])),
+    [safeMembers]
+  );
+  const groupChatById = useMemo(
+    () => new Map(safeGroupChats.map(chat => [chat.id, chat])),
+    [safeGroupChats]
+  );
   const currentUserEmail = normalizeMessageActor(user?.email);
   const focusedMessageId = searchParams.get("messageId");
-  const refreshConversationState = useCallback(
-    async () => {
-      const refreshed = await refreshMessages();
-      if (refreshed) {
-        return true;
-      }
-      return refreshGroupChats();
-    },
-    [refreshGroupChats, refreshMessages]
-  );
 
   const handleRealtimeMessage = useCallback((envelope: MessageAuditEnvelope) => {
     if (envelope.conversationType === "dm" && envelope.conversationKey) {
@@ -543,10 +521,6 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     onRealtimeMessage: handleRealtimeMessage,
   });
 
-  useEffect(() => {
-    void refreshConversationState();
-  }, [refreshConversationState]);
-
   const conversation = useMemo(
     () => resolveConversationFromRoute(conversationId, safeMembers, safeGroupChats),
     [conversationId, safeGroupChats, safeMembers]
@@ -562,9 +536,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     if (conversation.type === "dm") {
       return safeAllMessages[getConversationId(user.email, conversation.partner.email)] || [];
     }
-    const currentChat = safeGroupChats.find(chat => chat.id === conversation.chat.id);
+    const currentChat = groupChatById.get(conversation.chat.id);
     return currentChat?.messages || [];
-  }, [conversation, safeAllMessages, safeGroupChats, user]);
+  }, [conversation, groupChatById, safeAllMessages, user]);
 
   useEffect(() => {
     if (!conversation || !currentUserEmail) return;
@@ -601,7 +575,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   }, [conversation, currentUserEmail, setAllMessages, setGroupChats]);
 
   useEffect(() => {
-    if (!focusedMessageId || messagesLoading || groupsLoading) {
+    if (!focusedMessageId || loading) {
       return;
     }
 
@@ -616,7 +590,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       });
       router.replace(`/messages/${conversationId}`);
     }
-  }, [activeMessages, conversationId, focusedMessageId, groupsLoading, messagesLoading, router, toast]);
+  }, [activeMessages, conversationId, focusedMessageId, loading, router, toast]);
 
   useEffect(() => {
     if (focusedMessageId) {
@@ -752,7 +726,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     dispatchGroupStateSync(selectedOrgId, selectedGroupId);
   };
 
-  if (userLoading || membersLoading || messagesLoading || groupsLoading) {
+  if (userLoading || loading) {
     return (
       <div className="tab-page-shell bg-background">
         <div className="tab-page-content px-4 pt-2">
@@ -813,7 +787,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
           <div className="space-y-2">
             {activeMessages.map((message, index) => {
               const isMine = isMessageFromActor(message, currentUserEmail);
-              const sender = safeMembers.find(member => member.email === normalizeMessageActor(message.sender));
+              const sender = memberByEmail.get(normalizeMessageActor(message.sender));
               const messageId = getMessageEntityId(message);
               const isFocusedMessage = focusedMessageId === messageId;
               return (
@@ -925,6 +899,7 @@ function buildConversationSummaries({
   allMessages: Record<string, Message[]>;
   currentUserEmail: string;
 }): ConversationSummary[] {
+  const groupMessagesById = new Map(groupChats.map(chat => [chat.id, chat.messages || []]));
   const conversations: Conversation[] = [
     ...groupChats.map(chat => ({ type: "group", chat } as Conversation)),
     ...members
@@ -934,7 +909,12 @@ function buildConversationSummaries({
 
   return conversations
     .map(conversation => {
-      const messages = getMessagesForConversation(conversation, currentUserEmail, allMessages, groupChats);
+      const messages = getMessagesForConversation(
+        conversation,
+        currentUserEmail,
+        allMessages,
+        groupMessagesById
+      );
       const lastMessage = messages[messages.length - 1];
       const name = conversation.type === "dm" ? conversation.partner.name : conversation.chat.name;
       return {
@@ -959,13 +939,13 @@ function getMessagesForConversation(
   conversation: Conversation,
   currentUserEmail: string,
   allMessages: Record<string, Message[]>,
-  groupChats: GroupChat[]
+  groupMessagesById: Map<string, Message[]>
 ) {
   if (!currentUserEmail) return [];
   if (conversation.type === "dm") {
     return allMessages[getConversationId(currentUserEmail, conversation.partner.email)] || [];
   }
-  return groupChats.find(chat => chat.id === conversation.chat.id)?.messages || [];
+  return groupMessagesById.get(conversation.chat.id) || [];
 }
 
 function resolveConversationFromRoute(

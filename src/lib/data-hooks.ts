@@ -965,6 +965,169 @@ export function useGroupChats() {
     return useSpecificClubData('groupChats');
 }
 
+export function useMessagingData() {
+    const { clubId, orgId, data, error, loading, updateClubData, refreshData, setLocalClubData } = useClubDataStore();
+    const defaults = useMemo(() => getDefaultClubData(), []);
+    const members = useMemo(() => data?.members ?? defaults.members, [data, defaults.members]);
+    const messages = useMemo(() => data?.messages ?? defaults.messages, [data, defaults.messages]);
+    const groupChats = useMemo(() => data?.groupChats ?? defaults.groupChats, [data, defaults.groupChats]);
+
+    const updateMessagesAsync = useCallback(
+        async (
+            newData:
+                | ClubData['messages']
+                | ((prevData: ClubData['messages']) => ClubData['messages'])
+        ) => {
+            if (!clubId) return false;
+            const base =
+                orgId && clubId
+                    ? groupStateCache.get(getGroupStateCacheKey(orgId, clubId)) ?? data ?? defaults
+                    : data ?? defaults;
+            const baseMessages = normalizeMessageMap(base.messages);
+            const valueToStore =
+                typeof newData === 'function'
+                    ? (newData as (prevData: ClubData['messages']) => ClubData['messages'])(baseMessages)
+                    : newData;
+            if (stableSerialize(baseMessages) === stableSerialize(valueToStore)) {
+                return true;
+            }
+            const updatedFullData = { ...base, messages: valueToStore };
+            return updateClubData(
+                freshBase => ({
+                    ...freshBase,
+                    messages:
+                        typeof newData === 'function'
+                            ? (newData as (prevData: ClubData['messages']) => ClubData['messages'])(
+                                  normalizeMessageMap(freshBase.messages)
+                              )
+                            : valueToStore,
+                }),
+                { optimisticData: updatedFullData }
+            );
+        },
+        [clubId, data, defaults, orgId, updateClubData]
+    );
+
+    const updateMessages = useCallback(
+        (
+            newData:
+                | ClubData['messages']
+                | ((prevData: ClubData['messages']) => ClubData['messages'])
+        ) => {
+            void updateMessagesAsync(newData);
+        },
+        [updateMessagesAsync]
+    );
+
+    const setLocalMessages = useCallback(
+        (
+            newData:
+                | ClubData['messages']
+                | ((prevData: ClubData['messages']) => ClubData['messages'])
+        ) => {
+            if (!clubId) return false;
+            return setLocalClubData(base => {
+                const currentValue = normalizeMessageMap(base.messages);
+                const valueToStore =
+                    typeof newData === 'function'
+                        ? (newData as (prevData: ClubData['messages']) => ClubData['messages'])(currentValue)
+                        : newData;
+                if (stableSerialize(currentValue) === stableSerialize(valueToStore)) {
+                    return base;
+                }
+                return { ...base, messages: valueToStore };
+            });
+        },
+        [clubId, setLocalClubData]
+    );
+
+    const updateGroupChatsAsync = useCallback(
+        async (
+            newData:
+                | ClubData['groupChats']
+                | ((prevData: ClubData['groupChats']) => ClubData['groupChats'])
+        ) => {
+            if (!clubId) return false;
+            const base =
+                orgId && clubId
+                    ? groupStateCache.get(getGroupStateCacheKey(orgId, clubId)) ?? data ?? defaults
+                    : data ?? defaults;
+            const baseGroupChats = normalizeGroupChats(base.groupChats);
+            const valueToStore =
+                typeof newData === 'function'
+                    ? (newData as (prevData: ClubData['groupChats']) => ClubData['groupChats'])(baseGroupChats)
+                    : newData;
+            if (stableSerialize(baseGroupChats) === stableSerialize(valueToStore)) {
+                return true;
+            }
+            const updatedFullData = { ...base, groupChats: valueToStore };
+            return updateClubData(
+                freshBase => ({
+                    ...freshBase,
+                    groupChats:
+                        typeof newData === 'function'
+                            ? (newData as (prevData: ClubData['groupChats']) => ClubData['groupChats'])(
+                                  normalizeGroupChats(freshBase.groupChats)
+                              )
+                            : valueToStore,
+                }),
+                { optimisticData: updatedFullData }
+            );
+        },
+        [clubId, data, defaults, orgId, updateClubData]
+    );
+
+    const updateGroupChats = useCallback(
+        (
+            newData:
+                | ClubData['groupChats']
+                | ((prevData: ClubData['groupChats']) => ClubData['groupChats'])
+        ) => {
+            void updateGroupChatsAsync(newData);
+        },
+        [updateGroupChatsAsync]
+    );
+
+    const setLocalGroupChats = useCallback(
+        (
+            newData:
+                | ClubData['groupChats']
+                | ((prevData: ClubData['groupChats']) => ClubData['groupChats'])
+        ) => {
+            if (!clubId) return false;
+            return setLocalClubData(base => {
+                const currentValue = normalizeGroupChats(base.groupChats);
+                const valueToStore =
+                    typeof newData === 'function'
+                        ? (newData as (prevData: ClubData['groupChats']) => ClubData['groupChats'])(currentValue)
+                        : newData;
+                if (stableSerialize(currentValue) === stableSerialize(valueToStore)) {
+                    return base;
+                }
+                return { ...base, groupChats: valueToStore };
+            });
+        },
+        [clubId, setLocalClubData]
+    );
+
+    return {
+        clubId,
+        orgId,
+        members,
+        messages,
+        groupChats,
+        error,
+        loading,
+        refreshData,
+        updateMessages,
+        updateMessagesAsync,
+        setLocalMessages,
+        updateGroupChats,
+        updateGroupChatsAsync,
+        setLocalGroupChats,
+    };
+}
+
 export function usePointEntries() {
   return useSpecificClubData('pointEntries');
 }

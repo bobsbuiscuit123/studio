@@ -23,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
 import {
   getMessageTimestampMs,
@@ -121,6 +122,18 @@ const dispatchGroupStateSync = (orgId: string, groupId: string) => {
   window.dispatchEvent(
     new CustomEvent("group-state-sync", {
       detail: { orgId, groupId },
+    })
+  );
+};
+
+const dispatchPolicyViolation = (message = policyErrorMessage) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("policy-violation", {
+      detail: { message },
     })
   );
 };
@@ -630,6 +643,11 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       timestamp: new Date().toISOString(),
       readBy: [currentUserEmail || user.email],
     };
+
+    if (findPolicyViolation(newMessage)) {
+      dispatchPolicyViolation();
+      return;
+    }
 
     const selectedOrgId = orgId ?? window.localStorage.getItem("selectedOrgId");
     const selectedGroupId = clubId ?? window.sessionStorage.getItem("selectedGroupId");

@@ -16,6 +16,7 @@ import {
 } from '@/lib/ai-chat-server';
 import { getEffectiveOrgAiAllowance, parseOptionalPositiveInt } from '@/lib/org-settings';
 import { rateLimit } from '@/lib/rate-limit';
+import type { Result } from '@/lib/result';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,99 @@ const aiErrorStatus = (code?: string) => {
 
 const normalizePlannerEntities = (entities: AiChatEntity[]) =>
   AI_CHAT_ENTITIES.filter(entity => entities.includes(entity));
+
+const shouldRetryAiFailure = (result: Result<unknown>) =>
+  !result.ok &&
+  result.error.retryable &&
+  (
+    result.error.code === 'AI_PROVIDER_ERROR' ||
+    result.error.code === 'AI_TIMEOUT' ||
+    result.error.code === 'AI_BAD_RESPONSE' ||
+    result.error.code === 'AI_SCHEMA_INVALID'
+  );
+
+const logAiStepFailure = (
+  step: 'planner' | 'responder',
+  attempt: 'primary' | 'fallback',
+  result: Result<unknown>
+) => {
+  if (result.ok) return;
+
+  console.error(`[ai-chat] ${step} ${attempt} failed`, {
+    code: result.error.code,
+    message: result.error.message,
+    detail: result.error.detail,
+    retryable: result.error.retryable,
+  });
+};
+
+const runPlannerStep = async (plannerPrompt: string) => {
+  const primaryResult = await callAI({
+    messages: [
+      { role: 'system', content: AI_CHAT_PLANNER_SYSTEM_PROMPT },
+      { role: 'user', content: plannerPrompt },
+    ],
+    responseFormat: 'json_object',
+    outputSchema: aiChatPlannerResultSchema,
+    temperature: 0.1,
+    timeoutMs: 20_000,
+  });
+
+  if (primaryResult.ok || !shouldRetryAiFailure(primaryResult)) {
+    return primaryResult;
+  }
+
+  logAiStepFailure('planner', 'primary', primaryResult);
+
+  const fallbackResult = await callAI({
+    messages: [
+      {
+        role: 'user',
+        content: `${AI_CHAT_PLANNER_SYSTEM_PROMPT}\n\n${plannerPrompt}`,
+      },
+    ],
+    responseFormat: 'json_object',
+    outputSchema: aiChatPlannerResultSchema,
+    temperature: 0.1,
+    timeoutMs: 28_000,
+  });
+
+  logAiStepFailure('planner', 'fallback', fallbackResult);
+  return fallbackResult;
+};
+
+const runResponderStep = async (responderPrompt: string) => {
+  const primaryResult = await callAI({
+    messages: [
+      { role: 'system', content: AI_CHAT_RESPONDER_SYSTEM_PROMPT },
+      { role: 'user', content: responderPrompt },
+    ],
+    temperature: 0.3,
+    timeoutMs: 24_000,
+    maxOutputChars: 2_400,
+  });
+
+  if (primaryResult.ok || !shouldRetryAiFailure(primaryResult)) {
+    return primaryResult;
+  }
+
+  logAiStepFailure('responder', 'primary', primaryResult);
+
+  const fallbackResult = await callAI({
+    messages: [
+      {
+        role: 'user',
+        content: `${AI_CHAT_RESPONDER_SYSTEM_PROMPT}\n\n${responderPrompt}`,
+      },
+    ],
+    temperature: 0.25,
+    timeoutMs: 30_000,
+    maxOutputChars: 2_400,
+  });
+
+  logAiStepFailure('responder', 'fallback', fallbackResult);
+  return fallbackResult;
+};
 
 export async function POST(request: Request) {
   try {
@@ -161,15 +255,7 @@ export async function POST(request: Request) {
       groupId,
     });
 
-    const plannerResult = await callAI({
-      messages: [
-        { role: 'system', content: AI_CHAT_PLANNER_SYSTEM_PROMPT },
-        { role: 'user', content: plannerPrompt },
-      ],
-      outputSchema: aiChatPlannerResultSchema,
-      temperature: 0.1,
-      timeoutMs: 15_000,
-    });
+    const plannerResult = await runPlannerStep(plannerPrompt);
 
     if (!plannerResult.ok) {
       return errorResponse(plannerResult.error.message, aiErrorStatus(plannerResult.error.code), plannerResult.error.code);
@@ -196,15 +282,7 @@ export async function POST(request: Request) {
       context,
     });
 
-    const responderResult = await callAI({
-      messages: [
-        { role: 'system', content: AI_CHAT_RESPONDER_SYSTEM_PROMPT },
-        { role: 'user', content: responderPrompt },
-      ],
-      temperature: 0.3,
-      timeoutMs: 18_000,
-      maxOutputChars: 2_400,
-    });
+    const responderResult = await runResponderStep(responderPrompt);
 
     if (!responderResult.ok) {
       return errorResponse(responderResult.error.message, aiErrorStatus(responderResult.error.code), responderResult.error.code);

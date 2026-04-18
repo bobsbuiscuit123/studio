@@ -98,8 +98,8 @@ const loadGeminiModules = async (): Promise<GeminiModules | null> => {
   }
   if (!geminiModulesPromise) {
     geminiModulesPromise = Promise.all([
-      import(/* webpackIgnore: true */ 'genkit'),
-      import(/* webpackIgnore: true */ '@genkit-ai/googleai'),
+      import('genkit'),
+      import('@genkit-ai/googleai'),
     ]).then(([genkitModule, googleAIModule]) => ({
       genkitModule,
       googleAIModule,

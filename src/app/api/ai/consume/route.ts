@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { cookies } from 'next/headers';
+import { runWithAiAction } from '@/ai/ai-action-context';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { generateClubAnnouncement } from '@/ai/flows/generate-announcement';
@@ -102,44 +103,45 @@ const cappedTabActions = new Set([
 ]);
 
 export async function POST(request: Request) {
-  try {
-    const ipLimiter = rateLimit(`ai-consume-ip:${getRequestIp(request.headers)}`, 20, 60_000);
-    if (!ipLimiter.allowed) {
-      return rateLimitExceededResponse(ipLimiter, 'Too many AI requests. Please slow down.');
-    }
+  return runWithAiAction('aiConsumeRoute', async () => {
+    try {
+      const ipLimiter = rateLimit(`ai-consume-ip:${getRequestIp(request.headers)}`, 20, 60_000);
+      if (!ipLimiter.allowed) {
+        return rateLimitExceededResponse(ipLimiter, 'Too many AI requests. Please slow down.');
+      }
 
-    const body = await request.json().catch(() => ({}));
+      const body = await request.json().catch(() => ({}));
 
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse(new Error('Invalid AI request.'), 400);
-    }
+      const parsed = schema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse(new Error('Invalid AI request.'), 400);
+      }
 
-    const cookieStore = await cookies();
-    const payload = parsed.data.payload as Record<string, unknown> | undefined;
-    const orgId = parsed.data.orgId || cookieStore.get('selectedOrgId')?.value;
-    const groupId =
-      cookieStore.get('selectedGroupId')?.value ||
-      (typeof payload?.groupId === 'string' ? payload.groupId : undefined) ||
-      orgId;
-    if (!orgId) {
-      return errorResponse(new Error('Missing organization.'), 500);
-    }
-    if (!groupId) {
-      console.warn('No groupId found, continuing without it');
-    }
+      const cookieStore = await cookies();
+      const payload = parsed.data.payload as Record<string, unknown> | undefined;
+      const orgId = parsed.data.orgId || cookieStore.get('selectedOrgId')?.value;
+      const groupId =
+        cookieStore.get('selectedGroupId')?.value ||
+        (typeof payload?.groupId === 'string' ? payload.groupId : undefined) ||
+        orgId;
+      if (!orgId) {
+        return errorResponse(new Error('Missing organization.'), 500);
+      }
+      if (!groupId) {
+        console.warn('No groupId found, continuing without it');
+      }
 
-    const supabase = await createSupabaseServerClient();
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) {
-      return errorResponse(new Error('Unauthorized.'), 401);
-    }
+      const supabase = await createSupabaseServerClient();
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) {
+        return errorResponse(new Error('Unauthorized.'), 401);
+      }
 
-    const userLimiter = rateLimit(`ai-consume-user:${userId}`, 30, 60_000);
-    if (!userLimiter.allowed) {
-      return rateLimitExceededResponse(userLimiter, 'Too many AI requests. Please slow down.');
-    }
+      const userLimiter = rateLimit(`ai-consume-user:${userId}`, 30, 60_000);
+      if (!userLimiter.allowed) {
+        return rateLimitExceededResponse(userLimiter, 'Too many AI requests. Please slow down.');
+      }
 
     const admin = createSupabaseAdmin();
 
@@ -224,7 +226,7 @@ export async function POST(request: Request) {
       return errorResponse(new Error('Prompt is too long.'), 400);
     }
 
-    let result: unknown;
+      let result: unknown;
 
     if (feature === 'chat') {
       switch (action) {
@@ -308,11 +310,32 @@ export async function POST(request: Request) {
       });
     }
 
-    if (!result) {
+      if (!result) {
+        return new Response(
+          JSON.stringify({
+            error: true,
+            message: 'AI returned null',
+          }),
+          {
+            status: 500,
+            headers: jsonHeaders,
+          }
+        );
+      }
+
+      const shouldClampResult =
+        feature === 'chat' && cappedTabActions.has(action);
+      const finalResult = shouldClampResult ? clampTabAiResult(result) : result;
+
+      return successResponse(finalResult, 200);
+    } catch (error) {
       return new Response(
         JSON.stringify({
           error: true,
-          message: 'AI returned null',
+          message:
+            error && typeof error === 'object' && 'message' in error
+              ? String((error as { message?: unknown }).message || 'Unknown error')
+              : 'Unknown error',
         }),
         {
           status: 500,
@@ -320,25 +343,5 @@ export async function POST(request: Request) {
         }
       );
     }
-
-    const shouldClampResult =
-      feature === 'chat' && cappedTabActions.has(action);
-    const finalResult = shouldClampResult ? clampTabAiResult(result) : result;
-
-    return successResponse(finalResult, 200);
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: true,
-        message:
-          error && typeof error === 'object' && 'message' in error
-            ? String((error as { message?: unknown }).message || 'Unknown error')
-            : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: jsonHeaders,
-      }
-    );
-  }
+  });
 }

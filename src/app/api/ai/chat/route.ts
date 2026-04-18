@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
+import { runWithAiAction } from '@/ai/ai-action-context';
 import { activeModelName, activeProvider, callAI } from '@/ai/genkit';
 import { getRequestDayKey } from '@/lib/day-key';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
@@ -60,6 +61,8 @@ const errorResponse = (
 
 const aiErrorStatus = (code?: string) => {
   switch (code) {
+    case 'AI_SAFETY_LIMIT':
+      return 429;
     case 'AI_TIMEOUT':
       return 504;
     case 'AI_DISABLED':
@@ -222,263 +225,265 @@ const runResponderStep = async (
 };
 
 export async function POST(request: Request) {
-  const requestId = crypto.randomUUID();
-  let stage: AiChatFailureStage = 'request_validation';
+  return runWithAiAction('aiChatRoute', async () => {
+    const requestId = crypto.randomUUID();
+    let stage: AiChatFailureStage = 'request_validation';
 
-  try {
-    const ipLimiter = rateLimit(`ai-chat-ip:${getRequestIp(request.headers)}`, 20, 60_000);
-    if (!ipLimiter.allowed) {
-      return rateLimitExceededResponse(ipLimiter, 'Too many AI chat requests. Please slow down.');
-    }
+    try {
+      const ipLimiter = rateLimit(`ai-chat-ip:${getRequestIp(request.headers)}`, 20, 60_000);
+      if (!ipLimiter.allowed) {
+        return rateLimitExceededResponse(ipLimiter, 'Too many AI chat requests. Please slow down.');
+      }
 
-    const body = await request.json().catch(() => ({}));
-    const parsed = aiChatRequestSchema.safeParse(body);
-    if (!parsed.success) {
-      return errorResponse('Invalid AI chat request.', 400, {
-        code: 'VALIDATION',
-        stage,
-        requestId,
-      });
-    }
-
-    stage = 'context';
-    const cookieStore = await cookies();
-    const orgId = cookieStore.get('selectedOrgId')?.value?.trim();
-    const groupId = cookieStore.get('selectedGroupId')?.value?.trim();
-
-    if (!orgId || !groupId) {
-      return errorResponse('Missing organization or group context.', 400, {
-        code: 'VALIDATION',
-        stage,
-        requestId,
-      });
-    }
-
-    const supabase = await createSupabaseServerClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      return errorResponse('Unauthorized.', 401, {
-        code: 'VALIDATION',
-        stage,
-        requestId,
-        detail: userError?.message,
-      });
-    }
-
-    const userLimiter = rateLimit(`ai-chat-user:${user.id}`, 30, 60_000);
-    if (!userLimiter.allowed) {
-      return rateLimitExceededResponse(userLimiter, 'Too many AI chat requests. Please slow down.');
-    }
-
-    stage = 'membership';
-    const admin = createSupabaseAdmin();
-    const { data: membership, error: membershipError } = await admin
-      .from('group_memberships')
-      .select('role')
-      .eq('org_id', orgId)
-      .eq('group_id', groupId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (membershipError) {
-      logRouteFailure(requestId, stage, membershipError);
-      return errorResponse(membershipError.message, 500, {
-        stage,
-        requestId,
-        detail: membershipError.message,
-      });
-    }
-    if (!membership) {
-      return errorResponse('Access denied.', 403, {
-        code: 'VALIDATION',
-        stage,
-        requestId,
-      });
-    }
-
-    stage = 'quota';
-    const refreshResponse = await admin.rpc('refresh_org_subscription_period', {
-      p_org_id: orgId,
-    });
-    if (refreshResponse.error) {
-      logRouteFailure(requestId, stage, refreshResponse.error);
-      return errorResponse(refreshResponse.error.message, 500, {
-        stage,
-        requestId,
-        detail: refreshResponse.error.message,
-      });
-    }
-
-    const { data: orgRow, error: orgError } = await admin
-      .from('orgs')
-      .select('*')
-      .eq('id', orgId)
-      .maybeSingle();
-
-    if (orgError) {
-      logRouteFailure(requestId, stage, orgError);
-      return errorResponse(orgError.message, 500, {
-        stage,
-        requestId,
-        detail: orgError.message,
-      });
-    }
-    if (!orgRow) {
-      return errorResponse('Organization not found.', 404, {
-        stage,
-        requestId,
-      });
-    }
-
-    const aiTokenLimitOverride = parseOptionalPositiveInt(
-      (orgRow as Record<string, unknown>).ai_token_limit_override
-    );
-    if (aiTokenLimitOverride) {
-      const effectiveAllowance = getEffectiveOrgAiAllowance({
-        monthlyTokenLimit: Number(orgRow.monthly_token_limit ?? 0),
-        bonusTokensThisPeriod: Number(orgRow.bonus_tokens_this_period ?? 0),
-        aiTokenLimitOverride,
-      });
-      const usedThisPeriod = Number(orgRow.tokens_used_this_period ?? 0);
-      if (usedThisPeriod >= effectiveAllowance) {
-        return errorResponse('AI is unavailable for this organization right now.', 402, {
-          code: 'AI_QUOTA',
+      const body = await request.json().catch(() => ({}));
+      const parsed = aiChatRequestSchema.safeParse(body);
+      if (!parsed.success) {
+        return errorResponse('Invalid AI chat request.', 400, {
+          code: 'VALIDATION',
           stage,
           requestId,
         });
       }
-    }
 
-    const usageDate = getRequestDayKey(request);
-    const { data: consumeData, error: consumeError } = await admin.rpc('consume_org_subscription_token', {
-      p_org_id: orgId,
-      p_user_id: user.id,
-      p_usage_date: usageDate,
-    });
+      stage = 'context';
+      const cookieStore = await cookies();
+      const orgId = cookieStore.get('selectedOrgId')?.value?.trim();
+      const groupId = cookieStore.get('selectedGroupId')?.value?.trim();
 
-    if (consumeError) {
-      logRouteFailure(requestId, stage, consumeError);
-      return errorResponse(consumeError.message, 500, {
-        stage,
-        requestId,
-        detail: consumeError.message,
-      });
-    }
+      if (!orgId || !groupId) {
+        return errorResponse('Missing organization or group context.', 400, {
+          code: 'VALIDATION',
+          stage,
+          requestId,
+        });
+      }
 
-    const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
-    const reason = String(consumeResult?.reason ?? '');
-    if (!consumeResult?.success) {
-      if (reason === 'not_member') {
+      const supabase = await createSupabaseServerClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        return errorResponse('Unauthorized.', 401, {
+          code: 'VALIDATION',
+          stage,
+          requestId,
+          detail: userError?.message,
+        });
+      }
+
+      const userLimiter = rateLimit(`ai-chat-user:${user.id}`, 30, 60_000);
+      if (!userLimiter.allowed) {
+        return rateLimitExceededResponse(userLimiter, 'Too many AI chat requests. Please slow down.');
+      }
+
+      stage = 'membership';
+      const admin = createSupabaseAdmin();
+      const { data: membership, error: membershipError } = await admin
+        .from('group_memberships')
+        .select('role')
+        .eq('org_id', orgId)
+        .eq('group_id', groupId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (membershipError) {
+        logRouteFailure(requestId, stage, membershipError);
+        return errorResponse(membershipError.message, 500, {
+          stage,
+          requestId,
+          detail: membershipError.message,
+        });
+      }
+      if (!membership) {
         return errorResponse('Access denied.', 403, {
           code: 'VALIDATION',
           stage,
           requestId,
         });
       }
-      if (reason === 'org_not_found') {
+
+      stage = 'quota';
+      const refreshResponse = await admin.rpc('refresh_org_subscription_period', {
+        p_org_id: orgId,
+      });
+      if (refreshResponse.error) {
+        logRouteFailure(requestId, stage, refreshResponse.error);
+        return errorResponse(refreshResponse.error.message, 500, {
+          stage,
+          requestId,
+          detail: refreshResponse.error.message,
+        });
+      }
+
+      const { data: orgRow, error: orgError } = await admin
+        .from('orgs')
+        .select('*')
+        .eq('id', orgId)
+        .maybeSingle();
+
+      if (orgError) {
+        logRouteFailure(requestId, stage, orgError);
+        return errorResponse(orgError.message, 500, {
+          stage,
+          requestId,
+          detail: orgError.message,
+        });
+      }
+      if (!orgRow) {
         return errorResponse('Organization not found.', 404, {
           stage,
           requestId,
         });
       }
-      return errorResponse('AI is unavailable for this organization right now.', 402, {
-        code: 'AI_QUOTA',
-        stage,
-        requestId,
-        detail: reason || undefined,
-      });
-    }
 
-    stage = 'planner';
-    const plannerPrompt = buildAiChatPlannerPrompt({
-      message: parsed.data.message,
-      history: parsed.data.history,
-      userId: user.id,
-      orgId,
-      groupId,
-    });
-
-    const plannerRun = await runPlannerStep(requestId, plannerPrompt);
-    const plannerResult = plannerRun.result;
-
-    if (!plannerResult.ok) {
-      return errorResponse(plannerResult.error.message, aiErrorStatus(plannerResult.error.code), {
-        code: plannerResult.error.code,
-        stage,
-        requestId,
-        publicDetail: buildPublicAiFailureDetail({
-          attempt: plannerRun.attempt,
-          code: plannerResult.error.code,
-          detail: plannerResult.error.detail,
-        }),
-      });
-    }
-
-    const planner = {
-      ...plannerResult.data,
-      entities: normalizePlannerEntities(plannerResult.data.entities),
-    };
-
-    stage = 'group_data_fetch';
-    const { context, usedEntities } = planner.needs_data
-      ? await fetchAiChatDataContext({
-          admin,
-          groupId,
-          entities: planner.entities,
-        }).catch(error => {
-          logRouteFailure(requestId, stage, error, {
-            planner,
-            requestedEntities: planner.entities,
+      const aiTokenLimitOverride = parseOptionalPositiveInt(
+        (orgRow as Record<string, unknown>).ai_token_limit_override
+      );
+      if (aiTokenLimitOverride) {
+        const effectiveAllowance = getEffectiveOrgAiAllowance({
+          monthlyTokenLimit: Number(orgRow.monthly_token_limit ?? 0),
+          bonusTokensThisPeriod: Number(orgRow.bonus_tokens_this_period ?? 0),
+          aiTokenLimitOverride,
+        });
+        const usedThisPeriod = Number(orgRow.tokens_used_this_period ?? 0);
+        if (usedThisPeriod >= effectiveAllowance) {
+          return errorResponse('AI is unavailable for this organization right now.', 402, {
+            code: 'AI_QUOTA',
+            stage,
+            requestId,
           });
-          throw error;
-        })
-      : { context: {}, usedEntities: [] as AiChatEntity[] };
-
-    stage = 'responder';
-    const responderPrompt = buildAiChatResponderPrompt({
-      message: parsed.data.message,
-      history: parsed.data.history,
-      planner,
-      usedEntities,
-      context,
-    });
-
-    const responderRun = await runResponderStep(requestId, responderPrompt);
-    const responderResult = responderRun.result;
-
-    if (!responderResult.ok) {
-      return errorResponse(responderResult.error.message, aiErrorStatus(responderResult.error.code), {
-        code: responderResult.error.code,
-        stage,
-        requestId,
-        publicDetail: buildPublicAiFailureDetail({
-          attempt: responderRun.attempt,
-          code: responderResult.error.code,
-          detail: responderResult.error.detail,
-        }),
-      });
-    }
-
-    const response: AiChatResponse = {
-      reply: responderResult.data,
-      planner,
-      usedEntities,
-    };
-
-    return NextResponse.json(response);
-  } catch (error) {
-    logRouteFailure(requestId, stage, error);
-    return errorResponse(
-      error instanceof Error ? error.message : 'AI chat request failed.',
-      500,
-      {
-        stage,
-        requestId,
+        }
       }
-    );
-  }
+
+      const usageDate = getRequestDayKey(request);
+      const { data: consumeData, error: consumeError } = await admin.rpc('consume_org_subscription_token', {
+        p_org_id: orgId,
+        p_user_id: user.id,
+        p_usage_date: usageDate,
+      });
+
+      if (consumeError) {
+        logRouteFailure(requestId, stage, consumeError);
+        return errorResponse(consumeError.message, 500, {
+          stage,
+          requestId,
+          detail: consumeError.message,
+        });
+      }
+
+      const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
+      const reason = String(consumeResult?.reason ?? '');
+      if (!consumeResult?.success) {
+        if (reason === 'not_member') {
+          return errorResponse('Access denied.', 403, {
+            code: 'VALIDATION',
+            stage,
+            requestId,
+          });
+        }
+        if (reason === 'org_not_found') {
+          return errorResponse('Organization not found.', 404, {
+            stage,
+            requestId,
+          });
+        }
+        return errorResponse('AI is unavailable for this organization right now.', 402, {
+          code: 'AI_QUOTA',
+          stage,
+          requestId,
+          detail: reason || undefined,
+        });
+      }
+
+      stage = 'planner';
+      const plannerPrompt = buildAiChatPlannerPrompt({
+        message: parsed.data.message,
+        history: parsed.data.history,
+        userId: user.id,
+        orgId,
+        groupId,
+      });
+
+      const plannerRun = await runPlannerStep(requestId, plannerPrompt);
+      const plannerResult = plannerRun.result;
+
+      if (!plannerResult.ok) {
+        return errorResponse(plannerResult.error.message, aiErrorStatus(plannerResult.error.code), {
+          code: plannerResult.error.code,
+          stage,
+          requestId,
+          publicDetail: buildPublicAiFailureDetail({
+            attempt: plannerRun.attempt,
+            code: plannerResult.error.code,
+            detail: plannerResult.error.detail,
+          }),
+        });
+      }
+
+      const planner = {
+        ...plannerResult.data,
+        entities: normalizePlannerEntities(plannerResult.data.entities),
+      };
+
+      stage = 'group_data_fetch';
+      const { context, usedEntities } = planner.needs_data
+        ? await fetchAiChatDataContext({
+            admin,
+            groupId,
+            entities: planner.entities,
+          }).catch(error => {
+            logRouteFailure(requestId, stage, error, {
+              planner,
+              requestedEntities: planner.entities,
+            });
+            throw error;
+          })
+        : { context: {}, usedEntities: [] as AiChatEntity[] };
+
+      stage = 'responder';
+      const responderPrompt = buildAiChatResponderPrompt({
+        message: parsed.data.message,
+        history: parsed.data.history,
+        planner,
+        usedEntities,
+        context,
+      });
+
+      const responderRun = await runResponderStep(requestId, responderPrompt);
+      const responderResult = responderRun.result;
+
+      if (!responderResult.ok) {
+        return errorResponse(responderResult.error.message, aiErrorStatus(responderResult.error.code), {
+          code: responderResult.error.code,
+          stage,
+          requestId,
+          publicDetail: buildPublicAiFailureDetail({
+            attempt: responderRun.attempt,
+            code: responderResult.error.code,
+            detail: responderResult.error.detail,
+          }),
+        });
+      }
+
+      const response: AiChatResponse = {
+        reply: responderResult.data,
+        planner,
+        usedEntities,
+      };
+
+      return NextResponse.json(response);
+    } catch (error) {
+      logRouteFailure(requestId, stage, error);
+      return errorResponse(
+        error instanceof Error ? error.message : 'AI chat request failed.',
+        500,
+        {
+          stage,
+          requestId,
+        }
+      );
+    }
+  });
 }

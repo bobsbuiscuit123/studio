@@ -3,19 +3,28 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 type AiActionContext = {
   id: string;
   name: string;
-  geminiRequests: number;
+  aiRequests: number;
+  maxAiRequests: number;
   startedAt: number;
 };
 
 const aiActionStorage = new AsyncLocalStorage<AiActionContext>();
 const isDebugLoggingEnabled = process.env.NODE_ENV !== 'production';
+const DEFAULT_MAX_AI_REQUESTS_PER_ACTION = (() => {
+  const parsed = Number.parseInt(
+    String(process.env.AI_MAX_CALLS_PER_ACTION ?? '').trim(),
+    10
+  );
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
+})();
 
 export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<T> {
   const id = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const context: AiActionContext = {
     id,
     name,
-    geminiRequests: 0,
+    aiRequests: 0,
+    maxAiRequests: DEFAULT_MAX_AI_REQUESTS_PER_ACTION,
     startedAt: Date.now(),
   };
 
@@ -26,20 +35,30 @@ export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<
       const elapsedMs = Date.now() - context.startedAt;
       if (isDebugLoggingEnabled) {
         console.info(
-          `[AI_DEBUG] Gemini requests total=${context.geminiRequests} | action=${context.name} | actionId=${context.id} | elapsedMs=${elapsedMs}`
+          `[AI_DEBUG] AI requests total=${context.aiRequests} | action=${context.name} | actionId=${context.id} | elapsedMs=${elapsedMs}`
         );
       }
     }
   });
 }
 
-export function recordGeminiRequest(modelName: string, keyPresent: boolean) {
+export function recordAiActionRequest(
+  providerName: string,
+  modelName: string,
+  keyPresent?: boolean
+) {
   const context = aiActionStorage.getStore();
   if (context) {
-    context.geminiRequests += 1;
+    if (context.aiRequests >= context.maxAiRequests) {
+      throw new Error(
+        `AI safety limit reached for action ${context.name}. maxCallsPerAction=${context.maxAiRequests}`
+      );
+    }
+
+    context.aiRequests += 1;
     if (isDebugLoggingEnabled) {
       console.info(
-        `[AI_DEBUG] Gemini request #${context.geminiRequests} | action=${context.name} | actionId=${context.id} | model=${modelName} | key_present=${keyPresent}`
+        `[AI_DEBUG] AI request #${context.aiRequests} | action=${context.name} | actionId=${context.id} | provider=${providerName} | model=${modelName} | key_present=${Boolean(keyPresent)}`
       );
     }
     return;
@@ -47,7 +66,11 @@ export function recordGeminiRequest(modelName: string, keyPresent: boolean) {
 
   if (isDebugLoggingEnabled) {
     console.info(
-      `[AI_DEBUG] Gemini request (no action) | model=${modelName} | key_present=${keyPresent}`
+      `[AI_DEBUG] AI request (no action) | provider=${providerName} | model=${modelName} | key_present=${Boolean(keyPresent)}`
     );
   }
+}
+
+export function recordGeminiRequest(modelName: string, keyPresent: boolean) {
+  recordAiActionRequest('gemini', modelName, keyPresent);
 }

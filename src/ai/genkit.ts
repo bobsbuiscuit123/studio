@@ -1,6 +1,7 @@
 import 'server-only';
 import type { z } from 'zod';
-import { recordGeminiRequest } from '@/ai/ai-action-context';
+import { recordAiActionRequest, recordGeminiRequest } from '@/ai/ai-action-context';
+import { acquireAiSafetyPermit } from '@/ai/ai-safety-guard';
 import { clampAiOutputChars } from '@/lib/ai-output-limit';
 import { err, ok, type AppError, type Result } from '@/lib/result';
 import { addBreadcrumb, captureException } from '@/lib/telemetry';
@@ -205,6 +206,14 @@ const mapAiError = (error: unknown): AiError => {
         : 'AI request failed.';
   if (/timed out|timeout|AbortError/i.test(message)) {
     return makeAiError('AI_TIMEOUT', 'AI request timed out. Please try again.', message, true);
+  }
+  if (/AI safety limit reached|Process-wide AI safety|Too many concurrent AI requests/i.test(message)) {
+    return makeAiError(
+      'AI_SAFETY_LIMIT',
+      'AI safety limit reached. Please try again shortly.',
+      message,
+      true
+    );
   }
   if (/quota exceeded|too many requests|429/i.test(message)) {
     return makeAiError('AI_QUOTA', 'AI quota is temporarily unavailable.', message, true);
@@ -460,6 +469,21 @@ export async function callAI<TOutput>(options: {
     );
   }
 
+  const safetyPermit = acquireAiSafetyPermit();
+  if (!safetyPermit.allowed) {
+    if (isDebugLoggingEnabled) {
+      console.warn(`[AI_DEBUG] safety guard blocked request | detail=${safetyPermit.detail}`);
+    }
+    return err(
+      makeAiError(
+        'AI_SAFETY_LIMIT',
+        'AI safety limit reached. Please try again shortly.',
+        safetyPermit.detail,
+        true
+      )
+    );
+  }
+
   const isDev = process.env.NODE_ENV !== 'production';
   if (
     !isDev &&
@@ -623,6 +647,7 @@ export async function callAI<TOutput>(options: {
     }
 
     if (provider === 'openrouter') {
+      recordAiActionRequest('openrouter', effectiveModelName, Boolean(OPENROUTER_API_KEY));
       const content = await callOpenRouterChat({
         messages: cappedMessages,
         temperature,
@@ -661,6 +686,7 @@ export async function callAI<TOutput>(options: {
       return ok(applyOutputCharLimit(content));
     }
 
+    recordAiActionRequest('openai', effectiveModelName, Boolean(OPENAI_API_KEY));
     const content = await callOpenAIChat({
       messages: cappedMessages,
       temperature,
@@ -716,6 +742,7 @@ export async function callAI<TOutput>(options: {
       return err(mapped);
     })
     .finally(() => {
+      safetyPermit.release();
       inFlightMap.delete(inFlightKey);
     }) as Promise<Result<TOutput | string>>;
   inFlightMap.set(inFlightKey, promise);

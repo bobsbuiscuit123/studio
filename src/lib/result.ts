@@ -2,6 +2,7 @@ export type AppErrorCode =
   | 'UNKNOWN'
   | 'ADMIN_REQUIRED'
   | 'AI_DISABLED'
+  | 'AI_SAFETY_LIMIT'
   | 'AI_TIMEOUT'
   | 'AI_QUOTA'
   | 'DAILY_LIMIT_REACHED'

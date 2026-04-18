@@ -218,7 +218,7 @@ export default function MembersPage() {
       return;
     }
 
-    router.push(`/messages/dm__${encodeURIComponent(normalizedEmail)}`);
+    router.push(`/messages/dm__${encodeURIComponent(normalizedEmail)}`, { scroll: false });
   }
 
   return (

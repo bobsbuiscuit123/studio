@@ -106,7 +106,7 @@ export function useNotificationNavigation() {
       }
 
       const route = routeFromNotification(notification);
-      router.push(buildNotificationHref(route));
+      router.push(buildNotificationHref(route), { scroll: false });
       return true;
     },
     [router, toast]

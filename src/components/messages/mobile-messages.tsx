@@ -321,7 +321,7 @@ export function MessagesListScreen() {
     setIsNewGroupDialogOpen(false);
     newGroupForm.reset();
     toast({ title: "Group created", description: newGroup.name });
-    router.push(getConversationHref({ type: "group", chat: newGroup }));
+    router.push(getConversationHref({ type: "group", chat: newGroup }), { scroll: false });
   };
 
   if (userLoading || loading) {
@@ -420,7 +420,7 @@ export function MessagesListScreen() {
                 <button
                   key={member.email}
                   type="button"
-                  onClick={() => router.push(getConversationHref({ type: "dm", partner: member }))}
+                  onClick={() => router.push(getConversationHref({ type: "dm", partner: member }), { scroll: false })}
                   className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:scale-[0.99] hover:bg-muted/40"
                 >
                   <ConversationAvatar
@@ -447,6 +447,7 @@ export function MessagesListScreen() {
               <Link
                 key={conversation.id}
                 href={conversation.href}
+                scroll={false}
                 className="flex w-full items-center gap-3 rounded-xl px-4 py-3 transition-colors active:scale-[0.99] hover:bg-muted/40"
               >
                 <ConversationAvatar

@@ -68,9 +68,9 @@ const formatAssistantErrorMessage = (payload: unknown) => {
     return "Assistant unavailable right now.";
   }
 
-  const { message, requestId, stage, detail } = parsed.data;
+  const { message, code, requestId, stage, detail } = parsed.data;
   const stageText = stageLabel(stage);
-  const extras = [stageText, requestId ? `trace ${requestId.slice(0, 8)}` : null].filter(Boolean);
+  const extras = [stageText, code, requestId ? `trace ${requestId.slice(0, 8)}` : null].filter(Boolean);
   const detailText = typeof detail === "string" && detail.trim() ? `\n${detail.trim()}` : "";
 
   return `${extras.length ? `${message} (${extras.join(" • ")})` : message}${detailText}`;

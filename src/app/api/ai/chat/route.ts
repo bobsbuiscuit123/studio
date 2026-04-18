@@ -27,7 +27,14 @@ import type { Result } from '@/lib/result';
 
 export const dynamic = 'force-dynamic';
 
-const isDebugResponseEnabled = process.env.NODE_ENV !== 'production';
+const sanitizePublicAiDetail = (detail?: string) => {
+  if (!detail) return undefined;
+
+  const flattened = detail.replace(/\s+/g, ' ').trim();
+  if (!flattened) return undefined;
+
+  return flattened.length > 280 ? `${flattened.slice(0, 279)}…` : flattened;
+};
 
 const errorResponse = (
   message: string,
@@ -37,14 +44,15 @@ const errorResponse = (
     stage?: AiChatFailureStage;
     requestId?: string;
     detail?: string;
+    publicDetail?: string;
   }
 ) => {
   const payload: Record<string, string> = { message };
   if (options?.code) payload.code = options.code;
   if (options?.stage) payload.stage = options.stage;
   if (options?.requestId) payload.requestId = options.requestId;
-  if (isDebugResponseEnabled && options?.detail) {
-    payload.detail = options.detail;
+  if (options?.publicDetail) {
+    payload.detail = options.publicDetail;
   }
 
   return NextResponse.json(payload, { status });
@@ -117,6 +125,25 @@ const logRouteFailure = (
     message: error instanceof Error ? error.message : String(error),
     ...(meta ?? {}),
   });
+};
+
+const buildPublicAiFailureDetail = ({
+  attempt,
+  code,
+  detail,
+}: {
+  attempt: AiStepAttempt;
+  code?: string;
+  detail?: string;
+}) => {
+  const normalizedDetail = sanitizePublicAiDetail(detail);
+  return [
+    code ? `code=${code}` : null,
+    `attempt=${attempt}`,
+    normalizedDetail ?? null,
+  ]
+    .filter(Boolean)
+    .join(' | ');
 };
 
 const runPlannerStep = async (requestId: string, plannerPrompt: string): Promise<AiStepRunResult<{
@@ -383,9 +410,11 @@ export async function POST(request: Request) {
         code: plannerResult.error.code,
         stage,
         requestId,
-        detail: plannerResult.error.detail
-          ? `attempt=${plannerRun.attempt}; ${plannerResult.error.detail}`
-          : `attempt=${plannerRun.attempt}`,
+        publicDetail: buildPublicAiFailureDetail({
+          attempt: plannerRun.attempt,
+          code: plannerResult.error.code,
+          detail: plannerResult.error.detail,
+        }),
       });
     }
 
@@ -426,9 +455,11 @@ export async function POST(request: Request) {
         code: responderResult.error.code,
         stage,
         requestId,
-        detail: responderResult.error.detail
-          ? `attempt=${responderRun.attempt}; ${responderResult.error.detail}`
-          : `attempt=${responderRun.attempt}`,
+        publicDetail: buildPublicAiFailureDetail({
+          attempt: responderRun.attempt,
+          code: responderResult.error.code,
+          detail: responderResult.error.detail,
+        }),
       });
     }
 
@@ -447,7 +478,6 @@ export async function POST(request: Request) {
       {
         stage,
         requestId,
-        detail: error instanceof Error ? error.stack : undefined,
       }
     );
   }

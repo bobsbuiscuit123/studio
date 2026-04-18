@@ -6,16 +6,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { AIChatModal } from "@/components/assistant/ai-chat-modal";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
+import { AI_CHAT_HISTORY_LIMIT, aiChatResponseSchema, type AiChatClientMessage, type AiChatHistoryMessage } from "@/lib/ai-chat";
 import type { NotificationKey } from "@/lib/data-hooks";
 import { syncSelectionCookies } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 
 const assistantHref = "/assistant";
-const assistantComingSoonLabel = "CASPO AI Agent";
-const assistantComingSoonMessage =
-  "CASPO AI copilot is on the way.";
 const mobileNavOrder = [
   "/dashboard",
   "/announcements",
@@ -45,8 +44,10 @@ export function AppMobileTabBar() {
   const isMessagesRoute = isMessagesListRoute || isMessageThreadRoute;
   const [navPage, setNavPage] = useState(0);
   const [isInputActive, setIsInputActive] = useState(false);
-  const [showAssistantBubble, setShowAssistantBubble] = useState(false);
-  const [typedAssistantMessage, setTypedAssistantMessage] = useState("");
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [assistantMessages, setAssistantMessages] = useState<AiChatClientMessage[]>([]);
+  const [assistantInput, setAssistantInput] = useState("");
+  const [isAssistantSending, setIsAssistantSending] = useState(false);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
   const orderedItems: MobileNavItem[] = mobileNavOrder
@@ -108,30 +109,134 @@ export function AppMobileTabBar() {
   }, [isMessagesRoute]);
 
   useEffect(() => {
-    if (!showAssistantBubble) {
-      setTypedAssistantMessage("");
-      return;
+    if (isMessageThreadRoute || (isMessagesListRoute && isInputActive)) {
+      setIsAssistantOpen(false);
     }
-
-    let index = 0;
-    const interval = window.setInterval(() => {
-      index += 1;
-      setTypedAssistantMessage(assistantComingSoonMessage.slice(0, index));
-      if (index >= assistantComingSoonMessage.length) {
-        window.clearInterval(interval);
-      }
-    }, 35);
-
-    return () => window.clearInterval(interval);
-  }, [showAssistantBubble]);
+  }, [isInputActive, isMessageThreadRoute, isMessagesListRoute]);
 
   if (isMessageThreadRoute || (navSets.length === 0 && !assistantItem) || (isMessagesListRoute && isInputActive)) {
     return null;
   }
 
+  const createClientMessage = (
+    role: AiChatClientMessage["role"],
+    content: string,
+    options?: Pick<AiChatClientMessage, "status" | "retryInput">
+  ): AiChatClientMessage => ({
+    id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    ...options,
+  });
+
+  const buildHistoryPayload = (messages: AiChatClientMessage[]): AiChatHistoryMessage[] =>
+    messages
+      .filter(
+        (message): message is AiChatClientMessage & { role: "user" | "assistant" } =>
+          (message.role === "user" || message.role === "assistant") && !message.status
+      )
+      .slice(-AI_CHAT_HISTORY_LIMIT)
+      .map(message => ({
+        role: message.role,
+        content: message.content,
+      }));
+
+  const sendAssistantMessage = async (rawMessage: string, { appendUserMessage }: { appendUserMessage: boolean }) => {
+    const message = rawMessage.trim();
+    if (!message || isAssistantSending) {
+      return;
+    }
+
+    const nextUserMessage = createClientMessage("user", message);
+    const pendingMessage = createClientMessage("assistant", "", { status: "pending" });
+    const nextMessages = (() => {
+      const baseMessages = assistantMessages.filter(
+        item => item.status !== "pending" && !(item.status === "error" && item.retryInput === message)
+      );
+      return appendUserMessage
+        ? [...baseMessages, nextUserMessage, pendingMessage]
+        : [...baseMessages, pendingMessage];
+    })();
+
+    setAssistantMessages(nextMessages);
+    setAssistantInput("");
+    setIsAssistantSending(true);
+
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message,
+          history: buildHistoryPayload(nextMessages.filter(item => item.id !== pendingMessage.id)),
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
+            ? payload.message
+            : "Assistant unavailable right now."
+        );
+      }
+
+      const parsedPayload = aiChatResponseSchema.safeParse(payload);
+      if (!parsedPayload.success) {
+        throw new Error("Assistant returned an invalid response.");
+      }
+
+      const assistantReply = createClientMessage("assistant", parsedPayload.data.reply);
+      setAssistantMessages(currentMessages =>
+        currentMessages.map(currentMessage =>
+          currentMessage.id === pendingMessage.id ? assistantReply : currentMessage
+        )
+      );
+    } catch (error) {
+      const errorMessage = createClientMessage(
+        "system",
+        error instanceof Error ? error.message : "Assistant unavailable right now.",
+        {
+          status: "error",
+          retryInput: message,
+        }
+      );
+      setAssistantMessages(currentMessages =>
+        currentMessages.map(currentMessage =>
+          currentMessage.id === pendingMessage.id ? errorMessage : currentMessage
+        )
+      );
+    } finally {
+      setIsAssistantSending(false);
+    }
+  };
+
+  const handleAssistantSend = () => {
+    void sendAssistantMessage(assistantInput, { appendUserMessage: true });
+  };
+
+  const handleAssistantRetry = (retryInput: string) => {
+    void sendAssistantMessage(retryInput, { appendUserMessage: false });
+  };
+
   return (
-    <nav className="bottom-nav md:hidden">
-      <div className="nav-inner mx-auto max-w-screen-md">
+    <>
+      <AIChatModal
+        open={isAssistantOpen}
+        onOpenChange={setIsAssistantOpen}
+        messages={assistantMessages}
+        input={assistantInput}
+        onInputChange={setAssistantInput}
+        onSend={handleAssistantSend}
+        onRetry={handleAssistantRetry}
+        isSending={isAssistantSending}
+      />
+
+      <nav className="bottom-nav md:hidden">
+        <div className="nav-inner mx-auto max-w-screen-md">
         {navPage > 0 ? (
           <button type="button" onClick={() => setNavPage(current => Math.max(0, current - 1))} className="tab nav-arrow">
             <ChevronLeft className="h-6 w-6" />
@@ -173,42 +278,23 @@ export function AppMobileTabBar() {
 
         {assistantItem ? (
           <div className="relative flex items-center justify-center">
-            {showAssistantBubble ? (
-              <div className="assistant-bubble" role="status" aria-live="polite">
-                <div className="assistant-bubble-content">
-                  <span className="assistant-bubble-label">{assistantComingSoonLabel}</span>
-                  <p className="assistant-bubble-copy">
-                    {typedAssistantMessage}
-                    <span className="assistant-bubble-cursor" aria-hidden="true" />
-                  </p>
-                </div>
-                <span className="assistant-bubble-tail" aria-hidden="true" />
-              </div>
-            ) : null}
             <button
               type="button"
               onClick={() => {
-                setShowAssistantBubble(current => !current);
+                setIsAssistantOpen(current => !current);
                 if (assistantItem.notificationKey) {
                   markTabViewed(assistantItem.notificationKey, assistantItem.href);
                 }
               }}
-              className="ai-button z-[1001]"
-              aria-label={`${assistantItem.label} coming soon`}
-              aria-expanded={showAssistantBubble}
+              className={cn(
+                "ai-button z-[1001] transition-transform duration-200 hover:scale-[1.03]",
+                isAssistantOpen && "ring-4 ring-emerald-200/35 ring-offset-2 ring-offset-background"
+              )}
+              aria-label={assistantItem.label}
+              aria-expanded={isAssistantOpen}
             >
               <assistantItem.icon className="h-6 w-6 text-white" />
             </button>
-            {/*
-            <Link
-              href={buildHref(assistantItem.href)}
-              onClick={() => assistantItem.notificationKey && markTabViewed(assistantItem.notificationKey, assistantItem.href)}
-              className="ai-button z-[1001]"
-              aria-label={assistantItem.label}
-            >
-              <assistantItem.icon className="h-6 w-6 text-white" />
-            </Link>
-            */}
           </div>
         ) : (
           <div className="tab opacity-0" aria-hidden="true" />
@@ -251,8 +337,9 @@ export function AppMobileTabBar() {
             <ChevronRight className="h-6 w-6" />
           </button>
         )}
-      </div>
-    </nav>
+        </div>
+      </nav>
+    </>
   );
 }
 

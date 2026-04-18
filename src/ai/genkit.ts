@@ -25,7 +25,9 @@ export type ChatMessage = {
   content: string;
 };
 
-const MAX_APP_AI_PROMPT_CHARS = 1856;
+// Keep a cap so prompts stay bounded, but allow enough room for multi-step
+// app flows that include scoped context from group_state.
+const MAX_APP_AI_PROMPT_CHARS = 12_000;
 
 // Gemini setup (only validated when provider is gemini)
 const geminiKey =
@@ -719,4 +721,3 @@ export async function callAI<TOutput>(options: {
   inFlightMap.set(inFlightKey, promise);
   return promise;
 }
-

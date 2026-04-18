@@ -76,6 +76,12 @@ export function AIChatModal({
       <SheetContent
         side="bottom"
         onOpenAutoFocus={event => event.preventDefault()}
+        // Mobile Safari can misfire textarea taps inside fixed bottom sheets as
+        // "outside" interactions. Keep the sheet open and let the close button
+        // handle dismissal instead of auto-dismissing on outside events.
+        onInteractOutside={event => event.preventDefault()}
+        onPointerDownOutside={event => event.preventDefault()}
+        onFocusOutside={event => event.preventDefault()}
         className={cn(
           'ai-chat-sheet h-[min(78dvh,720px)] rounded-t-[28px] border-white/15 px-0 pt-0',
           '[&>button]:right-5 [&>button]:top-5 [&>button]:rounded-full [&>button]:border [&>button]:border-white/15 [&>button]:bg-white/10 [&>button]:text-white [&>button]:backdrop-blur-xl'

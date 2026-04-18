@@ -21,7 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { clearSelectedGroupId, clearSelectedOrgId, getSelectedOrgId, setSelectedGroupId } from "@/lib/selection";
+import {
+  clearSelectedGroupId,
+  clearSelectedOrgId,
+  getSelectedOrgId,
+  setSelectedGroupId,
+  syncSelectionCookies,
+} from "@/lib/selection";
 import { safeFetchJson } from "@/lib/network";
 import { useCurrentUser } from "@/lib/data-hooks";
 import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
@@ -101,6 +107,7 @@ export default function ClubsPage() {
   const createGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const editGroupLogoInputRef = useRef<HTMLInputElement | null>(null);
   const createGroupSubmitLockRef = useRef(false);
+  const dashboardNavigationFallbackRef = useRef<number | null>(null);
   const [isDeleteOrgOpen, setIsDeleteOrgOpen] = useState(false);
   const [deleteOrgSubmitting, setDeleteOrgSubmitting] = useState(false);
   const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
@@ -113,6 +120,34 @@ export default function ClubsPage() {
   useEffect(() => {
     void router.prefetch("/dashboard");
   }, [router]);
+
+  useEffect(() => {
+    return () => {
+      if (dashboardNavigationFallbackRef.current !== null && typeof window !== "undefined") {
+        window.clearTimeout(dashboardNavigationFallbackRef.current);
+      }
+    };
+  }, []);
+
+  const openDashboardForGroup = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    syncSelectionCookies();
+
+    if (typeof window !== "undefined") {
+      if (dashboardNavigationFallbackRef.current !== null) {
+        window.clearTimeout(dashboardNavigationFallbackRef.current);
+      }
+
+      dashboardNavigationFallbackRef.current = window.setTimeout(() => {
+        dashboardNavigationFallbackRef.current = null;
+        if (window.location.pathname === "/clubs") {
+          window.location.assign("/dashboard");
+        }
+      }, 350);
+    }
+
+    router.push("/dashboard");
+  };
 
   const formatDate = (value?: string | null) =>
     value
@@ -273,8 +308,7 @@ export default function ClubsPage() {
       toast({ title: "Join failed", description: message, variant: "destructive" });
       return;
     }
-    setSelectedGroupId(response.data.groupId);
-    router.push("/dashboard");
+    openDashboardForGroup(response.data.groupId);
   };
 
   const handleCreateClub = async () => {
@@ -325,8 +359,7 @@ export default function ClubsPage() {
         });
         return;
       }
-      setSelectedGroupId(response.data.groupId);
-      router.push("/dashboard");
+      openDashboardForGroup(response.data.groupId);
     } finally {
       createGroupSubmitLockRef.current = false;
       setCreateGroupSubmitting(false);
@@ -334,8 +367,7 @@ export default function ClubsPage() {
   };
 
   const handleEnterClub = (groupId: string) => {
-    setSelectedGroupId(groupId);
-    router.push("/dashboard");
+    openDashboardForGroup(groupId);
   };
 
   const canShowCreate = true;
@@ -646,7 +678,7 @@ export default function ClubsPage() {
                    </div>
                  </CardHeader>
                 <CardFooter className="p-4 pt-0">
-                  <Button className="w-full" onClick={() => handleEnterClub(group.id)}>
+                  <Button type="button" className="w-full" onClick={() => handleEnterClub(group.id)}>
                     Open Dashboard <ArrowRight className="ml-2" />
                   </Button>
                 </CardFooter>
@@ -733,11 +765,11 @@ export default function ClubsPage() {
           </div>
           <DialogFooter>
             <Button
+              type="button"
               onClick={() => {
                 if (!createdGroupPrompt) return;
-                setSelectedGroupId(createdGroupPrompt.groupId);
                 setCreatedGroupPrompt(null);
-                router.push("/dashboard");
+                openDashboardForGroup(createdGroupPrompt.groupId);
               }}
             >
               Continue

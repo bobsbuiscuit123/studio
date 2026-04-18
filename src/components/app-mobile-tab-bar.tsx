@@ -68,11 +68,12 @@ const formatAssistantErrorMessage = (payload: unknown) => {
     return "Assistant unavailable right now.";
   }
 
-  const { message, requestId, stage } = parsed.data;
+  const { message, requestId, stage, detail } = parsed.data;
   const stageText = stageLabel(stage);
   const extras = [stageText, requestId ? `trace ${requestId.slice(0, 8)}` : null].filter(Boolean);
+  const detailText = typeof detail === "string" && detail.trim() ? `\n${detail.trim()}` : "";
 
-  return extras.length ? `${message} (${extras.join(" • ")})` : message;
+  return `${extras.length ? `${message} (${extras.join(" • ")})` : message}${detailText}`;
 };
 
 export function AppMobileTabBar() {

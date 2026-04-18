@@ -14,7 +14,10 @@ import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import type { User } from '@/lib/mock-data';
 import { safeFetchJson } from '@/lib/network';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+  createSupabaseBrowserClient,
+  getBrowserSessionWithTimeout,
+} from '@/lib/supabase/client';
 import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
 
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -132,8 +135,8 @@ function useCurrentUserState(): CurrentUserContextValue {
 
       currentUserHydrationPromise = (async () => {
         try {
-          const { data } = await supabase.auth.getSession();
-          const sessionUser = data.session?.user;
+          const { session, timedOut } = await getBrowserSessionWithTimeout(supabase);
+          const sessionUser = session?.user;
           if (sessionUser) {
             const { data: profile } = await supabase
               .from('profiles')
@@ -152,6 +155,9 @@ function useCurrentUserState(): CurrentUserContextValue {
             } as User;
             persistCurrentUserCache(hydratedUser);
             return hydratedUser;
+          }
+          if (timedOut) {
+            return cachedUser ?? currentUserCache;
           }
           persistCurrentUserCache(null);
           return null;

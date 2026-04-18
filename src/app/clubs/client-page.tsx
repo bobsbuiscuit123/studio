@@ -110,6 +110,10 @@ export default function ClubsPage() {
   const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
 
+  useEffect(() => {
+    void router.prefetch("/dashboard");
+  }, [router]);
+
   const formatDate = (value?: string | null) =>
     value
       ? new Intl.DateTimeFormat(undefined, {

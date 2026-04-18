@@ -4,7 +4,10 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { usePathname } from 'next/navigation';
 import { useCurrentUser } from '@/lib/current-user';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import {
+    createSupabaseBrowserClient,
+    getBrowserSessionWithTimeout,
+} from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
 import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
 import { getDefaultOrgState } from '@/lib/org-state';
@@ -417,7 +420,7 @@ function useClubDataStore() {
 
         const hydrateAuth = async () => {
             try {
-                await supabase.auth.getSession();
+                await getBrowserSessionWithTimeout(supabase);
             } finally {
                 if (active) {
                     setAuthReady(true);
@@ -1163,8 +1166,8 @@ export function useCurrentUserRole() {
         const supabase = createSupabaseBrowserClient();
         let active = true;
         const loadRole = async () => {
-            const { data: sessionData } = await supabase.auth.getSession();
-            const userId = sessionData.session?.user?.id;
+            const { session } = await getBrowserSessionWithTimeout(supabase);
+            const userId = session?.user?.id;
             if (!userId) {
                 if (active) {
                     setRole(null);

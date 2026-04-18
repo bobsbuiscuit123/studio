@@ -5,9 +5,20 @@ export const AI_CHAT_MESSAGE_MAX_CHARS = 2_000;
 
 export const AI_CHAT_INTENTS = ['GENERATION', 'MEMBERSHIP', 'GROUP_DATA'] as const;
 export const AI_CHAT_ENTITIES = ['announcements', 'messages', 'members', 'events'] as const;
+export const AI_CHAT_FAILURE_STAGES = [
+  'request_validation',
+  'context',
+  'membership',
+  'quota',
+  'planner',
+  'group_data_fetch',
+  'responder',
+  'unknown',
+] as const;
 
 export type AiChatIntent = (typeof AI_CHAT_INTENTS)[number];
 export type AiChatEntity = (typeof AI_CHAT_ENTITIES)[number];
+export type AiChatFailureStage = (typeof AI_CHAT_FAILURE_STAGES)[number];
 
 export const aiChatHistoryMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
@@ -31,10 +42,19 @@ export const aiChatResponseSchema = z.object({
   usedEntities: z.array(z.enum(AI_CHAT_ENTITIES)),
 });
 
+export const aiChatErrorResponseSchema = z.object({
+  message: z.string().trim().min(1),
+  code: z.string().trim().min(1).optional(),
+  stage: z.enum(AI_CHAT_FAILURE_STAGES).optional(),
+  requestId: z.string().trim().min(1).optional(),
+  detail: z.string().trim().min(1).optional(),
+});
+
 export type AiChatHistoryMessage = z.infer<typeof aiChatHistoryMessageSchema>;
 export type AiChatRequest = z.infer<typeof aiChatRequestSchema>;
 export type AiChatPlannerResult = z.infer<typeof aiChatPlannerResultSchema>;
 export type AiChatResponse = z.infer<typeof aiChatResponseSchema>;
+export type AiChatErrorResponse = z.infer<typeof aiChatErrorResponseSchema>;
 
 export type AiChatClientMessage = {
   id: string;

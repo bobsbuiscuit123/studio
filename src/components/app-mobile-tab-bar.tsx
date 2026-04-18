@@ -9,7 +9,14 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AIChatModal } from "@/components/assistant/ai-chat-modal";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
-import { AI_CHAT_HISTORY_LIMIT, aiChatResponseSchema, type AiChatClientMessage, type AiChatHistoryMessage } from "@/lib/ai-chat";
+import {
+  AI_CHAT_HISTORY_LIMIT,
+  aiChatErrorResponseSchema,
+  aiChatResponseSchema,
+  type AiChatClientMessage,
+  type AiChatFailureStage,
+  type AiChatHistoryMessage,
+} from "@/lib/ai-chat";
 import type { NotificationKey } from "@/lib/data-hooks";
 import { syncSelectionCookies } from "@/lib/selection";
 import { cn } from "@/lib/utils";
@@ -32,6 +39,40 @@ type MobileNavItem = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   notificationKey?: NotificationKey | null;
+};
+
+const stageLabel = (stage?: AiChatFailureStage) => {
+  switch (stage) {
+    case "planner":
+      return "planner step";
+    case "group_data_fetch":
+      return "group data fetch";
+    case "responder":
+      return "answer generation";
+    case "context":
+      return "group context lookup";
+    case "membership":
+      return "group access check";
+    case "quota":
+      return "AI quota check";
+    case "request_validation":
+      return "request validation";
+    default:
+      return null;
+  }
+};
+
+const formatAssistantErrorMessage = (payload: unknown) => {
+  const parsed = aiChatErrorResponseSchema.safeParse(payload);
+  if (!parsed.success) {
+    return "Assistant unavailable right now.";
+  }
+
+  const { message, requestId, stage } = parsed.data;
+  const stageText = stageLabel(stage);
+  const extras = [stageText, requestId ? `trace ${requestId.slice(0, 8)}` : null].filter(Boolean);
+
+  return extras.length ? `${message} (${extras.join(" • ")})` : message;
 };
 
 export function AppMobileTabBar() {
@@ -177,10 +218,11 @@ export function AppMobileTabBar() {
 
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
+        if (payload) {
+          console.error("[ai-chat] request failed", payload);
+        }
         throw new Error(
-          payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
-            ? payload.message
-            : "Assistant unavailable right now."
+          payload ? formatAssistantErrorMessage(payload) : "Assistant unavailable right now."
         );
       }
 

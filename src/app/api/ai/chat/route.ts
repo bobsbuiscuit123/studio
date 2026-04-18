@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-import { callAI } from '@/ai/genkit';
+import { activeModelName, activeProvider, callAI } from '@/ai/genkit';
 import { getRequestDayKey } from '@/lib/day-key';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
-import { AI_CHAT_ENTITIES, aiChatPlannerResultSchema, aiChatRequestSchema, type AiChatEntity, type AiChatResponse } from '@/lib/ai-chat';
+import {
+  AI_CHAT_ENTITIES,
+  aiChatPlannerResultSchema,
+  aiChatRequestSchema,
+  type AiChatEntity,
+  type AiChatFailureStage,
+  type AiChatResponse,
+} from '@/lib/ai-chat';
 import {
   AI_CHAT_PLANNER_SYSTEM_PROMPT,
   AI_CHAT_RESPONDER_SYSTEM_PROMPT,
@@ -20,11 +27,28 @@ import type { Result } from '@/lib/result';
 
 export const dynamic = 'force-dynamic';
 
-const errorResponse = (message: string, status: number, code?: string) =>
-  NextResponse.json(
-    code ? { message, code } : { message },
-    { status }
-  );
+const isDebugResponseEnabled = process.env.NODE_ENV !== 'production';
+
+const errorResponse = (
+  message: string,
+  status: number,
+  options?: {
+    code?: string;
+    stage?: AiChatFailureStage;
+    requestId?: string;
+    detail?: string;
+  }
+) => {
+  const payload: Record<string, string> = { message };
+  if (options?.code) payload.code = options.code;
+  if (options?.stage) payload.stage = options.stage;
+  if (options?.requestId) payload.requestId = options.requestId;
+  if (isDebugResponseEnabled && options?.detail) {
+    payload.detail = options.detail;
+  }
+
+  return NextResponse.json(payload, { status });
+};
 
 const aiErrorStatus = (code?: string) => {
   switch (code) {
@@ -44,6 +68,12 @@ const aiErrorStatus = (code?: string) => {
 const normalizePlannerEntities = (entities: AiChatEntity[]) =>
   AI_CHAT_ENTITIES.filter(entity => entities.includes(entity));
 
+type AiStepAttempt = 'primary' | 'fallback';
+type AiStepRunResult<TValue> = {
+  result: Result<TValue>;
+  attempt: AiStepAttempt;
+};
+
 const shouldRetryAiFailure = (result: Result<unknown>) =>
   !result.ok &&
   result.error.retryable &&
@@ -55,13 +85,17 @@ const shouldRetryAiFailure = (result: Result<unknown>) =>
   );
 
 const logAiStepFailure = (
+  requestId: string,
   step: 'planner' | 'responder',
-  attempt: 'primary' | 'fallback',
+  attempt: AiStepAttempt,
   result: Result<unknown>
 ) => {
   if (result.ok) return;
 
   console.error(`[ai-chat] ${step} ${attempt} failed`, {
+    requestId,
+    provider: activeProvider,
+    model: activeModelName,
     code: result.error.code,
     message: result.error.message,
     detail: result.error.detail,
@@ -69,7 +103,27 @@ const logAiStepFailure = (
   });
 };
 
-const runPlannerStep = async (plannerPrompt: string) => {
+const logRouteFailure = (
+  requestId: string,
+  stage: AiChatFailureStage,
+  error: unknown,
+  meta?: Record<string, unknown>
+) => {
+  console.error('[ai-chat] route failed', {
+    requestId,
+    stage,
+    provider: activeProvider,
+    model: activeModelName,
+    message: error instanceof Error ? error.message : String(error),
+    ...(meta ?? {}),
+  });
+};
+
+const runPlannerStep = async (requestId: string, plannerPrompt: string): Promise<AiStepRunResult<{
+  needs_data: boolean;
+  intent: 'GENERATION' | 'MEMBERSHIP' | 'GROUP_DATA';
+  entities: AiChatEntity[];
+}>> => {
   const primaryResult = await callAI({
     messages: [
       { role: 'system', content: AI_CHAT_PLANNER_SYSTEM_PROMPT },
@@ -82,10 +136,10 @@ const runPlannerStep = async (plannerPrompt: string) => {
   });
 
   if (primaryResult.ok || !shouldRetryAiFailure(primaryResult)) {
-    return primaryResult;
+    return { result: primaryResult, attempt: 'primary' };
   }
 
-  logAiStepFailure('planner', 'primary', primaryResult);
+  logAiStepFailure(requestId, 'planner', 'primary', primaryResult);
 
   const fallbackResult = await callAI({
     messages: [
@@ -100,11 +154,14 @@ const runPlannerStep = async (plannerPrompt: string) => {
     timeoutMs: 28_000,
   });
 
-  logAiStepFailure('planner', 'fallback', fallbackResult);
-  return fallbackResult;
+  logAiStepFailure(requestId, 'planner', 'fallback', fallbackResult);
+  return { result: fallbackResult, attempt: 'fallback' };
 };
 
-const runResponderStep = async (responderPrompt: string) => {
+const runResponderStep = async (
+  requestId: string,
+  responderPrompt: string
+): Promise<AiStepRunResult<string>> => {
   const primaryResult = await callAI({
     messages: [
       { role: 'system', content: AI_CHAT_RESPONDER_SYSTEM_PROMPT },
@@ -116,10 +173,10 @@ const runResponderStep = async (responderPrompt: string) => {
   });
 
   if (primaryResult.ok || !shouldRetryAiFailure(primaryResult)) {
-    return primaryResult;
+    return { result: primaryResult, attempt: 'primary' };
   }
 
-  logAiStepFailure('responder', 'primary', primaryResult);
+  logAiStepFailure(requestId, 'responder', 'primary', primaryResult);
 
   const fallbackResult = await callAI({
     messages: [
@@ -133,11 +190,14 @@ const runResponderStep = async (responderPrompt: string) => {
     maxOutputChars: 2_400,
   });
 
-  logAiStepFailure('responder', 'fallback', fallbackResult);
-  return fallbackResult;
+  logAiStepFailure(requestId, 'responder', 'fallback', fallbackResult);
+  return { result: fallbackResult, attempt: 'fallback' };
 };
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  let stage: AiChatFailureStage = 'request_validation';
+
   try {
     const ipLimiter = rateLimit(`ai-chat-ip:${getRequestIp(request.headers)}`, 20, 60_000);
     if (!ipLimiter.allowed) {
@@ -147,15 +207,24 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const parsed = aiChatRequestSchema.safeParse(body);
     if (!parsed.success) {
-      return errorResponse('Invalid AI chat request.', 400, 'VALIDATION');
+      return errorResponse('Invalid AI chat request.', 400, {
+        code: 'VALIDATION',
+        stage,
+        requestId,
+      });
     }
 
+    stage = 'context';
     const cookieStore = await cookies();
     const orgId = cookieStore.get('selectedOrgId')?.value?.trim();
     const groupId = cookieStore.get('selectedGroupId')?.value?.trim();
 
     if (!orgId || !groupId) {
-      return errorResponse('Missing organization or group context.', 400, 'VALIDATION');
+      return errorResponse('Missing organization or group context.', 400, {
+        code: 'VALIDATION',
+        stage,
+        requestId,
+      });
     }
 
     const supabase = await createSupabaseServerClient();
@@ -165,7 +234,12 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      return errorResponse('Unauthorized.', 401, 'VALIDATION');
+      return errorResponse('Unauthorized.', 401, {
+        code: 'VALIDATION',
+        stage,
+        requestId,
+        detail: userError?.message,
+      });
     }
 
     const userLimiter = rateLimit(`ai-chat-user:${user.id}`, 30, 60_000);
@@ -173,6 +247,7 @@ export async function POST(request: Request) {
       return rateLimitExceededResponse(userLimiter, 'Too many AI chat requests. Please slow down.');
     }
 
+    stage = 'membership';
     const admin = createSupabaseAdmin();
     const { data: membership, error: membershipError } = await admin
       .from('group_memberships')
@@ -183,17 +258,32 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (membershipError) {
-      return errorResponse(membershipError.message, 500);
+      logRouteFailure(requestId, stage, membershipError);
+      return errorResponse(membershipError.message, 500, {
+        stage,
+        requestId,
+        detail: membershipError.message,
+      });
     }
     if (!membership) {
-      return errorResponse('Access denied.', 403, 'VALIDATION');
+      return errorResponse('Access denied.', 403, {
+        code: 'VALIDATION',
+        stage,
+        requestId,
+      });
     }
 
+    stage = 'quota';
     const refreshResponse = await admin.rpc('refresh_org_subscription_period', {
       p_org_id: orgId,
     });
     if (refreshResponse.error) {
-      return errorResponse(refreshResponse.error.message, 500);
+      logRouteFailure(requestId, stage, refreshResponse.error);
+      return errorResponse(refreshResponse.error.message, 500, {
+        stage,
+        requestId,
+        detail: refreshResponse.error.message,
+      });
     }
 
     const { data: orgRow, error: orgError } = await admin
@@ -203,10 +293,18 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (orgError) {
-      return errorResponse(orgError.message, 500);
+      logRouteFailure(requestId, stage, orgError);
+      return errorResponse(orgError.message, 500, {
+        stage,
+        requestId,
+        detail: orgError.message,
+      });
     }
     if (!orgRow) {
-      return errorResponse('Organization not found.', 404);
+      return errorResponse('Organization not found.', 404, {
+        stage,
+        requestId,
+      });
     }
 
     const aiTokenLimitOverride = parseOptionalPositiveInt(
@@ -220,7 +318,11 @@ export async function POST(request: Request) {
       });
       const usedThisPeriod = Number(orgRow.tokens_used_this_period ?? 0);
       if (usedThisPeriod >= effectiveAllowance) {
-        return errorResponse('AI is unavailable for this organization right now.', 402, 'AI_QUOTA');
+        return errorResponse('AI is unavailable for this organization right now.', 402, {
+          code: 'AI_QUOTA',
+          stage,
+          requestId,
+        });
       }
     }
 
@@ -232,21 +334,39 @@ export async function POST(request: Request) {
     });
 
     if (consumeError) {
-      return errorResponse(consumeError.message, 500);
+      logRouteFailure(requestId, stage, consumeError);
+      return errorResponse(consumeError.message, 500, {
+        stage,
+        requestId,
+        detail: consumeError.message,
+      });
     }
 
     const consumeResult = Array.isArray(consumeData) ? consumeData[0] : consumeData;
     const reason = String(consumeResult?.reason ?? '');
     if (!consumeResult?.success) {
       if (reason === 'not_member') {
-        return errorResponse('Access denied.', 403, 'VALIDATION');
+        return errorResponse('Access denied.', 403, {
+          code: 'VALIDATION',
+          stage,
+          requestId,
+        });
       }
       if (reason === 'org_not_found') {
-        return errorResponse('Organization not found.', 404);
+        return errorResponse('Organization not found.', 404, {
+          stage,
+          requestId,
+        });
       }
-      return errorResponse('AI is unavailable for this organization right now.', 402, 'AI_QUOTA');
+      return errorResponse('AI is unavailable for this organization right now.', 402, {
+        code: 'AI_QUOTA',
+        stage,
+        requestId,
+        detail: reason || undefined,
+      });
     }
 
+    stage = 'planner';
     const plannerPrompt = buildAiChatPlannerPrompt({
       message: parsed.data.message,
       history: parsed.data.history,
@@ -255,10 +375,18 @@ export async function POST(request: Request) {
       groupId,
     });
 
-    const plannerResult = await runPlannerStep(plannerPrompt);
+    const plannerRun = await runPlannerStep(requestId, plannerPrompt);
+    const plannerResult = plannerRun.result;
 
     if (!plannerResult.ok) {
-      return errorResponse(plannerResult.error.message, aiErrorStatus(plannerResult.error.code), plannerResult.error.code);
+      return errorResponse(plannerResult.error.message, aiErrorStatus(plannerResult.error.code), {
+        code: plannerResult.error.code,
+        stage,
+        requestId,
+        detail: plannerResult.error.detail
+          ? `attempt=${plannerRun.attempt}; ${plannerResult.error.detail}`
+          : `attempt=${plannerRun.attempt}`,
+      });
     }
 
     const planner = {
@@ -266,14 +394,22 @@ export async function POST(request: Request) {
       entities: normalizePlannerEntities(plannerResult.data.entities),
     };
 
+    stage = 'group_data_fetch';
     const { context, usedEntities } = planner.needs_data
       ? await fetchAiChatDataContext({
           admin,
           groupId,
           entities: planner.entities,
+        }).catch(error => {
+          logRouteFailure(requestId, stage, error, {
+            planner,
+            requestedEntities: planner.entities,
+          });
+          throw error;
         })
       : { context: {}, usedEntities: [] as AiChatEntity[] };
 
+    stage = 'responder';
     const responderPrompt = buildAiChatResponderPrompt({
       message: parsed.data.message,
       history: parsed.data.history,
@@ -282,10 +418,18 @@ export async function POST(request: Request) {
       context,
     });
 
-    const responderResult = await runResponderStep(responderPrompt);
+    const responderRun = await runResponderStep(requestId, responderPrompt);
+    const responderResult = responderRun.result;
 
     if (!responderResult.ok) {
-      return errorResponse(responderResult.error.message, aiErrorStatus(responderResult.error.code), responderResult.error.code);
+      return errorResponse(responderResult.error.message, aiErrorStatus(responderResult.error.code), {
+        code: responderResult.error.code,
+        stage,
+        requestId,
+        detail: responderResult.error.detail
+          ? `attempt=${responderRun.attempt}; ${responderResult.error.detail}`
+          : `attempt=${responderRun.attempt}`,
+      });
     }
 
     const response: AiChatResponse = {
@@ -296,9 +440,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
+    logRouteFailure(requestId, stage, error);
     return errorResponse(
       error instanceof Error ? error.message : 'AI chat request failed.',
-      500
+      500,
+      {
+        stage,
+        requestId,
+        detail: error instanceof Error ? error.stack : undefined,
+      }
     );
   }
 }

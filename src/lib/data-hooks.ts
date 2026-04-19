@@ -14,7 +14,7 @@ import { getDefaultOrgState } from '@/lib/org-state';
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
-import { canEditGroupContent, canManageGroupRoles, displayGroupRole } from '@/lib/group-permissions';
+import { canEditGroupContent, canManageGroupRoles } from '@/lib/group-permissions';
 import {
     isMessageFromActor,
     markMessageReadByActor,
@@ -52,12 +52,6 @@ type ClubData = {
     forms: ClubForm[];
     logo: string;
     mindmap: MindMapData;
-};
-
-type MemberProfileRow = {
-  email: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
 };
 
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -108,13 +102,9 @@ const groupStateCache = new Map<string, ClubData>();
 const groupStateRequestCache = new Map<string, Promise<ClubData>>();
 const groupStateFetchedAtCache = new Map<string, number>();
 const groupStateIncludesMediaCache = new Map<string, boolean>();
-const currentUserRoleCache = new Map<string, { role: string | null; expiresAt: number }>();
-const currentUserRoleRequestCache = new Map<string, Promise<string | null>>();
-const CURRENT_USER_ROLE_CACHE_TTL_MS = 30_000;
 const GROUP_STATE_REFRESH_TTL_MS = 5 * 60_000;
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
-const getCurrentUserRoleCacheKey = (groupId: string, userId: string) => `${groupId}:${userId}`;
 const routeNeedsMedia = (pathname?: string | null) => {
   const value = pathname ?? '';
   return (
@@ -133,62 +123,6 @@ const shouldRefreshOnVisibility = () =>
   typeof document !== 'undefined' &&
   document.visibilityState === 'visible' &&
   (typeof navigator === 'undefined' || navigator.onLine !== false);
-
-const readCurrentUserRoleCache = (cacheKey: string) => {
-  const cached = currentUserRoleCache.get(cacheKey);
-  if (!cached) {
-    return { hit: false, role: null as string | null };
-  }
-  if (cached.expiresAt <= Date.now()) {
-    currentUserRoleCache.delete(cacheKey);
-    return { hit: false, role: null as string | null };
-  }
-  return { hit: true, role: cached.role };
-};
-
-const persistCurrentUserRoleCache = (cacheKey: string, role: string | null) => {
-  currentUserRoleCache.set(cacheKey, {
-    role,
-    expiresAt: Date.now() + CURRENT_USER_ROLE_CACHE_TTL_MS,
-  });
-  return role;
-};
-
-async function requestCurrentUserRole(
-  supabase: ReturnType<typeof createSupabaseBrowserClient>,
-  groupId: string,
-  userId: string
-) {
-  const cacheKey = getCurrentUserRoleCacheKey(groupId, userId);
-  const cached = readCurrentUserRoleCache(cacheKey);
-  if (cached.hit) {
-    return cached.role;
-  }
-
-  const pending = currentUserRoleRequestCache.get(cacheKey);
-  if (pending) {
-    return pending;
-  }
-
-  const request = (async () => {
-    const { data } = await supabase
-      .from('group_memberships')
-      .select('role')
-      .eq('group_id', groupId)
-      .eq('user_id', userId)
-      .maybeSingle();
-    return persistCurrentUserRoleCache(cacheKey, displayGroupRole(data?.role));
-  })();
-
-  currentUserRoleRequestCache.set(cacheKey, request);
-  try {
-    return await request;
-  } finally {
-    if (currentUserRoleRequestCache.get(cacheKey) === request) {
-      currentUserRoleRequestCache.delete(cacheKey);
-    }
-  }
-}
 
 const normalizeClubData = (data: ClubData): ClubData => {
     const defaults = getDefaultClubData();
@@ -823,121 +757,8 @@ export function useEvents() {
 }
 
 export function useMembers() {
-  const { clubId, orgId, data, loading, updateClubData } = useClubDataStore();
-  const demoCtx = useOptionalDemoCtx();
-  const useDemo = shouldUseDemoData(Boolean(demoCtx));
-  const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
-  const [membersData, setMembersData] = useState<Member[]>(() => {
-    const defaults = getDefaultClubData();
-    return data?.members ?? defaults.members;
-  });
-  const [membersLoading, setMembersLoading] = useState(() =>
-    useDemo ? loading : loading && !(data?.members && data.members.length >= 0)
-  );
-
-  useEffect(() => {
-    if (useDemo) {
-      setMembersData(data?.members ?? getDefaultClubData().members);
-      setMembersLoading(loading);
-      return;
-    }
-    if (!clubId || !orgId) {
-      setMembersData(data?.members ?? getDefaultClubData().members);
-      setMembersLoading(loading);
-      return;
-    }
-
-    let active = true;
-    const loadMembers = async () => {
-      const stateMembers = Array.isArray(data?.members) ? data.members : [];
-      if (stateMembers.length > 0) {
-        setMembersData(stateMembers);
-        setMembersLoading(false);
-      } else {
-        setMembersLoading(true);
-      }
-      const response = await safeFetchJson<{ ok: boolean; data?: { members?: Member[] } }>(
-        `/api/groups/members?orgId=${encodeURIComponent(orgId)}&groupId=${encodeURIComponent(clubId)}`
-      );
-      if (!active) return;
-      if (!response.ok || !response.data?.data?.members) {
-        console.error(`Error loading group memberships for ${clubId}`, response.ok ? response.data : response.error);
-        setMembersData(stateMembers);
-        setMembersLoading(false);
-        return;
-      }
-
-      const nextMembers: Member[] = response.data.data.members;
-      const memberEmails = nextMembers
-        .map(member => member.email)
-        .filter((email): email is string => Boolean(email));
-
-      let nextMembersWithProfiles = nextMembers;
-
-      if (supabase && memberEmails.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('email, display_name, avatar_url')
-          .in('email', memberEmails);
-
-        if (profilesError) {
-          console.error(`Error loading member profiles for ${clubId}`, profilesError);
-        } else if (profiles) {
-          const profileRows = profiles as MemberProfileRow[];
-          const profileByEmail = new Map(
-            profileRows
-              .filter(profile => profile.email)
-              .map(profile => [profile.email as string, profile])
-          );
-
-          nextMembersWithProfiles = nextMembers.map(member => {
-            const profile = profileByEmail.get(member.email);
-            return {
-              ...member,
-              name: profile?.display_name || member.name,
-              avatar: profile?.avatar_url || member.avatar,
-            };
-          });
-        }
-      }
-
-      setMembersData(nextMembersWithProfiles);
-      setMembersLoading(false);
-    };
-
-    void loadMembers();
-    return () => {
-      active = false;
-    };
-  }, [clubId, data?.members, loading, orgId, supabase, useDemo]);
-
-  const updateData = useCallback(
-    (newData: Member[] | ((prevData: Member[]) => Member[])) => {
-      const base = Array.isArray(data?.members) ? data.members : getDefaultClubData().members;
-      const valueToStore =
-        typeof newData === 'function'
-          ? (newData as (prevData: Member[]) => Member[])(base)
-          : newData;
-      if (stableSerialize(base) === stableSerialize(valueToStore)) {
-        return;
-      }
-      setMembersData(valueToStore);
-      const nextFullData = { ...(data ?? getDefaultClubData()), members: valueToStore };
-      void updateClubData(
-        freshBase => ({
-          ...freshBase,
-          members:
-            typeof newData === 'function'
-              ? (newData as (prevData: Member[]) => Member[])(Array.isArray(freshBase.members) ? freshBase.members : [])
-              : valueToStore,
-        }),
-        { optimisticData: nextFullData }
-      );
-    },
-    [data, updateClubData]
-  );
-
-  return { data: membersData, loading: membersLoading, updateData, clubId, orgId };
+  const { data, loading, updateData, clubId, orgId } = useSpecificClubData('members');
+  return { data, loading, updateData, clubId, orgId };
 }
 
 export function useSocialPosts() {
@@ -1143,49 +964,33 @@ export { useCurrentUser };
 
 // Hook to get the current user's group role
 export function useCurrentUserRole() {
-    const pathname = usePathname();
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const { user, loading: userLoading } = useCurrentUser();
-    const [role, setRole] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
+    const { clubId, data, loading: clubDataLoading } = useClubDataStore();
 
-    useEffect(() => {
-        if (userLoading) return;
+    const role = useMemo(() => {
         if (useDemo && demoCtx) {
-            setRole(demoCtx.appRole);
-            setLoading(false);
-            return;
+            return demoCtx.appRole;
         }
-        const groupId = getSelectedGroupId();
-        if (!user?.email || !groupId) {
-            setRole(null);
-            setLoading(false);
-            return;
+        if (!user?.email) {
+            return null;
         }
-        const supabase = createSupabaseBrowserClient();
-        let active = true;
-        const loadRole = async () => {
-            const { session } = await getBrowserSessionWithTimeout(supabase);
-            const userId = session?.user?.id;
-            if (!userId) {
-                if (active) {
-                    setRole(null);
-                    setLoading(false);
-                }
-                return;
-            }
-            const nextRole = await requestCurrentUserRole(supabase, groupId, userId);
-            if (active) {
-                setRole(nextRole);
-                setLoading(false);
-            }
-        };
-        loadRole();
-        return () => {
-            active = false;
-        };
-    }, [demoCtx, pathname, useDemo, user?.email, userLoading]);
+        return getRoleFromMembers(Array.isArray(data?.members) ? data.members : [], user.email);
+    }, [data?.members, demoCtx, useDemo, user?.email]);
+
+    const loading = useMemo(() => {
+        if (useDemo && demoCtx) {
+            return false;
+        }
+        if (userLoading) {
+            return true;
+        }
+        if (!user?.email || !clubId) {
+            return false;
+        }
+        return clubDataLoading;
+    }, [clubDataLoading, clubId, demoCtx, useDemo, user?.email, userLoading]);
 
     const normalizedRole = role?.toLowerCase() ?? null;
     const canEdit = canEditGroupContent(normalizedRole);

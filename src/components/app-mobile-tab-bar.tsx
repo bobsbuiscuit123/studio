@@ -134,11 +134,14 @@ export function AppMobileTabBar() {
 
     const updateInputState = () => {
       const activeElement = document.activeElement as HTMLElement | null;
+      const isAssistantInput = Boolean(
+        activeElement?.closest('[data-ai-assistant-popup="true"]')
+      );
       const isEditable =
         activeElement instanceof HTMLInputElement ||
         activeElement instanceof HTMLTextAreaElement ||
         activeElement?.isContentEditable === true;
-      setIsInputActive(Boolean(isEditable));
+      setIsInputActive(Boolean(isEditable) && !isAssistantInput);
     };
 
     updateInputState();

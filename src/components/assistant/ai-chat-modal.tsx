@@ -229,6 +229,7 @@ export function AIChatModal({
         aria-modal="true"
         aria-label="CASPO AI"
         className="assistant-popup-shell"
+        data-ai-assistant-popup="true"
         style={{
           left: `${layout.left}px`,
           width: `${layout.width}px`,
@@ -389,6 +390,7 @@ export function AIChatModal({
                 <Textarea
                   ref={inputRef}
                   value={input}
+                  data-ai-assistant-popup="true"
                   onChange={event => onInputChange(event.target.value)}
                   onKeyDown={event => {
                     if (event.key === "Enter" && !event.shiftKey) {

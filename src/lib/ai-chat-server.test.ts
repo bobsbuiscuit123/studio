@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import {
+  AI_CHAT_PLANNER_SYSTEM_PROMPT,
+  AI_CHAT_RESPONDER_SYSTEM_PROMPT,
   buildAiChatGroupStateSelect,
   buildAiChatPlannerPrompt,
   buildAiChatResponderPrompt,
@@ -49,6 +51,14 @@ describe('ai chat server helpers', () => {
     expect(prompt).toContain('current_user_message: Who is in this group?');
   });
 
+  it('teaches the planner that drafting requests should skip retrieval', () => {
+    expect(AI_CHAT_PLANNER_SYSTEM_PROMPT).toContain(
+      'Can you draft an announcement reminding everyone to pay dues?'
+    );
+    expect(AI_CHAT_PLANNER_SYSTEM_PROMPT).toContain('"needs_data": false');
+    expect(AI_CHAT_PLANNER_SYSTEM_PROMPT).toContain('"intent": "GENERATION"');
+  });
+
   it('builds a responder prompt with planner metadata and fetched context', () => {
     const prompt = buildAiChatResponderPrompt({
       message: 'Summarize the latest announcement.',
@@ -76,5 +86,23 @@ describe('ai chat server helpers', () => {
     expect(prompt).toContain('"intent":"GROUP_DATA"');
     expect(prompt).toContain('used_entities: ["announcements"]');
     expect(prompt).toContain('Meeting moved');
+  });
+
+  it('tells the responder to generate directly when no retrieval is needed', () => {
+    const prompt = buildAiChatResponderPrompt({
+      message: 'Draft a dues reminder announcement.',
+      history: [{ role: 'user', content: 'Keep it short and friendly.' }],
+      planner: {
+        needs_data: false,
+        intent: 'GENERATION',
+        entities: [],
+      },
+      usedEntities: [],
+      context: {},
+    });
+
+    expect(AI_CHAT_RESPONDER_SYSTEM_PROMPT).toContain('When planner_result.needs_data is false');
+    expect(prompt).toContain('No group data was fetched because the planner determined this request can be answered without retrieval.');
+    expect(prompt).toContain('current_user_message: Draft a dues reminder announcement.');
   });
 });

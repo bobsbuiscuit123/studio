@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -90,6 +90,7 @@ export function AppMobileTabBar() {
   const [assistantMessages, setAssistantMessages] = useState<AiChatClientMessage[]>([]);
   const [assistantInput, setAssistantInput] = useState("");
   const [isAssistantSending, setIsAssistantSending] = useState(false);
+  const assistantButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
   const orderedItems: MobileNavItem[] = mobileNavOrder
@@ -276,6 +277,7 @@ export function AppMobileTabBar() {
         onSend={handleAssistantSend}
         onRetry={handleAssistantRetry}
         isSending={isAssistantSending}
+        anchorRef={assistantButtonRef}
       />
 
       <nav className="bottom-nav md:hidden">
@@ -322,6 +324,7 @@ export function AppMobileTabBar() {
         {assistantItem ? (
           <div className="relative flex items-center justify-center">
             <button
+              ref={assistantButtonRef}
               type="button"
               onClick={() => {
                 setIsAssistantOpen(current => !current);

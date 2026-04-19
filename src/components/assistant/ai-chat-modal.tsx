@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useRef } from 'react';
-import { Bot, Loader2, RotateCcw, Send, Sparkles } from 'lucide-react';
-
-import type { AiChatClientMessage } from '@/lib/ai-chat';
-import { Button } from '@/components/ui/button';
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
+import { Bot, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+
+import type { AiChatClientMessage } from "@/lib/ai-chat";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 type AIChatModalProps = {
   open: boolean;
@@ -24,19 +24,44 @@ type AIChatModalProps = {
   onSend: () => void;
   onRetry: (retryInput: string) => void;
   isSending: boolean;
+  anchorRef: RefObject<HTMLElement | null>;
 };
+
+type PopupLayout = {
+  left: number;
+  width: number;
+  bottom: number;
+  maxHeight: number;
+  tailOffset: number;
+};
+
+const POPUP_HORIZONTAL_MARGIN = 10;
+const POPUP_MAX_WIDTH = 360;
+const POPUP_MAX_HEIGHT = 520;
+const POPUP_HEIGHT_RATIO = 0.56;
+const POPUP_MIN_BOTTOM = 92;
+const POPUP_MIN_TAIL_OFFSET = 34;
+const POPUP_GAP = 18;
+const EMPTY_STATE_TEXT = "Ask about your group or draft something quick.";
 
 const formatTimestamp = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return '';
+    return "";
   }
 
   return date.toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
+    hour: "numeric",
+    minute: "2-digit",
   });
 };
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const getViewportHeight = () => window.visualViewport?.height ?? window.innerHeight;
+
+const getKeyboardInset = () => Math.max(0, window.innerHeight - getViewportHeight());
 
 export function AIChatModal({
   open,
@@ -47,15 +72,47 @@ export function AIChatModal({
   onSend,
   onRetry,
   isSending,
+  anchorRef,
 }: AIChatModalProps) {
+  const [mounted, setMounted] = useState(false);
+  const [layout, setLayout] = useState<PopupLayout | null>(null);
+  const [typedCount, setTypedCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setTypedCount(0);
+      return;
+    }
+    if (messages.length > 0) {
+      setTypedCount(EMPTY_STATE_TEXT.length);
+      return;
+    }
+
+    setTypedCount(0);
+    const intervalId = window.setInterval(() => {
+      setTypedCount(current => {
+        if (current >= EMPTY_STATE_TEXT.length) {
+          window.clearInterval(intervalId);
+          return current;
+        }
+        return current + 1;
+      });
+    }, 24);
+
+    return () => window.clearInterval(intervalId);
+  }, [messages.length, open]);
 
   useEffect(() => {
     if (!open) return;
 
     const frameId = window.requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
+      messagesEndRef.current?.scrollIntoView({ block: "end" });
       inputRef.current?.focus();
     });
 
@@ -66,118 +123,222 @@ export function AIChatModal({
     const element = inputRef.current;
     if (!element) return;
 
-    element.style.height = '0px';
-    const nextHeight = Math.min(element.scrollHeight, 144);
-    element.style.height = `${Math.max(nextHeight, 52)}px`;
+    element.style.height = "0px";
+    const nextHeight = Math.min(element.scrollHeight, 132);
+    element.style.height = `${Math.max(nextHeight, 50)}px`;
   }, [input, open]);
 
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        onOpenAutoFocus={event => event.preventDefault()}
-        // Mobile Safari can misfire textarea taps inside fixed bottom sheets as
-        // "outside" interactions. Keep the sheet open and let the close button
-        // handle dismissal instead of auto-dismissing on outside events.
-        onInteractOutside={event => event.preventDefault()}
-        onPointerDownOutside={event => event.preventDefault()}
-        onFocusOutside={event => event.preventDefault()}
-        className={cn(
-          'ai-chat-sheet h-[min(78dvh,720px)] rounded-t-[28px] border-white/15 px-0 pt-0',
-          '[&>button]:right-5 [&>button]:top-5 [&>button]:rounded-full [&>button]:border [&>button]:border-white/15 [&>button]:bg-white/10 [&>button]:text-white [&>button]:backdrop-blur-xl'
-        )}
+  useEffect(() => {
+    if (!open) return;
+
+    const updateLayout = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) {
+        setLayout(null);
+        return;
+      }
+
+      const rect = anchor.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = getViewportHeight();
+      const keyboardInset = getKeyboardInset();
+      const width = Math.min(
+        POPUP_MAX_WIDTH,
+        Math.max(280, viewportWidth - POPUP_HORIZONTAL_MARGIN * 2)
+      );
+      const centeredLeft = rect.left + rect.width / 2 - width / 2;
+      const left = clamp(
+        centeredLeft,
+        POPUP_HORIZONTAL_MARGIN,
+        viewportWidth - POPUP_HORIZONTAL_MARGIN - width
+      );
+      const anchorCenter = rect.left + rect.width / 2;
+      const tailOffset = clamp(
+        anchorCenter - left,
+        POPUP_MIN_TAIL_OFFSET,
+        width - POPUP_MIN_TAIL_OFFSET
+      );
+      const anchoredBottom = window.innerHeight - rect.top + POPUP_GAP;
+      const bottom = Math.max(POPUP_MIN_BOTTOM, anchoredBottom, keyboardInset + 12);
+      const maxHeight = Math.min(
+        POPUP_MAX_HEIGHT,
+        Math.max(320, viewportHeight * POPUP_HEIGHT_RATIO)
+      );
+
+      setLayout({
+        left,
+        width,
+        bottom,
+        maxHeight,
+        tailOffset,
+      });
+    };
+
+    const frameId = window.requestAnimationFrame(updateLayout);
+    window.addEventListener("resize", updateLayout);
+    window.addEventListener("orientationchange", updateLayout);
+    window.addEventListener("scroll", updateLayout, true);
+    window.visualViewport?.addEventListener("resize", updateLayout);
+    window.visualViewport?.addEventListener("scroll", updateLayout);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", updateLayout);
+      window.removeEventListener("orientationchange", updateLayout);
+      window.removeEventListener("scroll", updateLayout, true);
+      window.visualViewport?.removeEventListener("resize", updateLayout);
+      window.visualViewport?.removeEventListener("scroll", updateLayout);
+    };
+  }, [anchorRef, open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onOpenChange, open]);
+
+  const emptyStateText = useMemo(
+    () => EMPTY_STATE_TEXT.slice(0, typedCount),
+    [typedCount]
+  );
+
+  if (!mounted || !open || !layout) {
+    return null;
+  }
+
+  const popupHeight = Math.min(layout.maxHeight, 420);
+
+  return createPortal(
+    <>
+      <button
+        type="button"
+        className="assistant-popup-backdrop"
+        onClick={() => onOpenChange(false)}
+        aria-label="Close assistant"
+      />
+
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="CASPO AI"
+        className="assistant-popup-shell"
+        style={{
+          left: `${layout.left}px`,
+          width: `${layout.width}px`,
+          bottom: `${layout.bottom}px`,
+          height: `${popupHeight}px`,
+          maxHeight: `${layout.maxHeight}px`,
+        }}
+        onClick={event => event.stopPropagation()}
       >
-        <SheetHeader className="sr-only">
-          <SheetTitle>CASPO AI</SheetTitle>
-          <SheetDescription>Ask about members, events, announcements, and messages.</SheetDescription>
-        </SheetHeader>
-
-        <div className="ai-chat-grid flex h-full min-h-0 flex-col text-white">
-          <div className="relative overflow-hidden border-b border-white/10 px-5 pb-5 pt-4">
-            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-white/20" />
-
-            <div className="absolute inset-x-0 top-0 h-32 bg-[radial-gradient(circle_at_top,rgba(74,222,128,0.28),transparent_62%)]" />
-            <div className="absolute right-6 top-4">
-              <div className="ai-chat-orb flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-[0_12px_30px_rgba(34,197,94,0.24)] backdrop-blur-2xl">
-                <Sparkles className="h-5 w-5 text-emerald-200" />
+        <div className="assistant-popup-card">
+          <header className="assistant-popup-header">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="assistant-popup-badge">
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>CASPO AI</span>
+              </div>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-foreground">
+                  Group Assistant
+                </h2>
+                <p className="truncate text-xs text-muted-foreground">
+                  Ask a question or draft something quick.
+                </p>
               </div>
             </div>
 
-            <div className="relative pr-16">
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-100/90">
-                <span className="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_10px_rgba(134,239,172,0.85)]" />
-                CASPO AI
-              </div>
-              <h2 className="text-xl font-semibold tracking-tight text-white">Your in-app group copilot</h2>
-              <p className="mt-2 max-w-[32rem] text-sm leading-6 text-white/70">
-                Ask about members, announcements, messages, and events. I&apos;ll only answer from the data your group context allows.
-              </p>
-            </div>
-          </div>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="assistant-popup-close"
+              aria-label="Close assistant"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
 
-          <div
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4"
-          >
+          <div className="assistant-popup-messages">
             {messages.length === 0 ? (
-              <div className="ai-chat-message-card mt-4 rounded-[26px] border border-white/12 bg-white/8 p-4 text-sm text-white/80 backdrop-blur-xl">
-                Start with something like “Summarize our latest announcement” or “Who&apos;s in this group?”
+              <div className="assistant-popup-empty">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300/80">
+                  Start Here
+                </p>
+                <p className="mt-3 text-sm leading-6 text-foreground/92">
+                  {emptyStateText}
+                  <span className="assistant-popup-cursor" />
+                </p>
               </div>
             ) : null}
 
             {messages.map(message => {
-              if (message.status === 'error') {
+              if (message.status === "error") {
                 return (
                   <div
                     key={message.id}
-                    className="ai-chat-message-card rounded-[24px] border border-rose-300/18 bg-rose-400/10 p-4 text-sm text-rose-50 backdrop-blur-xl"
+                    className="assistant-message-row justify-start"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-100/80">
-                          Assistant error
-                        </p>
-                        <p className="mt-2 leading-6 text-rose-50/95">{message.content}</p>
+                    <div className="assistant-message assistant-message-error">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="assistant-message-label text-rose-100/85">
+                            Assistant Error
+                          </p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-rose-50/95">
+                            {message.content}
+                          </p>
+                        </div>
+                        {message.retryInput ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => onRetry(message.retryInput!)}
+                            className="h-10 w-10 shrink-0 rounded-full border border-white/10 bg-white/5 text-foreground hover:bg-white/10"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            <span className="sr-only">Retry assistant request</span>
+                          </Button>
+                        ) : null}
                       </div>
-                      {message.retryInput ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => onRetry(message.retryInput!)}
-                          className="h-10 w-10 rounded-full border border-white/12 bg-white/8 text-white hover:bg-white/12"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                          <span className="sr-only">Retry assistant request</span>
-                        </Button>
-                      ) : null}
                     </div>
                   </div>
                 );
               }
 
-              const isUser = message.role === 'user';
-              const isPending = message.status === 'pending';
+              const isUser = message.role === "user";
+              const isPending = message.status === "pending";
 
               return (
                 <div
                   key={message.id}
-                  className={cn('ai-chat-message-card flex w-full', isUser ? 'justify-end' : 'justify-start')}
+                  className={cn(
+                    "assistant-message-row",
+                    isUser ? "justify-end" : "justify-start"
+                  )}
                 >
                   <div
                     className={cn(
-                      'max-w-[86%] rounded-[26px] px-4 py-3 shadow-[0_16px_40px_rgba(15,23,42,0.18)]',
+                      "assistant-message",
                       isUser
-                        ? 'bg-[linear-gradient(135deg,rgba(74,222,128,0.94),rgba(34,197,94,0.92))] text-emerald-950'
-                        : 'border border-white/12 bg-white/8 text-white backdrop-blur-xl'
+                        ? "assistant-message-user"
+                        : "assistant-message-assistant"
                     )}
                   >
                     <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em]">
                       {isUser ? (
-                        <span className="text-emerald-950/75">You</span>
+                        <span className="text-emerald-950/70">You</span>
                       ) : (
                         <>
-                          <Bot className="h-3.5 w-3.5 text-emerald-200" />
-                          <span className="text-white/65">Assistant</span>
+                          <Bot className="h-3.5 w-3.5 text-emerald-300" />
+                          <span className="assistant-message-label">Assistant</span>
                         </>
                       )}
                     </div>
@@ -185,43 +346,58 @@ export function AIChatModal({
                     {isPending ? (
                       <div className="flex items-center gap-2">
                         <div className="flex items-center gap-1.5">
-                          <span className="ai-chat-thinking-dot" />
-                          <span className="ai-chat-thinking-dot" />
-                          <span className="ai-chat-thinking-dot" />
+                          <span className="assistant-thinking-dot" />
+                          <span className="assistant-thinking-dot" />
+                          <span className="assistant-thinking-dot" />
                         </div>
-                        <span className="text-sm text-white/75">Thinking through that…</span>
+                        <span className="text-sm text-muted-foreground">
+                          Thinking through that…
+                        </span>
                       </div>
                     ) : (
-                      <p className={cn('whitespace-pre-wrap text-sm leading-6', isUser ? 'text-emerald-950' : 'text-white/92')}>
+                      <p
+                        className={cn(
+                          "whitespace-pre-wrap text-sm leading-6",
+                          isUser ? "text-emerald-950" : "text-foreground/92"
+                        )}
+                      >
                         {message.content}
                       </p>
                     )}
 
-                    <p className={cn('mt-2 text-[11px]', isUser ? 'text-emerald-950/70' : 'text-white/45')}>
+                    <p
+                      className={cn(
+                        "mt-2 text-[11px]",
+                        isUser
+                          ? "text-emerald-950/65"
+                          : "text-muted-foreground/80"
+                      )}
+                    >
                       {formatTimestamp(message.createdAt)}
                     </p>
                   </div>
                 </div>
               );
             })}
+
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="border-t border-white/10 px-4 pb-[calc(1rem+var(--safe-area-bottom-runtime))] pt-3">
-            <div className="rounded-[28px] border border-white/12 bg-white/8 p-2 shadow-[0_18px_48px_rgba(8,15,28,0.26)] backdrop-blur-2xl">
+          <div className="assistant-popup-composer">
+            <div className="assistant-popup-composer-shell">
               <div className="flex items-end gap-2">
                 <Textarea
                   ref={inputRef}
                   value={input}
                   onChange={event => onInputChange(event.target.value)}
                   onKeyDown={event => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       onSend();
                     }
                   }}
                   placeholder="Ask CASPO AI anything about your group…"
-                  className="max-h-36 min-h-[52px] resize-none border-0 bg-transparent px-3 py-3 text-sm leading-6 text-white placeholder:text-white/35 focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="max-h-32 min-h-[50px] resize-none border-0 bg-transparent px-3 py-3 text-sm leading-6 text-foreground placeholder:text-muted-foreground/75 focus-visible:ring-0 focus-visible:ring-offset-0"
                   autoComplete="off"
                   disabled={isSending}
                 />
@@ -230,16 +406,27 @@ export function AIChatModal({
                   type="button"
                   onClick={onSend}
                   disabled={isSending || !input.trim()}
-                  className="h-12 w-12 shrink-0 rounded-full border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(74,222,128,1),rgba(34,197,94,0.92))] p-0 text-emerald-950 shadow-[0_14px_34px_rgba(34,197,94,0.35)] hover:brightness-105"
+                  className="assistant-popup-send"
                 >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {isSending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                   <span className="sr-only">Send message</span>
                 </Button>
               </div>
             </div>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+
+        <div
+          className="assistant-popup-tail"
+          style={{ left: `${layout.tailOffset}px` }}
+          aria-hidden="true"
+        />
+      </section>
+    </>,
+    document.body
   );
 }

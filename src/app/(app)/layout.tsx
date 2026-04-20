@@ -15,6 +15,7 @@ import { NotificationsProvider } from "@/components/notifications-provider";
 import { PushNotificationClient } from "@/components/push-notifications";
 import { NotificationDeepLinkHandler } from "@/components/notification-deep-link-handler";
 import { AppRouteContentBoundary } from "@/components/app-route-content-boundary";
+import { ClubDataProvider } from "@/lib/data-hooks";
 import {
   getSelectedGroupId,
   getSelectedOrgId,
@@ -75,33 +76,35 @@ export default function AppLayout({
   }, []);
 
   return (
-    <NotificationsProvider>
-      <NotificationDeepLinkHandler />
-      <PushNotificationClient />
-      <div className="app-root app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
-        <div className="print:hidden">
-          <AppSidebar />
-        </div>
-        <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
-          <div className="shrink-0 print:hidden">
-            <AppHeader />
+    <ClubDataProvider>
+      <NotificationsProvider>
+        <NotificationDeepLinkHandler />
+        <PushNotificationClient />
+        <div className="app-root app-shell grid w-full md:grid-cols-[220px_1fr] lg:grid-cols-[280px_1fr] print:block print:md:grid-cols-1 print:lg:grid-cols-1">
+          <div className="print:hidden">
+            <AppSidebar />
           </div>
-          <main
-            className={`main-container mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col overflow-x-clip bg-background print:p-0 ${
-              isMessagesRoute
-                ? "messages-route-shell gap-0 px-0 py-0"
-                : "safe-bottom-space gap-4 px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0"
-            }`}
-          >
-            <ImportLocalData />
-            <OfflineCallout />
-            <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
-          </main>
-          <div className="shrink-0 print:hidden md:hidden">
-            <AppMobileTabBar />
+          <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
+            <div className="shrink-0 print:hidden">
+              <AppHeader />
+            </div>
+            <main
+              className={`main-container mx-auto flex w-full max-w-screen-md min-h-0 min-w-0 flex-1 flex-col overflow-x-clip bg-background print:p-0 ${
+                isMessagesRoute
+                  ? "messages-route-shell gap-0 px-0 py-0"
+                  : "safe-bottom-space gap-4 px-4 py-0 sm:max-w-none sm:px-4 sm:py-0 lg:gap-6 lg:px-6 lg:py-0"
+              }`}
+            >
+              <ImportLocalData />
+              <OfflineCallout />
+              <AppRouteContentBoundary>{children}</AppRouteContentBoundary>
+            </main>
+            <div className="shrink-0 print:hidden md:hidden">
+              <AppMobileTabBar />
+            </div>
           </div>
         </div>
-      </div>
-    </NotificationsProvider>
+      </NotificationsProvider>
+    </ClubDataProvider>
   );
 }

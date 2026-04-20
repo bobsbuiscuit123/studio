@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  createDashboardLogger,
+  createDashboardRequestId,
+  DASHBOARD_TIMEOUT_MS,
+  withTimeout,
+} from '@/lib/dashboard-load';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
@@ -12,6 +18,13 @@ import { getDefaultOrgState } from '@/lib/org-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 
 export const dynamic = 'force-dynamic';
+const apiLogger = createDashboardLogger('[Dashboard][API]');
+const getRequestId = (request: Request) =>
+  request.headers.get('x-request-id') || createDashboardRequestId('org-state');
+const getErrorStatus = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 504 : 500;
+const getErrorCode = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 'NETWORK_TIMEOUT' : 'NETWORK_HTTP_ERROR';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const uniqueStrings = (values: unknown[]) =>
@@ -949,6 +962,7 @@ const collectFormPushJobs = async ({
 };
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request);
   const ip = getRequestIp(request.headers);
   const limiter = rateLimit(`org-state:${ip}`, 60, 60_000);
   if (!limiter.allowed) {
@@ -983,166 +997,247 @@ export async function GET(request: Request) {
     );
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  if (!userData.user) {
-    return NextResponse.json(
-      err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
-      { status: 401, headers: getRateLimitHeaders(limiter) }
+  apiLogger.log('Org state load start', {
+    groupId: parsed.data.groupId,
+    includeMedia,
+    orgId: parsed.data.orgId,
+    requestId,
+  });
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: userData } = await withTimeout(
+      () => supabase.auth.getUser(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Org state auth lookup' }
     );
-  }
+    if (!userData.user) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'Unauthorized.', source: 'app' }),
+        { status: 401, headers: getRateLimitHeaders(limiter) }
+      );
+    }
 
-  const userLimiter = rateLimit(`org-state-read-user:${userData.user.id}`, 180, 60_000);
-  if (!userLimiter.allowed) {
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: 'Too many requests. Please slow down.',
-        source: 'network',
-      }),
-      { status: 429, headers: getRateLimitHeaders(userLimiter) }
-    );
-  }
-
-  const { data: membership } = await supabase
-    .from('group_memberships')
-    .select('role')
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', userData.user.id)
-    .maybeSingle();
-  if (!membership) {
-    return NextResponse.json(
-      err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
-      { status: 403, headers: getRateLimitHeaders(limiter) }
-    );
-  }
-
-  const admin = createSupabaseAdmin();
-  const { data: existingState, error } = await admin
-    .from('group_state')
-    .select('data')
-    .eq('group_id', parsed.data.groupId)
-    .eq('org_id', parsed.data.orgId)
-    .maybeSingle();
-
-  if (error) {
-    return NextResponse.json(
-      err({
-        code: 'NETWORK_HTTP_ERROR',
-        message: error.message,
-        source: 'network',
-      }),
-      { status: 500, headers: getRateLimitHeaders(limiter) }
-    );
-  }
-
-  if (!existingState?.data) {
-    console.warn('group_state GET missing row', {
-      userId: userData.user.id,
-      orgId: parsed.data.orgId,
-      groupId: parsed.data.groupId,
-    });
-
-    const { data: membershipRows, error: membershipRowsError } = await admin
-      .from('group_memberships')
-      .select('user_id, role')
-      .eq('org_id', parsed.data.orgId)
-      .eq('group_id', parsed.data.groupId);
-
-    if (membershipRowsError) {
+    const userLimiter = rateLimit(`org-state-read-user:${userData.user.id}`, 180, 60_000);
+    if (!userLimiter.allowed) {
       return NextResponse.json(
         err({
           code: 'NETWORK_HTTP_ERROR',
-          message: membershipRowsError.message,
+          message: 'Too many requests. Please slow down.',
+          source: 'network',
+        }),
+        { status: 429, headers: getRateLimitHeaders(userLimiter) }
+      );
+    }
+
+    const { data: membership, error: membershipError } = await withTimeout(
+      () =>
+        supabase
+          .from('group_memberships')
+          .select('role')
+          .eq('group_id', parsed.data.groupId)
+          .eq('user_id', userData.user.id)
+          .maybeSingle(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Org state membership lookup' }
+    );
+    if (membershipError) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: membershipError.message,
+          source: 'network',
+        }),
+        { status: 500, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+    if (!membership) {
+      return NextResponse.json(
+        err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
+        { status: 403, headers: getRateLimitHeaders(limiter) }
+      );
+    }
+
+    const admin = createSupabaseAdmin();
+    const { data: existingState, error } = await withTimeout(
+      () =>
+        admin
+          .from('group_state')
+          .select('data')
+          .eq('group_id', parsed.data.groupId)
+          .eq('org_id', parsed.data.orgId)
+          .maybeSingle(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Org state row lookup' }
+    );
+
+    if (error) {
+      return NextResponse.json(
+        err({
+          code: 'NETWORK_HTTP_ERROR',
+          message: error.message,
           source: 'network',
         }),
         { status: 500, headers: getRateLimitHeaders(limiter) }
       );
     }
 
-    const memberIds = (membershipRows ?? [])
-      .map(row => row.user_id)
-      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+    if (!existingState?.data) {
+      apiLogger.warn('Org state missing row, attempting repair', {
+        groupId: parsed.data.groupId,
+        orgId: parsed.data.orgId,
+        requestId,
+        userId: userData.user.id,
+      });
 
-    const profileById = new Map<
-      string,
-      { email?: string | null; display_name?: string | null; avatar_url?: string | null }
-    >();
+      const { data: membershipRows, error: membershipRowsError } = await withTimeout(
+        () =>
+          admin
+            .from('group_memberships')
+            .select('user_id, role')
+            .eq('org_id', parsed.data.orgId)
+            .eq('group_id', parsed.data.groupId),
+        DASHBOARD_TIMEOUT_MS,
+        { label: 'Org state repair membership lookup' }
+      );
 
-    if (memberIds.length > 0) {
-      const { data: profileRows, error: profileRowsError } = await admin
-        .from('profiles')
-        .select('id, email, display_name, avatar_url')
-        .in('id', memberIds);
-
-      if (profileRowsError) {
+      if (membershipRowsError) {
         return NextResponse.json(
           err({
             code: 'NETWORK_HTTP_ERROR',
-            message: profileRowsError.message,
+            message: membershipRowsError.message,
             source: 'network',
           }),
           { status: 500, headers: getRateLimitHeaders(limiter) }
         );
       }
 
-      (profileRows ?? []).forEach(profile => {
-        profileById.set(profile.id, {
-          email: profile.email,
-          display_name: profile.display_name,
-          avatar_url: profile.avatar_url,
+      const memberIds = (membershipRows ?? [])
+        .map(row => row.user_id)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+      const profileById = new Map<
+        string,
+        { email?: string | null; display_name?: string | null; avatar_url?: string | null }
+      >();
+
+      if (memberIds.length > 0) {
+        const { data: profileRows, error: profileRowsError } = await withTimeout(
+          () =>
+            admin
+              .from('profiles')
+              .select('id, email, display_name, avatar_url')
+              .in('id', memberIds),
+          DASHBOARD_TIMEOUT_MS,
+          { label: 'Org state repair profile lookup' }
+        );
+
+        if (profileRowsError) {
+          return NextResponse.json(
+            err({
+              code: 'NETWORK_HTTP_ERROR',
+              message: profileRowsError.message,
+              source: 'network',
+            }),
+            { status: 500, headers: getRateLimitHeaders(limiter) }
+          );
+        }
+
+        (profileRows ?? []).forEach(profile => {
+          profileById.set(profile.id, {
+            email: profile.email,
+            display_name: profile.display_name,
+            avatar_url: profile.avatar_url,
+          });
         });
-      });
-    }
+      }
 
-    const repairedData = {
-      ...getDefaultOrgState(),
-      members: (membershipRows ?? []).map(row => {
-        const profile = profileById.get(row.user_id);
-        const name = profile?.display_name || profile?.email || 'Member';
-        return {
-          id: row.user_id,
-          name,
-          email: profile?.email || '',
-          role: displayGroupRole(row.role),
-          avatar: profile?.avatar_url || getPlaceholderImageUrl({ label: name.charAt(0) || 'M' }),
-        };
-      }),
-    };
-
-    const { error: repairError } = await admin
-      .from('group_state')
-      .upsert(
-        {
-          org_id: parsed.data.orgId,
-          group_id: parsed.data.groupId,
-          data: repairedData,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'group_id' }
-      );
-
-    if (repairError) {
-      return NextResponse.json(
-        err({
-          code: 'NETWORK_HTTP_ERROR',
-          message: repairError.message,
-          source: 'network',
+      const repairedData = {
+        ...getDefaultOrgState(),
+        members: (membershipRows ?? []).map(row => {
+          const profile = profileById.get(row.user_id);
+          const name = profile?.display_name || profile?.email || 'Member';
+          return {
+            id: row.user_id,
+            name,
+            email: profile?.email || '',
+            role: displayGroupRole(row.role),
+            avatar: profile?.avatar_url || getPlaceholderImageUrl({ label: name.charAt(0) || 'M' }),
+          };
         }),
-        { status: 500, headers: getRateLimitHeaders(limiter) }
+      };
+
+      const { error: repairError } = await withTimeout(
+        () =>
+          admin
+            .from('group_state')
+            .upsert(
+              {
+                org_id: parsed.data.orgId,
+                group_id: parsed.data.groupId,
+                data: repairedData,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'group_id' }
+            ),
+        DASHBOARD_TIMEOUT_MS,
+        { label: 'Org state repair upsert' }
+      );
+
+      if (repairError) {
+        return NextResponse.json(
+          err({
+            code: 'NETWORK_HTTP_ERROR',
+            message: repairError.message,
+            source: 'network',
+          }),
+          { status: 500, headers: getRateLimitHeaders(limiter) }
+        );
+      }
+
+      apiLogger.log('Org state load success', {
+        groupId: parsed.data.groupId,
+        mode: 'repaired',
+        orgId: parsed.data.orgId,
+        requestId,
+      });
+
+      return NextResponse.json(
+        { ok: true, data: includeMedia ? repairedData : stripHeavyMediaFromOrgState(repairedData) },
+        { headers: getRateLimitHeaders(limiter) }
       );
     }
+
+    apiLogger.log('Org state load success', {
+      groupId: parsed.data.groupId,
+      mode: 'existing',
+      orgId: parsed.data.orgId,
+      requestId,
+    });
 
     return NextResponse.json(
-      { ok: true, data: includeMedia ? repairedData : stripHeavyMediaFromOrgState(repairedData) },
+      { ok: true, data: includeMedia ? existingState.data : stripHeavyMediaFromOrgState(existingState.data) },
       { headers: getRateLimitHeaders(limiter) }
     );
+  } catch (error) {
+    apiLogger.error('Org state load failed', error, {
+      groupId: parsed.data.groupId,
+      includeMedia,
+      orgId: parsed.data.orgId,
+      requestId,
+    });
+    return NextResponse.json(
+      err({
+        code: getErrorCode(error),
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Group content could not be loaded.',
+        source: 'network',
+      }),
+      { status: getErrorStatus(error), headers: getRateLimitHeaders(limiter) }
+    );
   }
-
-  return NextResponse.json(
-    { ok: true, data: includeMedia ? existingState.data : stripHeavyMediaFromOrgState(existingState.data) },
-    { headers: getRateLimitHeaders(limiter) }
-  );
 }
 
 export async function POST(request: Request) {

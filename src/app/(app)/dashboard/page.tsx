@@ -5,10 +5,12 @@ import Link from "next/link";
 import React from "react";
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   CalendarDays,
   Megaphone,
   Network,
+  RefreshCw,
   Sparkles,
   UsersRound,
 } from "lucide-react";
@@ -20,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -38,18 +41,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import {
-  useMembers,
-  useEvents,
-  useAnnouncements,
-  useGalleryImages,
-  useMessages,
-  useGroupChats,
-  useTransactions,
-  usePointEntries,
-  useForms,
-  useSocialPosts,
+  useClubData,
   useCurrentUser,
-  useCurrentUserRole,
 } from "@/lib/data-hooks";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -71,7 +64,17 @@ import {
   routeFromNotification,
   type AppNotification,
 } from "@/lib/notification-routing";
+import {
+  createDashboardLogger,
+  DASHBOARD_SLOW_LOAD_MS,
+  DASHBOARD_WATCHDOG_MS,
+  type DashboardAsyncStatus,
+} from "@/lib/dashboard-load";
+import { resolveDashboardStatus } from "@/lib/dashboard-status";
+import { canEditGroupContent } from "@/lib/group-permissions";
 import { getSelectedOrgId } from "@/lib/selection";
+import { getDefaultOrgState } from "@/lib/org-state";
+import { getRoleFromMembers } from "@/lib/notification-state";
 
 type ActivityItem = {
   type: string;
@@ -106,6 +109,7 @@ const DEFAULT_DASHBOARD_STATE: DashboardStoredState = {
   missedSnapshot: createEmptyGroupActivitySnapshot(),
   missedSummaryCache: null,
 };
+const dashboardLogger = createDashboardLogger();
 
 const typewriterText = ({
   text,
@@ -134,24 +138,37 @@ const toDate = (value?: string | Date | null) => {
 };
 
 export default function Dashboard() {
-  const { data: members, loading: membersLoading, clubId } = useMembers();
-  const { data: events, loading: eventsLoading } = useEvents();
-  const { data: announcements, loading: announcementsLoading } = useAnnouncements();
-  const { data: socialPosts, loading: socialPostsLoading } = useSocialPosts();
-  const { data: forms, loading: formsLoading } = useForms();
-  const { data: galleryImages, loading: galleryLoading } = useGalleryImages();
-  const { data: messages, loading: messagesLoading } = useMessages();
-  const { data: groupChats, loading: groupChatsLoading } = useGroupChats();
-  const { data: transactions, loading: transactionsLoading } = useTransactions();
-  const { data: pointEntries, loading: pointsLoading } = usePointEntries();
-  const { user, loading: userLoading } = useCurrentUser();
-  const { canEditContent, loading: roleLoading } = useCurrentUserRole();
+  const defaultClubData = useMemo(() => getDefaultOrgState(), []);
+  const {
+    clubId,
+    data: clubData,
+    error: clubDataError,
+    status: clubDataStatus,
+    retry: retryClubData,
+    startedAt: clubDataStartedAt,
+  } = useClubData();
+  const {
+    user,
+    status: userStatus,
+    error: userError,
+    retry: retryUser,
+  } = useCurrentUser();
   const {
     groupSessionEntrySnapshot,
     groupSessionReady,
     groupSessionStartedAt,
     sessionViewedRoutes,
   } = useNotificationsContext();
+  const members = clubData?.members ?? defaultClubData.members;
+  const events = clubData?.events ?? defaultClubData.events;
+  const announcements = clubData?.announcements ?? defaultClubData.announcements;
+  const socialPosts = clubData?.socialPosts ?? defaultClubData.socialPosts;
+  const forms = clubData?.forms ?? defaultClubData.forms;
+  const galleryImages = clubData?.galleryImages ?? defaultClubData.galleryImages;
+  const messages = clubData?.messages ?? defaultClubData.messages;
+  const groupChats = clubData?.groupChats ?? defaultClubData.groupChats;
+  const transactions = clubData?.transactions ?? defaultClubData.transactions;
+  const pointEntries = clubData?.pointEntries ?? defaultClubData.pointEntries;
   const selectedOrgId = getSelectedOrgId();
   const buildEntityHref = (notification: AppNotification | null, fallbackHref: string) =>
     notification ? buildNotificationHref(routeFromNotification(notification)) : fallbackHref;
@@ -173,22 +190,78 @@ export default function Dashboard() {
   const [missedDismissed, setMissedDismissed] = React.useState(false);
   const [missedTypingStart, setMissedTypingStart] = React.useState(0);
   const [missedNow, setMissedNow] = React.useState(() => Date.now());
+  const [pageError, setPageError] = React.useState<string | null>(null);
+  const [slowLoading, setSlowLoading] = React.useState(false);
   const { data: dashboardState, updateData: updateDashboardState } =
     useGroupUserStateSection<DashboardStoredState>("dashboard", DEFAULT_DASHBOARD_STATE);
+  const role = useMemo(
+    () => getRoleFromMembers(Array.isArray(members) ? members : [], user?.email),
+    [members, user?.email]
+  );
+  const canEditContent = canEditGroupContent(role?.toLowerCase() ?? null);
 
   const hasClub = Boolean(clubId);
-  const isAuthLoading = userLoading || roleLoading;
-  const isDataLoading =
-    membersLoading ||
-    eventsLoading ||
-    announcementsLoading ||
-    socialPostsLoading ||
-    formsLoading ||
-    galleryLoading ||
-    messagesLoading ||
-    groupChatsLoading ||
-    transactionsLoading ||
-    pointsLoading;
+  const hasStaleDashboardData = Boolean(clubData);
+  const blockingLoad = !hasStaleDashboardData && (userStatus === "loading" || clubDataStatus === "loading");
+  const dashboardErrorMessage = pageError || clubDataError || userError;
+  const showRetryingBanner =
+    hasStaleDashboardData && (clubDataStatus === "retrying" || userStatus === "retrying");
+  const showErrorBanner =
+    hasStaleDashboardData && Boolean(dashboardErrorMessage) && !showRetryingBanner;
+  const dashboardStatus: DashboardAsyncStatus = useMemo(() => {
+    return resolveDashboardStatus({
+      clubDataStatus,
+      hasClub,
+      hasStaleDashboardData,
+      pageError,
+      userStatus,
+    });
+  }, [clubDataStatus, hasClub, hasStaleDashboardData, pageError, userStatus]);
+  const retryDashboard = React.useCallback(async () => {
+    setPageError(null);
+    dashboardLogger.log("Dashboard retry requested", {
+      clubId,
+      clubDataStatus,
+      userStatus,
+    });
+    await Promise.all([retryUser(), retryClubData()]);
+  }, [clubDataStatus, clubId, retryClubData, retryUser, userStatus]);
+
+  useEffect(() => {
+    setPageError(null);
+  }, [clubId]);
+
+  useEffect(() => {
+    if (!blockingLoad) {
+      setSlowLoading(false);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      dashboardLogger.warn("Dashboard load is still pending", {
+        clubId,
+        clubDataStatus,
+        startedAt: clubDataStartedAt,
+        userStatus,
+      });
+      setSlowLoading(true);
+    }, DASHBOARD_SLOW_LOAD_MS);
+    return () => clearTimeout(timeout);
+  }, [blockingLoad, clubDataStartedAt, clubDataStatus, clubId, userStatus]);
+
+  useEffect(() => {
+    if (dashboardStatus !== "loading" && dashboardStatus !== "retrying") {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      dashboardLogger.error("Dashboard load watchdog forced error", new Error("Dashboard watchdog timeout"), {
+        clubId,
+        clubDataStatus,
+        userStatus,
+      });
+      setPageError("Dashboard took too long to load. Please try again.");
+    }, DASHBOARD_WATCHDOG_MS);
+    return () => clearTimeout(timeout);
+  }, [clubDataStatus, clubId, dashboardStatus, userStatus]);
 
   useEffect(() => {
     if (!missedOpen || missedLoading) return;
@@ -644,23 +717,7 @@ export default function Dashboard() {
       : "View";
 
   useEffect(() => {
-    if (
-      membersLoading ||
-      eventsLoading ||
-      announcementsLoading ||
-      socialPostsLoading ||
-      formsLoading ||
-      galleryLoading ||
-      messagesLoading ||
-      groupChatsLoading ||
-      transactionsLoading ||
-      pointsLoading ||
-      userLoading ||
-      roleLoading ||
-      !groupSessionReady ||
-      !clubId ||
-      !user?.email
-    ) {
+    if (dashboardStatus !== "success" || !groupSessionReady || !clubId || !user?.email) {
       return;
     }
     if (missedDismissed) {
@@ -760,115 +817,114 @@ export default function Dashboard() {
     }
   }, [
     announcements,
-    announcementsLoading,
     clubId,
     currentMissedSnapshot,
+    dashboardStatus,
     dashboardState.missedLastSeenAt,
     dashboardState.shownMissedActivityKeys,
     dashboardState.missedSnapshot,
     dashboardState.missedSummaryCache,
     dashboardState.lastMissedContextVersionShown,
     events,
-    eventsLoading,
     forms,
     members,
-    formsLoading,
-    galleryLoading,
     groupChats,
-    groupChatsLoading,
     groupSessionEntrySnapshot,
     groupSessionReady,
     groupSessionStartedAt,
-    membersLoading,
     messages,
-    messagesLoading,
     missedOpen,
-    pointsLoading,
-    roleLoading,
     sessionViewedRoutes,
-    socialPostsLoading,
-    transactionsLoading,
     updateDashboardState,
     user?.email,
-    userLoading,
   ]);
 
-  if (isAuthLoading) {
+  if (dashboardStatus === "empty") {
     return (
       <div className="tab-page-shell">
         <div className="tab-page-content">
-      <div className="flex flex-col gap-4 pt-2 md:gap-8">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-          <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-          <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="h-3 w-20 mt-1" /></CardContent></Card>
-          <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-          <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-        </div>
-        <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-          <Card className="xl:col-span-2">
-            <CardHeader><CardTitle>New Members</CardTitle><CardDescription>Recently joined members.</CardDescription></CardHeader>
-            <CardContent><Skeleton className="h-48 w-full" /></CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Upcoming Events</CardTitle><CardDescription>Don't miss these events.</CardDescription></CardHeader>
-            <CardContent className="grid gap-8"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent>
-          </Card>
-        </div>
-      </div>
+          <div className="flex flex-col gap-6 pt-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>No group selected</CardTitle>
+                <CardDescription>
+                  Choose a group to view your dashboard, or create/join a new one.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button asChild>
+                  <Link href="/">Go to group selection</Link>
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/clubs">Your groups</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!hasClub) {
+  if (dashboardStatus === "loading" || dashboardStatus === "retrying") {
     return (
       <div className="tab-page-shell">
         <div className="tab-page-content">
-      <div className="flex flex-col gap-6 pt-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>No group selected</CardTitle>
-            <CardDescription>
-              Choose a group to view your dashboard, or create/join a new one.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
-            <Button asChild>
-              <Link href="/">Go to group selection</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/clubs">Your groups</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          <div className="flex flex-col gap-4 pt-2 md:gap-8">
+            {slowLoading ? (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Still loading…</AlertTitle>
+                <AlertDescription>
+                  We&apos;re still waiting on the dashboard data. If this takes much longer, the page will switch to an error state with a retry button.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
+              <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="mt-1 h-3 w-32" /></CardContent></Card>
+              <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="mt-1 h-3 w-20" /></CardContent></Card>
+              <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="mt-1 h-3 w-32" /></CardContent></Card>
+              <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="mt-1 h-3 w-32" /></CardContent></Card>
+            </div>
+            <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
+              <Card className="xl:col-span-2">
+                <CardHeader><CardTitle>New Members</CardTitle><CardDescription>Recently joined members.</CardDescription></CardHeader>
+                <CardContent><Skeleton className="h-48 w-full" /></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Upcoming Events</CardTitle><CardDescription>Don&apos;t miss these events.</CardDescription></CardHeader>
+                <CardContent className="grid gap-8"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (isDataLoading) {
+  if (dashboardStatus === "error" && !hasStaleDashboardData) {
     return (
       <div className="tab-page-shell">
         <div className="tab-page-content">
-       <div className="flex flex-col gap-4 pt-2 md:gap-8">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
-        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-12" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-32" /><Skeleton className="h-3 w-20 mt-1" /></CardContent></Card>
-        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-        <Card><CardHeader><Skeleton className="h-4 w-24" /></CardHeader><CardContent><Skeleton className="h-8 w-24" /><Skeleton className="h-3 w-32 mt-1" /></CardContent></Card>
-      </div>
-      <div className="grid gap-4 md:gap-8 lg:grid-cols-2 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader><CardTitle>New Members</CardTitle><CardDescription>Recently joined members.</CardDescription></CardHeader>
-          <CardContent><Skeleton className="h-48 w-full" /></CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Upcoming Events</CardTitle><CardDescription>Don't miss these events.</CardDescription></CardHeader>
-          <CardContent className="grid gap-8"><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /><Skeleton className="h-16 w-full" /></CardContent>
-        </Card>
-      </div>
-    </div>
+          <div className="flex flex-col gap-6 pt-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Dashboard couldn&apos;t load</CardTitle>
+                <CardDescription>
+                  {dashboardErrorMessage || "Something went wrong while loading the dashboard."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center gap-3">
+                <Button onClick={() => void retryDashboard()}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Retry
+                </Button>
+                <Button asChild variant="outline">
+                  <Link href="/clubs">Back to groups</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     );
@@ -1008,6 +1064,27 @@ export default function Dashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showRetryingBanner ? (
+        <Alert>
+          <RefreshCw className="h-4 w-4 animate-spin" />
+          <AlertTitle>Refreshing dashboard data</AlertTitle>
+          <AlertDescription>
+            Showing the latest data we have while we retry the background refresh.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {showErrorBanner ? (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Some dashboard data may be stale</AlertTitle>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            <span>{dashboardErrorMessage}</span>
+            <Button size="sm" variant="outline" onClick={() => void retryDashboard()}>
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       <AIInsights
         clubId={clubId}
         userId={user?.email}

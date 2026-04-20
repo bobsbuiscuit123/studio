@@ -1,9 +1,27 @@
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+    createElement,
+    createContext,
+    useState,
+    useEffect,
+    useCallback,
+    useContext,
+    useMemo,
+    useRef,
+    type ReactNode,
+} from 'react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { usePathname } from 'next/navigation';
 import { useCurrentUser } from '@/lib/current-user';
+import {
+    createDashboardLogger,
+    createDashboardRequestId,
+    DASHBOARD_RETRY_DELAYS_MS,
+    DASHBOARD_WATCHDOG_MS,
+    type DashboardAsyncStatus,
+    retryWithBackoff,
+} from '@/lib/dashboard-load';
 import {
     createSupabaseBrowserClient,
     getBrowserSessionWithTimeout,
@@ -53,6 +71,7 @@ type ClubData = {
     logo: string;
     mindmap: MindMapData;
 };
+type ClubDataStatus = DashboardAsyncStatus;
 
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const isDemoRoute = () =>
@@ -103,6 +122,7 @@ const groupStateRequestCache = new Map<string, Promise<ClubData>>();
 const groupStateFetchedAtCache = new Map<string, number>();
 const groupStateIncludesMediaCache = new Map<string, boolean>();
 const GROUP_STATE_REFRESH_TTL_MS = 5 * 60_000;
+const clubDataLogger = createDashboardLogger();
 
 const getGroupStateCacheKey = (orgId: string, groupId: string) => `${orgId}:${groupId}`;
 const routeNeedsMedia = (pathname?: string | null) => {
@@ -198,35 +218,107 @@ const dispatchGroupStateSync = (orgId: string, groupId: string) => {
 
 type GroupStateResponse = { ok: true; data: ClubData | null };
 
+type ClubDataStoreValue = {
+    clubId: string | null;
+    orgId: string | null;
+    data: ClubData | null;
+    error: string | null;
+    status: ClubDataStatus;
+    loading: boolean;
+    attempt: number;
+    startedAt: number | null;
+    lastSuccessAt: number | null;
+    requestId: string | null;
+    updateClubData: (
+        nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData),
+        options?: {
+            deletedIds?: GroupStateDeletionMap;
+            optimisticData?: ClubData;
+        }
+    ) => Promise<boolean>;
+    refreshData: () => Promise<boolean>;
+    retry: () => Promise<boolean>;
+    setLocalClubData: (nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => boolean;
+};
+
+const ClubDataContext = createContext<ClubDataStoreValue | null>(null);
+
+const summarizeClubData = (data: ClubData | null | undefined) => ({
+    announcements: Array.isArray(data?.announcements) ? data.announcements.length : 0,
+    events: Array.isArray(data?.events) ? data.events.length : 0,
+    forms: Array.isArray(data?.forms) ? data.forms.length : 0,
+    galleryImages: Array.isArray(data?.galleryImages) ? data.galleryImages.length : 0,
+    groupChats: Array.isArray(data?.groupChats) ? data.groupChats.length : 0,
+    members: Array.isArray(data?.members) ? data.members.length : 0,
+    pointEntries: Array.isArray(data?.pointEntries) ? data.pointEntries.length : 0,
+    socialPosts: Array.isArray(data?.socialPosts) ? data.socialPosts.length : 0,
+    transactions: Array.isArray(data?.transactions) ? data.transactions.length : 0,
+});
+
 async function fetchGroupStateFromServer(
   orgId: string,
   groupId: string,
-  options: { includeMedia?: boolean } = {}
+  options: { includeMedia?: boolean; signal?: AbortSignal; requestId?: string | null } = {}
 ) {
   const params = new URLSearchParams({ orgId, groupId });
   if (options.includeMedia) {
     params.set('media', '1');
   }
+  clubDataLogger.log('Fetch group state start', {
+    groupId,
+    includeMedia: Boolean(options.includeMedia),
+    orgId,
+    requestId: options.requestId ?? null,
+  });
   const response = await safeFetchJson<GroupStateResponse>(`/api/org-state?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store',
-    timeoutMs: 10_000,
-    retry: { retries: 1 },
+    timeoutMs: 8_000,
+    retry: { retries: 0 },
+    requestId: options.requestId ?? undefined,
+    signal: options.signal,
   });
   if (!response.ok) {
+    clubDataLogger.error('Fetch group state failed', response.error, {
+      groupId,
+      includeMedia: Boolean(options.includeMedia),
+      orgId,
+      requestId: options.requestId ?? null,
+    });
     throw new Error(response.error.message || 'Group content could not be loaded.');
   }
   if (!response.data.data) {
+    clubDataLogger.warn('Fetch group state returned empty payload', {
+      groupId,
+      includeMedia: Boolean(options.includeMedia),
+      orgId,
+      requestId: options.requestId ?? null,
+    });
     throw new Error('Group content response was empty.');
   }
 
-  return normalizeClubData(response.data.data);
+  const normalized = normalizeClubData(response.data.data);
+  clubDataLogger.log('Fetch group state success', {
+    groupId,
+    includeMedia: Boolean(options.includeMedia),
+    orgId,
+    requestId: options.requestId ?? null,
+    summary: summarizeClubData(normalized),
+  });
+
+  return normalized;
 }
 
 async function requestGroupState(
   orgId: string,
   groupId: string,
-  options: { forceFresh?: boolean; bypassCache?: boolean; includeMedia?: boolean } = {}
+  options: {
+    forceFresh?: boolean;
+    bypassCache?: boolean;
+    includeMedia?: boolean;
+    signal?: AbortSignal;
+    requestId?: string | null;
+  } = {}
 ) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
   const requestCacheKey = `${cacheKey}:${options.includeMedia ? 'media' : 'lite'}`;
@@ -246,7 +338,9 @@ async function requestGroupState(
     return cached;
   }
 
-  if (!options.forceFresh) {
+  const canReusePendingRequest = !options.forceFresh && !options.signal;
+
+  if (canReusePendingRequest) {
     const pending = groupStateRequestCache.get(requestCacheKey);
     if (pending) {
       return pending;
@@ -262,6 +356,8 @@ async function requestGroupState(
     try {
       const normalized = await fetchGroupStateFromServer(orgId, groupId, {
         includeMedia: options.includeMedia,
+        requestId: options.requestId,
+        signal: options.signal,
       });
       const merged = reconcileClubData(groupStateCache.get(cacheKey), normalized);
       groupStateCache.set(cacheKey, merged);
@@ -273,17 +369,23 @@ async function requestGroupState(
     }
   })();
 
-  groupStateRequestCache.set(requestCacheKey, request);
+  if (canReusePendingRequest) {
+    groupStateRequestCache.set(requestCacheKey, request);
+  }
   try {
     return await request;
   } finally {
-    if (groupStateRequestCache.get(requestCacheKey) === request) {
+    if (canReusePendingRequest && groupStateRequestCache.get(requestCacheKey) === request) {
       groupStateRequestCache.delete(requestCacheKey);
     }
   }
 }
 
-async function loadGroupState(orgId: string, groupId: string, options: { includeMedia?: boolean } = {}) {
+async function loadGroupState(
+  orgId: string,
+  groupId: string,
+  options: { includeMedia?: boolean; signal?: AbortSignal; requestId?: string | null } = {}
+) {
   const cacheKey = getGroupStateCacheKey(orgId, groupId);
   const cached = groupStateCache.get(cacheKey);
   const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
@@ -297,51 +399,72 @@ async function loadGroupState(orgId: string, groupId: string, options: { include
 async function fetchFreshGroupState(
   orgId: string,
   groupId: string,
-  options: { includeMedia?: boolean; bypassCache?: boolean } = {}
+  options: {
+    includeMedia?: boolean;
+    bypassCache?: boolean;
+    signal?: AbortSignal;
+    requestId?: string | null;
+  } = {}
 ) {
   return requestGroupState(orgId, groupId, { forceFresh: true, ...options });
 }
 
-function useClubDataStore() {
+function useClubDataStoreState(): ClubDataStoreValue {
     const pathname = usePathname();
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const includeMedia = routeNeedsMedia(pathname);
-    const [clubId, setClubId] = useState<string | null>(() =>
-        useDemo || typeof window === 'undefined' ? null : getSelectedGroupId()
+    const initialOrgId = useDemo || typeof window === 'undefined' ? null : getSelectedOrgId();
+    const initialClubId = useDemo || typeof window === 'undefined' ? null : getSelectedGroupId();
+    const initialCacheKey =
+        initialOrgId && initialClubId ? getGroupStateCacheKey(initialOrgId, initialClubId) : null;
+    const initialCachedData = initialCacheKey ? groupStateCache.get(initialCacheKey) ?? null : null;
+    const initialHasSelection = Boolean(initialOrgId && initialClubId);
+    const initialHasUsableCache = Boolean(
+        initialCachedData &&
+            (!includeMedia || groupStateIncludesMediaCache.get(initialCacheKey ?? '') === true)
     );
-    const [orgId, setOrgId] = useState<string | null>(() =>
-        useDemo || typeof window === 'undefined' ? null : getSelectedOrgId()
-    );
+
+    const [clubId, setClubId] = useState<string | null>(initialClubId);
+    const [orgId, setOrgId] = useState<string | null>(initialOrgId);
     const [data, setData] = useState<ClubData | null>(() => {
-        if (useDemo || typeof window === 'undefined') {
-            return null;
+        if (useDemo && demoCtx) {
+            return demoCtx.clubData as ClubData;
         }
-        const initialOrgId = getSelectedOrgId();
-        const initialClubId = getSelectedGroupId();
-        if (!initialOrgId || !initialClubId) {
-            return null;
-        }
-        return groupStateCache.get(getGroupStateCacheKey(initialOrgId, initialClubId)) ?? null;
+        return initialCachedData;
     });
-    const [loading, setLoading] = useState(() => {
-        if (useDemo || typeof window === 'undefined') {
-            return true;
+    const [status, setStatus] = useState<ClubDataStatus>(() => {
+        if (useDemo && demoCtx) {
+            return 'success';
         }
-        const initialOrgId = getSelectedOrgId();
-        const initialClubId = getSelectedGroupId();
-        if (!initialOrgId || !initialClubId) {
-            return false;
+        if (!initialHasSelection) {
+            return 'empty';
         }
-        const cacheKey = getGroupStateCacheKey(initialOrgId, initialClubId);
-        return (
-            !groupStateCache.has(cacheKey) ||
-            (includeMedia && groupStateIncludesMediaCache.get(cacheKey) !== true)
-        );
+        return initialHasUsableCache ? 'success' : 'loading';
     });
     const [error, setError] = useState<string | null>(null);
+    const [attempt, setAttempt] = useState(0);
+    const [startedAt, setStartedAt] = useState<number | null>(
+        initialHasSelection && !initialHasUsableCache ? Date.now() : null
+    );
+    const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(
+        initialHasUsableCache ? Date.now() : null
+    );
+    const [requestId, setRequestId] = useState<string | null>(null);
     const [authReady, setAuthReady] = useState(() => useDemo || typeof window === 'undefined');
     const supabase = useMemo(() => (useDemo ? null : createSupabaseBrowserClient()), [useDemo]);
+    const activeAbortRef = useRef<AbortController | null>(null);
+    const activeRequestIdRef = useRef<string | null>(null);
+    const statusRef = useRef<ClubDataStatus>(status);
+    const dataRef = useRef<ClubData | null>(data);
+
+    useEffect(() => {
+        statusRef.current = status;
+    }, [status]);
+
+    useEffect(() => {
+        dataRef.current = data;
+    }, [data]);
 
     useEffect(() => {
         if (useDemo || !supabase) {
@@ -381,52 +504,232 @@ function useClubDataStore() {
     useEffect(() => {
         if (useDemo) return;
         if (typeof window === 'undefined') return;
-        setClubId(getSelectedGroupId());
-        setOrgId(getSelectedOrgId());
+        const syncSelection = () => {
+            setClubId(getSelectedGroupId());
+            setOrgId(getSelectedOrgId());
+        };
+        syncSelection();
+        window.addEventListener('storage', syncSelection);
+        window.addEventListener('focus', syncSelection);
+        window.addEventListener('popstate', syncSelection);
+        return () => {
+            window.removeEventListener('storage', syncSelection);
+            window.removeEventListener('focus', syncSelection);
+            window.removeEventListener('popstate', syncSelection);
+        };
     }, [useDemo]);
 
-    useEffect(() => {
-        if (useDemo || !supabase) {
-            setLoading(false);
+    const runLoad = useCallback(
+        async ({
+            reason,
+            forceFresh = false,
+            bypassCache = false,
+            keepStaleData = false,
+        }: {
+            reason: 'initial' | 'visibility' | 'sync' | 'manual-retry';
+            forceFresh?: boolean;
+            bypassCache?: boolean;
+            keepStaleData?: boolean;
+        }) => {
+            if (useDemo && demoCtx) {
+                setData(demoCtx.clubData as ClubData);
+                setStatus('success');
+                setError(null);
+                setAttempt(0);
+                setStartedAt(null);
+                setLastSuccessAt(Date.now());
+                return true;
+            }
+
+            if (!clubId || !orgId) {
+                activeAbortRef.current?.abort();
+                activeAbortRef.current = null;
+                activeRequestIdRef.current = null;
+                setData(null);
+                setError(null);
+                setStatus('empty');
+                setAttempt(0);
+                setStartedAt(null);
+                setRequestId(null);
+                return false;
+            }
+
+            if (!authReady) {
+                setError(null);
+                setStatus(dataRef.current ? 'retrying' : 'loading');
+                return false;
+            }
+
+            const cacheKey = getGroupStateCacheKey(orgId, clubId);
+            const cached = groupStateCache.get(cacheKey) ?? dataRef.current;
+            const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
+            const hasUsableCache = Boolean(cached && (!includeMedia || cachedIncludesMedia));
+
+            if (!forceFresh && hasUsableCache) {
+                setData(cached ?? null);
+                setStatus('success');
+                setError(null);
+                setAttempt(0);
+                setStartedAt(null);
+                setLastSuccessAt(groupStateFetchedAtCache.get(cacheKey) ?? Date.now());
+                clubDataLogger.log('Group state resolved from cache', {
+                    groupId: clubId,
+                    orgId,
+                    reason,
+                    summary: summarizeClubData(cached),
+                });
+                return true;
+            }
+
+            const nextRequestId = createDashboardRequestId('group-state');
+            const controller = new AbortController();
+            activeAbortRef.current?.abort();
+            activeAbortRef.current = controller;
+            activeRequestIdRef.current = nextRequestId;
+            setRequestId(nextRequestId);
+            setStartedAt(Date.now());
+            setAttempt(0);
             setError(null);
+            setStatus(keepStaleData || hasUsableCache || Boolean(dataRef.current) ? 'retrying' : 'loading');
+            if (cached && keepStaleData) {
+                setData(cached);
+            }
+
+            clubDataLogger.log('Group state load start', {
+                forceFresh,
+                groupId: clubId,
+                hasCachedData: hasUsableCache,
+                includeMedia,
+                orgId,
+                reason,
+                requestId: nextRequestId,
+            });
+
+            try {
+                const nextData = await retryWithBackoff(
+                    async (attemptIndex) => {
+                        setAttempt(attemptIndex + 1);
+                        return forceFresh
+                            ? await fetchFreshGroupState(orgId, clubId, {
+                                  bypassCache,
+                                  includeMedia,
+                                  requestId: nextRequestId,
+                                  signal: controller.signal,
+                              })
+                            : await loadGroupState(orgId, clubId, {
+                                  includeMedia,
+                                  requestId: nextRequestId,
+                                  signal: controller.signal,
+                              });
+                    },
+                    {
+                        delaysMs: DASHBOARD_RETRY_DELAYS_MS,
+                        label: 'Group state load',
+                        logger: clubDataLogger,
+                        requestId: nextRequestId,
+                        retries: DASHBOARD_RETRY_DELAYS_MS.length,
+                    }
+                );
+
+                if (controller.signal.aborted || activeRequestIdRef.current !== nextRequestId) {
+                    clubDataLogger.warn('Group state response ignored as stale', {
+                        groupId: clubId,
+                        orgId,
+                        requestId: nextRequestId,
+                    });
+                    return false;
+                }
+
+                setData(prev => {
+                    if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
+                        return prev;
+                    }
+                    return nextData;
+                });
+                setStatus('success');
+                setError(null);
+                setStartedAt(null);
+                setLastSuccessAt(Date.now());
+                clubDataLogger.log('Group state load success', {
+                    groupId: clubId,
+                    orgId,
+                    reason,
+                    requestId: nextRequestId,
+                    summary: summarizeClubData(nextData),
+                });
+                return true;
+            } catch (loadError) {
+                if (controller.signal.aborted || activeRequestIdRef.current !== nextRequestId) {
+                    clubDataLogger.warn('Group state load aborted', {
+                        groupId: clubId,
+                        orgId,
+                        requestId: nextRequestId,
+                    });
+                    return false;
+                }
+
+                const message =
+                    loadError instanceof Error && loadError.message
+                        ? loadError.message
+                        : 'Group content could not be loaded.';
+
+                clubDataLogger.error('Group state load failed', loadError, {
+                    groupId: clubId,
+                    orgId,
+                    reason,
+                    requestId: nextRequestId,
+                });
+
+                setError(message);
+                setStatus('error');
+                setStartedAt(null);
+                return false;
+            } finally {
+                if (activeRequestIdRef.current === nextRequestId) {
+                    activeAbortRef.current = null;
+                }
+            }
+        },
+        [authReady, clubId, demoCtx, includeMedia, orgId, useDemo]
+    );
+
+    useEffect(() => {
+        if (useDemo && demoCtx) {
+            setData(demoCtx.clubData as ClubData);
+            setStatus('success');
+            setError(null);
+            setStartedAt(null);
+            setLastSuccessAt(Date.now());
+            return;
+        }
+        if (!supabase) {
+            setStatus('empty');
+            setError(null);
+            setStartedAt(null);
             return;
         }
         if (!clubId || !orgId) {
+            activeAbortRef.current?.abort();
+            activeAbortRef.current = null;
+            activeRequestIdRef.current = null;
             setData(null);
-            setLoading(false);
+            setStatus('empty');
             setError(null);
+            setAttempt(0);
+            setStartedAt(null);
+            setRequestId(null);
             return;
         }
         if (!authReady) {
-            setLoading(true);
+            setStatus(dataRef.current ? 'retrying' : 'loading');
             return;
         }
-        const load = async () => {
-            const cacheKey = getGroupStateCacheKey(orgId, clubId);
-            const cached = groupStateCache.get(cacheKey);
-            const cachedIncludesMedia = groupStateIncludesMediaCache.get(cacheKey) === true;
-            if (cached && (!includeMedia || cachedIncludesMedia)) {
-                setData(cached);
-                setLoading(false);
-                setError(null);
-                return;
-            }
-            if (!cached) {
-                setData(null);
-            }
-            setLoading(true);
-            try {
-                const nextData = await loadGroupState(orgId, clubId, { includeMedia });
-                setData(nextData);
-                setError(null);
-            } catch (error) {
-                console.error(`Error loading data for group ${clubId}`, error);
-                setError(error instanceof Error ? error.message : 'Group content could not be loaded.');
-            }
-            setLoading(false);
-        };
-        load();
-    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
+
+        void runLoad({
+            reason: 'initial',
+            keepStaleData: true,
+        });
+    }, [authReady, clubId, demoCtx, orgId, runLoad, supabase, useDemo]);
 
     useEffect(() => {
         if (useDemo || !supabase || !clubId || !orgId || typeof window === 'undefined' || !authReady) {
@@ -434,52 +737,30 @@ function useClubDataStore() {
         }
 
         let cancelled = false;
-        const refreshFromBackend = async () => {
-            if (!shouldRefreshOnVisibility()) return;
-            try {
-                const nextData = await fetchFreshGroupState(orgId, clubId, { includeMedia });
-                if (!cancelled) {
-                    setError(null);
-                    setData(prev => {
-                        if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
-                            return prev;
-                        }
-                        return nextData;
-                    });
-                }
-            } catch (error) {
-                console.error(`Error refreshing data for group ${clubId}`, error);
-                if (!cancelled) {
-                    setError(error instanceof Error ? error.message : 'Group content could not be refreshed.');
-                }
-            }
+        const refreshFromBackend = async (reason: 'visibility' | 'sync') => {
+            if (reason === 'visibility' && !shouldRefreshOnVisibility()) return;
+            if (cancelled) return;
+            await runLoad({
+                reason,
+                forceFresh: true,
+                bypassCache: true,
+                keepStaleData: true,
+            });
         };
 
         const handleVisibilityChange = () => {
-            void refreshFromBackend();
+            void refreshFromBackend('visibility');
         };
         const handleGroupStateSync = (event: Event) => {
             const syncEvent = event as CustomEvent<GroupStateSyncDetail>;
             const detail = syncEvent.detail;
-            if (detail?.orgId && detail?.groupId) {
-                const eventCacheKey = getGroupStateCacheKey(detail.orgId, detail.groupId);
-                const currentCacheKey = getGroupStateCacheKey(orgId, clubId);
-                if (eventCacheKey !== currentCacheKey) {
-                    return;
-                }
-                const cached = groupStateCache.get(currentCacheKey);
-                if (cached) {
-                    setError(null);
-                    setData(prev => {
-                        if (prev && stableSerialize(prev) === stableSerialize(cached)) {
-                            return prev;
-                        }
-                        return cached;
-                    });
-                    return;
-                }
+            if (!detail?.orgId || !detail?.groupId) {
+                return;
             }
-            void refreshFromBackend();
+            if (detail.orgId !== orgId || detail.groupId !== clubId) {
+                return;
+            }
+            void refreshFromBackend('sync');
         };
 
         window.addEventListener('visibilitychange', handleVisibilityChange);
@@ -494,35 +775,63 @@ function useClubDataStore() {
             window.removeEventListener('online', handleVisibilityChange);
             window.removeEventListener('group-state-sync', handleGroupStateSync);
         };
-    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
+    }, [authReady, clubId, orgId, runLoad, supabase, useDemo]);
+
+    useEffect(() => {
+        if (status !== 'loading' && status !== 'retrying') {
+            return;
+        }
+        const pendingRequestId = activeRequestIdRef.current;
+        const timeout = setTimeout(() => {
+            if (!pendingRequestId || activeRequestIdRef.current !== pendingRequestId) {
+                return;
+            }
+            if (statusRef.current !== 'loading' && statusRef.current !== 'retrying') {
+                return;
+            }
+            activeAbortRef.current?.abort();
+            clubDataLogger.error(
+                'Group state load watchdog forced error',
+                new Error('Group state watchdog timeout'),
+                {
+                    groupId: clubId,
+                    orgId,
+                    requestId: pendingRequestId,
+                    status: statusRef.current,
+                }
+            );
+            setError('Group content is taking too long to load. Please try again.');
+            setStatus('error');
+            setStartedAt(null);
+        }, DASHBOARD_WATCHDOG_MS);
+
+        return () => clearTimeout(timeout);
+    }, [clubId, orgId, status]);
+
+    useEffect(() => {
+        return () => {
+            activeAbortRef.current?.abort();
+        };
+    }, []);
 
     const refreshData = useCallback(async () => {
         if (useDemo || !supabase || !clubId || !orgId || !authReady) return false;
-        try {
-            const nextData = await fetchFreshGroupState(orgId, clubId, {
-                includeMedia,
-                bypassCache: true,
-            });
-            setError(null);
-            setData(prev => {
-                if (prev && stableSerialize(prev) === stableSerialize(nextData)) {
-                    return prev;
-                }
-                return nextData;
-            });
-            dispatchGroupStateSync(orgId, clubId);
-            return true;
-        } catch (error) {
-            console.error(`Error refreshing data for group ${clubId}`, error);
-            setError(error instanceof Error ? error.message : 'Group content could not be refreshed.');
-            return false;
-        }
-    }, [authReady, clubId, includeMedia, orgId, supabase, useDemo]);
+        return await runLoad({
+            reason: 'manual-retry',
+            forceFresh: true,
+            bypassCache: true,
+            keepStaleData: true,
+        });
+    }, [authReady, clubId, orgId, runLoad, supabase, useDemo]);
+
+    const retry = useCallback(async () => {
+        return refreshData();
+    }, [refreshData]);
 
     const setLocalClubData = useCallback((nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => {
         if (!clubId || !orgId) return false;
         const cacheKey = getGroupStateCacheKey(orgId, clubId);
-        const baseData = groupStateCache.get(cacheKey) ?? data ?? getDefaultClubData();
+        const baseData = groupStateCache.get(cacheKey) ?? dataRef.current ?? getDefaultClubData();
         const nextData =
             typeof nextDataOrUpdater === 'function'
                 ? nextDataOrUpdater(baseData)
@@ -534,12 +843,14 @@ function useClubDataStore() {
             }
             return mergedData;
         });
+        setStatus('success');
+        setError(null);
         groupStateCache.set(cacheKey, mergedData);
         if (includeMedia) {
             groupStateIncludesMediaCache.set(cacheKey, true);
         }
         return true;
-    }, [clubId, data, includeMedia, orgId]);
+    }, [clubId, includeMedia, orgId]);
 
     const updateClubData = useCallback(
         async (
@@ -552,14 +863,14 @@ function useClubDataStore() {
             if (useDemo && demoCtx) {
                 const resolvedData =
                     typeof nextDataOrUpdater === 'function'
-                        ? nextDataOrUpdater(data ?? getDefaultClubData())
+                        ? nextDataOrUpdater(dataRef.current ?? getDefaultClubData())
                         : nextDataOrUpdater;
                 demoCtx.updateClubData(resolvedData);
                 return true;
             }
             if (!clubId || !orgId || !supabase) return false;
             const cacheKey = getGroupStateCacheKey(orgId, clubId);
-            const currentData = groupStateCache.get(cacheKey) ?? data ?? getDefaultClubData();
+            const currentData = groupStateCache.get(cacheKey) ?? dataRef.current ?? getDefaultClubData();
             const optimisticData =
                 options?.optimisticData ??
                 (typeof nextDataOrUpdater === 'function'
@@ -581,6 +892,7 @@ function useClubDataStore() {
             }
 
             setData(optimisticData);
+            setStatus('success');
             groupStateCache.set(getGroupStateCacheKey(orgId, clubId), optimisticData);
             if (includeMedia) {
                 groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
@@ -627,6 +939,7 @@ function useClubDataStore() {
                 }),
                 timeoutMs: 10_000,
                 retry: { retries: 1 },
+                requestId: createDashboardRequestId('group-state-save'),
             });
             if (!response.ok) {
                 console.error(`Error saving data for group ${clubId}`, response.error);
@@ -636,6 +949,7 @@ function useClubDataStore() {
                     groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
                 }
                 setError(response.error.message || 'Group content could not be saved.');
+                setStatus('error');
                 return false;
             }
             const confirmedData = normalizeClubData(response.data.data ?? nextData);
@@ -650,30 +964,82 @@ function useClubDataStore() {
                 groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
             }
             setError(null);
+            setStatus('success');
+            setLastSuccessAt(Date.now());
             dispatchGroupStateSync(orgId, clubId);
             return true;
         },
-        [clubId, data, demoCtx, includeMedia, orgId, supabase, useDemo]
+        [clubId, demoCtx, includeMedia, orgId, supabase, useDemo]
     );
 
     if (useDemo && demoCtx) {
         return {
+            attempt: 0,
             clubId: demoCtx.clubId,
             data: demoCtx.clubData as ClubData,
             error: null,
+            lastSuccessAt: Date.now(),
             loading: false,
-            updateClubData,
+            orgId: null,
             refreshData,
+            requestId: null,
+            retry,
             setLocalClubData,
+            startedAt: null,
+            status: 'success',
+            updateClubData,
         };
     }
 
-    return { clubId, orgId, data, error, loading, updateClubData, refreshData, setLocalClubData };
+    return {
+        attempt,
+        clubId,
+        data,
+        error,
+        lastSuccessAt,
+        loading: status === 'loading',
+        orgId,
+        refreshData,
+        requestId,
+        retry,
+        setLocalClubData,
+        startedAt,
+        status,
+        updateClubData,
+    };
+}
+
+export function ClubDataProvider({ children }: { children: ReactNode }) {
+    const value = useClubDataStoreState();
+    return createElement(ClubDataContext.Provider, { value }, children);
+}
+
+function useClubDataStore() {
+    const context = useContext(ClubDataContext);
+    if (!context) {
+        throw new Error('useClubDataStore must be used within a ClubDataProvider.');
+    }
+    return context;
+}
+
+export function useClubData() {
+    return useClubDataStore();
 }
 
 
 function useSpecificClubData<K extends keyof ClubData>(key: K) {
-    const { clubId, orgId, data, error, loading, updateClubData, refreshData, setLocalClubData } = useClubDataStore();
+    const {
+        clubId,
+        orgId,
+        data,
+        error,
+        loading,
+        status,
+        retry,
+        updateClubData,
+        refreshData,
+        setLocalClubData,
+    } = useClubDataStore();
 
     const specificData = useMemo(() => {
         const defaults = getDefaultClubData();
@@ -744,7 +1110,19 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
         [clubId, key, setLocalClubData]
     );
 
-    return { data: specificData as ClubData[K], error, loading, updateData, updateDataAsync, setLocalData, refreshData, clubId, orgId };
+    return {
+        data: specificData as ClubData[K],
+        error,
+        loading,
+        status,
+        retry,
+        updateData,
+        updateDataAsync,
+        setLocalData,
+        refreshData,
+        clubId,
+        orgId,
+    };
 }
 
 
@@ -967,7 +1345,7 @@ export function useCurrentUserRole() {
     const demoCtx = useOptionalDemoCtx();
     const useDemo = shouldUseDemoData(Boolean(demoCtx));
     const { user, loading: userLoading } = useCurrentUser();
-    const { clubId, data, loading: clubDataLoading } = useClubDataStore();
+    const { clubId, data, loading: clubDataLoading, status: clubDataStatus, error, retry } = useClubDataStore();
 
     const role = useMemo(() => {
         if (useDemo && demoCtx) {
@@ -996,7 +1374,15 @@ export function useCurrentUserRole() {
     const canEdit = canEditGroupContent(normalizedRole);
     const canManage = canManageGroupRoles(normalizedRole);
 
-    return { role, canEditContent: canEdit, canManageRoles: canManage, loading };
+    return {
+        role,
+        canEditContent: canEdit,
+        canManageRoles: canManage,
+        loading,
+        status: !clubId ? 'empty' : clubDataStatus,
+        error,
+        retry,
+    };
 }
 
 export type { NotificationKey } from '@/lib/notification-state';
@@ -1071,7 +1457,6 @@ export function useNotifications() {
     const pathname = usePathname();
     const { clubId, data, loading: clubDataLoading } = useClubDataStore();
     const { user, loading: userLoading } = useCurrentUser();
-    const { role: membershipRole, loading: roleLoading } = useCurrentUserRole();
     const [tabLastSeenAt, setTabLastSeenAt] = useState<TabLastSeenState>(DEFAULT_TAB_LAST_SEEN);
     const [lastSeenLoaded, setLastSeenLoaded] = useState(false);
     const [groupSessionStartedAt, setGroupSessionStartedAt] = useState(0);
@@ -1095,8 +1480,8 @@ export function useNotifications() {
     const members = clubData.members;
 
     const inferredRole = useMemo(() => getRoleFromMembers(members, user?.email), [members, user?.email]);
-    const role = membershipRole ?? inferredRole;
-    const loading = userLoading || clubDataLoading || roleLoading;
+    const role = inferredRole;
+    const loading = userLoading || clubDataLoading;
 
     const resetGroupSession = useCallback(() => {
         setGroupSessionStartedAt(0);

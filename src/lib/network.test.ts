@@ -129,4 +129,69 @@ describe('safeFetchJson', () => {
       expect(result.error.message).toBe('Email already in use.');
     }
   });
+
+  it('propagates request ids to the request headers', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get('x-request-id')).toBe('req-123');
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+
+    const result = await safeFetchJson<{ ok: boolean }>('https://example.com', {
+      requestId: 'req-123',
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('honors an externally provided abort signal', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { onLine: true },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'window', {
+      value: {},
+      configurable: true,
+    });
+
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      await new Promise((_, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            const abortError = new Error('aborted');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          },
+          { once: true }
+        );
+      });
+      return new Response(null, { status: 204 });
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    const requestPromise = safeFetchJson('https://example.com', {
+      signal: controller.signal,
+      timeoutMs: 100,
+    });
+    controller.abort();
+
+    const result = await requestPromise;
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('NETWORK_TIMEOUT');
+    }
+  });
 });

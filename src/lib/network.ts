@@ -13,6 +13,7 @@ export type FetchJsonOptions = RequestInit & {
   retry?: Partial<RetryOptions>;
   idempotencyKey?: string;
   treatOfflineAsError?: boolean;
+  requestId?: string;
 };
 
 const defaultRetry: RetryOptions = {
@@ -42,6 +43,37 @@ const getRequestPathLabel = (url: string) => {
   } catch {
     return url;
   }
+};
+
+const mergeAbortSignals = (signals: Array<AbortSignal | null | undefined>) => {
+  const activeSignals = signals.filter((signal): signal is AbortSignal => Boolean(signal));
+  if (activeSignals.length === 0) {
+    return { signal: undefined, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  };
+
+  activeSignals.forEach(signal => {
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+  });
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      activeSignals.forEach(signal => {
+        signal.removeEventListener('abort', abort);
+      });
+    },
+  };
 };
 
 const normalizeFetchError = (error: unknown): AppError => {
@@ -88,6 +120,7 @@ export async function safeFetchJson<T>(
     const timeoutMs =
       typeof options.timeoutMs === 'number' ? options.timeoutMs : 12_000;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const mergedSignal = mergeAbortSignals([controller.signal, options.signal]);
     const performanceTimer = startPerformanceTimer('fetch json', 1_500, {
       method,
       path: getRequestPathLabel(url),
@@ -103,10 +136,13 @@ export async function safeFetchJson<T>(
       if (options.idempotencyKey && method !== 'GET') {
         headers.set('X-Idempotency-Key', options.idempotencyKey);
       }
+      if (options.requestId) {
+        headers.set('X-Request-Id', options.requestId);
+      }
       const response = await fetch(url, {
         ...options,
         headers,
-        signal: controller.signal,
+        signal: mergedSignal.signal,
       });
       status = response.status;
       if (!response.ok) {
@@ -158,6 +194,7 @@ export async function safeFetchJson<T>(
     } finally {
       performanceTimer.stop({ status });
       clearTimeout(timeout);
+      mergedSignal.cleanup();
     }
   }
 

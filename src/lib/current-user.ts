@@ -6,19 +6,24 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
+import type { AuthChangeEvent } from '@supabase/supabase-js';
 
+import {
+  createDashboardLogger,
+  createDashboardRequestId,
+  DASHBOARD_RETRY_DELAYS_MS,
+  DASHBOARD_TIMEOUT_MS,
+  type DashboardAsyncStatus,
+  retryWithBackoff,
+} from '@/lib/dashboard-load';
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import type { User } from '@/lib/mock-data';
 import { safeFetchJson } from '@/lib/network';
-import { getPlaceholderImageUrl } from '@/lib/placeholders';
-import {
-  createSupabaseBrowserClient,
-  getBrowserSessionWithTimeout,
-} from '@/lib/supabase/client';
-import { getAuthMetadataDisplayName, resolveStoredDisplayName } from '@/lib/user-display-name';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const CURRENT_USER_STORAGE_KEY = 'currentUser';
@@ -30,28 +35,25 @@ const isDemoRoute = () =>
 const shouldUseDemoData = (hasDemoContext: boolean) =>
   DEMO_MODE_ENABLED && hasDemoContext && isDemoRoute();
 
-const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
-
-const getResolvedAvatar = (displayName: string, avatar?: string | null) =>
-  isNonEmptyString(avatar)
-    ? avatar
-    : getPlaceholderImageUrl({ label: displayName.charAt(0) });
-
 type SaveUserInput = Partial<User> | ((currentUser: User | null) => User);
+type CurrentUserStatus = DashboardAsyncStatus;
+type CurrentUserResponse = { ok: true; data: User | null };
 
 type CurrentUserContextValue = {
   user: User | null;
+  status: CurrentUserStatus;
+  error: string | null;
   loading: boolean;
+  retry: () => Promise<boolean>;
   saveUser: (newUser: SaveUserInput) => Promise<void>;
   clearUser: () => void;
   setLocalUser: (nextUser: User | null) => void;
 };
 
 let currentUserCache: User | null = null;
-let currentUserHydrationPromise: Promise<User | null> | null = null;
 
 const CurrentUserContext = createContext<CurrentUserContextValue | null>(null);
+const logger = createDashboardLogger();
 
 const persistCurrentUserCache = (nextUser: User | null) => {
   currentUserCache = nextUser;
@@ -93,100 +95,194 @@ const readStoredCurrentUser = () => {
 function useCurrentUserState(): CurrentUserContextValue {
   const demoCtx = useOptionalDemoCtx();
   const useDemo = shouldUseDemoData(Boolean(demoCtx));
-  const [user, setUser] = useState<User | null>(() => {
+  const initialStoredUser = useDemo && demoCtx ? demoCtx.user : readStoredCurrentUser();
+  const [user, setUser] = useState<User | null>(() => initialStoredUser);
+  const [status, setStatus] = useState<CurrentUserStatus>(() => {
     if (useDemo && demoCtx) {
-      return demoCtx.user;
+      return 'success';
     }
-    return readStoredCurrentUser();
+    return initialStoredUser ? 'success' : 'loading';
   });
-  const [loading, setLoading] = useState(() => {
-    if (useDemo && demoCtx) {
-      return false;
-    }
-    return !readStoredCurrentUser();
-  });
+  const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
+  const activeAbortRef = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef<string | null>(null);
+  const userRef = useRef<User | null>(initialStoredUser);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  const hydrateCurrentUser = useCallback(
+    async ({
+      reason,
+      forceBlocking,
+    }: {
+      reason: 'initial' | 'auth-change' | 'manual-retry';
+      forceBlocking?: boolean;
+    }) => {
+      if (useDemo && demoCtx) {
+        setUser(demoCtx.user);
+        setStatus('success');
+        setError(null);
+        return true;
+      }
+
+      const cachedUser = readStoredCurrentUser();
+      const nextRequestId = createDashboardRequestId('profile');
+      const controller = new AbortController();
+      activeAbortRef.current?.abort();
+      activeAbortRef.current = controller;
+      activeRequestIdRef.current = nextRequestId;
+
+      const hasCachedUser = Boolean(cachedUser ?? userRef.current ?? currentUserCache);
+      setError(null);
+      setStatus(forceBlocking || !hasCachedUser ? 'loading' : 'retrying');
+      if (cachedUser) {
+        setUser(cachedUser);
+      }
+
+      logger.log('Current user load start', {
+        requestId: nextRequestId,
+        reason,
+        hasCachedUser,
+      });
+
+      try {
+        const hydratedUser = await retryWithBackoff<User | null>(
+          async (attempt) => {
+            logger.log('Current user fetch start', {
+              requestId: nextRequestId,
+              reason,
+              attempt: attempt + 1,
+            });
+
+            const response = await safeFetchJson<CurrentUserResponse>('/api/profile', {
+              method: 'GET',
+              cache: 'no-store',
+              timeoutMs: DASHBOARD_TIMEOUT_MS,
+              retry: { retries: 0 },
+              signal: controller.signal,
+              requestId: nextRequestId,
+            });
+
+            if (!response.ok) {
+              logger.error('Current user fetch failed', response.error, {
+                requestId: nextRequestId,
+                reason,
+                attempt: attempt + 1,
+              });
+              throw new Error(response.error.message || 'Current user could not be loaded.');
+            }
+
+            logger.log('Current user fetch success', {
+              requestId: nextRequestId,
+              reason,
+              attempt: attempt + 1,
+              hasUser: Boolean(response.data.data),
+            });
+
+            return response.data.data ?? null;
+          },
+          {
+            retries: DASHBOARD_RETRY_DELAYS_MS.length,
+            delaysMs: DASHBOARD_RETRY_DELAYS_MS,
+            label: 'Current user fetch',
+            logger,
+            requestId: nextRequestId,
+          }
+        );
+
+        if (activeRequestIdRef.current !== nextRequestId || controller.signal.aborted) {
+          logger.warn('Current user response ignored as stale', {
+            requestId: nextRequestId,
+            reason,
+          });
+          return false;
+        }
+
+        if (hydratedUser) {
+          persistCurrentUserCache(hydratedUser);
+          setUser(hydratedUser);
+          setStatus('success');
+          setError(null);
+        } else {
+          persistCurrentUserCache(null);
+          setUser(null);
+          setStatus('empty');
+          setError(null);
+        }
+
+        logger.log('Current user load resolved', {
+          requestId: nextRequestId,
+          reason,
+          status: hydratedUser ? 'success' : 'empty',
+        });
+
+        return true;
+      } catch (loadError) {
+        if (controller.signal.aborted || activeRequestIdRef.current !== nextRequestId) {
+          logger.warn('Current user load aborted', {
+            requestId: nextRequestId,
+            reason,
+          });
+          return false;
+        }
+
+        const message =
+          loadError instanceof Error && loadError.message
+            ? loadError.message
+            : 'Current user could not be loaded.';
+
+        logger.error('Current user load failed', loadError, {
+          requestId: nextRequestId,
+          reason,
+        });
+
+        setError(message);
+        setUser(prevUser => prevUser ?? cachedUser ?? currentUserCache);
+        setStatus('error');
+        return false;
+      } finally {
+        if (activeRequestIdRef.current === nextRequestId) {
+          activeAbortRef.current = null;
+        }
+      }
+    },
+    [demoCtx, useDemo]
+  );
 
   useEffect(() => {
     setIsMounted(true);
     if (useDemo && demoCtx) {
       setUser(demoCtx.user);
-      setLoading(false);
+      setStatus('success');
+      setError(null);
       return;
     }
 
-    const supabase = createSupabaseBrowserClient();
-    const hydrate = async () => {
-      const cachedUser = readStoredCurrentUser();
-      if (cachedUser) {
-        setUser(cachedUser);
-        setLoading(false);
-      } else if (currentUserCache) {
-        setUser(currentUserCache);
-        setLoading(false);
-      }
+    void hydrateCurrentUser({
+      reason: 'initial',
+      forceBlocking: !readStoredCurrentUser(),
+    });
 
-      if (currentUserHydrationPromise) {
-        const cachedUser = await currentUserHydrationPromise;
-        setUser(cachedUser);
-        setLoading(false);
-        return;
-      }
-
-      currentUserHydrationPromise = (async () => {
-        try {
-          const { session, timedOut } = await getBrowserSessionWithTimeout(supabase);
-          const sessionUser = session?.user;
-          if (sessionUser) {
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('email, display_name, avatar_url')
-              .eq('id', sessionUser.id)
-              .maybeSingle();
-            const displayName = resolveStoredDisplayName({
-              existingProfileName: profile?.display_name,
-              authDisplayName: getAuthMetadataDisplayName(sessionUser),
-              email: profile?.email || sessionUser.email || '',
-            });
-            const hydratedUser = {
-              name: displayName,
-              email: profile?.email || sessionUser.email || '',
-              avatar: getResolvedAvatar(displayName, profile?.avatar_url),
-            } as User;
-            persistCurrentUserCache(hydratedUser);
-            return hydratedUser;
-          }
-          if (timedOut) {
-            return cachedUser ?? currentUserCache;
-          }
-          persistCurrentUserCache(null);
-          return null;
-        } catch (error) {
-          console.error('Error reading user from storage on init', error);
-          return currentUserCache;
-        }
-      })();
-
-      try {
-        const hydratedUser = await currentUserHydrationPromise;
-        setUser(hydratedUser);
-      } finally {
-        currentUserHydrationPromise = null;
-        setLoading(false);
-      }
+    return () => {
+      activeAbortRef.current?.abort();
     };
-
-    void hydrate();
-  }, [demoCtx, useDemo]);
+  }, [demoCtx, hydrateCurrentUser, useDemo]);
 
   const setLocalUser = useCallback(
     (nextUser: User | null) => {
       if (useDemo) {
         setUser(nextUser);
+        setStatus(nextUser ? 'success' : 'empty');
+        setError(null);
         return;
       }
       setUser(nextUser);
       persistCurrentUserCache(nextUser);
+      setStatus(nextUser ? 'success' : 'empty');
+      setError(null);
     },
     [useDemo]
   );
@@ -194,8 +290,37 @@ function useCurrentUserState(): CurrentUserContextValue {
   useEffect(() => {
     if (!useDemo || !demoCtx) return;
     setUser(demoCtx.user);
-    setLoading(false);
+    setStatus('success');
+    setError(null);
   }, [demoCtx, useDemo]);
+
+  useEffect(() => {
+    if (useDemo) {
+      return;
+    }
+
+    const supabase = createSupabaseBrowserClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent) => {
+      logger.log('Current user auth state change', { event });
+      if (event === 'SIGNED_OUT') {
+        persistCurrentUserCache(null);
+        setUser(null);
+        setStatus('empty');
+        setError(null);
+        return;
+      }
+      void hydrateCurrentUser({
+        reason: 'auth-change',
+        forceBlocking: !readStoredCurrentUser(),
+      });
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [hydrateCurrentUser, useDemo]);
 
   const saveUser = useCallback(
     async (newUser: SaveUserInput) => {
@@ -226,6 +351,8 @@ function useCurrentUserState(): CurrentUserContextValue {
       if (response.ok && response.data?.data) {
         persistCurrentUserCache(response.data.data);
         setUser(response.data.data);
+        setStatus('success');
+        setError(null);
         return;
       }
       console.error('Failed to persist profile', response.ok ? response.data : response.error);
@@ -239,13 +366,30 @@ function useCurrentUserState(): CurrentUserContextValue {
   const clearUser = useCallback(() => {
     if (useDemo) {
       setUser(null);
+      setStatus('empty');
+      setError(null);
       return;
     }
     setUser(null);
     persistCurrentUserCache(null);
+    setStatus('empty');
+    setError(null);
   }, [useDemo]);
 
-  return { user: isMounted ? user : null, loading, saveUser, clearUser, setLocalUser };
+  const retry = useCallback(async () => {
+    return hydrateCurrentUser({ reason: 'manual-retry', forceBlocking: !readStoredCurrentUser() });
+  }, [hydrateCurrentUser]);
+
+  return {
+    user: isMounted ? user : null,
+    status,
+    error,
+    loading: status === 'loading',
+    retry,
+    saveUser,
+    clearUser,
+    setLocalUser,
+  };
 }
 
 export function CurrentUserProvider({ children }: { children: ReactNode }) {

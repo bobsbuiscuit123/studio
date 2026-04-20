@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  createDashboardLogger,
+  createDashboardRequestId,
+  DASHBOARD_TIMEOUT_MS,
+  withTimeout,
+} from '@/lib/dashboard-load';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
@@ -18,9 +24,21 @@ const bodySchema = z.object({
   value: z.unknown(),
 }).strict();
 
+const apiLogger = createDashboardLogger('[Dashboard][API]');
+const getRequestId = (request: Request) =>
+  request.headers.get('x-request-id') || createDashboardRequestId('group-user-state');
+const getErrorStatus = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 504 : 500;
+const getErrorCode = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 'NETWORK_TIMEOUT' : 'NETWORK_HTTP_ERROR';
+
 async function requireGroupMembership(orgId: string, groupId: string) {
   const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData } = await withTimeout(
+    () => supabase.auth.getUser(),
+    DASHBOARD_TIMEOUT_MS,
+    { label: 'Group user state auth lookup' }
+  );
   const userId = userData.user?.id;
   if (!userId) {
     return {
@@ -33,13 +51,22 @@ async function requireGroupMembership(orgId: string, groupId: string) {
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership } = await admin
-    .from('group_memberships')
-    .select('group_id')
-    .eq('org_id', orgId)
-    .eq('group_id', groupId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const { data: membership, error: membershipError } = await withTimeout(
+    () =>
+      admin
+        .from('group_memberships')
+        .select('group_id')
+        .eq('org_id', orgId)
+        .eq('group_id', groupId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+    DASHBOARD_TIMEOUT_MS,
+    { label: 'Group user state membership lookup' }
+  );
+
+  if (membershipError) {
+    throw membershipError;
+  }
 
   if (!membership) {
     return {
@@ -55,6 +82,7 @@ async function requireGroupMembership(orgId: string, groupId: string) {
 }
 
 export async function GET(request: Request) {
+  const requestId = getRequestId(request);
   const ipLimiter = rateLimit(`group-user-state-get:${getRequestIp(request.headers)}`, 120, 60_000);
   if (!ipLimiter.allowed) {
     return rateLimitExceededResponse(ipLimiter);
@@ -73,36 +101,74 @@ export async function GET(request: Request) {
     );
   }
 
-  const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
-  if (!membershipResult.ok) {
-    return membershipResult.response;
-  }
+  apiLogger.log('Group user state load start', {
+    groupId: parsed.data.groupId,
+    orgId: parsed.data.orgId,
+    requestId,
+  });
 
-  const userLimiter = rateLimit(`group-user-state-get-user:${membershipResult.userId}`, 180, 60_000);
-  if (!userLimiter.allowed) {
-    return rateLimitExceededResponse(userLimiter);
-  }
+  try {
+    const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
+    if (!membershipResult.ok) {
+      return membershipResult.response;
+    }
 
-  const admin = createSupabaseAdmin();
-  const { data, error } = await admin
-    .from('group_user_state')
-    .select('data')
-    .eq('org_id', parsed.data.orgId)
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', membershipResult.userId)
-    .maybeSingle();
+    const userLimiter = rateLimit(`group-user-state-get-user:${membershipResult.userId}`, 180, 60_000);
+    if (!userLimiter.allowed) {
+      return rateLimitExceededResponse(userLimiter);
+    }
 
-  if (error) {
+    const admin = createSupabaseAdmin();
+    const { data, error } = await withTimeout(
+      () =>
+        admin
+          .from('group_user_state')
+          .select('data')
+          .eq('org_id', parsed.data.orgId)
+          .eq('group_id', parsed.data.groupId)
+          .eq('user_id', membershipResult.userId)
+          .maybeSingle(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Group user state row lookup' }
+    );
+
+    if (error) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+
+    apiLogger.log('Group user state load success', {
+      groupId: parsed.data.groupId,
+      orgId: parsed.data.orgId,
+      requestId,
+      hasData: Boolean(data?.data),
+    });
+
+    return NextResponse.json({ ok: true, data: data?.data ?? {} });
+  } catch (error) {
+    apiLogger.error('Group user state load failed', error, {
+      groupId: parsed.data.groupId,
+      orgId: parsed.data.orgId,
+      requestId,
+    });
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
-      { status: 500 }
+      err({
+        code: getErrorCode(error),
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Group user state could not be loaded.',
+        source: 'network',
+      }),
+      { status: getErrorStatus(error) }
     );
   }
-
-  return NextResponse.json({ ok: true, data: data?.data ?? {} });
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   const ipLimiter = rateLimit(`group-user-state-post:${getRequestIp(request.headers)}`, 60, 60_000);
   if (!ipLimiter.allowed) {
     return rateLimitExceededResponse(ipLimiter);
@@ -118,71 +184,106 @@ export async function POST(request: Request) {
     );
   }
 
-  const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
-  if (!membershipResult.ok) {
-    return membershipResult.response;
-  }
+  apiLogger.log('Group user state save start', {
+    groupId: parsed.data.groupId,
+    orgId: parsed.data.orgId,
+    requestId,
+    section: parsed.data.section,
+  });
 
-  const userLimiter = rateLimit(`group-user-state-post-user:${membershipResult.userId}`, 120, 60_000);
-  if (!userLimiter.allowed) {
-    return rateLimitExceededResponse(userLimiter);
-  }
+  try {
+    const membershipResult = await requireGroupMembership(parsed.data.orgId, parsed.data.groupId);
+    if (!membershipResult.ok) {
+      return membershipResult.response;
+    }
 
-  const admin = createSupabaseAdmin();
-  const { data: existing, error: existingError } = await admin
-    .from('group_user_state')
-    .select('data')
-    .eq('org_id', parsed.data.orgId)
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', membershipResult.userId)
-    .maybeSingle();
+    const userLimiter = rateLimit(`group-user-state-post-user:${membershipResult.userId}`, 120, 60_000);
+    if (!userLimiter.allowed) {
+      return rateLimitExceededResponse(userLimiter);
+    }
 
-  if (existingError) {
-    return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: existingError.message, source: 'network' }),
-      { status: 500 }
+    const admin = createSupabaseAdmin();
+    const { data: existing, error: existingError } = await withTimeout(
+      () =>
+        admin
+          .from('group_user_state')
+          .select('data')
+          .eq('org_id', parsed.data.orgId)
+          .eq('group_id', parsed.data.groupId)
+          .eq('user_id', membershipResult.userId)
+          .maybeSingle(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Group user state existing lookup' }
     );
-  }
 
-  const nextData = {
-    ...((existing?.data as Record<string, unknown> | null) ?? {}),
-    [parsed.data.section]: parsed.data.value,
-  };
+    if (existingError) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: existingError.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
 
-  const currentSectionValue =
-    ((existing?.data as Record<string, unknown> | null) ?? {})[parsed.data.section];
-  if (JSON.stringify(currentSectionValue) === JSON.stringify(parsed.data.value)) {
-    return NextResponse.json({ ok: true, skipped: true });
-  }
+    const nextData = {
+      ...((existing?.data as Record<string, unknown> | null) ?? {}),
+      [parsed.data.section]: parsed.data.value,
+    };
 
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('[group-user-state]', {
-      section: parsed.data.section,
-      orgId: parsed.data.orgId,
+    const currentSectionValue =
+      ((existing?.data as Record<string, unknown> | null) ?? {})[parsed.data.section];
+    if (JSON.stringify(currentSectionValue) === JSON.stringify(parsed.data.value)) {
+      return NextResponse.json({ ok: true, skipped: true });
+    }
+
+    const { error } = await withTimeout(
+      () =>
+        admin
+          .from('group_user_state')
+          .upsert(
+            {
+              org_id: parsed.data.orgId,
+              group_id: parsed.data.groupId,
+              user_id: membershipResult.userId,
+              data: nextData,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id,group_id' }
+          ),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Group user state upsert' }
+    );
+
+    if (error) {
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+
+    apiLogger.log('Group user state save success', {
       groupId: parsed.data.groupId,
-      referer: request.headers.get('referer'),
+      orgId: parsed.data.orgId,
+      requestId,
+      section: parsed.data.section,
     });
-  }
 
-  const { error } = await admin
-    .from('group_user_state')
-    .upsert(
-      {
-        org_id: parsed.data.orgId,
-        group_id: parsed.data.groupId,
-        user_id: membershipResult.userId,
-        data: nextData,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'user_id,group_id' }
-    );
-
-  if (error) {
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    apiLogger.error('Group user state save failed', error, {
+      groupId: parsed.data.groupId,
+      orgId: parsed.data.orgId,
+      requestId,
+      section: parsed.data.section,
+    });
     return NextResponse.json(
-      err({ code: 'NETWORK_HTTP_ERROR', message: error.message, source: 'network' }),
-      { status: 500 }
+      err({
+        code: getErrorCode(error),
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Group user state could not be saved.',
+        source: 'network',
+      }),
+      { status: getErrorStatus(error) }
     );
   }
-
-  return NextResponse.json({ ok: true });
 }

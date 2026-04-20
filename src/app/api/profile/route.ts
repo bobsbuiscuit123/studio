@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  createDashboardLogger,
+  createDashboardRequestId,
+  DASHBOARD_TIMEOUT_MS,
+  withTimeout,
+} from '@/lib/dashboard-load';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { err } from '@/lib/result';
@@ -13,11 +19,21 @@ const avatarSchema = z.string().trim().max(2_000_000).refine(
   'Invalid avatar.'
 );
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const apiLogger = createDashboardLogger('[Dashboard][API]');
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   avatar: avatarSchema.optional(),
 }).strict();
+
+const getRequestId = (request: Request) =>
+  request.headers.get('x-request-id') || createDashboardRequestId('profile');
+
+const getErrorStatus = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 504 : 500;
+
+const getErrorCode = (error: unknown) =>
+  error instanceof Error && error.name === 'TimeoutError' ? 'NETWORK_TIMEOUT' : 'NETWORK_HTTP_ERROR';
 
 const syncGroupStateMemberProfiles = async ({
   userId,
@@ -203,4 +219,98 @@ export async function PATCH(request: Request) {
       avatar: avatarUrl,
     },
   });
+}
+
+export async function GET(request: Request) {
+  const requestId = getRequestId(request);
+  const ipLimiter = rateLimit(`profile-get:${getRequestIp(request.headers)}`, 60, 60_000);
+  if (!ipLimiter.allowed) {
+    return rateLimitExceededResponse(ipLimiter);
+  }
+
+  apiLogger.log('Profile load start', { requestId });
+
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: userData } = await withTimeout(
+      () => supabase.auth.getUser(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Profile auth lookup' }
+    );
+    const user = userData.user;
+
+    if (!user) {
+      apiLogger.log('Profile load success', {
+        requestId,
+        status: 'empty',
+      });
+      return NextResponse.json({ ok: true, data: null });
+    }
+
+    const userLimiter = rateLimit(`profile-get-user:${user.id}`, 120, 60_000);
+    if (!userLimiter.allowed) {
+      return rateLimitExceededResponse(userLimiter);
+    }
+
+    const { data: profile, error: profileError } = await withTimeout(
+      () =>
+        supabase
+          .from('profiles')
+          .select('email, display_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle(),
+      DASHBOARD_TIMEOUT_MS,
+      { label: 'Profile row lookup' }
+    );
+
+    if (profileError) {
+      apiLogger.error('Profile load failed', profileError, {
+        requestId,
+        stage: 'profile-query',
+        userId: user.id,
+      });
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message: profileError.message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+
+    const displayName = resolveStoredDisplayName({
+      existingProfileName: profile?.display_name,
+      authDisplayName: getAuthMetadataDisplayName(user),
+      email: profile?.email || user.email || '',
+    });
+
+    const payload = {
+      name: displayName,
+      email: profile?.email || (user.email ? normalizeEmail(user.email) : ''),
+      avatar: getPlaceholderImageUrl({ label: displayName.charAt(0) || 'U' }),
+    };
+
+    if (profile?.avatar_url && profile.avatar_url.trim()) {
+      payload.avatar = profile.avatar_url;
+    }
+
+    apiLogger.log('Profile load success', {
+      requestId,
+      status: 'success',
+      userId: user.id,
+      hasProfileRow: Boolean(profile),
+    });
+
+    return NextResponse.json({ ok: true, data: payload });
+  } catch (error) {
+    apiLogger.error('Profile load failed', error, { requestId });
+    return NextResponse.json(
+      err({
+        code: getErrorCode(error),
+        message:
+          error instanceof Error && error.message
+            ? error.message
+            : 'Profile could not be loaded.',
+        source: 'network',
+      }),
+      { status: getErrorStatus(error) }
+    );
+  }
 }

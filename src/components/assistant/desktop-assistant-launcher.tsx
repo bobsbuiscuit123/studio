@@ -38,6 +38,7 @@ export function DesktopAssistantLauncher() {
         ref={assistantButtonRef}
         type="button"
         onClick={() => setIsAssistantOpen(current => !current)}
+        data-assistant-entry="desktop"
         className={cn(
           "assistant-desktop-button",
           isAssistantOpen && "ring-4 ring-emerald-200/35 ring-offset-2 ring-offset-background"

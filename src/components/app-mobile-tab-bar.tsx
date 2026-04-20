@@ -194,6 +194,7 @@ export function AppMobileTabBar() {
                   markTabViewed(assistantItem.notificationKey, assistantItem.href);
                 }
               }}
+              data-assistant-entry="mobile"
               className={cn(
                 "ai-button z-[1001] transition-transform duration-200 hover:scale-[1.03]",
                 isAssistantOpen && "ring-4 ring-emerald-200/35 ring-offset-2 ring-offset-background"

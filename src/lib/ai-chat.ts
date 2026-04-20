@@ -4,7 +4,17 @@ export const AI_CHAT_HISTORY_LIMIT = 6;
 export const AI_CHAT_MESSAGE_MAX_CHARS = 2_000;
 
 export const AI_CHAT_INTENTS = ['GENERATION', 'MEMBERSHIP', 'GROUP_DATA'] as const;
-export const AI_CHAT_ENTITIES = ['announcements', 'messages', 'members', 'events'] as const;
+export const AI_CHAT_ENTITIES = [
+  'announcements',
+  'messages',
+  'members',
+  'events',
+  'forms',
+  'social_posts',
+  'gallery',
+  'points',
+  'transactions',
+] as const;
 export const AI_CHAT_FAILURE_STAGES = [
   'request_validation',
   'context',

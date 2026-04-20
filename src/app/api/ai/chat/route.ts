@@ -20,8 +20,11 @@ import {
   AI_CHAT_RESPONDER_SYSTEM_PROMPT,
   buildAiChatPlannerPrompt,
   buildAiChatResponderPrompt,
+  filterAllowedAiChatEntities,
   fetchAiChatDataContext,
+  getAllowedAiChatEntities,
 } from '@/lib/ai-chat-server';
+import { displayGroupRole, normalizeGroupRole } from '@/lib/group-permissions';
 import { getEffectiveOrgAiAllowance, parseOptionalPositiveInt } from '@/lib/org-settings';
 import { rateLimit } from '@/lib/rate-limit';
 import type { Result } from '@/lib/result';
@@ -402,8 +405,11 @@ export async function POST(request: Request) {
         message: parsed.data.message,
         history: parsed.data.history,
         userId: user.id,
+        userEmail: user.email ?? '',
         orgId,
         groupId,
+        role: displayGroupRole(normalizeGroupRole(membership.role)),
+        availableEntities: getAllowedAiChatEntities(membership.role),
       });
 
       const plannerRun = await runPlannerStep(requestId, plannerPrompt);
@@ -424,7 +430,10 @@ export async function POST(request: Request) {
 
       const planner = {
         ...plannerResult.data,
-        entities: normalizePlannerEntities(plannerResult.data.entities),
+        entities: filterAllowedAiChatEntities(
+          normalizePlannerEntities(plannerResult.data.entities),
+          membership.role
+        ),
       };
 
       stage = 'group_data_fetch';
@@ -433,6 +442,7 @@ export async function POST(request: Request) {
             admin,
             groupId,
             entities: planner.entities,
+            role: membership.role,
           }).catch(error => {
             logRouteFailure(requestId, stage, error, {
               planner,
@@ -449,6 +459,7 @@ export async function POST(request: Request) {
         planner,
         usedEntities,
         context,
+        currentUserEmail: user.email ?? '',
       });
 
       const responderRun = await runResponderStep(requestId, responderPrompt);

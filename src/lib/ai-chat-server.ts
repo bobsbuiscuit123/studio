@@ -1,7 +1,11 @@
 import 'server-only';
 
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { isGroupAdminRole, normalizeGroupRole } from '@/lib/group-permissions';
+import {
+  canEditGroupContent,
+  isGroupAdminRole,
+  normalizeGroupRole,
+} from '@/lib/group-permissions';
 import {
   AI_CHAT_ENTITIES,
   AI_CHAT_HISTORY_LIMIT,
@@ -67,6 +71,29 @@ const trimText = (value: unknown, maxChars: number) => {
   return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
 };
 
+const normalizeActorEmail = (value: unknown) =>
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
+
+const projectStringList = (value: unknown, maxItems = 20, maxChars = 160) =>
+  (Array.isArray(value) ? value : [])
+    .flatMap(item => {
+      const text = trimText(item, maxChars);
+      return text ? [text] : [];
+    })
+    .slice(0, maxItems);
+
+const projectAttachments = (value: unknown) =>
+  (Array.isArray(value) ? value : [])
+    .slice(0, 8)
+    .map(item => {
+      const attachment = isRecord(item) ? item : {};
+      return {
+        name: trimText(attachment.name, 120),
+        type: trimText(attachment.type, 40),
+      };
+    })
+    .filter(item => item.name);
+
 const normalizeHistory = (history?: AiChatHistoryMessage[]) =>
   Array.isArray(history)
     ? history
@@ -77,16 +104,24 @@ const normalizeHistory = (history?: AiChatHistoryMessage[]) =>
         }))
     : [];
 
-const projectAnnouncements = (announcements: unknown[]) =>
+const projectAnnouncements = (
+  announcements: unknown[],
+  options: { canSeeViewerDetails: boolean }
+) =>
   announcements.slice(-6).map(item => {
     const announcement = isRecord(item) ? item : {};
+    const viewedBy = projectStringList(announcement.viewedBy, 24);
     return {
       id: typeof announcement.id === 'string' || typeof announcement.id === 'number' ? String(announcement.id) : '',
       title: trimText(announcement.title, 120),
       content: trimText(announcement.content, AI_CHAT_ANNOUNCEMENT_CONTENT_CHARS),
       author: trimText(announcement.author, 80),
       date: typeof announcement.date === 'string' ? announcement.date : '',
-      viewedBy: Array.isArray(announcement.viewedBy) ? announcement.viewedBy.slice(0, 20) : [],
+      recipients: projectStringList(announcement.recipients, 24),
+      linkedFormId: trimText(announcement.linkedFormId, 80),
+      attachments: projectAttachments(announcement.attachments),
+      viewedCount: viewedBy.length,
+      ...(options.canSeeViewerDetails ? { viewedBy } : {}),
     };
   });
 
@@ -100,10 +135,33 @@ const projectMembers = (members: unknown[]) =>
     };
   });
 
-const projectEvents = (events: unknown[]) =>
+const projectEvents = (
+  events: unknown[],
+  options: {
+    canSeeAttendanceDetails: boolean;
+    canSeeViewerDetails: boolean;
+    currentUserEmail: string;
+  }
+) =>
   events.slice(-6).map(item => {
     const event = isRecord(item) ? item : {};
     const rsvps = isRecord(event.rsvps) ? event.rsvps : {};
+    const yes = projectStringList(rsvps.yes, 24);
+    const no = projectStringList(rsvps.no, 24);
+    const maybe = projectStringList(rsvps.maybe, 24);
+    const attendees = projectStringList(event.attendees, 24);
+    const viewedBy = projectStringList(event.viewedBy, 24);
+    const normalizedCurrentUserEmail = normalizeActorEmail(options.currentUserEmail);
+    const currentUserResponse = normalizedCurrentUserEmail
+      ? yes.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
+        ? 'yes'
+        : no.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
+          ? 'no'
+          : maybe.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
+            ? 'maybe'
+            : null
+      : null;
+
     return {
       id: trimText(event.id, 80),
       title: trimText(event.title, 120),
@@ -115,44 +173,110 @@ const projectEvents = (events: unknown[]) =>
             : '',
       location: trimText(event.location, 120),
       description: trimText(event.description, AI_CHAT_EVENT_DESCRIPTION_CHARS),
-      attendees: Array.isArray(event.attendees) ? event.attendees.slice(0, 20) : [],
-      rsvps: {
-        yes: Array.isArray(rsvps.yes) ? rsvps.yes.slice(0, 20) : [],
-        no: Array.isArray(rsvps.no) ? rsvps.no.slice(0, 20) : [],
-        maybe: Array.isArray(rsvps.maybe) ? rsvps.maybe.slice(0, 20) : [],
-      },
+      points: typeof event.points === 'number' ? event.points : null,
+      rsvpRequired: Boolean(event.rsvpRequired),
+      rsvpCount: yes.length,
+      currentUserResponse,
+      currentUserIsAttending: Boolean(
+        normalizedCurrentUserEmail &&
+          attendees.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
+      ),
+      ...(options.canSeeAttendanceDetails
+        ? {
+            attendeeCount: attendees.length,
+            attendees,
+            rsvpYes: yes,
+          }
+        : {}),
+      ...(options.canSeeViewerDetails
+        ? {
+            viewedCount: viewedBy.length,
+            viewedBy,
+          }
+        : {}),
     };
   });
 
-const projectForms = (forms: unknown[], currentUserEmail: string) =>
+const projectFormQuestions = (questions: unknown[]) =>
+  questions.slice(0, 8).map(item => {
+    const question = isRecord(item) ? item : {};
+    return {
+      id: trimText(question.id, 80),
+      prompt: trimText(question.prompt, 180),
+      required: Boolean(question.required),
+      kind: trimText(question.kind, 24),
+      options: projectStringList(question.options, 12, 120),
+    };
+  });
+
+const projectFormResponses = (responses: unknown[], questions: ReturnType<typeof projectFormQuestions>) =>
+  responses.slice(-20).map(item => {
+    const response = isRecord(item) ? item : {};
+    const answers = isRecord(response.answers) ? response.answers : {};
+
+    return {
+      respondentEmail: trimText(response.respondentEmail, 160),
+      submittedAt: typeof response.submittedAt === 'string' ? response.submittedAt : '',
+      answers: questions.map(question => ({
+        questionId: question.id,
+        prompt: question.prompt,
+        answer: trimText(answers[question.id], 240),
+      })),
+    };
+  });
+
+const projectForms = (
+  forms: unknown[],
+  options: {
+    canSeeDetailedResponses: boolean;
+    canSeeViewerDetails: boolean;
+    currentUserEmail: string;
+  }
+) =>
   forms.slice(-8).map(item => {
     const form = isRecord(item) ? item : {};
     const responses = Array.isArray(form.responses) ? form.responses : [];
-    const normalizedCurrentUserEmail = currentUserEmail.trim().toLowerCase();
+    const viewedBy = projectStringList(form.viewedBy, 24);
+    const normalizedCurrentUserEmail = normalizeActorEmail(options.currentUserEmail);
     const currentUserResponded = normalizedCurrentUserEmail
       ? responses.some(response => {
           if (!isRecord(response)) return false;
-          return trimText(response.respondentEmail, 160).toLowerCase() === normalizedCurrentUserEmail;
+          return normalizeActorEmail(response.respondentEmail) === normalizedCurrentUserEmail;
         })
       : false;
-    const questions = Array.isArray(form.questions) ? form.questions : [];
+    const questions = projectFormQuestions(Array.isArray(form.questions) ? form.questions : []);
 
     return {
       id: trimText(form.id, 80),
       title: trimText(form.title, 120),
       description: trimText(form.description, AI_CHAT_FORM_DESCRIPTION_CHARS),
-      createdBy: trimText(form.createdBy, 120),
       createdAt: typeof form.createdAt === 'string' ? form.createdAt : '',
       questionCount: questions.length,
+      questions,
+      viewedCount: viewedBy.length,
       responseCount: responses.length,
       currentUserResponded,
       needsResponseFromCurrentUser: !currentUserResponded,
+      ...(options.canSeeViewerDetails ? { viewedBy } : {}),
+      ...(options.canSeeDetailedResponses
+        ? {
+            responses: projectFormResponses(responses, questions),
+          }
+        : {}),
     };
   });
 
 const projectSocialPosts = (socialPosts: unknown[]) =>
   socialPosts.slice(-8).map(item => {
     const post = isRecord(item) ? item : {};
+    const comments = (Array.isArray(post.comments) ? post.comments : []).slice(-8).map(comment => {
+      const normalizedComment = isRecord(comment) ? comment : {};
+      return {
+        author: trimText(normalizedComment.author, 120),
+        text: trimText(normalizedComment.text, 220),
+      };
+    });
+
     return {
       id: typeof post.id === 'string' || typeof post.id === 'number' ? String(post.id) : '',
       title: trimText(post.title, 120),
@@ -160,20 +284,31 @@ const projectSocialPosts = (socialPosts: unknown[]) =>
       author: trimText(post.author, 120),
       date: typeof post.date === 'string' ? post.date : '',
       likes: typeof post.likes === 'number' ? post.likes : 0,
+      currentUserLiked: Boolean(post.liked),
+      imageCount: Array.isArray(post.images) ? post.images.length : 0,
       commentCount: Array.isArray(post.comments) ? post.comments.length : 0,
+      comments,
     };
   });
 
-const projectGalleryImages = (galleryImages: unknown[]) =>
+const projectGalleryImages = (
+  galleryImages: unknown[],
+  options: { currentUserEmail: string }
+) =>
   galleryImages.slice(-10).map(item => {
     const image = isRecord(item) ? item : {};
+    const likedBy = projectStringList(image.likedBy, 40);
+    const normalizedCurrentUserEmail = normalizeActorEmail(options.currentUserEmail);
     return {
       id: typeof image.id === 'string' || typeof image.id === 'number' ? String(image.id) : '',
       alt: trimText(image.alt, 120),
       author: trimText(image.author, 120),
       date: typeof image.date === 'string' ? image.date : '',
-      likes: typeof image.likes === 'number' ? image.likes : 0,
-      status: trimText(image.status, 40),
+      likes: likedBy.length > 0 ? likedBy.length : typeof image.likes === 'number' ? image.likes : 0,
+      currentUserLiked: Boolean(
+        normalizedCurrentUserEmail &&
+          likedBy.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
+      ),
     };
   });
 
@@ -186,7 +321,6 @@ const projectPointEntries = (pointEntries: unknown[]) =>
       points: typeof entry.points === 'number' ? entry.points : 0,
       reason: trimText(entry.reason, 140),
       date: typeof entry.date === 'string' ? entry.date : '',
-      awardedBy: trimText(entry.awardedBy, 120),
     };
   });
 
@@ -212,13 +346,27 @@ const projectMessageList = (messages: unknown[]) =>
     };
   });
 
-const projectDirectMessages = (messagesByConversation: Record<string, unknown[]>) =>
-  Object.entries(messagesByConversation)
+const projectCurrentUserDirectMessages = (
+  messagesByConversation: Record<string, unknown[]>,
+  currentUserEmail: string
+) => {
+  const normalizedCurrentUserEmail = normalizeActorEmail(currentUserEmail);
+  if (!normalizedCurrentUserEmail) {
+    return [];
+  }
+
+  return Object.entries(messagesByConversation)
+    .filter(([conversationKey]) =>
+      conversationKey === normalizedCurrentUserEmail ||
+      conversationKey.startsWith(`${normalizedCurrentUserEmail}_`) ||
+      conversationKey.endsWith(`_${normalizedCurrentUserEmail}`)
+    )
     .slice(-4)
     .map(([conversationKey, messages]) => ({
       conversationKey,
       messages: projectMessageList(Array.isArray(messages) ? messages : []),
     }));
+};
 
 const projectGroupChats = (groupChats: unknown[]) =>
   groupChats.slice(-4).map(item => {
@@ -233,27 +381,41 @@ const projectGroupChats = (groupChats: unknown[]) =>
 
 const projectContextForPrompt = (
   context: AiChatDataContext,
-  options: { currentUserEmail: string }
+  options: { currentUserEmail: string; role: string }
 ) => {
   const projected: Record<string, unknown> = {};
+  const normalizedRole = normalizeGroupRole(options.role);
+  const canSeeViewerDetails = canEditGroupContent(normalizedRole);
+  const canSeeAttendanceDetails = canEditGroupContent(normalizedRole);
+  const canSeeDetailedResponses = isGroupAdminRole(normalizedRole);
 
   if (context.announcements) {
-    projected.announcements = projectAnnouncements(context.announcements);
+    projected.announcements = projectAnnouncements(context.announcements, { canSeeViewerDetails });
   }
   if (context.members) {
     projected.members = projectMembers(context.members);
   }
   if (context.events) {
-    projected.events = projectEvents(context.events);
+    projected.events = projectEvents(context.events, {
+      canSeeAttendanceDetails,
+      canSeeViewerDetails,
+      currentUserEmail: options.currentUserEmail,
+    });
   }
   if (context.forms) {
-    projected.forms = projectForms(context.forms, options.currentUserEmail);
+    projected.forms = projectForms(context.forms, {
+      canSeeDetailedResponses,
+      canSeeViewerDetails: canSeeDetailedResponses,
+      currentUserEmail: options.currentUserEmail,
+    });
   }
   if (context.socialPosts) {
     projected.socialPosts = projectSocialPosts(context.socialPosts);
   }
   if (context.galleryImages) {
-    projected.galleryImages = projectGalleryImages(context.galleryImages);
+    projected.galleryImages = projectGalleryImages(context.galleryImages, {
+      currentUserEmail: options.currentUserEmail,
+    });
   }
   if (context.pointEntries) {
     projected.pointEntries = projectPointEntries(context.pointEntries);
@@ -262,7 +424,10 @@ const projectContextForPrompt = (
     projected.transactions = projectTransactions(context.transactions);
   }
   if (context.messages) {
-    projected.directMessages = projectDirectMessages(context.messages);
+    projected.directMessages = projectCurrentUserDirectMessages(
+      context.messages,
+      options.currentUserEmail
+    );
   }
   if (context.groupChats) {
     projected.groupChats = projectGroupChats(context.groupChats);
@@ -309,6 +474,7 @@ Answer clearly and directly.
 Follow the planner result.
 When planner_result.needs_data is true, use only the fetched_group_data plus recent_history and do not hallucinate missing group facts.
 When planner_result.needs_data is false, answer from the user's request and recent_history without pretending you need group retrieval.
+Treat fetched_group_data as the full permission boundary for this user. Do not claim access to any hidden or additional group data beyond what appears there.
 For generation requests, be helpful: draft, rewrite, brainstorm, or format the response directly.
 If a generation request is underspecified, make reasonable assumptions, use neutral placeholders when needed, and keep the draft easy to customize.
 Only say that you do not have enough data when planner_result.needs_data is true and the requested fact is missing from fetched_group_data.
@@ -335,6 +501,18 @@ export const filterAllowedAiChatEntities = (
 ) => {
   const allowed = new Set(getAllowedAiChatEntities(role));
   return normalizeAiChatEntities(entities).filter(entity => allowed.has(entity));
+};
+
+const expandAiChatEntitiesForFetch = (entities: AiChatEntity[]) => {
+  const expanded = new Set(normalizeAiChatEntities(entities));
+
+  // The points UI combines manual point entries with event attendance and member names.
+  if (expanded.has('points')) {
+    expanded.add('events');
+    expanded.add('members');
+  }
+
+  return AI_CHAT_ENTITIES.filter(entity => expanded.has(entity));
 };
 
 export const buildAiChatGroupStateSelect = (entities: AiChatEntity[]) =>
@@ -411,19 +589,19 @@ export const buildAiChatPlannerPrompt = ({
   const availableEntitySet = new Set(availableEntities);
   const availableDataLines = [
     availableEntitySet.has('announcements')
-      ? '- announcements: recent announcement records with title, content, author, date, viewedBy'
+      ? '- announcements: recent announcement records with title, content, author, date, recipients, and only the view details this role can normally see'
       : null,
     availableEntitySet.has('messages')
-      ? '- messages: direct message threads plus group chats with recent messages'
+      ? '- messages: the current user’s direct message threads plus visible group chats with recent messages'
       : null,
     availableEntitySet.has('members')
       ? '- members: group member roster with names, emails, and roles'
       : null,
     availableEntitySet.has('events')
-      ? '- events: group events with title, date, location, attendees, and RSVPs'
+      ? '- events: group events with title, date, location, points, RSVP status, and only the attendance or viewer details this role can normally see'
       : null,
     availableEntitySet.has('forms')
-      ? '- forms: group forms with titles, descriptions, response counts, and whether the current user has responded'
+      ? '- forms: group forms with titles, descriptions, questions, counts, whether the current user has responded, and only the response details this role can normally see'
       : null,
     availableEntitySet.has('social_posts')
       ? '- social_posts: recent social posts with titles, content, likes, comments, and dates'
@@ -432,7 +610,7 @@ export const buildAiChatPlannerPrompt = ({
       ? '- gallery: recent gallery uploads with captions, authors, likes, and dates'
       : null,
     availableEntitySet.has('points')
-      ? '- points: recent point entries with member emails, reasons, points, and dates'
+      ? '- points: point history entries with member emails, reasons, points, and dates'
       : null,
     availableEntitySet.has('transactions')
       ? '- transactions: recent finance transactions with descriptions, amounts, dates, and statuses'
@@ -462,6 +640,7 @@ export const buildAiChatResponderPrompt = ({
   usedEntities,
   context,
   currentUserEmail,
+  role,
 }: {
   message: string;
   history?: AiChatHistoryMessage[];
@@ -469,9 +648,10 @@ export const buildAiChatResponderPrompt = ({
   usedEntities: AiChatEntity[];
   context: AiChatDataContext;
   currentUserEmail: string;
+  role: string;
 }) => {
   const recentHistory = normalizeHistory(history);
-  const projectedContext = projectContextForPrompt(context, { currentUserEmail });
+  const projectedContext = projectContextForPrompt(context, { currentUserEmail, role });
   const fetchedDataNote = usedEntities.length
     ? 'The backend provided a bounded subset of the requested group data. If the answer is not in that subset, say you do not have enough data.'
     : 'No group data was fetched because the planner determined this request can be answered without retrieval. Use the user message and recent history to respond helpfully. Do not refuse just because fetched_group_data is null.';
@@ -480,6 +660,7 @@ export const buildAiChatResponderPrompt = ({
     `planner_result: ${JSON.stringify(planner)}`,
     `used_entities: ${JSON.stringify(usedEntities)}`,
     `current_user_email: ${currentUserEmail}`,
+    `current_user_role: ${role}`,
     fetchedDataNote,
     `recent_history: ${recentHistory.length ? JSON.stringify(recentHistory) : '[]'}`,
     `fetched_group_data: ${usedEntities.length ? JSON.stringify(projectedContext) : 'null'}`,
@@ -498,7 +679,8 @@ export const fetchAiChatDataContext = async ({
   entities: AiChatEntity[];
   role?: string | null;
 }) => {
-  const usedEntities = filterAllowedAiChatEntities(entities, role);
+  const requestedEntities = filterAllowedAiChatEntities(entities, role);
+  const usedEntities = expandAiChatEntitiesForFetch(requestedEntities);
   if (usedEntities.length === 0) {
     return {
       context: {} satisfies AiChatDataContext,

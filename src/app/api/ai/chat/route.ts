@@ -460,6 +460,7 @@ export async function POST(request: Request) {
         usedEntities,
         context,
         currentUserEmail: user.email ?? '',
+        role: displayGroupRole(normalizeGroupRole(membership.role)),
       });
 
       const responderRun = await runResponderStep(requestId, responderPrompt);

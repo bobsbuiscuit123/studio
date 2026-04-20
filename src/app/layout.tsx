@@ -11,7 +11,6 @@ import { ClientTimeZoneSync } from "@/components/client-timezone-sync";
 import { NativeStatusBar } from "@/components/native-status-bar";
 import { SafeAreaSync } from "@/components/safe-area-sync";
 import { ThemeController } from "@/components/theme-controller";
-import { DarkModeAnnouncementDialog } from "@/components/dark-mode-announcement-dialog";
 import { ModalLayerRepair } from "@/components/modal-layer-repair";
 import { CurrentUserProvider } from "@/lib/current-user";
 import { PT_Sans } from "next/font/google";
@@ -70,7 +69,6 @@ export default function RootLayout({
             <PwaRegister />
             <NetworkStatusBanner />
             <PolicyViolationToaster />
-            <DarkModeAnnouncementDialog />
             {children}
             <Toaster />
           </div>
@@ -79,4 +77,3 @@ export default function RootLayout({
     </html>
   );
 }
-

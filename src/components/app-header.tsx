@@ -35,6 +35,7 @@ import type { User as UserType } from "@/lib/mock-data";
 import { useOptionalDemoCtx } from "@/lib/demo/DemoDataProvider";
 import { clearStoredDemoSession } from "@/lib/demo/mockData";
 import { ProfileDialog } from "@/components/profile-dialog";
+import { DesktopAssistantLauncher } from "@/components/assistant/desktop-assistant-launcher";
 import { safeFetchJson } from "@/lib/network";
 import {
   getSelectedGroupId,
@@ -418,36 +419,40 @@ export function AppHeader() {
           ) : null}
         </div>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 touch-manipulation overflow-hidden rounded-2xl active:scale-95">
-             {isMounted && user ? (
-                <Avatar>
-                  <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
-                  <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
-                    {getAvatarFallback(user?.name)}
-                  </AvatarFallback>
-                </Avatar>
-              ) : (
-                <Avatar>
-                  <AvatarFallback></AvatarFallback>
-                </Avatar>
-              )}
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>{user?.name || "My Account"} ({role || "No role"})</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-           <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
-           <Link href={useDemo ? '/demo' : '/clubs'}>
-             <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Group</DropdownMenuItem>
-             </Link>
-          <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        <div className="flex items-center gap-3">
+          <DesktopAssistantLauncher />
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 touch-manipulation overflow-hidden rounded-2xl active:scale-95">
+                 {isMounted && user ? (
+                    <Avatar>
+                      <AvatarImage src={user?.avatar} alt={user?.name || "User Avatar"} data-ai-hint="person"/>
+                      <AvatarFallback style={{ backgroundColor: avatarBgColor }}>
+                        {getAvatarFallback(user?.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <Avatar>
+                      <AvatarFallback></AvatarFallback>
+                    </Avatar>
+                  )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>{user?.name || "My Account"} ({role || "No role"})</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+               <DropdownMenuItem onClick={() => setIsProfileOpen(true)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+               <Link href={useDemo ? '/demo' : '/clubs'}>
+                 <DropdownMenuItem><Home className="mr-2 h-4 w-4" />Switch Group</DropdownMenuItem>
+                 </Link>
+              <DropdownMenuItem onClick={handleLogout}><LogOut className="mr-2 h-4 w-4" />Logout</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </header>
     <ProfileDialog
@@ -536,4 +541,3 @@ export function AppHeader() {
     </>
   );
 }
-

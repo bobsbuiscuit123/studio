@@ -12,7 +12,6 @@ export type AiError = AppError & {
   provider: Provider;
   model?: string;
 };
-
 const providerEnv = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
 const provider: Provider =
   providerEnv === 'openrouter'

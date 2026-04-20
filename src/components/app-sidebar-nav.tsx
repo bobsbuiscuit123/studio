@@ -14,8 +14,6 @@ import {
   Mail,
   MessageSquare,
   BarChart,
-  TrendingUp,
-  Bot,
   Sparkles,
   ClipboardList,
 } from 'lucide-react';
@@ -75,10 +73,12 @@ export function AppSidebarNav({
   const navItems = useMemo(() => {
     const filteredNavItems = allNavItems.filter(() => groupId);
 
-    return filteredNavItems.filter(item => item.roles.includes(role)).sort((a, b) => {
-      const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Gallery', 'Members', 'Finances'];
-      return order.indexOf(a.label) - order.indexOf(b.label);
-    });
+    return filteredNavItems
+      .filter(item => item.roles.includes(role) && item.href !== '/assistant')
+      .sort((a, b) => {
+        const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Gallery', 'Members', 'Finances'];
+        return order.indexOf(a.label) - order.indexOf(b.label);
+      });
   }, [groupId, role]);
 
   return (

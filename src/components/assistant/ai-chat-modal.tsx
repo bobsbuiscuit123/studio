@@ -25,12 +25,14 @@ type AIChatModalProps = {
   onRetry: (retryInput: string) => void;
   isSending: boolean;
   anchorRef: RefObject<HTMLElement | null>;
+  placement?: "above" | "below";
 };
 
 type PopupLayout = {
   left: number;
   width: number;
-  bottom: number;
+  top?: number;
+  bottom?: number;
   maxHeight: number;
   tailOffset: number;
 };
@@ -42,6 +44,7 @@ const POPUP_HEIGHT_RATIO = 0.56;
 const POPUP_MIN_BOTTOM = 92;
 const POPUP_MIN_TAIL_OFFSET = 34;
 const POPUP_GAP = 18;
+const POPUP_VIEWPORT_EDGE_GAP = 18;
 const EMPTY_STATE_TEXT = "Ask about your group or draft something quick.";
 
 const formatTimestamp = (value: string) => {
@@ -73,6 +76,7 @@ export function AIChatModal({
   onRetry,
   isSending,
   anchorRef,
+  placement = "above",
 }: AIChatModalProps) {
   const [mounted, setMounted] = useState(false);
   const [layout, setLayout] = useState<PopupLayout | null>(null);
@@ -158,6 +162,34 @@ export function AIChatModal({
         POPUP_MIN_TAIL_OFFSET,
         width - POPUP_MIN_TAIL_OFFSET
       );
+      if (placement === "below") {
+        const preferredLeft = rect.right - width;
+        const anchoredLeft = clamp(
+          preferredLeft,
+          POPUP_HORIZONTAL_MARGIN,
+          viewportWidth - POPUP_HORIZONTAL_MARGIN - width
+        );
+        const anchoredTop = rect.bottom + POPUP_GAP;
+        const availableHeight = viewportHeight - anchoredTop - POPUP_VIEWPORT_EDGE_GAP;
+        const maxHeight = Math.min(
+          POPUP_MAX_HEIGHT,
+          Math.max(320, availableHeight)
+        );
+
+        setLayout({
+          left: anchoredLeft,
+          width,
+          top: anchoredTop,
+          maxHeight,
+          tailOffset: clamp(
+            anchorCenter - anchoredLeft,
+            POPUP_MIN_TAIL_OFFSET,
+            width - POPUP_MIN_TAIL_OFFSET
+          ),
+        });
+        return;
+      }
+
       const anchoredBottom = window.innerHeight - rect.top + POPUP_GAP;
       const bottom = Math.max(POPUP_MIN_BOTTOM, anchoredBottom, keyboardInset + 12);
       const maxHeight = Math.min(
@@ -189,7 +221,7 @@ export function AIChatModal({
       window.visualViewport?.removeEventListener("resize", updateLayout);
       window.visualViewport?.removeEventListener("scroll", updateLayout);
     };
-  }, [anchorRef, open]);
+  }, [anchorRef, open, placement]);
 
   useEffect(() => {
     if (!open) return;
@@ -213,7 +245,7 @@ export function AIChatModal({
     return null;
   }
 
-  const popupHeight = Math.min(layout.maxHeight, 420);
+  const popupHeight = Math.min(layout.maxHeight, placement === "below" ? 480 : 420);
 
   return createPortal(
     <>
@@ -230,10 +262,12 @@ export function AIChatModal({
         aria-label="CASPO AI"
         className="assistant-popup-shell"
         data-ai-assistant-popup="true"
+        data-placement={placement}
         style={{
           left: `${layout.left}px`,
           width: `${layout.width}px`,
-          bottom: `${layout.bottom}px`,
+          ...(layout.top !== undefined ? { top: `${layout.top}px` } : {}),
+          ...(layout.bottom !== undefined ? { bottom: `${layout.bottom}px` } : {}),
           height: `${popupHeight}px`,
           maxHeight: `${layout.maxHeight}px`,
         }}
@@ -424,6 +458,7 @@ export function AIChatModal({
 
         <div
           className="assistant-popup-tail"
+          data-placement={placement}
           style={{ left: `${layout.tailOffset}px` }}
           aria-hidden="true"
         />

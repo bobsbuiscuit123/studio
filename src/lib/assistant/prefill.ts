@@ -1,5 +1,8 @@
+import { Capacitor } from '@capacitor/core';
+
 export const ASSISTANT_PREFILL_QUERY_KEY = 'prefill';
 export const ASSISTANT_PREFILL_STORAGE_KEY = 'assistantPrefill';
+export const ASSISTANT_OPEN_EVENT = 'caspo:open-assistant';
 
 type SearchParamGetter = {
   get: (key: string) => string | null;
@@ -37,6 +40,18 @@ export const openAssistantWithContext = (contextText: string) => {
   } catch {
     // ignore storage failures
   }
+  const isDesktopWeb =
+    window.matchMedia('(min-width: 768px)').matches && !Capacitor.isNativePlatform();
+
+  if (isDesktopWeb) {
+    window.dispatchEvent(
+      new CustomEvent(ASSISTANT_OPEN_EVENT, {
+        detail: { prefill },
+      })
+    );
+    return;
+  }
+
   const url = new URL(window.location.href);
   url.pathname = '/assistant';
   url.search = '';

@@ -1,3 +1,8 @@
+declare module '*.css' {
+  const content: string;
+  export default content;
+}
+
 declare module '@capacitor/status-bar' {
   export const StatusBar: {
     setOverlaysWebView(options: { overlay: boolean }): Promise<void>;

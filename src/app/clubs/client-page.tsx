@@ -34,7 +34,7 @@ import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { Logo } from "@/components/icons";
 import { ProfileDialog } from "@/components/profile-dialog";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
-import { readLocalViewCacheRecord, writeLocalViewCache } from "@/lib/local-view-cache";
+import { readLocalViewCacheRecord, removeLocalViewCache, writeLocalViewCache } from "@/lib/local-view-cache";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import type { OrgSettings } from "@/lib/org-settings";
 import { generateRandomCode } from "@/lib/random-code";
@@ -61,6 +61,18 @@ const GROUPS_REQUEST_TIMEOUT_MS = 8_000;
 const BACKGROUND_LOOKUP_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_200 };
 const groupListCache = new Map<string, { groups: Group[]; loadedAt: number }>();
 const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
+const invalidateGroupsCache = (orgId: string) => {
+  groupListCache.delete(orgId);
+  removeLocalViewCache(groupsCacheKey(orgId));
+};
+const persistGroupsCache = (orgId: string, groups: Group[]) => {
+  const loadedAt = Date.now();
+  groupListCache.set(orgId, {
+    groups,
+    loadedAt,
+  });
+  writeLocalViewCache(groupsCacheKey(orgId), groups);
+};
 
 const getCachedGroups = (orgId: string, maxAgeMs: number = GROUPS_CACHE_TTL_MS) => {
   const cached = groupListCache.get(orgId);
@@ -272,11 +284,7 @@ export default function ClubsPage() {
         return;
       }
       const nextGroups = groupsResult.data?.data?.groups ?? [];
-      groupListCache.set(selectedOrgId, {
-        groups: nextGroups,
-        loadedAt: Date.now(),
-      });
-      writeLocalViewCache(groupsCacheKey(selectedOrgId), nextGroups);
+      persistGroupsCache(selectedOrgId, nextGroups);
       setGroups(nextGroups);
       setLoading(false);
     };
@@ -308,6 +316,7 @@ export default function ClubsPage() {
       toast({ title: "Join failed", description: message, variant: "destructive" });
       return;
     }
+    invalidateGroupsCache(selectedOrgId);
     openDashboardForGroup(response.data.groupId);
   };
 
@@ -326,6 +335,9 @@ export default function ClubsPage() {
     setCreateGroupSubmitting(true);
     const joinCode = generateRandomCode(4);
     try {
+      const nextGroupName = groupName.trim();
+      const nextGroupDescription = groupDescription.trim();
+      const nextGroupLogo = groupLogo || null;
       const response = await safeFetchJson<{ ok: boolean; groupId?: string; joinCode?: string; error?: { message?: string } }>(
         "/api/groups/create",
         {
@@ -333,10 +345,10 @@ export default function ClubsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             orgId: selectedOrgId,
-            name: groupName.trim(),
-            description: groupDescription.trim(),
+            name: nextGroupName,
+            description: nextGroupDescription,
             joinCode,
-            logo: groupLogo || "",
+            logo: nextGroupLogo || "",
           }),
         }
       );
@@ -348,6 +360,17 @@ export default function ClubsPage() {
         toast({ title: "Create failed", description: message, variant: "destructive" });
         return;
       }
+      const createdGroup: Group = {
+        id: response.data.groupId,
+        name: nextGroupName,
+        description: nextGroupDescription || null,
+        join_code: response.data.joinCode ?? joinCode,
+        logo: nextGroupLogo,
+        role: "admin",
+      };
+      const nextGroups = [...groups, createdGroup];
+      persistGroupsCache(selectedOrgId, nextGroups);
+      setGroups(nextGroups);
       setIsCreateDialogOpen(false);
       setGroupName("");
       setGroupDescription("");
@@ -449,18 +472,19 @@ export default function ClubsPage() {
       toast({ title: "Update failed", description: message, variant: "destructive" });
       return;
     }
-    setGroups((prev) =>
-      prev.map((group) =>
-        group.id === editingGroup.id
-          ? {
-              ...group,
-              name: response.data!.data!.name,
-              description: response.data!.data!.description,
-              logo: response.data!.data!.logo || null,
-            }
-          : group
-      )
+    const updatedGroup = response.data.data;
+    const nextGroups = groups.map((group) =>
+      group.id === editingGroup.id
+        ? {
+            ...group,
+            name: updatedGroup.name,
+            description: updatedGroup.description,
+            logo: updatedGroup.logo || null,
+          }
+        : group
     );
+    persistGroupsCache(selectedOrgId, nextGroups);
+    setGroups(nextGroups);
     setEditingGroup(null);
     toast({ title: "Group updated", description: "Your group details were saved." });
   };

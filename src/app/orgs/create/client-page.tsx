@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowRight, Check, Loader2, RefreshCw, Sparkles } from 'lucide-react';
 
@@ -59,9 +60,11 @@ import {
   type PlanId,
 } from '@/lib/pricing';
 import { clearSelectedGroupId, setSelectedOrgId } from '@/lib/selection';
+import { cn } from '@/lib/utils';
 
 const MAX_ESTIMATED_MEMBERS = 10_000;
 const MAX_ESTIMATED_REQUESTS = 200;
+const isNativeApp = Capacitor.isNativePlatform();
 
 type DraftResponse = {
   ok: boolean;
@@ -240,6 +243,29 @@ export default function OrgCreatePage() {
     Boolean(activeSubscriptionProductId) &&
     resolvedPlan.id !== FREE_PLAN_ID &&
     resolvedPlan.id !== activeSubscriptionProductId;
+  const pageTextClass = isNativeApp ? 'text-slate-900' : 'text-foreground';
+  const eyebrowTextClass = isNativeApp ? 'text-slate-500' : 'text-muted-foreground';
+  const subduedTextClass = isNativeApp ? 'text-slate-600' : 'text-muted-foreground';
+  const emphasisTextClass = isNativeApp ? 'text-slate-900' : 'text-foreground';
+  const logoShellClass = isNativeApp
+    ? 'bg-emerald-100 text-emerald-700 shadow-lg'
+    : 'bg-emerald-100 text-emerald-700 shadow-lg dark:bg-emerald-500/15 dark:text-emerald-300';
+  const logoIconClass = isNativeApp
+    ? 'h-6 w-6 text-emerald-700'
+    : 'h-6 w-6 text-emerald-700 dark:text-emerald-300';
+  const shellCardClass = isNativeApp
+    ? 'rounded-[28px] border-0 bg-white/90 shadow-xl backdrop-blur'
+    : 'rounded-[28px] border border-border/70 bg-card/95 shadow-xl backdrop-blur';
+  const secondaryCardClass = isNativeApp
+    ? 'rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-none'
+    : 'rounded-[24px] border border-border/70 bg-secondary/35 shadow-none';
+  const infoPanelClass = isNativeApp
+    ? 'rounded-2xl bg-white px-4 py-3'
+    : 'rounded-2xl border border-border/60 bg-background/70 px-4 py-3';
+  const inactiveStepClass = isNativeApp
+    ? 'bg-slate-200 text-slate-500'
+    : 'bg-secondary text-muted-foreground';
+  const stepConnectorClass = isNativeApp ? 'bg-slate-200' : 'bg-border';
 
   useEffect(() => {
     if (!paidPlanBlockedInCreate) {
@@ -551,15 +577,15 @@ export default function OrgCreatePage() {
         : 'Create Organization';
 
   return (
-    <div className="viewport-page bg-background text-slate-900">
+    <div className={cn('viewport-page bg-background', pageTextClass)}>
       <div className="viewport-scroll relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 shadow-lg">
-              <Logo className="h-6 w-6 text-emerald-700" />
+            <div className={cn('flex h-12 w-12 items-center justify-center rounded-2xl', logoShellClass)}>
+              <Logo className={logoIconClass} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-500">CASPO</p>
+              <p className={cn('text-xs uppercase tracking-[0.3em]', eyebrowTextClass)}>CASPO</p>
               <h1 className="text-3xl font-semibold">Create organization</h1>
             </div>
           </div>
@@ -569,19 +595,19 @@ export default function OrgCreatePage() {
           </Button>
         </header>
 
-        <Card className="rounded-[28px] border-0 bg-white/90 shadow-xl backdrop-blur">
+        <Card className={shellCardClass}>
           <CardHeader className="space-y-4">
             <div className="flex items-center gap-3 text-sm">
               {[1, 2, 3].map((value) => (
                 <div key={value} className="flex items-center gap-3">
                   <div
                     className={`flex h-9 w-9 items-center justify-center rounded-full font-semibold ${
-                      step >= value ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'
+                      step >= value ? 'bg-emerald-600 text-white' : inactiveStepClass
                     }`}
                   >
                     {step > value ? <Check className="h-4 w-4" /> : value}
                   </div>
-                  {value < 3 ? <div className="h-px w-10 bg-slate-200 sm:w-20" /> : null}
+                  {value < 3 ? <div className={cn('h-px w-10 sm:w-20', stepConnectorClass)} /> : null}
                 </div>
               ))}
             </div>
@@ -672,7 +698,7 @@ export default function OrgCreatePage() {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <Label>Expected active members</Label>
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className={cn('text-sm font-semibold', emphasisTextClass)}>
                           {estimatedMembers.toLocaleString()}
                         </span>
                       </div>
@@ -689,7 +715,7 @@ export default function OrgCreatePage() {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <Label>Average AI requests per member per day</Label>
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className={cn('text-sm font-semibold', emphasisTextClass)}>
                           {requestsPerMemberPerDay}
                         </span>
                       </div>
@@ -703,24 +729,24 @@ export default function OrgCreatePage() {
                       />
                     </div>
 
-                    <Card className="rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-none">
+                    <Card className={secondaryCardClass}>
                       <CardHeader className="pb-3">
                         <CardTitle className="text-base">Usage estimate</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-2 text-sm text-slate-600">
+                      <CardContent className={cn('space-y-2 text-sm', subduedTextClass)}>
                         <div className="flex items-center justify-between">
                           <span>Estimated daily usage</span>
-                          <span className="font-semibold text-slate-900">
+                          <span className={cn('font-semibold', emphasisTextClass)}>
                             {usageEstimate.estimatedDailyTokens.toLocaleString()} tokens
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>Estimated monthly usage</span>
-                          <span className="font-semibold text-slate-900">
+                          <span className={cn('font-semibold', emphasisTextClass)}>
                             {usageEstimate.estimatedMonthlyTokens.toLocaleString()} tokens
                           </span>
                         </div>
-                        <p className="pt-2 text-xs text-slate-500">
+                        <p className={cn('pt-2 text-xs', eyebrowTextClass)}>
                           Recommended plan: {recommendedPlan.name}
                         </p>
                       </CardContent>
@@ -728,12 +754,12 @@ export default function OrgCreatePage() {
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-base font-semibold">Plans</h2>
-                      {loadingPackages ? (
-                        <span className="text-xs text-slate-500">Loading live prices...</span>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold">Plans</h2>
+                    {loadingPackages ? (
+                        <span className={cn('text-xs', eyebrowTextClass)}>Loading live prices...</span>
                       ) : null}
-                    </div>
+                  </div>
                     {SUBSCRIPTION_PLANS.map((plan) => {
                       const isSelected = resolvedPlan.id === plan.id;
                       const resolvedPrice =
@@ -798,54 +824,54 @@ export default function OrgCreatePage() {
 
             {step === 3 ? (
               <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-                <Card className="rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-none">
+                <Card className={secondaryCardClass}>
                   <CardHeader>
                     <CardTitle className="text-base">Organization details</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-slate-600">
+                  <CardContent className={cn('space-y-3 text-sm', subduedTextClass)}>
                     <div className="flex items-center justify-between">
                       <span>Name</span>
-                      <span className="font-semibold text-slate-900">{orgName || '—'}</span>
+                      <span className={cn('font-semibold', emphasisTextClass)}>{orgName || '—'}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Category</span>
-                      <span className="font-semibold text-slate-900">{orgCategory || '—'}</span>
+                      <span className={cn('font-semibold', emphasisTextClass)}>{orgCategory || '—'}</span>
                     </div>
                     <div>
-                      <p className="mb-1 text-xs uppercase tracking-wide text-slate-500">Description</p>
-                      <p className="rounded-2xl bg-white px-4 py-3 text-slate-700">
+                      <p className={cn('mb-1 text-xs uppercase tracking-wide', eyebrowTextClass)}>Description</p>
+                      <p className={cn(infoPanelClass, subduedTextClass)}>
                         {orgDescription || 'No description provided.'}
                       </p>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-none">
+                <Card className={secondaryCardClass}>
                   <CardHeader>
                     <CardTitle className="text-base">Usage and plan review</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-slate-600">
+                  <CardContent className={cn('space-y-3 text-sm', subduedTextClass)}>
                     <div className="flex items-center justify-between">
                       <span>Estimated active members</span>
-                      <span className="font-semibold text-slate-900">{estimatedMembers.toLocaleString()}</span>
+                      <span className={cn('font-semibold', emphasisTextClass)}>{estimatedMembers.toLocaleString()}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Estimated requests per member/day</span>
-                      <span className="font-semibold text-slate-900">{requestsPerMemberPerDay}</span>
+                      <span className={cn('font-semibold', emphasisTextClass)}>{requestsPerMemberPerDay}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Estimated monthly usage</span>
-                      <span className="font-semibold text-slate-900">
+                      <span className={cn('font-semibold', emphasisTextClass)}>
                         {usageEstimate.estimatedMonthlyTokens.toLocaleString()} tokens
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span>Selected plan</span>
-                      <span className="font-semibold text-slate-900">{resolvedPlan.name}</span>
+                      <span className={cn('font-semibold', emphasisTextClass)}>{resolvedPlan.name}</span>
                     </div>
-                    <div className="rounded-2xl bg-white px-4 py-3">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Final action</p>
-                      <p className="mt-1 font-medium text-slate-900">
+                    <div className={infoPanelClass}>
+                      <p className={cn('text-xs uppercase tracking-wide', eyebrowTextClass)}>Final action</p>
+                      <p className={cn('mt-1 font-medium', emphasisTextClass)}>
                         {paidPlanBlockedInCreate
                           ? 'Paid plans cannot be used for this new organization while another organization already owns the account subscription.'
                           : creationModeLabel(creationMode, {
@@ -854,7 +880,7 @@ export default function OrgCreatePage() {
                       </p>
                     </div>
                     {resolvedPlan.isFree ? (
-                      <p className="rounded-2xl bg-white px-4 py-3 text-xs text-slate-600">
+                      <p className={cn(infoPanelClass, 'text-xs', subduedTextClass)}>
                         No AI usage is included on the free plan.
                       </p>
                     ) : null}
@@ -924,7 +950,7 @@ export default function OrgCreatePage() {
                   )}
                   Restore Purchases
                 </Button>
-                <p className="text-center text-xs text-slate-500">
+                <p className={cn('text-center text-xs', eyebrowTextClass)}>
                   Already purchased on this Apple ID? Restore purchases before starting another
                   subscription flow.
                 </p>
@@ -950,7 +976,7 @@ export default function OrgCreatePage() {
                 {completedOrg?.joinCode}
               </p>
             </div>
-            <p className="text-sm text-slate-600">
+            <p className={cn('text-sm', subduedTextClass)}>
               {completedOrg?.planName} is now assigned to this organization. Members can join with the code above.
             </p>
           </div>

@@ -23,7 +23,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { notifyOrgAiUsageChanged, useMembers, useCurrentUserRole } from "@/lib/data-hooks";
 import type { GenerateEmailOutput } from "@/ai/flows/generate-email";
-import { safeFetchJson } from "@/lib/network";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 
 
 const promptFormSchema = z.object({
@@ -47,6 +47,15 @@ function EmailPageInner() {
   const [showAi, setShowAi] = useState(false);
   const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
+  const openEmailAssistant = (prompt: string) => {
+    openAssistantWithContext(
+      [
+        "I’m on the email page for this group.",
+        prompt,
+        "Draft a subject and body for an email to members. Keep it editable and do not send anything automatically.",
+      ].join(" ")
+    );
+  };
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -80,62 +89,9 @@ function EmailPageInner() {
   }, [hydratedFromQuery, searchParams]);
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsGenerating(true);
-    try {
-      const idempotencyKey =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const result = await safeFetchJson<{ ok: true; data: GenerateEmailOutput; error?: { message?: string } }>(
-        '/api/email/ai',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(values),
-          timeoutMs: 15_000,
-          retry: { retries: 0 },
-          idempotencyKey,
-        }
-      );
-      if (!result.ok) {
-        toast({
-          title: "Error",
-          description: result.error?.message || "Failed to generate email draft.",
-          variant: "destructive",
-        });
-        return;
-      }
-      const payload = result.data.data;
-      const generatedDraft =
-        payload &&
-        typeof payload === "object" &&
-        "ok" in payload &&
-        "data" in payload &&
-        (payload as { ok?: boolean }).ok
-          ? (payload as { data?: GenerateEmailOutput }).data
-          : (payload as GenerateEmailOutput | undefined);
-
-      if (!generatedDraft?.subject || !generatedDraft?.body) {
-        toast({
-          title: "Error",
-          description: "The generated email draft was empty.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setEmailContent({
-        subject: generatedDraft.subject,
-        body: generatedDraft.body,
-      });
-      notifyOrgAiUsageChanged(undefined, 1);
-      toast({ title: "Email draft generated!" });
-    } finally {
-      aiRequestInFlightRef.current = false;
-      setIsGenerating(false);
-    }
+    openEmailAssistant(values.prompt);
+    promptForm.reset();
+    setShowAi(false);
   };
   
   const gmailLink = useMemo(() => {
@@ -186,15 +142,18 @@ function EmailPageInner() {
         <CardHeader className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2"><Mail /> Compose email</CardTitle>
-            <CardDescription>Start manually, then optionally fill with AI.</CardDescription>
+            <CardDescription>Start manually, then use the assistant if you want help drafting.</CardDescription>
           </div>
           <Button
             type="button"
-            variant="ghost"
+            variant="default"
             className={aiSparkle}
-            onClick={() => setShowAi(v => !v)}
+            onClick={() => {
+              setShowAi(false);
+              openEmailAssistant("Draft an email to all members of this group.");
+            }}
           >
-            <Sparkles className="h-4 w-4 mr-1" /> {showAi ? 'Hide AI' : 'Make with AI'}
+            <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
           </Button>
         </CardHeader>
         {showAi && (
@@ -206,7 +165,7 @@ function EmailPageInner() {
                   name="prompt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>AI prompt</FormLabel>
+                      <FormLabel>Assistant prompt</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="e.g., Write an email to remind everyone about the bake sale Friday. We still need 5 volunteers."
@@ -219,7 +178,7 @@ function EmailPageInner() {
                   )}
                 />
                 <Button type="submit" disabled={isGenerating} className={aiSparkle}>
-                  {isGenerating ? <Loader2 className="animate-spin" /> : 'Generate draft with AI'}
+                  {isGenerating ? <Loader2 className="animate-spin" /> : 'Continue in Assistant'}
                 </Button>
               </form>
             </Form>

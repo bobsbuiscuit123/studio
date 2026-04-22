@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Transaction } from "@/lib/mock-data";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
-import { safeFetchJson } from "@/lib/network";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
@@ -52,6 +52,15 @@ export default function FinancesPage() {
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
+  const openFinanceAssistant = (prompt: string) => {
+    openAssistantWithContext(
+      [
+        "I’m on the finances page for this group.",
+        prompt,
+        "Help me turn this into a clean transaction draft with description, amount, date, and whether it is a deposit or withdrawal. Do not save anything automatically.",
+      ].join(" ")
+    );
+  };
 
   const form = useForm<z.infer<typeof promptFormSchema>>({
     resolver: zodResolver(promptFormSchema),
@@ -69,47 +78,9 @@ export default function FinancesPage() {
   });
   
   const handleAddTransaction = async (values: z.infer<typeof promptFormSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsProcessing(true);
-    const idempotencyKey =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const result = await safeFetchJson<{ ok: boolean; data?: { description: string; amount: number; date: string; status?: string }; error?: { message?: string } }>(
-      '/api/finances/ai',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-        timeoutMs: 12_000,
-        retry: { retries: 0 },
-        idempotencyKey,
-      }
-    );
-    if (!result.ok || !result.data?.ok || !result.data.data) {
-      toast({
-        title: "Error",
-        description: result.ok ? result.data?.error?.message || "Failed to add transaction from prompt." : result.error.message,
-        variant: "destructive",
-      });
-      aiRequestInFlightRef.current = false;
-      setIsProcessing(false);
-      return;
-    }
-    const newTransaction: Transaction = {
-      id: Date.now().toString(),
-      description: result.data.data.description,
-      amount: result.data.data.amount,
-      date: new Date(result.data.data.date).toLocaleDateString(),
-      status: result.data.data.amount >= 0 ? 'Deposit' : 'Withdrawal',
-    };
-    setTransactions([newTransaction, ...transactions]);
-    notifyOrgAiUsageChanged(undefined, 1);
-    toast({ title: "Transaction added successfully!" });
+    openFinanceAssistant(values.prompt);
     form.reset();
-    aiRequestInFlightRef.current = false;
-    setIsProcessing(false);
+    setShowAi(false);
   };
   
   const handleManualAdd = (values: z.infer<typeof manualFormSchema>) => {
@@ -256,8 +227,18 @@ export default function FinancesPage() {
                     <CardTitle className="flex items-center gap-2"><Landmark /> Add Transaction</CardTitle>
                     <CardDescription>Enter details manually, or ask AI to fill them.</CardDescription>
                   </div>
-                  <Button type="button" variant="ghost" className={aiSparkle} onClick={() => setShowAi(v => !v)}>
-                    <Sparkles className="h-4 w-4 mr-1" /> {showAi ? 'Hide AI' : 'Make with AI'}
+                  <Button
+                    type="button"
+                    variant="default"
+                    className={aiSparkle}
+                    onClick={() => {
+                      setShowAi(false);
+                      openFinanceAssistant(
+                        "Help me draft a transaction entry for this group and keep it ready for manual review."
+                      );
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
                   </Button>
                 </div>
               </CardHeader>
@@ -343,7 +324,7 @@ export default function FinancesPage() {
                           name="prompt"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>AI prompt</FormLabel>
+                              <FormLabel>Assistant prompt</FormLabel>
                               <FormControl>
                                 <Textarea
                                   placeholder="e.g., 'Received $50 for member dues yesterday' or 'Spent $25 on pizza for the meeting last Friday, it has been paid.'"
@@ -357,7 +338,7 @@ export default function FinancesPage() {
                           )}
                         />
                         <Button type="submit" disabled={isProcessing} className={`w-full ${aiSparkle}`}>
-                          {isProcessing ? <Loader2 className="animate-spin" /> : <><Sparkles className="mr-2" /> Add with AI</>}
+                          {isProcessing ? <Loader2 className="animate-spin" /> : <><Sparkles className="mr-2" /> Continue in Assistant</>}
                         </Button>
                       </form>
                     </Form>

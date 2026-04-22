@@ -48,6 +48,7 @@ export function AppMobileTabBar() {
     assistantButtonRef,
     assistantInput,
     assistantMessages,
+    handleAssistantCommand,
     handleAssistantRetry,
     handleAssistantSend,
     isAssistantOpen,
@@ -138,6 +139,7 @@ export function AppMobileTabBar() {
         onInputChange={setAssistantInput}
         onSend={handleAssistantSend}
         onRetry={handleAssistantRetry}
+        onCommand={handleAssistantCommand}
         isSending={isAssistantSending}
         anchorRef={assistantButtonRef}
       />

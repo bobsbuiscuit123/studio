@@ -11,6 +11,7 @@ export function DesktopAssistantLauncher() {
     assistantButtonRef,
     assistantInput,
     assistantMessages,
+    handleAssistantCommand,
     handleAssistantRetry,
     handleAssistantSend,
     isAssistantOpen,
@@ -29,6 +30,7 @@ export function DesktopAssistantLauncher() {
         onInputChange={setAssistantInput}
         onSend={handleAssistantSend}
         onRetry={handleAssistantRetry}
+        onCommand={handleAssistantCommand}
         isSending={isAssistantSending}
         anchorRef={assistantButtonRef}
         placement="below"

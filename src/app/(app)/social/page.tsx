@@ -5,7 +5,7 @@ import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Network, Loader2, Image as ImageIcon, X, Pencil, ThumbsUp, MessageCircle, Trash2 } from "lucide-react";
+import { Network, Loader2, Image as ImageIcon, X, Pencil, ThumbsUp, MessageCircle, Trash2, Sparkles } from "lucide-react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
@@ -50,10 +50,10 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { notifyOrgAiUsageChanged, useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { resizeImage } from "@/lib/image-resizer";
-import { safeFetchJson } from "@/lib/network";
 
 const MAX_SOCIAL_POSTS = 5;
 
@@ -86,6 +86,20 @@ export default function SocialPage() {
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const aiRequestInFlightRef = useRef(false);
+  const openSocialAssistant = (prompt: string, hasImages: boolean) => {
+    openAssistantWithContext(
+      [
+        "I’m on the social page for this group.",
+        prompt,
+        hasImages
+          ? "There are images selected on the page, but you cannot inspect them, so focus on strong social copy and caption ideas."
+          : null,
+        "Help me draft the post inside the assistant instead of publishing anything automatically.",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    );
+  };
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -189,60 +203,11 @@ export default function SocialPage() {
   };
 
   const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsLoading(true);
-    
-    let photoDataUris: string[] = [];
-    try {
-      if (values.photos && values.photos.length > 0) {
-        photoDataUris = await Promise.all(values.photos.map(file => resizeImage(file)));
-      }
-      const idempotencyKey =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      
-      const result = await safeFetchJson<{ ok: true; data: GenerateSocialMediaPostOutput; error?: { message?: string } }>(
-        '/api/social/ai',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: values.prompt,
-            photoDataUris: photoDataUris.length > 0 ? photoDataUris : undefined,
-          }),
-          timeoutMs: 20_000,
-          retry: { retries: 0 },
-          idempotencyKey,
-        }
-      );
-      if (!result.ok) {
-        toast({
-          title: "Error",
-          description: result.error?.message || "Failed to generate social media post.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      notifyOrgAiUsageChanged(undefined, 1);
-      setPostToReview({
-        ...result.data.data,
-        images: result.data.data.images || [],
-        dataAiHint: "tech group",
-      });
-      postForm.reset({ title: result.data.data.title, content: result.data.data.postText });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate social media post.",
-        variant: "destructive",
-      });
-    } finally {
-      aiRequestInFlightRef.current = false;
-      setIsLoading(false);
-    }
+    openSocialAssistant(values.prompt, Boolean(values.photos?.length));
+    toast({
+      title: "Assistant opened",
+      description: "Finish the social post draft in the assistant.",
+    });
   };
 
   const handlePostSubmit = (values: z.infer<typeof postFormSchema>) => {
@@ -289,7 +254,7 @@ export default function SocialPage() {
             <Card>
             <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Network /> Create Social Post</CardTitle>
-                <CardDescription>Describe the social media post you want to create.</CardDescription>
+                <CardDescription>Describe the post you want, then continue in the assistant.</CardDescription>
             </CardHeader>
             <CardContent>
                 <Form {...form}>
@@ -345,12 +310,8 @@ export default function SocialPage() {
                     )}
                 
                     <Button type="submit" disabled={isLoading} className="w-full">
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="animate-spin mr-2" />
-                        Generating Post...
-                      </>
-                     ) : "Generate Post"}
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Continue in Assistant
                     </Button>
                 </form>
                 </Form>

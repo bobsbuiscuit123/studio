@@ -41,8 +41,8 @@ import type { GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announc
 import { useToast } from "@/hooks/use-toast";
 import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
 import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { safeFetchJson } from "@/lib/network";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { cn } from "@/lib/utils";
 
@@ -156,6 +156,15 @@ function AnnouncementsPageInner() {
   const [highlightedAnnouncementId, setHighlightedAnnouncementId] = useState<string | null>(null);
   const aiRequestInFlightRef = useRef(false);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const openAnnouncementAssistant = (prompt: string) => {
+    openAssistantWithContext(
+      [
+        `I’m on the announcements page for ${clubName || "this group"}.`,
+        prompt,
+        "If this should become an announcement, use the normal assistant preview and confirmation flow before posting.",
+      ].join(" ")
+    );
+  };
 
   useEffect(() => {
     if (!clubId) return;
@@ -254,57 +263,20 @@ function AnnouncementsPageInner() {
     const prefillFromForm = async () => {
       setHandledFormId(announceFormId);
       setLinkedFormIdDraft(targetForm.id);
-      setAttachments([{
-        name: "Fill out the form",
-        dataUri: `/forms?formId=${encodeURIComponent(targetForm.id)}`,
-        type: "button",
-      }]);
+      setAttachments([]);
       setRecipientMode('all');
       setSelectedRecipients([]);
-      setIsLoading(true);
-      try {
-        const promptText = targetForm.title
-          ? `tell everyone to fill out this form titled "${targetForm.title}"`
-          : "tell everyone to fill out this form";
-        const idempotencyKey =
-          typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
-          '/api/announcements/ai',
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: promptText }),
-            timeoutMs: 15_000,
-            retry: { retries: 0 },
-            idempotencyKey,
-          }
-        );
-        if (!result.ok) {
-          toast({
-            title: "Error",
-            description: result.error?.message || "Failed to generate announcement for this form.",
-            variant: "destructive",
-          });
-          return;
-        }
-        notifyOrgAiUsageChanged(undefined, 1);
-        setGeneratedAnnouncement(result.data.data);
-        announcementForm.reset({
-          title: result.data.data.title,
-          content: result.data.data.announcement
-        });
-        setIsPostDialogOpen(true);
-      } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to generate announcement for this form.",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
+
+      const promptText = targetForm.title
+        ? `Draft an announcement telling members to fill out the form "${targetForm.title}". Include this link in the body: /forms?formId=${encodeURIComponent(targetForm.id)}`
+        : `Draft an announcement telling members to fill out this form. Include this link in the body: /forms?formId=${encodeURIComponent(targetForm.id)}`;
+
+      openAnnouncementAssistant(promptText);
+      toast({
+        title: "Assistant opened",
+        description: "Finish the announcement in the assistant preview before posting.",
+      });
+      router.replace("/announcements");
     };
 
     prefillFromForm();
@@ -466,44 +438,9 @@ function AnnouncementsPageInner() {
   };
 
   const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsLoading(true);
-    try {
-      const idempotencyKey =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const result = await safeFetchJson<{ ok: true; data: GenerateClubAnnouncementOutput; error?: { message?: string } }>(
-        '/api/announcements/ai',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: values.prompt }),
-          timeoutMs: 15_000,
-          retry: { retries: 0 },
-          idempotencyKey,
-        }
-      );
-      if (!result.ok) {
-        toast({
-          title: "Error",
-          description: result.error?.message || "Failed to generate announcement.",
-          variant: "destructive",
-        });
-        return;
-      }
-      notifyOrgAiUsageChanged(undefined, 1);
-      setGeneratedAnnouncement(result.data.data);
-      announcementForm.reset({
-          title: result.data.data.title,
-          content: result.data.data.announcement
-      });
-      setIsPostDialogOpen(true);
-    } finally {
-      aiRequestInFlightRef.current = false;
-      setIsLoading(false);
-    }
+    openAnnouncementAssistant(values.prompt);
+    promptForm.reset();
+    setShowAi(false);
   };
 
   const handlePostAnnouncement = async (values: z.infer<typeof announcementFormSchema>) => {
@@ -628,10 +565,15 @@ function AnnouncementsPageInner() {
                 <Button
                   type="button"
                   variant="default"
-                  className={showAi ? '' : aiSparkle}
-                  onClick={() => setShowAi(v => !v)}
+                  className={aiSparkle}
+                  onClick={() => {
+                    setShowAi(false);
+                    openAnnouncementAssistant(
+                      "Draft an announcement for this group. Ask for any missing details instead of guessing."
+                    );
+                  }}
                 >
-                  {showAi ? 'Make manually' : <><Sparkles className="h-4 w-4 mr-1" /> Make with AI</>}
+                  <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
                 </Button>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -771,7 +713,7 @@ function AnnouncementsPageInner() {
                       name="prompt"
                       render={({ field }) => (
                           <FormItem>
-                          <FormLabel>AI prompt</FormLabel>
+                          <FormLabel>Assistant prompt</FormLabel>
                           <FormControl>
                               <Textarea 
                               placeholder="e.g., Draft an announcement for the annual bake sale next Friday at 2 PM. We need volunteers to sign up by Wednesday."
@@ -822,7 +764,7 @@ function AnnouncementsPageInner() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                           <>
-                            <Sparkles className="h-4 w-4 mr-2" /> Generate with AI
+                            <Sparkles className="h-4 w-4 mr-2" /> Continue in Assistant
                           </>
                       )}
                       </Button>

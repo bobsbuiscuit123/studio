@@ -59,7 +59,7 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { safeFetchJson } from "@/lib/network";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
@@ -173,6 +173,15 @@ export default function CalendarPage() {
   const [showAi, setShowAi] = useState(false);
   const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
+  const openCalendarAssistant = (prompt: string) => {
+    openAssistantWithContext(
+      [
+        "I’m on the calendar page for this group.",
+        prompt,
+        "If this should become an event, use the assistant event preview and confirmation flow and do not guess missing date or time.",
+      ].join(" ")
+    );
+  };
 
   useEffect(() => {
     setIsClient(true);
@@ -411,77 +420,9 @@ export default function CalendarPage() {
 
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsLoading(true);
-    try {
-      const idempotencyKey =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const response = await safeFetchJson<CalendarAiEnvelope | CalendarAiResponse>('/api/calendar/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: values.prompt }),
-        timeoutMs: 15_000,
-        retry: { retries: 0 },
-        idempotencyKey,
-      });
-      if (!response.ok) {
-        throw new Error(response.error.message || 'Failed to generate event.');
-      }
-      const responseBody = response.data;
-      const payload =
-        responseBody &&
-        typeof responseBody === 'object' &&
-        'success' in responseBody
-          ? responseBody.data
-          : responseBody;
-      if (!payload) {
-        throw new Error('Invalid server response.');
-      }
-      if (!('ok' in payload)) {
-        throw new Error('Invalid server response.');
-      }
-      if (!payload.ok) {
-        throw new Error(
-          'error' in payload ? payload.error?.message || 'Failed to generate event.' : 'Failed to generate event.'
-        );
-      }
-      const result = payload.data;
-      const hasTime =
-        typeof result?.hasTime === 'boolean' ? result.hasTime : true;
-      const parsedDate = new Date(result.date);
-      const safeDate = Number.isNaN(parsedDate.getTime())
-        ? new Date()
-        : parsedDate;
-      const newEvent: ClubEvent = {
-        id: createClientEventId(),
-        title: result.title,
-        description: result.description,
-        date: safeDate,
-        location: result.location ?? "",
-        hasTime,
-        points: 0, // Default points, can be edited
-        rsvps: { yes: [], no: [], maybe: [] },
-        rsvpRequired: false,
-        viewedBy: currentEmail ? [currentEmail] : [],
-        read: false,
-      };
-      form.reset();
-      toast({ title: "Review event details" });
-      openEventEditor(newEvent, { isDraft: true });
-    } catch (error: any) {
-      console.error(error);
-      toast({
-        title: "Error adding event with AI",
-        description: error?.message ?? "There was a problem generating the event from your prompt. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      aiRequestInFlightRef.current = false;
-      setIsLoading(false);
-    }
+    openCalendarAssistant(values.prompt);
+    form.reset();
+    setShowAi(false);
   };
   
   const handleManualAdd = async (values: z.infer<typeof manualEventSchema>) => {
@@ -677,11 +618,16 @@ export default function CalendarPage() {
                 </div>
                 <Button
                   type="button"
-                  variant={showAi ? "default" : "ghost"}
-                  className={`w-full sm:w-auto ${showAi ? '' : aiSparkle}`}
-                  onClick={() => setShowAi(v => !v)}
+                  variant="default"
+                  className={`w-full sm:w-auto ${aiSparkle}`}
+                  onClick={() => {
+                    setShowAi(false);
+                    openCalendarAssistant(
+                      "Draft an event for this group and ask me for any missing date or time instead of guessing."
+                    );
+                  }}
                 >
-                  {showAi ? 'Make manually' : <><Sparkles className="h-4 w-4 mr-1" /> Make with AI</>}
+                  <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
                 </Button>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -779,7 +725,7 @@ export default function CalendarPage() {
                           name="prompt"
                           render={({ field }) => (
                               <FormItem>
-                              <FormLabel>AI prompt</FormLabel>
+                              <FormLabel>Assistant prompt</FormLabel>
                               <FormControl>
                                   <Textarea 
                                   placeholder="e.g., Schedule our monthly meeting for next Tuesday at 6 PM in the main auditorium. The topic is planning the summer fundraiser."
@@ -792,7 +738,7 @@ export default function CalendarPage() {
                           )}
                           />
                           <Button type="submit" disabled={isLoading} className={`w-full ${aiSparkle}`}>
-                          {isLoading ? <Loader2 className="animate-spin" /> : "Add with AI"}
+                          {isLoading ? <Loader2 className="animate-spin" /> : "Continue in Assistant"}
                           </Button>
                       </form>
                     </Form>

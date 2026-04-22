@@ -8,10 +8,16 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { Bot, CheckCircle2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 
 import type { AiChatClientMessage } from "@/lib/ai-chat";
+import type {
+  AssistantCommand,
+  DraftPreview,
+  RecipientRef,
+} from "@/lib/assistant/agent/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +29,7 @@ type AIChatModalProps = {
   onInputChange: (value: string) => void;
   onSend: () => void;
   onRetry: (retryInput: string) => void;
+  onCommand: (command: AssistantCommand) => void;
   isSending: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   placement?: "above" | "below";
@@ -37,10 +44,20 @@ type PopupLayout = {
   tailOffset: number;
 };
 
+type PreviewEditorState = {
+  title: string;
+  body: string;
+  description: string;
+  date: string;
+  time: string;
+  location: string;
+  recipientsText: string;
+};
+
 const POPUP_HORIZONTAL_MARGIN = 10;
-const POPUP_MAX_WIDTH = 360;
-const POPUP_MAX_HEIGHT = 520;
-const POPUP_HEIGHT_RATIO = 0.56;
+const POPUP_MAX_WIDTH = 420;
+const POPUP_MAX_HEIGHT = 560;
+const POPUP_HEIGHT_RATIO = 0.58;
 const POPUP_MIN_BOTTOM = 92;
 const POPUP_MIN_TAIL_OFFSET = 34;
 const POPUP_GAP = 18;
@@ -66,6 +83,464 @@ const getViewportHeight = () => window.visualViewport?.height ?? window.innerHei
 
 const getKeyboardInset = () => Math.max(0, window.innerHeight - getViewportHeight());
 
+const recipientsToText = (recipients?: RecipientRef[]) =>
+  (recipients ?? []).map(recipient => recipient.email).join(", ");
+
+const previewToEditorState = (preview: DraftPreview): PreviewEditorState => ({
+  title: preview.kind === "announcement" || preview.kind === "event" ? preview.title ?? "" : "",
+  body:
+    preview.kind === "announcement" ? preview.body ?? "" : preview.kind === "message" ? preview.body ?? "" : "",
+  description: preview.kind === "event" ? preview.description ?? "" : "",
+  date: preview.kind === "event" ? preview.date ?? "" : "",
+  time: preview.kind === "event" ? preview.time ?? "" : "",
+  location: preview.kind === "event" ? preview.location ?? "" : "",
+  recipientsText:
+    preview.kind === "announcement" || preview.kind === "message"
+      ? recipientsToText(preview.recipients)
+      : "",
+});
+
+const parseRecipients = (value: string): RecipientRef[] | undefined => {
+  const emails = value
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+
+  return emails.length > 0 ? emails.map(email => ({ email })) : undefined;
+};
+
+const buildPatchFromEditorState = (preview: DraftPreview, editor: PreviewEditorState) => {
+  switch (preview.kind) {
+    case "announcement":
+      return {
+        kind: "announcement" as const,
+        patch: {
+          ...(editor.title.trim() ? { title: editor.title.trim() } : {}),
+          ...(editor.body.trim() ? { body: editor.body.trim() } : {}),
+          ...(parseRecipients(editor.recipientsText) ? { recipients: parseRecipients(editor.recipientsText) } : {}),
+        },
+      };
+    case "event":
+      return {
+        kind: "event" as const,
+        patch: {
+          ...(editor.title.trim() ? { title: editor.title.trim() } : {}),
+          ...(editor.description.trim() ? { description: editor.description.trim() } : {}),
+          ...(editor.date.trim() ? { date: editor.date.trim() } : {}),
+          ...(editor.time.trim() ? { time: editor.time.trim() } : {}),
+          ...(editor.location.trim() ? { location: editor.location.trim() } : {}),
+        },
+      };
+    case "message":
+      return {
+        kind: "message" as const,
+        patch: {
+          ...(editor.body.trim() ? { body: editor.body.trim() } : {}),
+          ...(parseRecipients(editor.recipientsText) ? { recipients: parseRecipients(editor.recipientsText) } : {}),
+        },
+      };
+    default:
+      return {
+        kind: "announcement" as const,
+        patch: {},
+      };
+  }
+};
+
+const getPreviewKindLabel = (preview: DraftPreview) => {
+  switch (preview.kind) {
+    case "announcement":
+      return "Announcement";
+    case "event":
+      return "Event";
+    case "message":
+      return "Message";
+    default:
+      return "Draft";
+  }
+};
+
+const getUsedEntitiesLabel = (usedEntities: string[]) =>
+  usedEntities
+    .map(entity => entity.replace(/_/g, " "))
+    .join(", ");
+
+function AssistantTurnContent({
+  message,
+  onCommand,
+  isSending,
+}: {
+  message: AiChatClientMessage;
+  onCommand: (command: AssistantCommand) => void;
+  isSending: boolean;
+}) {
+  const turn = message.turn;
+  const preview = turn && ("preview" in turn ? turn.preview : null);
+  const [editor, setEditor] = useState<PreviewEditorState | null>(
+    preview ? previewToEditorState(preview) : null
+  );
+
+  useEffect(() => {
+    setEditor(preview ? previewToEditorState(preview) : null);
+  }, [preview, turn?.turnId]);
+
+  if (!turn) {
+    return (
+      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+        {message.content}
+      </p>
+    );
+  }
+
+  if (turn.state === "draft_preview" || turn.state === "awaiting_confirmation") {
+    const currentEditor = editor ?? previewToEditorState(turn.preview);
+    const isExecutionReady = turn.state === "awaiting_confirmation";
+    const previewKindLabel = getPreviewKindLabel(turn.preview);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              "rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em]",
+              isExecutionReady
+                ? "bg-emerald-500/20 text-emerald-100"
+                : "bg-white/10 text-muted-foreground"
+            )}
+          >
+            {isExecutionReady ? "Confirmation Required" : "Draft Preview"}
+          </span>
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/85">
+            {previewKindLabel}
+          </span>
+        </div>
+        <p className="text-sm leading-6 text-foreground/92">{turn.reply}</p>
+
+        <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
+          {turn.preview.kind === "announcement" || turn.preview.kind === "event" ? (
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                Title
+              </label>
+              <Input
+                value={currentEditor.title}
+                onChange={event =>
+                  setEditor(current => ({
+                    ...(current ?? currentEditor),
+                    title: event.target.value,
+                  }))
+                }
+                disabled={isSending || !turn.ui.canEdit}
+                className="h-10 border-white/10 bg-white/5 text-sm"
+              />
+            </div>
+          ) : null}
+
+          {turn.preview.kind === "announcement" ? (
+            <div className="mt-3 space-y-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                Body
+              </label>
+              <Textarea
+                value={currentEditor.body}
+                onChange={event =>
+                  setEditor(current => ({
+                    ...(current ?? currentEditor),
+                    body: event.target.value,
+                  }))
+                }
+                disabled={isSending || !turn.ui.canEdit}
+                className="min-h-[110px] border-white/10 bg-white/5 text-sm"
+              />
+            </div>
+          ) : null}
+
+          {turn.preview.kind === "event" ? (
+            <>
+              <div className="mt-3 space-y-2">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  Description
+                </label>
+                <Textarea
+                  value={currentEditor.description}
+                  onChange={event =>
+                    setEditor(current => ({
+                      ...(current ?? currentEditor),
+                      description: event.target.value,
+                    }))
+                  }
+                  disabled={isSending || !turn.ui.canEdit}
+                  className="min-h-[100px] border-white/10 bg-white/5 text-sm"
+                />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                    Date
+                  </label>
+                  <Input
+                    value={currentEditor.date}
+                    onChange={event =>
+                      setEditor(current => ({
+                        ...(current ?? currentEditor),
+                        date: event.target.value,
+                      }))
+                    }
+                    disabled={isSending || !turn.ui.canEdit}
+                    className="h-10 border-white/10 bg-white/5 text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                    Time
+                  </label>
+                  <Input
+                    value={currentEditor.time}
+                    onChange={event =>
+                      setEditor(current => ({
+                        ...(current ?? currentEditor),
+                        time: event.target.value,
+                      }))
+                    }
+                    disabled={isSending || !turn.ui.canEdit}
+                    className="h-10 border-white/10 bg-white/5 text-sm"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                  Location
+                </label>
+                <Input
+                  value={currentEditor.location}
+                  onChange={event =>
+                    setEditor(current => ({
+                      ...(current ?? currentEditor),
+                      location: event.target.value,
+                    }))
+                  }
+                  disabled={isSending || !turn.ui.canEdit}
+                  className="h-10 border-white/10 bg-white/5 text-sm"
+                />
+              </div>
+            </>
+          ) : null}
+
+          {turn.preview.kind === "message" ? (
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                Message
+              </label>
+              <Textarea
+                value={currentEditor.body}
+                onChange={event =>
+                  setEditor(current => ({
+                    ...(current ?? currentEditor),
+                    body: event.target.value,
+                  }))
+                }
+                disabled={isSending || !turn.ui.canEdit}
+                className="min-h-[110px] border-white/10 bg-white/5 text-sm"
+              />
+            </div>
+          ) : null}
+
+          {(turn.preview.kind === "announcement" || turn.preview.kind === "message") ? (
+            <div className="mt-3 space-y-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                Recipients
+              </label>
+              <Input
+                value={currentEditor.recipientsText}
+                onChange={event =>
+                  setEditor(current => ({
+                    ...(current ?? currentEditor),
+                    recipientsText: event.target.value,
+                  }))
+                }
+                placeholder="email1@example.com, email2@example.com"
+                disabled={isSending || !turn.ui.canEdit}
+                className="h-10 border-white/10 bg-white/5 text-sm"
+              />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {turn.ui.canEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={isSending}
+              onClick={() =>
+                onCommand({
+                  kind: "edit_preview",
+                  pendingActionId: turn.pendingActionId,
+                  preview: buildPatchFromEditorState(turn.preview, currentEditor),
+                })
+              }
+            >
+              Update Preview
+            </Button>
+          ) : null}
+
+          {turn.ui.canRegenerate ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isSending}
+              onClick={() =>
+                onCommand({
+                  kind: "regenerate",
+                  pendingActionId: turn.pendingActionId,
+                })
+              }
+            >
+              Regenerate
+            </Button>
+          ) : null}
+
+          {turn.ui.canCancel ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={isSending}
+              onClick={() =>
+                onCommand({
+                  kind: "cancel",
+                  pendingActionId: turn.pendingActionId,
+                })
+              }
+            >
+              Cancel
+            </Button>
+          ) : null}
+
+          {turn.ui.canConfirm ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={isExecutionReady ? "default" : "outline"}
+              disabled={isSending}
+              className={cn(
+                isExecutionReady &&
+                  "bg-emerald-500 text-white hover:bg-emerald-400"
+              )}
+              onClick={() =>
+                onCommand({
+                  kind: "confirm",
+                  pendingActionId: turn.pendingActionId,
+                })
+              }
+            >
+              {isExecutionReady ? `Confirm ${previewKindLabel}` : "Confirm"}
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (turn.state === "retrieval_response") {
+    return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Retrieved Context
+          </span>
+          {turn.usedEntities.length > 0 ? (
+            <span className="text-xs text-muted-foreground/80">
+              {getUsedEntitiesLabel(turn.usedEntities)}
+            </span>
+          ) : null}
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+          {turn.reply}
+        </p>
+      </div>
+    );
+  }
+
+  if (turn.state === "executing") {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-emerald-300">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm font-medium">Executing</span>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+          {turn.reply}
+        </p>
+      </div>
+    );
+  }
+
+  if (turn.state === "success") {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-emerald-300">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="text-sm font-medium">Completed</span>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+          {turn.message}
+        </p>
+      </div>
+    );
+  }
+
+  if (turn.state === "error") {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-rose-100/90">Assistant Error</p>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-rose-50/95">
+          {turn.message}
+        </p>
+      </div>
+    );
+  }
+
+  if (turn.state === "needs_clarification") {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-amber-100/90">Need Clarification</p>
+        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+          {turn.message}
+        </p>
+        {turn.missingFields?.length ? (
+          <p className="text-xs text-muted-foreground/80">
+            Still needed: {turn.missingFields.join(", ")}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (turn.state === "response") {
+    return (
+      <div className="space-y-2">
+        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+          {turn.reply}
+        </p>
+        {turn.retryCount > 0 || turn.timeoutFlag ? (
+          <p className="text-xs text-muted-foreground/80">
+            {turn.timeoutFlag ? "That request hit a timeout." : "That request needed retries."}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+      {turn.reply}
+    </p>
+  );
+}
+
 export function AIChatModal({
   open,
   onOpenChange,
@@ -74,6 +549,7 @@ export function AIChatModal({
   onInputChange,
   onSend,
   onRetry,
+  onCommand,
   isSending,
   anchorRef,
   placement = "above",
@@ -148,7 +624,7 @@ export function AIChatModal({
       const keyboardInset = getKeyboardInset();
       const width = Math.min(
         POPUP_MAX_WIDTH,
-        Math.max(280, viewportWidth - POPUP_HORIZONTAL_MARGIN * 2)
+        Math.max(300, viewportWidth - POPUP_HORIZONTAL_MARGIN * 2)
       );
       const centeredLeft = rect.left + rect.width / 2 - width / 2;
       const left = clamp(
@@ -173,7 +649,7 @@ export function AIChatModal({
         const availableHeight = viewportHeight - anchoredTop - POPUP_VIEWPORT_EDGE_GAP;
         const maxHeight = Math.min(
           POPUP_MAX_HEIGHT,
-          Math.max(320, availableHeight)
+          Math.max(340, availableHeight)
         );
 
         setLayout({
@@ -194,7 +670,7 @@ export function AIChatModal({
       const bottom = Math.max(POPUP_MIN_BOTTOM, anchoredBottom, keyboardInset + 12);
       const maxHeight = Math.min(
         POPUP_MAX_HEIGHT,
-        Math.max(320, viewportHeight * POPUP_HEIGHT_RATIO)
+        Math.max(340, viewportHeight * POPUP_HEIGHT_RATIO)
       );
 
       setLayout({
@@ -245,7 +721,7 @@ export function AIChatModal({
     return null;
   }
 
-  const popupHeight = Math.min(layout.maxHeight, placement === "below" ? 480 : 420);
+  const popupHeight = Math.min(layout.maxHeight, placement === "below" ? 520 : 460);
 
   return createPortal(
     <>
@@ -285,7 +761,7 @@ export function AIChatModal({
                   Group Assistant
                 </h2>
                 <p className="truncate text-xs text-muted-foreground">
-                  Ask a question or draft something quick.
+                  Ask a question or safely draft actions.
                 </p>
               </div>
             </div>
@@ -390,14 +866,11 @@ export function AIChatModal({
                         </span>
                       </div>
                     ) : (
-                      <p
-                        className={cn(
-                          "whitespace-pre-wrap text-sm leading-6",
-                          isUser ? "text-emerald-950" : "text-foreground/92"
-                        )}
-                      >
-                        {message.content}
-                      </p>
+                      <AssistantTurnContent
+                        message={message}
+                        onCommand={onCommand}
+                        isSending={isSending}
+                      />
                     )}
 
                     <p

@@ -17,7 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import type { GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
 import { notifyOrgAiUsageChanged, useCurrentUserRole, usePresentations } from "@/lib/data-hooks";
-import { safeFetchJson } from "@/lib/network";
+import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import {
   Carousel,
   CarouselContent,
@@ -74,6 +74,15 @@ export default function SlidesPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [printableContent, setPrintableContent] = useState<PresentationType | null>(null);
   const aiRequestInFlightRef = useRef(false);
+  const openSlidesAssistant = (prompt: string) => {
+    openAssistantWithContext(
+      [
+        "I’m on the slides page for this group.",
+        prompt,
+        "Help me draft a slide outline and talking points inside the assistant. Do not create or save slides automatically.",
+      ].join(" ")
+    );
+  };
 
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -127,48 +136,12 @@ export default function SlidesPage() {
 
 
   const handleSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (aiRequestInFlightRef.current) return;
-    aiRequestInFlightRef.current = true;
-    setIsLoading(true);
-    setActivePresentation(null);
-    try {
-      const idempotencyKey =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const result = await safeFetchJson<{ ok: true; data: GenerateMeetingSlidesOutput; error?: { message?: string } }>(
-        '/api/slides/ai',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(values),
-          timeoutMs: 20_000,
-          retry: { retries: 0 },
-          idempotencyKey,
-        }
-      );
-      if (!result.ok) {
-        toast({
-          title: "Error",
-          description: result.error?.message || "Failed to generate slides.",
-          variant: "destructive",
-        });
-        return;
-      }
-      notifyOrgAiUsageChanged(undefined, 1);
-      const newPresentation: PresentationType = {
-          id: presentations.length > 0 ? Math.max(...presentations.map(p => p.id)) + 1 : 1,
-          prompt: values.prompt,
-          slides: result.data.data.slides.map((s, index) => ({...s, id: `${Date.now()}-${index}`})),
-          createdAt: new Date().toLocaleDateString(),
-      }
-      setPresentations([newPresentation, ...presentations]);
-      setActivePresentation(newPresentation);
-      toast({ title: "Slides generated successfully!" });
-    } finally {
-      aiRequestInFlightRef.current = false;
-      setIsLoading(false);
-    }
+    openSlidesAssistant(values.prompt);
+    form.reset();
+    toast({
+      title: "Assistant opened",
+      description: "Finish the slide outline in the assistant.",
+    });
   };
   
   const handleDownload = async (presentation: PresentationType) => {
@@ -234,7 +207,7 @@ export default function SlidesPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2"><Presentation /> Generate Slides</CardTitle>
                 <CardDescription>
-                  Describe the meeting content you want to generate slides for.
+                  Describe the meeting content, then continue in the assistant.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -258,7 +231,7 @@ export default function SlidesPage() {
                       )}
                     />
                     <Button type="submit" disabled={isLoading} className="w-full">
-                      {isLoading ? <Loader2 className="animate-spin" /> : "Generate"}
+                      Continue in Assistant
                     </Button>
                   </form>
                 </Form>

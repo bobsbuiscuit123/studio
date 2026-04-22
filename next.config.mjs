@@ -1,11 +1,37 @@
 import path from "path";
+import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const stub = path.join(__dirname, "stubs", "empty.js");
 const isDev = process.env.NODE_ENV !== "production";
+const shouldEnableSentryBuildPlugin = Boolean(process.env.SENTRY_AUTH_TOKEN);
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const optionalModuleAliases = {
+  ...(existsSync(path.join(__dirname, "node_modules", "@capacitor", "status-bar"))
+    ? {}
+    : { "@capacitor/status-bar": path.join(__dirname, "stubs", "capacitor-status-bar.js") }),
+  ...(existsSync(path.join(__dirname, "node_modules", "@capacitor", "push-notifications"))
+    ? {}
+    : {
+        "@capacitor/push-notifications": path.join(
+          __dirname,
+          "stubs",
+          "capacitor-push-notifications.js"
+        ),
+      }),
+  ...(existsSync(path.join(__dirname, "node_modules", "firebase-admin"))
+    ? {}
+    : {
+        "firebase-admin/app": path.join(__dirname, "stubs", "firebase-admin-app.js"),
+        "firebase-admin/messaging": path.join(
+          __dirname,
+          "stubs",
+          "firebase-admin-messaging.js"
+        ),
+      }),
+};
 
 let supabaseOrigin = "";
 try {
@@ -35,6 +61,16 @@ const csp = cspDirectives.join("; ");
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
+  experimental: {
+    cpus: 2,
+    parallelServerCompiles: false,
+    parallelServerBuildTraces: false,
+    webpackBuildWorker: false,
+    webpackMemoryOptimizations: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -77,6 +113,7 @@ const nextConfig = {
       ...(config.resolve.alias || {}),
       "@opentelemetry/exporter-jaeger": stub,
       "@genkit-ai/firebase": stub,
+      ...optionalModuleAliases,
     };
     config.resolve.fallback = {
       ...(config.resolve.fallback || {}),
@@ -93,6 +130,7 @@ const nextConfig = {
         "@genkit-ai/ai": stub,
         "node-fetch": stub,
         "fetch-blob": stub,
+        ...optionalModuleAliases,
         async_hooks: false,
         fs: stub,
         net: stub,
@@ -111,9 +149,13 @@ const nextConfig = {
   reactStrictMode: true,
 };
 
-export default withSentryConfig(nextConfig, {
+const sentryConfig = {
   silent: true,
   sourcemaps: {
-    deleteSourcemapsAfterUpload: true,
+    disable: true,
   },
-});
+};
+
+export default shouldEnableSentryBuildPlugin
+  ? withSentryConfig(nextConfig, sentryConfig)
+  : nextConfig;

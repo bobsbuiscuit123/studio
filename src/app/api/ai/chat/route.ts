@@ -11,6 +11,10 @@ import {
   type AiChatFailureStage,
 } from '@/lib/ai-chat';
 import { handleAssistantTurn } from '@/lib/assistant/agent/handle-turn';
+import {
+  buildAssistantStorageUnavailableTurn,
+  ensureAssistantStorageReady,
+} from '@/lib/assistant/agent/storage';
 import { parseOptionalPositiveInt, getEffectiveOrgAiAllowance } from '@/lib/org-settings';
 import { rateLimit } from '@/lib/rate-limit';
 
@@ -140,6 +144,36 @@ export async function POST(request: Request) {
           code: 'VALIDATION',
           stage,
           requestId,
+        });
+      }
+
+      const storageReadiness = await ensureAssistantStorageReady();
+      if (!storageReadiness.ok) {
+        if (storageReadiness.missing) {
+          console.error('[ai-chat] assistant storage unavailable', {
+            requestId,
+            userId: user.id,
+            orgId,
+            groupId,
+            table: storageReadiness.table,
+            message: storageReadiness.error.message,
+          });
+
+          return NextResponse.json(
+            buildAssistantStorageUnavailableTurn({
+              conversationId: parsed.data.conversationId || crypto.randomUUID(),
+              turnId: crypto.randomUUID(),
+            })
+          );
+        }
+
+        logRouteFailure(requestId, stage, storageReadiness.error, {
+          table: storageReadiness.table,
+        });
+        return errorResponse('Assistant unavailable right now.', 500, {
+          stage,
+          requestId,
+          detail: storageReadiness.error.message,
         });
       }
 

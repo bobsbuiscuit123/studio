@@ -38,6 +38,10 @@ import {
 import { fetchAgentRetrievalContext } from '@/lib/assistant/agent/retrieval';
 import { evaluateRequiredFields } from '@/lib/assistant/agent/requirements';
 import { runLlmStepWithRetry } from '@/lib/assistant/agent/retry';
+import {
+  buildAssistantStorageUnavailableTurn,
+  isAssistantStorageMissingError,
+} from '@/lib/assistant/agent/storage';
 import type {
   AgentActionType,
   AgentPlan,
@@ -334,24 +338,40 @@ async function persistTurnResult(args: {
   executionResult?: 'success' | 'failure' | null;
   errorCode?: string | null;
 }) {
-  await persistAssistantTurn({
-    conversationId: args.conversationId,
-    turnId: args.turnId,
-    userId: args.userId,
-    orgId: args.orgId,
-    groupId: args.groupId,
-    requestPayload: args.requestPayload,
-    normalizedPlan: args.normalizedPlan,
-    retrievalPayload: args.retrievalPayload,
-    responsePayload: args.result as unknown as Record<string, unknown>,
-    state: args.result.state,
-    pendingActionId:
-      'pendingActionId' in args.result ? (args.result.pendingActionId ?? null) : null,
-    retryCount: args.result.retryCount,
-    timeoutFlag: args.result.timeoutFlag,
-    errorCode: args.errorCode ?? null,
-    errorMessage: args.result.state === 'error' ? args.result.message : null,
-  });
+  try {
+    await persistAssistantTurn({
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      userId: args.userId,
+      orgId: args.orgId,
+      groupId: args.groupId,
+      requestPayload: args.requestPayload,
+      normalizedPlan: args.normalizedPlan,
+      retrievalPayload: args.retrievalPayload,
+      responsePayload: args.result as unknown as Record<string, unknown>,
+      state: args.result.state,
+      pendingActionId:
+        'pendingActionId' in args.result ? (args.result.pendingActionId ?? null) : null,
+      retryCount: args.result.retryCount,
+      timeoutFlag: args.result.timeoutFlag,
+      errorCode: args.errorCode ?? null,
+      errorMessage: args.result.state === 'error' ? args.result.message : null,
+    });
+  } catch (error) {
+    if (!isAssistantStorageMissingError(error)) {
+      throw error;
+    }
+
+    console.error('[assistant-turn] persistence unavailable', {
+      requestId:
+        args.requestId ??
+        (typeof args.requestPayload.requestId === 'string' ? args.requestPayload.requestId : null),
+      conversationId: args.conversationId,
+      turnId: args.turnId,
+      state: args.result.state,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   console.info('[assistant-turn]', {
     requestId:
@@ -397,20 +417,27 @@ export async function handleAssistantTurn({
   requestId?: string;
 }): Promise<AssistantTurnResponse> {
   const turnId = crypto.randomUUID();
-  const resolvedConversationId = await getOrCreateConversation({
-    conversationId,
-    userId,
-    orgId,
-    groupId,
-  });
-  const requestPayload = {
+  const fallbackConversationId = conversationId || crypto.randomUUID();
+  let resolvedConversationId = fallbackConversationId;
+  let requestPayload = {
     message: typeof message === 'string' ? message : (message as Record<string, unknown>),
     history: history ?? [],
-    conversationId: resolvedConversationId,
+    conversationId: fallbackConversationId,
     requestId: requestId ?? null,
   };
 
   try {
+    resolvedConversationId = await getOrCreateConversation({
+      conversationId,
+      userId,
+      orgId,
+      groupId,
+    });
+    requestPayload = {
+      ...requestPayload,
+      conversationId: resolvedConversationId,
+    };
+
     const context = await getAgentContext(userId, orgId, groupId);
     if (!context) {
       return persistTurnResult({
@@ -1125,6 +1152,22 @@ export async function handleAssistantTurn({
       actionType,
     });
   } catch (error) {
+    if (isAssistantStorageMissingError(error)) {
+      console.error('[assistant-turn] storage unavailable', {
+        requestId: requestId ?? null,
+        conversationId: resolvedConversationId,
+        turnId,
+        userId,
+        orgId,
+        groupId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return buildAssistantStorageUnavailableTurn({
+        conversationId: resolvedConversationId,
+        turnId,
+      });
+    }
+
     return persistTurnResult({
       userId,
       orgId,

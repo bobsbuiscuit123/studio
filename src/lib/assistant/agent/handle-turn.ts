@@ -9,7 +9,7 @@ import type {
   AiChatPlannerResult,
 } from '@/lib/ai-chat';
 import {
-  ALLOWED_INFERRED_FIELDS_BY_ACTION,
+  fillGeneratedActionFields,
   getActionRequiredRetrievalResources,
   mergeInferredActionFields,
   resolveActionFields,
@@ -188,43 +188,6 @@ const buildPlannerPrompt = ({
     `recent_history: ${JSON.stringify(history ?? [])}`,
     `current_message: ${message}`,
   ].join('\n\n');
-
-const getValidatorMissingFields = (actionType: AgentActionType, missingFields: string[]) => {
-  const allowedFields = ALLOWED_INFERRED_FIELDS_BY_ACTION[actionType];
-  return missingFields.filter(field => allowedFields.has(field));
-};
-
-const mergeMissingFields = (...values: string[][]) =>
-  Array.from(new Set(values.flatMap(items => items).filter(Boolean)));
-
-const getValidatorClarificationFallback = (
-  actionType: AgentActionType,
-  missingFields: string[]
-) => {
-  if (missingFields.length === 0) {
-    return 'Could you tell me a bit more?';
-  }
-
-  switch (actionType) {
-    case 'create_announcement':
-      if (missingFields.includes('title') && missingFields.includes('body')) {
-        return 'What title and body should this announcement use?';
-      }
-      return missingFields.includes('title')
-        ? 'What title should this announcement use?'
-        : 'What should this announcement say?';
-    case 'update_announcement':
-      return 'What should I change in this announcement?';
-    case 'create_event':
-      return 'What date and time should this event be scheduled for?';
-    case 'update_event':
-      return 'What should I change in this event?';
-    case 'create_message':
-      return 'What should this message say?';
-    default:
-      return 'Could you tell me a bit more?';
-  }
-};
 
 const buildFallbackResponse = (
   conversationId: string,
@@ -1207,23 +1170,24 @@ export async function handleAssistantTurn({
       requestTimezone: effectiveRequestTimezone,
       requestReceivedAt: effectiveRequestReceivedAt,
     });
-    enrichedActionFields = mergedInference.mergedFields;
-
-    const validatorMissingFields = getValidatorMissingFields(
+    const filledGeneration = fillGeneratedActionFields({
       actionType,
-      fieldValidatorRun.value.missingFields
-    );
+      actionFields: mergedInference.mergedFields,
+      userMessage: normalizedCommand.text,
+      recentHistory: history,
+      requestTimezone: effectiveRequestTimezone,
+      requestReceivedAt: effectiveRequestReceivedAt,
+    });
+    enrichedActionFields = filledGeneration.filledFields;
+
     const preDraftRequirements = evaluateRequiredFields(actionType, enrichedActionFields);
-    const combinedMissingFields = mergeMissingFields(
-      validatorMissingFields,
-      preDraftRequirements.missingFields
-    );
 
     await addBreadcrumb('assistant.field_validator_result', {
       actionType,
       usedInference: fieldValidatorRun.value.usedInference,
       mergedFieldKeys: mergedInference.mergedFieldKeys,
-      missingFields: validatorMissingFields,
+      defaultedFieldKeys: filledGeneration.defaultedFieldKeys,
+      validatorReportedMissingFields: fieldValidatorRun.value.missingFields,
       requiredFieldsStillMissing: preDraftRequirements.missingFields,
       clarificationMessage: fieldValidatorRun.value.clarificationMessage ?? null,
       // Confidence is telemetry only. It must never affect gating or execution safety.
@@ -1231,7 +1195,7 @@ export async function handleAssistantTurn({
       notes: fieldValidatorRun.value.telemetry?.notes ?? [],
     });
 
-    if (combinedMissingFields.length > 0) {
+    if (preDraftRequirements.missingFields.length > 0) {
       return persistTurnResult({
         userId,
         orgId,
@@ -1241,13 +1205,16 @@ export async function handleAssistantTurn({
         requestPayload,
         normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
         retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildNeedsClarification(
+        result: buildFallbackResponse(
           resolvedConversationId,
           turnId,
-          fieldValidatorRun.value.clarificationMessage?.trim() ||
-            preDraftRequirements.clarificationMessage ||
-            getValidatorClarificationFallback(actionType, combinedMissingFields),
-          combinedMissingFields
+          fieldValidatorRun.retryCount,
+          fieldValidatorRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'field_validator',
+            detail: `Generated action fields remained empty: ${preDraftRequirements.missingFields.join(', ')}`,
+            requestId,
+          })
         ),
         actionType,
       });

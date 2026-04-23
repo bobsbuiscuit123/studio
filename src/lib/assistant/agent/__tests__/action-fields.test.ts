@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  fillGeneratedActionFields,
   getActionRequiredRetrievalResources,
   mergeInferredActionFields,
   normalizeInferredField,
@@ -30,6 +31,28 @@ const applyValidatorResult = (result: GeminiFieldValidationResult, overrides?: {
     requestTimezone: overrides?.requestTimezone ?? DEFAULT_TIMEZONE,
     requestReceivedAt: overrides?.requestReceivedAt ?? BEFORE_EVENING,
   });
+
+const applyValidatorResultWithDefaults = (
+  result: GeminiFieldValidationResult,
+  overrides?: {
+    actionType?: Parameters<typeof mergeInferredActionFields>[0]['actionType'];
+    resolvedActionFields?: Parameters<typeof mergeInferredActionFields>[0]['resolvedActionFields'];
+    userMessage?: string;
+    recentHistory?: Parameters<typeof mergeInferredActionFields>[0]['recentHistory'];
+    requestTimezone?: string;
+    requestReceivedAt?: string;
+  }
+) => {
+  const merged = applyValidatorResult(result, overrides);
+  return fillGeneratedActionFields({
+    actionType: overrides?.actionType ?? 'create_announcement',
+    actionFields: merged.mergedFields,
+    userMessage: overrides?.userMessage ?? 'send an announcement reminding everyone to pay dues',
+    recentHistory: overrides?.recentHistory,
+    requestTimezone: overrides?.requestTimezone ?? DEFAULT_TIMEZONE,
+    requestReceivedAt: overrides?.requestReceivedAt ?? BEFORE_EVENING,
+  });
+};
 
 describe('action field resolution', () => {
   it('requires members retrieval for create_message', () => {
@@ -136,7 +159,7 @@ describe('action field resolution', () => {
 
 describe('Gemini authoritative field merging', () => {
   it('accepts Gemini-generated announcement fields for gating', () => {
-    const merged = applyValidatorResult({
+    const filled = applyValidatorResultWithDefaults({
       inferredFields: {
         title: 'Dues Reminder',
         body: 'Reminder that dues are still outstanding.',
@@ -145,7 +168,7 @@ describe('Gemini authoritative field merging', () => {
       usedInference: true,
     });
 
-    const required = evaluateRequiredFields('create_announcement', merged.mergedFields);
+    const required = evaluateRequiredFields('create_announcement', filled.filledFields);
     expect(required.missingFields).toEqual([]);
   });
 
@@ -178,7 +201,7 @@ describe('Gemini authoritative field merging', () => {
   });
 
   it('never overwrites user-provided fields', () => {
-    const merged = applyValidatorResult(
+    const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           body: 'AI body',
@@ -193,11 +216,11 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields.body).toBe('User body');
+    expect(filled.filledFields.body).toBe('User body');
   });
 
   it('never overwrites deterministically resolved recipients or targets', () => {
-    const mergedMessage = applyValidatorResult(
+    const filledMessage = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           body: 'AI body',
@@ -215,7 +238,7 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    const mergedUpdate = applyValidatorResult(
+    const filledUpdate = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           title: 'Updated title',
@@ -233,12 +256,12 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(mergedMessage.mergedFields.recipients).toEqual([{ email: 'resolved@example.com' }]);
-    expect(mergedUpdate.mergedFields.targetRef).toBe('resolved-target');
+    expect(filledMessage.filledFields.recipients).toEqual([{ email: 'resolved@example.com' }]);
+    expect(filledUpdate.filledFields.targetRef).toBe('resolved-target');
   });
 
   it('drops disallowed inferred fields', () => {
-    const merged = applyValidatorResult(
+    const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           recipients: [{ email: 'x@example.com' }],
@@ -254,13 +277,13 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields).toEqual({
+    expect(filled.filledFields).toEqual({
       body: 'Hello team',
     });
   });
 
   it('infers event date and time for tomorrow at 7', () => {
-    const merged = applyValidatorResult(
+    const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -275,12 +298,12 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields.date).toBe('2026-04-24');
-    expect(merged.mergedFields.time).toBe('19:00');
+    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.time).toBe('19:00');
   });
 
   it('infers event date and default evening time for next Friday evening', () => {
-    const merged = applyValidatorResult(
+    const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -295,16 +318,15 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields.date).toBe('2026-04-24');
-    expect(merged.mergedFields.time).toBe('19:00');
+    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.time).toBe('19:00');
   });
 
-  it('keeps clarification path for this Friday without time', () => {
-    const merged = applyValidatorResult(
+  it('fills a default event time when the request gives only a date', () => {
+    const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
-          time: '7:00 PM',
         },
         missingFields: [],
         usedInference: true,
@@ -315,15 +337,15 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields.date).toBe('2026-04-24');
-    expect(merged.mergedFields.time).toBeUndefined();
+    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.time).toBe('18:00');
 
-    const required = evaluateRequiredFields('create_event', merged.mergedFields);
-    expect(required.missingFields).toEqual(['time']);
+    const required = evaluateRequiredFields('create_event', filled.filledFields);
+    expect(required.missingFields).toEqual([]);
   });
 
   it('infers tonight only when evening is still upcoming', () => {
-    const upcoming = applyValidatorResult(
+    const upcoming = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -339,7 +361,7 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    const late = applyValidatorResult(
+    const late = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -355,14 +377,14 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(upcoming.mergedFields.date).toBe('2026-04-23');
-    expect(upcoming.mergedFields.time).toBe('19:00');
-    expect(late.mergedFields.date).toBeUndefined();
-    expect(late.mergedFields.time).toBeUndefined();
+    expect(upcoming.filledFields.date).toBe('2026-04-23');
+    expect(upcoming.filledFields.time).toBe('19:00');
+    expect(late.filledFields.date).toBe('2026-04-24');
+    expect(late.filledFields.time).toBe('18:00');
   });
 
   it('infers this evening only when evening is still upcoming', () => {
-    const upcoming = applyValidatorResult(
+    const upcoming = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -378,7 +400,7 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    const late = applyValidatorResult(
+    const late = applyValidatorResultWithDefaults(
       {
         inferredFields: {
           date: 'candidate-date',
@@ -394,21 +416,18 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(upcoming.mergedFields.date).toBe('2026-04-23');
-    expect(upcoming.mergedFields.time).toBe('19:00');
-    expect(late.mergedFields.date).toBeUndefined();
-    expect(late.mergedFields.time).toBeUndefined();
+    expect(upcoming.filledFields.date).toBe('2026-04-23');
+    expect(upcoming.filledFields.time).toBe('19:00');
+    expect(late.filledFields.date).toBe('2026-04-24');
+    expect(late.filledFields.time).toBe('18:00');
   });
 
-  it('falls back to clarification for this weekend', () => {
-    const merged = applyValidatorResult(
+  it('fills event defaults for an underspecified weekend request', () => {
+    const filled = applyValidatorResultWithDefaults(
       {
-        inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
-        },
+        inferredFields: {},
         missingFields: [],
-        usedInference: true,
+        usedInference: false,
       },
       {
         actionType: 'create_event',
@@ -416,8 +435,51 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(merged.mergedFields.date).toBeUndefined();
-    expect(merged.mergedFields.time).toBeUndefined();
+    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.time).toBe('18:00');
+    expect(filled.filledFields.location).toBe('TBD');
+  });
+
+  it('backfills announcement copy when the validator returns nothing', () => {
+    const filled = applyValidatorResultWithDefaults(
+      {
+        inferredFields: {},
+        missingFields: [],
+        usedInference: false,
+      },
+      {
+        userMessage: 'remind everyone in an announcement that they need to pay their dues',
+      }
+    );
+
+    expect(filled.filledFields).toEqual({
+      title: 'Dues Reminder',
+      body:
+        'This is a reminder that dues still need to be paid. Please submit your dues as soon as possible. Thank you.',
+    });
+  });
+
+  it('backfills message copy when the validator returns nothing', () => {
+    const filled = applyValidatorResultWithDefaults(
+      {
+        inferredFields: {},
+        missingFields: [],
+        usedInference: false,
+      },
+      {
+        actionType: 'create_message',
+        resolvedActionFields: {
+          recipients: [{ email: 'alex@example.com' }],
+        },
+        userMessage: 'send Alex a reminder about dues',
+      }
+    );
+
+    expect(filled.filledFields).toEqual({
+      recipients: [{ email: 'alex@example.com' }],
+      body:
+        'Just a quick reminder that dues are still due. Please submit yours when you can. Thank you.',
+    });
   });
 });
 

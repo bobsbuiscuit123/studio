@@ -29,6 +29,51 @@ const DAYPART_DEFAULTS = {
   afternoon: '14:00',
   evening: '19:00',
 } as const;
+const DEFAULT_EVENT_TIME = '18:00';
+const DEFAULT_EVENT_LOCATION = 'TBD';
+const REQUEST_PREFIX_PATTERN = /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?/i;
+const COMMAND_NOISE_PATTERN =
+  /\b(?:send|post|create|draft|write|make|publish|share|compose|generate|announce(?:ment)?|message|event|update|reminder|remind|everyone|everybody|team|group|members?|them|all)\b/gi;
+const TOPIC_STOP_WORD_PATTERN =
+  /\b(?:that|to|about|regarding|please|everyone|everybody|they|their|them|this|the|a|an|need|needs|should|just|quick|in|on|for|with|use)\b/gi;
+
+const TITLE_KEYWORDS = [
+  {
+    pattern: /\bdues?\b/i,
+    announcement: 'Dues Reminder',
+    event: 'Dues Meeting',
+  },
+  {
+    pattern: /\bvolunteer(?:ing)?\b/i,
+    announcement: 'Volunteer Update',
+    event: 'Volunteer Event',
+  },
+  {
+    pattern: /\belections?\b/i,
+    announcement: 'Election Update',
+    event: 'Election Event',
+  },
+  {
+    pattern: /\bmeeting\b/i,
+    announcement: 'Meeting Reminder',
+    event: 'Group Meeting',
+  },
+  {
+    pattern: /\bfundraiser\b/i,
+    announcement: 'Fundraiser Update',
+    event: 'Fundraiser Event',
+  },
+  {
+    pattern: /\bbudget\b/i,
+    announcement: 'Budget Update',
+    event: 'Budget Review',
+  },
+  {
+    pattern: /\bpay(?:ment)?\b/i,
+    announcement: 'Payment Reminder',
+    event: 'Payment Meeting',
+  },
+] as const;
 
 type NamedRecord = Record<string, unknown>;
 type CandidateRecord = {
@@ -54,6 +99,40 @@ export const ALLOWED_INFERRED_FIELDS_BY_ACTION: Record<AgentActionType, Set<stri
 const normalize = (value: unknown) =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
 
+const collapseWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
+const stripTrailingPunctuation = (value: string) => value.replace(/[.!?]+$/g, '').trim();
+
+const sentenceCase = (value: string) => {
+  const collapsed = collapseWhitespace(value);
+  if (!collapsed) return '';
+  return collapsed.charAt(0).toUpperCase() + collapsed.slice(1);
+};
+
+const ensureSentence = (value: string) => {
+  const collapsed = collapseWhitespace(value);
+  if (!collapsed) return '';
+  return /[.!?]$/.test(collapsed) ? collapsed : `${collapsed}.`;
+};
+
+const joinSentences = (...values: string[]) =>
+  values
+    .map(value => ensureSentence(value))
+    .filter(Boolean)
+    .join(' ');
+
+const toTitleCase = (value: string) =>
+  collapseWhitespace(value)
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+const countWords = (value: string) =>
+  collapseWhitespace(value)
+    .split(' ')
+    .filter(Boolean).length;
+
 export const hasResolvedValue = (value: unknown) => {
   if (typeof value === 'string') {
     return value.trim().length > 0;
@@ -68,6 +147,247 @@ const asRecord = (value: unknown): NamedRecord | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as NamedRecord)
     : null;
+
+const removeLeadingRequestPhrase = (value: string) =>
+  collapseWhitespace(value.replace(REQUEST_PREFIX_PATTERN, ''));
+
+const extractIntentClause = (value: string) => {
+  const cleaned = removeLeadingRequestPhrase(value);
+  if (!cleaned) return '';
+
+  const patterns = [
+    /\bremind\b.*?\bthat\s+(.+)$/i,
+    /\b(?:announcement|message|note|post)\b.*?\bthat\s+(.+)$/i,
+    /\bremind\b.*?\bto\s+(.+)$/i,
+    /\b(?:about|regarding)\s+(.+)$/i,
+    /\b(?:for|on)\s+(.+)$/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = cleaned.match(pattern);
+    if (match?.[1]) {
+      return collapseWhitespace(match[1]);
+    }
+  }
+
+  const stripped = collapseWhitespace(cleaned.replace(COMMAND_NOISE_PATTERN, ' '));
+  return stripped || cleaned;
+};
+
+const getKeywordTitle = (sourceText: string, kind: 'announcement' | 'event') => {
+  for (const config of TITLE_KEYWORDS) {
+    if (config.pattern.test(sourceText)) {
+      return config[kind];
+    }
+  }
+  return null;
+};
+
+const getFallbackTitleFromClause = (sourceText: string, suffix: string, fallback: string) => {
+  const words = extractIntentClause(sourceText)
+    .replace(TOPIC_STOP_WORD_PATTERN, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (words.length < 2) {
+    return fallback;
+  }
+
+  return `${toTitleCase(words.join(' '))} ${suffix}`.trim();
+};
+
+const buildAnnouncementTitle = (sourceText: string) =>
+  getKeywordTitle(sourceText, 'announcement') ??
+  getFallbackTitleFromClause(sourceText, 'Update', 'Group Announcement');
+
+const buildAnnouncementBody = (sourceText: string) => {
+  const normalizedSource = normalize(sourceText);
+  if (/\bdues?\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'This is a reminder that dues still need to be paid',
+      'Please submit your dues as soon as possible',
+      'Thank you'
+    );
+  }
+
+  if (/\bvolunteer(?:ing)?\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'We are looking for volunteers',
+      'Please sign up if you are available to help'
+    );
+  }
+
+  if (/\bmeeting\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'This is a reminder about the upcoming meeting',
+      'Please plan accordingly'
+    );
+  }
+
+  const clause = extractIntentClause(sourceText);
+  if (!clause || countWords(clause) < 2) {
+    return joinSentences(
+      'Please review this announcement draft',
+      'Edit any details you would like before posting'
+    );
+  }
+
+  if (/^that\s+/i.test(clause)) {
+    return joinSentences(
+      `This is a reminder ${stripTrailingPunctuation(clause)}`,
+      'Please review the details and plan accordingly'
+    );
+  }
+
+  if (/^to\s+/i.test(clause)) {
+    return joinSentences(
+      `This is a reminder to ${stripTrailingPunctuation(clause.replace(/^to\s+/i, ''))}`,
+      'Please plan accordingly'
+    );
+  }
+
+  if (/^(about|regarding)\s+/i.test(clause)) {
+    return joinSentences(
+      `We wanted to share an update ${stripTrailingPunctuation(clause)}`,
+      'Please review the details and plan accordingly'
+    );
+  }
+
+  return joinSentences(
+    sentenceCase(stripTrailingPunctuation(clause)),
+    'Please review the details and plan accordingly'
+  );
+};
+
+const buildMessageBody = (sourceText: string) => {
+  const normalizedSource = normalize(sourceText);
+  if (/\bdues?\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'Just a quick reminder that dues are still due',
+      'Please submit yours when you can',
+      'Thank you'
+    );
+  }
+
+  if (/\bmeeting\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'Just a quick reminder about the upcoming meeting',
+      'Please let me know if you have any questions'
+    );
+  }
+
+  if (/\bremind(?:er)?\b/i.test(normalizedSource) && !/\b(?:that|to|about|regarding|for|on)\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'Just a quick note to follow up on this request',
+      'Feel free to edit any details before sending'
+    );
+  }
+
+  const clause = extractIntentClause(sourceText);
+  if (!clause || countWords(clause) < 2) {
+    return joinSentences(
+      'Just a quick note to follow up on this request',
+      'Feel free to edit any details before sending'
+    );
+  }
+
+  if (/^that\s+/i.test(clause)) {
+    return joinSentences(`Just a quick note ${stripTrailingPunctuation(clause)}`, 'Thank you');
+  }
+
+  if (/^to\s+/i.test(clause)) {
+    return joinSentences(
+      `Just a quick reminder to ${stripTrailingPunctuation(clause.replace(/^to\s+/i, ''))}`,
+      'Thank you'
+    );
+  }
+
+  if (/^(about|regarding)\s+/i.test(clause)) {
+    return joinSentences(`Just a quick note ${stripTrailingPunctuation(clause)}`, 'Thank you');
+  }
+
+  return joinSentences(`Just a quick note: ${sentenceCase(stripTrailingPunctuation(clause))}`, 'Thank you');
+};
+
+const buildEventTitle = (sourceText: string) =>
+  getKeywordTitle(sourceText, 'event') ??
+  getFallbackTitleFromClause(sourceText, 'Event', 'Group Event');
+
+const buildEventDescription = (sourceText: string) => {
+  const normalizedSource = normalize(sourceText);
+  if (/\bdues?\b/i.test(normalizedSource)) {
+    return joinSentences(
+      'We will use this time to review dues and next steps together',
+      'Please edit any details as needed'
+    );
+  }
+
+  const clause = extractIntentClause(sourceText);
+  if (!clause || countWords(clause) < 2) {
+    return joinSentences(
+      'Please review this event draft',
+      'Add any additional details you would like attendees to see'
+    );
+  }
+
+  if (/^to\s+/i.test(clause)) {
+    return joinSentences(
+      `We will use this time to ${stripTrailingPunctuation(clause.replace(/^to\s+/i, ''))}`,
+      'Please edit any details as needed'
+    );
+  }
+
+  if (/^(about|regarding)\s+/i.test(clause)) {
+    return joinSentences(
+      `We will gather to discuss ${stripTrailingPunctuation(clause.replace(/^(about|regarding)\s+/i, ''))}`,
+      'Please edit any details as needed'
+    );
+  }
+
+  return joinSentences(
+    sentenceCase(stripTrailingPunctuation(clause)),
+    'Please edit any details as needed'
+  );
+};
+
+const isTimeLikeLocation = (value: string) =>
+  explicitTimePattern.test(value) ||
+  /\b(?:tomorrow|tonight|morning|afternoon|evening|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(
+    value
+  );
+
+const extractExplicitLocation = (sourceText: string) => {
+  const matches = sourceText.matchAll(/\b(?:at|in)\s+([^,.;!?]+)/gi);
+  for (const match of matches) {
+    const candidate = collapseWhitespace(stripTrailingPunctuation(match[1] ?? ''));
+    if (!candidate || candidate.split(' ').length > 6 || isTimeLikeLocation(candidate)) {
+      continue;
+    }
+    return sentenceCase(candidate);
+  }
+  return null;
+};
+
+const buildDefaultEventDate = (
+  sourceText: string,
+  requestTimezone: string,
+  requestReceivedAt: string
+) =>
+  getRelativeDateKeyFromSource(sourceText, requestTimezone, requestReceivedAt) ??
+  addDaysToDateKey(getZonedReference(requestReceivedAt, requestTimezone).localDate, 1);
+
+const buildDefaultEventTime = (args: {
+  sourceText: string;
+  requestTimezone: string;
+  requestReceivedAt: string;
+}) =>
+  getRelativeTimeFromSource({
+    sourceText: args.sourceText,
+    candidateTime: '6:00 PM',
+    requestTimezone: args.requestTimezone,
+    requestReceivedAt: args.requestReceivedAt,
+  }) ?? DEFAULT_EVENT_TIME;
 
 const toStringArray = (value: unknown): string[] => {
   if (Array.isArray(value)) {
@@ -553,6 +873,61 @@ export function mergeInferredActionFields(args: {
   return {
     mergedFields,
     mergedFieldKeys,
+  };
+}
+
+export function fillGeneratedActionFields(args: {
+  actionType: AgentActionType;
+  actionFields: PendingActionFields;
+  userMessage: string;
+  recentHistory?: AiChatHistoryMessage[];
+  requestTimezone: string;
+  requestReceivedAt: string;
+}): { filledFields: PendingActionFields; defaultedFieldKeys: string[] } {
+  const filledFields: PendingActionFields = { ...args.actionFields };
+  const defaultedFieldKeys: string[] = [];
+  const inferenceSource = getInferenceSourceText(args.userMessage, args.recentHistory);
+
+  const setDefaultField = (field: string, value: unknown) => {
+    if (hasResolvedValue(filledFields[field]) || !hasResolvedValue(value)) {
+      return;
+    }
+    filledFields[field] = value;
+    defaultedFieldKeys.push(field);
+  };
+
+  switch (args.actionType) {
+    case 'create_announcement':
+    case 'update_announcement':
+      setDefaultField('title', buildAnnouncementTitle(args.userMessage));
+      setDefaultField('body', buildAnnouncementBody(args.userMessage));
+      break;
+    case 'create_message':
+      setDefaultField('body', buildMessageBody(args.userMessage));
+      break;
+    case 'create_event':
+    case 'update_event':
+      setDefaultField('title', buildEventTitle(args.userMessage));
+      setDefaultField('description', buildEventDescription(args.userMessage));
+      setDefaultField('location', extractExplicitLocation(args.userMessage) ?? DEFAULT_EVENT_LOCATION);
+      setDefaultField(
+        'date',
+        buildDefaultEventDate(inferenceSource, args.requestTimezone, args.requestReceivedAt)
+      );
+      setDefaultField(
+        'time',
+        buildDefaultEventTime({
+          sourceText: inferenceSource,
+          requestTimezone: args.requestTimezone,
+          requestReceivedAt: args.requestReceivedAt,
+        })
+      );
+      break;
+  }
+
+  return {
+    filledFields,
+    defaultedFieldKeys,
   };
 }
 

@@ -8,14 +8,6 @@ import type {
   GeminiFieldValidationResult,
 } from '@/lib/assistant/agent/types';
 
-const REQUIRED_FIELD_SPEC: Record<AgentActionType, string[]> = {
-  create_announcement: ['title', 'body'],
-  update_announcement: ['title or body'],
-  create_event: ['date', 'time'],
-  update_event: ['at least one of title, description, location, date, time'],
-  create_message: ['body'],
-};
-
 const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
   create_announcement: ['title', 'body'],
   update_announcement: ['title', 'body'],
@@ -26,14 +18,17 @@ const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
 
 const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Return JSON only.',
-  'You are the authoritative field-generation validator for an already-selected in-app action.',
-  'Determine which Gemini-owned fields are explicit, reasonably inferable, or still missing.',
-  'For fields you can determine, generate the final field values that should be stored before draft assembly.',
-  'Generate polished user-facing content for copy fields such as title, body, description, and location when they are explicit or reasonably inferable.',
+  'You are the authoritative field-generation pass for an already-selected in-app action.',
+  'Your job is to generate polished editable values for every Gemini-owned field listed in fields_to_generate.',
+  'Do not decide whether fields are missing for Gemini-owned fields.',
+  'Always leave missingFields as [] and omit clarificationMessage unless an upstream caller explicitly asks for them.',
+  'Generate final field values that should be stored before draft assembly.',
+  'Generate polished user-facing content for copy fields such as title, body, description, and location.',
   'For new announcements, short intents like "remind everyone to pay dues in an announcement" are enough to generate both a concise title and a complete announcement body.',
   'For direct messages, short intents like "send Alex a reminder about dues" are enough to generate a complete message body once recipients are resolved.',
-  'If a required Gemini-owned field cannot be reasonably inferred, omit it from inferredFields, include it in missingFields, and provide a concise clarificationMessage for the user.',
-  'missingFields must include every required Gemini-owned field that is still blank after your inference pass.',
+  'For events, if date, time, or location are not explicitly provided, choose reasonable editable defaults relative to request_received_at and request_timezone.',
+  'If the user gives a short imperative request, convert it into final-form field content instead of copying the command.',
+  'If details are underspecified, choose a reasonable editable default that fits the request and action type.',
   'You must not change intent or action type.',
   'You must not decide permissions.',
   'You must not decide whether the action is safe to execute.',
@@ -44,7 +39,8 @@ const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Use resolved_action_fields only as fixed structural context, not as a source of missing copy generation.',
   'Use recent history only to interpret the current request as a continuation, not as hidden state.',
   'Never copy an imperative request verbatim into a user-facing field unless the user clearly already wrote final-form content.',
-  'Never return empty strings, placeholders, or partial sentence fragments in inferredFields.',
+  'Never return empty strings or partial sentence fragments in inferredFields.',
+  'Concrete editable defaults such as "TBD" are allowed when the user did not specify a detail.',
   'Confidence is telemetry only and will not control gating.',
 ].join(' ');
 
@@ -58,8 +54,7 @@ const buildFieldValidatorPrompt = (args: {
 }) =>
   [
     `action_type: ${args.actionType}`,
-    `required_fields: ${JSON.stringify(REQUIRED_FIELD_SPEC[args.actionType] ?? [])}`,
-    `allowed_inference_fields: ${JSON.stringify(ALLOWED_INFERENCE_FIELDS[args.actionType] ?? [])}`,
+    `fields_to_generate: ${JSON.stringify(ALLOWED_INFERENCE_FIELDS[args.actionType] ?? [])}`,
     `resolved_action_fields: ${JSON.stringify(args.resolvedActionFields)}`,
     `request_timezone: ${args.requestTimezone}`,
     `request_received_at: ${args.requestReceivedAt}`,
@@ -86,7 +81,7 @@ export async function runGeminiFieldValidator(args: {
     ],
     responseFormat: 'json_object',
     outputSchema: geminiFieldValidationResultSchema,
-    temperature: 0.25,
+    temperature: 0.35,
     timeoutMs: 12_000,
   });
 

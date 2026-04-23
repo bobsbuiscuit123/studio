@@ -5,6 +5,9 @@ type AiActionContext = {
   name: string;
   aiRequests: number;
   maxAiRequests: number;
+  minAiIntervalMs: number;
+  nextAllowedRequestAt: number;
+  requestQueue: Promise<void>;
   startedAt: number;
 };
 
@@ -17,6 +20,18 @@ const DEFAULT_MAX_AI_REQUESTS_PER_ACTION = (() => {
   );
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 8;
 })();
+const DEFAULT_MIN_AI_INTERVAL_MS = (() => {
+  const parsed = Number.parseInt(
+    String(process.env.AI_MIN_INTERVAL_MS ?? '').trim(),
+    10
+  );
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 1250;
+})();
+
+const sleep = (ms: number) =>
+  new Promise<void>(resolve => {
+    setTimeout(resolve, ms);
+  });
 
 export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<T> {
   const id = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -25,6 +40,9 @@ export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<
     name,
     aiRequests: 0,
     maxAiRequests: DEFAULT_MAX_AI_REQUESTS_PER_ACTION,
+    minAiIntervalMs: DEFAULT_MIN_AI_INTERVAL_MS,
+    nextAllowedRequestAt: 0,
+    requestQueue: Promise.resolve(),
     startedAt: Date.now(),
   };
 
@@ -42,24 +60,49 @@ export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<
   });
 }
 
-export function recordAiActionRequest(
+export async function recordAiActionRequest(
   providerName: string,
   modelName: string,
   keyPresent?: boolean
 ) {
   const context = aiActionStorage.getStore();
   if (context) {
-    if (context.aiRequests >= context.maxAiRequests) {
-      throw new Error(
-        `AI safety limit reached for action ${context.name}. maxCallsPerAction=${context.maxAiRequests}`
-      );
-    }
+    const previousQueue = context.requestQueue;
+    let releaseQueue!: () => void;
+    context.requestQueue = new Promise<void>(resolve => {
+      releaseQueue = resolve;
+    });
 
-    context.aiRequests += 1;
-    if (isDebugLoggingEnabled) {
-      console.info(
-        `[AI_DEBUG] AI request #${context.aiRequests} | action=${context.name} | actionId=${context.id} | provider=${providerName} | model=${modelName} | key_present=${Boolean(keyPresent)}`
-      );
+    try {
+      await previousQueue;
+
+      const now = Date.now();
+      const delayMs = Math.max(0, context.nextAllowedRequestAt - now);
+      if (delayMs > 0) {
+        if (isDebugLoggingEnabled) {
+          console.info(
+            `[AI_DEBUG] pacing AI request | action=${context.name} | actionId=${context.id} | provider=${providerName} | model=${modelName} | delayMs=${delayMs}`
+          );
+        }
+        await sleep(delayMs);
+      }
+
+      if (context.aiRequests >= context.maxAiRequests) {
+        throw new Error(
+          `AI safety limit reached for action ${context.name}. maxCallsPerAction=${context.maxAiRequests}`
+        );
+      }
+
+      context.aiRequests += 1;
+      context.nextAllowedRequestAt = Date.now() + context.minAiIntervalMs;
+
+      if (isDebugLoggingEnabled) {
+        console.info(
+          `[AI_DEBUG] AI request #${context.aiRequests} | action=${context.name} | actionId=${context.id} | provider=${providerName} | model=${modelName} | key_present=${Boolean(keyPresent)} | minIntervalMs=${context.minAiIntervalMs}`
+        );
+      }
+    } finally {
+      releaseQueue();
     }
     return;
   }
@@ -72,5 +115,5 @@ export function recordAiActionRequest(
 }
 
 export function recordGeminiRequest(modelName: string, keyPresent: boolean) {
-  recordAiActionRequest('gemini', modelName, keyPresent);
+  return recordAiActionRequest('gemini', modelName, keyPresent);
 }

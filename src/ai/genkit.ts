@@ -591,7 +591,7 @@ export async function callAI<TOutput>(options: {
           `[AI_DEBUG] GEMINI_MODEL=${resolvedGeminiModel} | key_present=${keyPresent}`
         );
       }
-      recordGeminiRequest(resolvedGeminiModel, keyPresent);
+      await recordGeminiRequest(resolvedGeminiModel, keyPresent);
       let res: Awaited<ReturnType<typeof ai.generate>>;
       try {
         const request = ai.generate({
@@ -646,7 +646,11 @@ export async function callAI<TOutput>(options: {
     }
 
     if (provider === 'openrouter') {
-      recordAiActionRequest('openrouter', effectiveModelName, Boolean(OPENROUTER_API_KEY));
+      await recordAiActionRequest(
+        'openrouter',
+        effectiveModelName,
+        Boolean(OPENROUTER_API_KEY)
+      );
       const content = await callOpenRouterChat({
         messages: cappedMessages,
         temperature,
@@ -685,7 +689,11 @@ export async function callAI<TOutput>(options: {
       return ok(applyOutputCharLimit(content));
     }
 
-    recordAiActionRequest('openai', effectiveModelName, Boolean(OPENAI_API_KEY));
+    await recordAiActionRequest(
+      'openai',
+      effectiveModelName,
+      Boolean(OPENAI_API_KEY)
+    );
     const content = await callOpenAIChat({
       messages: cappedMessages,
       temperature,

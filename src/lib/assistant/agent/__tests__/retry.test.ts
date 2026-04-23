@@ -38,4 +38,21 @@ describe('runLlmStepWithRetry', () => {
     expect(result.retryCount).toBe(2);
     expect(result.timeoutFlag).toBe(true);
   }, 10_000);
+
+  it('does not retry the advisory field validator step', async () => {
+    let attempts = 0;
+
+    const result = await runLlmStepWithRetry({
+      step: 'field_validator',
+      fn: async () => {
+        attempts += 1;
+        throw new Error('network timeout');
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.retryCount).toBe(0);
+    expect(result.timeoutFlag).toBe(true);
+    expect(attempts).toBe(1);
+  }, 10_000);
 });

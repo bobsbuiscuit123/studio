@@ -1,7 +1,23 @@
 import { addBreadcrumb } from '@/lib/telemetry';
 
 export const MAX_RETRIES = 2;
-const RETRY_DELAYS_MS = [300, 800] as const;
+const STEP_RETRY_POLICY = {
+  planner: {
+    maxRetries: MAX_RETRIES,
+    delaysMs: [800, 1800] as const,
+  },
+  draft: {
+    maxRetries: MAX_RETRIES,
+    delaysMs: [800, 1800] as const,
+  },
+  // Advisory-only step: fall back to deterministic validation instead of retrying.
+  field_validator: {
+    maxRetries: 0,
+    delaysMs: [] as const,
+  },
+} as const;
+
+type LlmRetryStep = keyof typeof STEP_RETRY_POLICY;
 
 const isTransientFailure = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -12,13 +28,14 @@ export async function runLlmStepWithRetry<T>({
   step,
   fn,
 }: {
-  step: 'planner' | 'draft' | 'field_validator';
+  step: LlmRetryStep;
   fn: () => Promise<T>;
 }): Promise<{ ok: true; value: T; retryCount: number; timeoutFlag: boolean } | { ok: false; retryCount: number; timeoutFlag: boolean }> {
+  const policy = STEP_RETRY_POLICY[step];
   let retryCount = 0;
   let timeoutFlag = false;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= policy.maxRetries; attempt += 1) {
     try {
       const value = await fn();
       return { ok: true, value, retryCount, timeoutFlag };
@@ -36,12 +53,13 @@ export async function runLlmStepWithRetry<T>({
         message,
       });
 
-      if (attempt === MAX_RETRIES || !isTransientFailure(error)) {
+      if (attempt === policy.maxRetries || !isTransientFailure(error)) {
         return { ok: false, retryCount, timeoutFlag };
       }
 
       retryCount += 1;
-      const delayMs = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)] ?? 800;
+      const delayMs =
+        policy.delaysMs[Math.min(attempt, policy.delaysMs.length - 1)] ?? 1800;
       await addBreadcrumb('assistant.llm_step_retry', {
         step,
         retryCount,

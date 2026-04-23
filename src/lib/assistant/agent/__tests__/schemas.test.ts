@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  announcementDraftPreviewSchema,
   announcementPatchSchema,
   assistantCommandSchema,
   eventPatchSchema,
@@ -9,6 +10,16 @@ import {
 } from '@/lib/assistant/agent/schemas';
 
 describe('preview patch schemas', () => {
+  it('parses assistant draft previews with a stable discriminator', () => {
+    const parsed = announcementDraftPreviewSchema.safeParse({
+      kind: 'announcement',
+      title: 'Spring fundraiser',
+      body: 'Please join us after school.',
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it('rejects unknown announcement patch keys', () => {
     const parsed = announcementPatchSchema.safeParse({
       title: 'Hello',

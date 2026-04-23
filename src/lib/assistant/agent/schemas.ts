@@ -25,10 +25,14 @@ const descriptionFieldSchema = nonEmptyTrimmedStringSchema.max(5_000);
 const locationFieldSchema = nonEmptyTrimmedStringSchema.max(240);
 const dateFieldSchema = nonEmptyTrimmedStringSchema;
 const timeFieldSchema = nonEmptyTrimmedStringSchema;
+const announcementKindSchema = z.enum(['announcement']);
+const eventKindSchema = z.enum(['event']);
+const messageKindSchema = z.enum(['message']);
 
 export const announcementDraftPreviewSchema = z
   .object({
-    kind: z.literal('announcement'),
+    // Gemini v1beta rejects JSON Schema `const`, so keep AI-facing discriminators as single-value enums.
+    kind: announcementKindSchema,
     title: titleFieldSchema.optional(),
     body: bodyFieldSchema.optional(),
     recipients: z.array(recipientSchema).min(1).optional(),
@@ -37,7 +41,7 @@ export const announcementDraftPreviewSchema = z
 
 export const eventDraftPreviewSchema = z
   .object({
-    kind: z.literal('event'),
+    kind: eventKindSchema,
     title: titleFieldSchema.optional(),
     description: descriptionFieldSchema.optional(),
     date: dateFieldSchema.optional(),
@@ -48,7 +52,7 @@ export const eventDraftPreviewSchema = z
 
 export const messageDraftPreviewSchema = z
   .object({
-    kind: z.literal('message'),
+    kind: messageKindSchema,
     recipients: z.array(recipientSchema).min(1).optional(),
     body: bodyFieldSchema.optional(),
   })

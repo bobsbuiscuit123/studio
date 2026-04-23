@@ -2,7 +2,6 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { canEditGroupContent, normalizeGroupRole } from '@/lib/group-permissions';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import type { Announcement } from '@/lib/mock-data';
-import type { RecipientRef } from '@/lib/assistant/agent/types';
 
 type CreateAnnouncementInput = {
   userId: string;
@@ -11,7 +10,6 @@ type CreateAnnouncementInput = {
   groupId: string;
   title: string;
   body: string;
-  recipients?: RecipientRef[];
 };
 
 type UpdateAnnouncementInput = {
@@ -22,7 +20,6 @@ type UpdateAnnouncementInput = {
   targetRef: string;
   title?: string;
   body?: string;
-  recipients?: RecipientRef[];
 };
 
 const ensureAnnouncementPermission = async (input: {
@@ -140,7 +137,6 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
     author: input.userEmail,
     date: new Date().toISOString(),
     read: false,
-    recipients: (input.recipients ?? []).map(recipient => recipient.email),
     viewedBy: [input.userEmail],
     aiTagged: true,
   };
@@ -181,10 +177,7 @@ export async function updateAnnouncement(input: UpdateAnnouncementInput) {
     ...existing,
     title: typeof input.title === 'string' && input.title.trim() ? input.title.trim() : existing.title,
     content: typeof input.body === 'string' && input.body.trim() ? input.body.trim() : existing.content,
-    recipients:
-      input.recipients && input.recipients.length > 0
-        ? input.recipients.map(recipient => recipient.email)
-        : existing.recipients,
+    recipients: undefined,
     viewedBy: Array.from(new Set([...(existing.viewedBy ?? []), input.userEmail])),
     aiTagged: true,
   };

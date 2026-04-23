@@ -11,6 +11,9 @@ describe('assistant planner prompt', () => {
       'create_announcement: draft or plan posting an in-app announcement'
     );
     expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
+      'Announcements are always group-wide and go to everyone.'
+    );
+    expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
       'create_event: draft or plan creating an in-app event'
     );
     expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(

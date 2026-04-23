@@ -95,10 +95,7 @@ const previewToEditorState = (preview: DraftPreview): PreviewEditorState => ({
   date: preview.kind === "event" ? preview.date ?? "" : "",
   time: preview.kind === "event" ? preview.time ?? "" : "",
   location: preview.kind === "event" ? preview.location ?? "" : "",
-  recipientsText:
-    preview.kind === "announcement" || preview.kind === "message"
-      ? recipientsToText(preview.recipients)
-      : "",
+  recipientsText: preview.kind === "message" ? recipientsToText(preview.recipients) : "",
 });
 
 const parseRecipients = (value: string): RecipientRef[] | undefined => {
@@ -118,7 +115,6 @@ const buildPatchFromEditorState = (preview: DraftPreview, editor: PreviewEditorS
         patch: {
           ...(editor.title.trim() ? { title: editor.title.trim() } : {}),
           ...(editor.body.trim() ? { body: editor.body.trim() } : {}),
-          ...(parseRecipients(editor.recipientsText) ? { recipients: parseRecipients(editor.recipientsText) } : {}),
         },
       };
     case "event":
@@ -389,7 +385,7 @@ function AssistantTurnContent({
             </div>
           ) : null}
 
-          {(turn.preview.kind === "announcement" || turn.preview.kind === "message") ? (
+          {turn.preview.kind === "message" ? (
             <div className="mt-3 space-y-2">
               <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
                 Recipients

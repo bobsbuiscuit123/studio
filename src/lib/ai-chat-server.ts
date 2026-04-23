@@ -117,7 +117,6 @@ const projectAnnouncements = (
       content: trimText(announcement.content, AI_CHAT_ANNOUNCEMENT_CONTENT_CHARS),
       author: trimText(announcement.author, 80),
       date: typeof announcement.date === 'string' ? announcement.date : '',
-      recipients: projectStringList(announcement.recipients, 24),
       linkedFormId: trimText(announcement.linkedFormId, 80),
       attachments: projectAttachments(announcement.attachments),
       viewedCount: viewedBy.length,
@@ -591,7 +590,7 @@ export const buildAiChatPlannerPrompt = ({
   const availableEntitySet = new Set(availableEntities);
   const availableDataLines = [
     availableEntitySet.has('announcements')
-      ? '- announcements: recent announcement records with title, content, author, date, recipients, and only the view details this role can normally see'
+      ? '- announcements: recent announcement records with title, content, author, date, and only the view details this role can normally see'
       : null,
     availableEntitySet.has('messages')
       ? '- messages: the current user’s direct message threads plus visible group chats with recent messages'

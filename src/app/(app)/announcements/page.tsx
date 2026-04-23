@@ -40,7 +40,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import type { GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
 import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
-import type { Announcement, Attachment, Member, ClubForm } from "@/lib/mock-data";
+import type { Announcement, Attachment, ClubForm } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
@@ -56,7 +56,6 @@ const promptFormSchema = z.object({
 const announcementFormSchema = z.object({
     title: z.string().min(3, "Title must be at least 3 characters long."),
     content: z.string().min(10, "Content must be at least 10 characters long."),
-    recipients: z.string().optional(),
 });
 
 const isInstructionLikeAnnouncementTitle = (value?: string | null) => {
@@ -148,8 +147,6 @@ function AnnouncementsPageInner() {
   }, [members]);
   const resolveMemberName = (value: string) =>
     memberNameByEmail.get(value) || value;
-  const [recipientMode, setRecipientMode] = useState<'all' | 'specific'>('all');
-  const [selectedRecipients, setSelectedRecipients] = useState<string[]>([]);
   const [showAi, setShowAi] = useState(false);
   const [handledFormId, setHandledFormId] = useState<string | null>(null);
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
@@ -236,7 +233,6 @@ function AnnouncementsPageInner() {
     defaultValues: {
       title: "",
       content: "",
-      recipients: "",
     },
   });
 
@@ -264,8 +260,6 @@ function AnnouncementsPageInner() {
       setHandledFormId(announceFormId);
       setLinkedFormIdDraft(targetForm.id);
       setAttachments([]);
-      setRecipientMode('all');
-      setSelectedRecipients([]);
 
       const promptText = targetForm.title
         ? `Draft an announcement telling members to fill out the form "${targetForm.title}". Include this link in the body: /forms?formId=${encodeURIComponent(targetForm.id)}`
@@ -346,9 +340,6 @@ function AnnouncementsPageInner() {
   const handleEditClick = (announcement: Announcement) => {
     const normalizedAnnouncement = normalizeAnnouncementForDisplay(announcement);
     setEditingAnnouncement(normalizedAnnouncement as Announcement);
-    const recips = Array.isArray(announcement.recipients) ? announcement.recipients : [];
-    setRecipientMode(recips.length > 0 ? 'specific' : 'all');
-    setSelectedRecipients(recips);
     announcementForm.reset({
         title: normalizedAnnouncement.title,
         content: announcement.content,
@@ -367,12 +358,11 @@ function AnnouncementsPageInner() {
 
   const handleUpdateAnnouncement = async (values: z.infer<typeof announcementFormSchema>) => {
     if (!editingAnnouncement) return;
-    const recipients = recipientMode === 'specific' ? selectedRecipients : [];
     setIsSavingAnnouncement(true);
     const saved = await setAnnouncementsAsync(prev => {
       const list = Array.isArray(prev) ? prev : [];
       return list.map((ann) =>
-        ann.id === editingAnnouncement.id ? { ...ann, ...values, recipients } : ann
+        ann.id === editingAnnouncement.id ? { ...ann, ...values, recipients: undefined } : ann
       );
     });
     setIsSavingAnnouncement(false);
@@ -445,7 +435,6 @@ function AnnouncementsPageInner() {
 
   const handlePostAnnouncement = async (values: z.infer<typeof announcementFormSchema>) => {
     if (!user) return;
-    const recipients = recipientMode === 'specific' ? selectedRecipients : [];
     const newId = Date.now();
     const attachmentsToSave = (() => {
       if (linkedFormIdDraft) {
@@ -469,7 +458,6 @@ function AnnouncementsPageInner() {
         content: values.content,
         author: user?.name || "Group Admin",
         date: new Date().toISOString(),
-        recipients,
         viewedBy: user.email ? [user.email] : [],
         attachments: attachmentsToSave,
         read: false,
@@ -610,57 +598,6 @@ function AnnouncementsPageInner() {
                           </FormItem>
                       )}
                   />
-                  <div className="space-y-2">
-                    <FormLabel>Recipients</FormLabel>
-                    <div className="flex items-center gap-3 text-sm">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="recipient-mode"
-                          checked={recipientMode === 'all'}
-                          onChange={() => setRecipientMode('all')}
-                        />
-                        Send to everyone
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="recipient-mode"
-                          checked={recipientMode === 'specific'}
-                          onChange={() => setRecipientMode('specific')}
-                        />
-                        Choose recipients
-                      </label>
-                    </div>
-                    {recipientMode === 'specific' && (
-                      <div className="max-h-48 overflow-auto rounded border p-2 space-y-1">
-                        {(Array.isArray(members) ? members : []).map((m: Member) => {
-                          const checked = selectedRecipients.includes(m.email);
-                          return (
-                            <label key={m.email} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={e => {
-                                  setSelectedRecipients(prev => {
-                                    if (e.target.checked) {
-                                      return prev.includes(m.email) ? prev : [...prev, m.email];
-                                    }
-                                    return prev.filter(v => v !== m.email);
-                                  });
-                                }}
-                              />
-                              <span>{m.name}</span>
-                              <span className="text-muted-foreground text-xs">({m.email})</span>
-                            </label>
-                          );
-                        })}
-                        {(Array.isArray(members) ? members : []).length === 0 && (
-                          <p className="text-xs text-muted-foreground">No members found.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
                   <FormItem>
                     <FormLabel>Attachments (Optional)</FormLabel>
                     <div className="flex items-center gap-2">
@@ -793,13 +730,9 @@ function AnnouncementsPageInner() {
             safeAnnouncements.length > 0 ? (
               sortedAnnouncements.map((announcement) => {
                 const hasButtonAttachment = Array.isArray(announcement.attachments) && announcement.attachments.some(att => att.type === 'button');
-                const recipientsList = Array.isArray(announcement.recipients)
-                  ? announcement.recipients.filter((r): r is string => typeof r === "string")
-                  : [];
                 const viewedByList = Array.isArray(announcement.viewedBy)
                   ? announcement.viewedBy.filter((v): v is string => typeof v === "string")
                   : [];
-                const recipientNames = recipientsList.map(resolveMemberName);
                 const viewedByNames = viewedByList.map(resolveMemberName);
                 return (
                   <Card
@@ -835,10 +768,7 @@ function AnnouncementsPageInner() {
                         {announcement.content}
                       </p>
                       <div className="text-xs text-muted-foreground">
-                        <span className="font-semibold">Recipients:</span>{" "}
-                        {recipientNames.length > 0
-                          ? recipientNames.join(", ")
-                          : "Everyone"}
+                        <span className="font-semibold">Audience:</span> Everyone
                       </div>
                       {announcement.linkedFormId && !hasButtonAttachment && (
                         <div className="flex items-center gap-2">
@@ -983,56 +913,8 @@ function AnnouncementsPageInner() {
                     )}
                 />
                 {!editingAnnouncement && (
-                  <div className="space-y-2">
-                    <FormLabel>Recipients</FormLabel>
-                    <div className="flex items-center gap-3 text-sm">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="recipient-mode"
-                          checked={recipientMode === 'all'}
-                          onChange={() => setRecipientMode('all')}
-                        />
-                        Send to everyone
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="recipient-mode"
-                          checked={recipientMode === 'specific'}
-                          onChange={() => setRecipientMode('specific')}
-                        />
-                        Choose recipients
-                      </label>
-                    </div>
-                    {recipientMode === 'specific' && (
-                      <div className="max-h-48 overflow-auto rounded border p-2 space-y-1">
-                        {(Array.isArray(members) ? members : []).map((m: Member) => {
-                          const checked = selectedRecipients.includes(m.email);
-                          return (
-                            <label key={m.email} className="flex items-center gap-2 text-sm">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={e => {
-                                  setSelectedRecipients(prev => {
-                                    if (e.target.checked) {
-                                      return prev.includes(m.email) ? prev : [...prev, m.email];
-                                    }
-                                    return prev.filter(v => v !== m.email);
-                                  });
-                                }}
-                              />
-                              <span>{m.name}</span>
-                              <span className="text-muted-foreground text-xs">({m.email})</span>
-                            </label>
-                          );
-                        })}
-                        {(Array.isArray(members) ? members : []).length === 0 && (
-                          <p className="text-xs text-muted-foreground">No members found.</p>
-                        )}
-                      </div>
-                    )}
+                  <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                    This announcement will be posted to everyone in the group.
                   </div>
                 )}
             </form>

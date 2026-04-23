@@ -2,8 +2,8 @@ import type { AiChatHistoryMessage } from '@/lib/ai-chat';
 
 export const ASSISTANT_ACTION_CAPABILITY_GUIDANCE = [
   'Supported action types are limited to these in-app operations only:',
-  '- create_announcement: draft or plan posting an in-app announcement with a title, body, and optional recipients.',
-  '- update_announcement: draft or plan edits to an existing in-app announcement.',
+  '- create_announcement: draft or plan posting an in-app announcement with a title and body. Announcements are always group-wide and go to everyone.',
+  '- update_announcement: draft or plan edits to an existing in-app announcement. Announcement targeting is not editable.',
   '- create_event: draft or plan creating an in-app event with title, description, date, time, and location.',
   '- update_event: draft or plan edits to an existing in-app event.',
   '- create_message: draft or plan sending an in-app direct or group message to members.',

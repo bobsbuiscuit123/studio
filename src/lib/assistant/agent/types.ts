@@ -58,7 +58,6 @@ export type AnnouncementDraftPreview = {
   kind: 'announcement';
   title?: string;
   body?: string;
-  recipients?: RecipientRef[];
 };
 
 export type EventDraftPreview = {

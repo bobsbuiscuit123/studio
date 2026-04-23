@@ -98,7 +98,7 @@ const getPreviewState = (intent: AgentPlan['intent']) =>
 const getEditableFields = (preview: DraftPreview) => {
   switch (preview.kind) {
     case 'announcement':
-      return ['title', 'body', 'recipients'];
+      return ['title', 'body'];
     case 'event':
       return ['title', 'description', 'date', 'time', 'location'];
     case 'message':

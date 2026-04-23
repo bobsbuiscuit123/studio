@@ -35,7 +35,6 @@ export const announcementDraftPreviewSchema = z
     kind: announcementKindSchema,
     title: titleFieldSchema.optional(),
     body: bodyFieldSchema.optional(),
-    recipients: z.array(recipientSchema).min(1).optional(),
   })
   .strict();
 
@@ -68,7 +67,6 @@ export const announcementPatchSchema = z
   .object({
     title: titleFieldSchema.optional(),
     body: bodyFieldSchema.optional(),
-    recipients: z.array(recipientSchema).min(1).optional(),
   })
   .strict();
 

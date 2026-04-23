@@ -90,11 +90,11 @@ type NormalizedFieldResult =
   | { ok: false };
 
 export const ALLOWED_INFERRED_FIELDS_BY_ACTION: Record<AgentActionType, Set<string>> = {
-  create_announcement: new Set(['title', 'body', 'recipients']),
-  update_announcement: new Set(['title', 'body', 'recipients']),
+  create_announcement: new Set(['title', 'body']),
+  update_announcement: new Set(['title', 'body']),
   create_event: new Set(['title', 'description', 'location', 'date', 'time']),
   update_event: new Set(['title', 'description', 'location', 'date', 'time']),
-  create_message: new Set(['body', 'recipients']),
+  create_message: new Set(['body']),
 };
 
 const normalize = (value: unknown) =>
@@ -964,7 +964,6 @@ export function fillGeneratedActionFields(args: {
     case 'update_announcement':
       setDefaultField('title', buildAnnouncementTitle(args.userMessage));
       setDefaultField('body', buildAnnouncementBody(args.userMessage));
-      setDefaultField('recipients', getFallbackRecipients());
       break;
     case 'create_message':
       setDefaultField('body', buildMessageBody(args.userMessage));
@@ -1000,12 +999,10 @@ export const getActionRequiredRetrievalResources = (
   actionType: AgentActionType
 ): RetrievalTargetResource[] => {
   switch (actionType) {
-    case 'create_announcement':
-      return ['members'];
     case 'create_message':
       return ['members'];
     case 'update_announcement':
-      return ['announcements', 'members'];
+      return ['announcements'];
     case 'update_event':
       return ['events'];
     default:
@@ -1019,8 +1016,6 @@ export function getAvailableRecipients(args: {
   userEmail: string;
 }): Array<RecipientRef & { role?: string }> {
   if (
-    args.actionType !== 'create_announcement' &&
-    args.actionType !== 'update_announcement' &&
     args.actionType !== 'create_message'
   ) {
     return [];
@@ -1076,6 +1071,18 @@ export function resolveActionFields(args: {
     return {
       ...remainingFields,
       ...(targetRef ? { targetRef } : {}),
+    };
+  }
+
+  if (args.actionType === 'create_message') {
+    const members = extractMembers(args.retrieval.context.members);
+    const recipients =
+      resolveExplicitRecipients(args.fieldsProvided.recipients, members) ??
+      resolveRecipientsFromMessage(args.message, members);
+
+    return {
+      ...baseFields,
+      ...(recipients ? { recipients } : {}),
     };
   }
 

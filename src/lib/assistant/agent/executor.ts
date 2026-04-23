@@ -173,7 +173,6 @@ export async function executePendingAction(args: {
             groupId: args.groupId,
             title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title ?? '' : '',
             body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body ?? '' : '',
-            recipients: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.recipients : undefined,
           })
         : pending.actionType === 'update_announcement'
           ? await updateAnnouncement({
@@ -184,7 +183,6 @@ export async function executePendingAction(args: {
               targetRef: typeof claimed.actionFields.targetRef === 'string' ? claimed.actionFields.targetRef : '',
               title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title : undefined,
               body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body : undefined,
-              recipients: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.recipients : undefined,
             })
         : pending.actionType === 'create_event'
           ? await createEvent({

@@ -797,14 +797,18 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       return;
     }
 
+    const deletedMessageEntityIds = Array.isArray(response.data?.data?.deletedMessageEntityIds)
+      ? response.data.data.deletedMessageEntityIds
+      : selectedMessageIds;
+
     if (conversation.type === "dm") {
       const conversationKey = getConversationId(user?.email || currentUserEmail, conversation.partner.email);
-      setLocalMessages(prev => removeConversationMessages(prev, conversationKey, selectedMessageIds));
+      setLocalMessages(prev => removeConversationMessages(prev, conversationKey, deletedMessageEntityIds));
     } else {
-      setLocalGroupChats(prev => removeGroupChatMessages(prev, conversation.chat.id, selectedMessageIds));
+      setLocalGroupChats(prev => removeGroupChatMessages(prev, conversation.chat.id, deletedMessageEntityIds));
     }
 
-    if (focusedMessageId && selectedMessageIdSet.has(focusedMessageId)) {
+    if (focusedMessageId && deletedMessageEntityIds.includes(focusedMessageId)) {
       router.replace(`/messages/${conversationId}`);
     }
 

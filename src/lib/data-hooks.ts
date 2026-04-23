@@ -238,7 +238,12 @@ type ClubDataStoreValue = {
     ) => Promise<boolean>;
     refreshData: () => Promise<boolean>;
     retry: () => Promise<boolean>;
-    setLocalClubData: (nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => boolean;
+    setLocalClubData: (
+        nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData),
+        options?: {
+            reconcile?: boolean;
+        }
+    ) => boolean;
 };
 
 const ClubDataContext = createContext<ClubDataStoreValue | null>(null);
@@ -828,7 +833,12 @@ function useClubDataStoreState(): ClubDataStoreValue {
         return refreshData();
     }, [refreshData]);
 
-    const setLocalClubData = useCallback((nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData)) => {
+    const setLocalClubData = useCallback((
+        nextDataOrUpdater: ClubData | ((baseData: ClubData) => ClubData),
+        options?: {
+            reconcile?: boolean;
+        }
+    ) => {
         if (!clubId || !orgId) return false;
         const cacheKey = getGroupStateCacheKey(orgId, clubId);
         const baseData = groupStateCache.get(cacheKey) ?? dataRef.current ?? getDefaultClubData();
@@ -836,7 +846,10 @@ function useClubDataStoreState(): ClubDataStoreValue {
             typeof nextDataOrUpdater === 'function'
                 ? nextDataOrUpdater(baseData)
                 : nextDataOrUpdater;
-        const mergedData = reconcileClubData(baseData, nextData);
+        const mergedData =
+            options?.reconcile === false
+                ? normalizeClubData(nextData)
+                : reconcileClubData(baseData, nextData);
         setData(prev => {
             if (prev && stableSerialize(prev) === stableSerialize(mergedData)) {
                 return prev;
@@ -1238,7 +1251,7 @@ export function useMessagingData() {
                     return base;
                 }
                 return { ...base, messages: valueToStore };
-            });
+            }, { reconcile: false });
         },
         [clubId, setLocalClubData]
     );
@@ -1307,7 +1320,7 @@ export function useMessagingData() {
                     return base;
                 }
                 return { ...base, groupChats: valueToStore };
-            });
+            }, { reconcile: false });
         },
         [clubId, setLocalClubData]
     );

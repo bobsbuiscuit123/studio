@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -22,10 +22,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
 import {
+  MESSAGE_TEXT_MAX_CHARS,
   getMessageTimestampMs,
   isMessageFromActor,
   markMessageReadByActor,
@@ -65,7 +67,11 @@ const newGroupFormSchema = z.object({
 });
 
 const messageFormSchema = z.object({
-  text: z.string().min(1, "Message cannot be empty").max(500, "Message too long"),
+  text: z
+    .string()
+    .trim()
+    .min(1, "Message cannot be empty")
+    .max(MESSAGE_TEXT_MAX_CHARS, `Message too long (${MESSAGE_TEXT_MAX_CHARS.toLocaleString()} characters max)`),
 });
 
 const MESSAGE_SEND_THROTTLE_MS = 500;
@@ -546,6 +552,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     resolver: zodResolver(messageFormSchema),
     defaultValues: { text: "" },
   });
+  const composerField = messageForm.register("text");
 
   const activeMessages = useMemo(() => {
     if (!user || !conversation) return [];
@@ -653,6 +660,15 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     }, MESSAGE_BACKGROUND_REFRESH_MS);
     return () => window.clearInterval(interval);
   }, [refreshConversationState]);
+
+  const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    void messageForm.handleSubmit(handleSendMessage)();
+  };
 
   const handleSendMessage = async (values: z.infer<typeof messageFormSchema>) => {
     if (!user || !conversation) return;
@@ -872,13 +888,21 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
       <div className="header shrink-0 border-t bg-background px-4 pt-3 pb-[calc(0.85rem+var(--safe-area-bottom-runtime))]">
         <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
-          <Input
-            {...messageForm.register("text")}
-            autoComplete="off"
-            placeholder="Message"
-            disabled={isSending}
-            className="min-h-11 rounded-xl border-border/70"
-          />
+          <div className="flex-1">
+            <Textarea
+              {...composerField}
+              autoComplete="off"
+              enterKeyHint="send"
+              placeholder="Message"
+              disabled={isSending}
+              rows={1}
+              onKeyDown={handleComposerKeyDown}
+              className="max-h-40 min-h-11 resize-none rounded-xl border-border/70 py-3"
+            />
+            {messageForm.formState.errors.text ? (
+              <p className="mt-2 text-sm text-destructive">{messageForm.formState.errors.text.message}</p>
+            ) : null}
+          </div>
           <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending}>
             <Send className="h-4 w-4" />
             <span className="sr-only">Send message</span>

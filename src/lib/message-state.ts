@@ -1,5 +1,7 @@
 import type { GroupChat, Message } from '@/lib/mock-data';
 
+export const MESSAGE_TEXT_MAX_CHARS = 2_000;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 

@@ -6,6 +6,7 @@ import { err } from '@/lib/result';
 import { createMessage } from '@/lib/assistant/agent/message-service';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { MESSAGE_TEXT_MAX_CHARS } from '@/lib/message-state';
 
 const schema = z.discriminatedUnion('conversationType', [
   z.object({
@@ -14,7 +15,7 @@ const schema = z.discriminatedUnion('conversationType', [
     conversationType: z.literal('dm'),
     partnerEmail: z.string().trim().email().max(320),
     clientTimestamp: z.string().trim().max(64).optional(),
-    text: z.string().trim().min(1).max(500),
+    text: z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS),
   }).strict(),
   z.object({
     orgId: z.string().uuid(),
@@ -22,7 +23,7 @@ const schema = z.discriminatedUnion('conversationType', [
     conversationType: z.literal('group'),
     chatId: z.string().trim().min(1).max(200),
     clientTimestamp: z.string().trim().max(64).optional(),
-    text: z.string().trim().min(1).max(500),
+    text: z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS),
   }).strict(),
 ]);
 

@@ -120,6 +120,9 @@ describe('ai chat server helpers', () => {
     });
 
     expect(AI_CHAT_RESPONDER_SYSTEM_PROMPT).toContain('When planner_result.needs_data is false');
+    expect(AI_CHAT_RESPONDER_SYSTEM_PROMPT).toContain(
+      'If the request is for an unsupported asset or deliverable such as a flyer'
+    );
     expect(prompt).toContain('No group data was fetched because the planner determined this request can be answered without retrieval.');
     expect(prompt).toContain('current_user_message: Draft a dues reminder announcement.');
   });

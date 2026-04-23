@@ -14,6 +14,7 @@ import {
   mergeInferredActionFields,
   resolveActionFields,
 } from '@/lib/assistant/agent/action-fields';
+import { buildAssistantPlannerPrompt } from '@/lib/assistant/agent/planner-prompt';
 import { authorizeAction } from '@/lib/assistant/agent/authorize';
 import { getAgentContext } from '@/lib/assistant/agent/context';
 import { generateDraftPreview } from '@/lib/assistant/agent/drafts';
@@ -165,30 +166,6 @@ const normalizeIncomingCommand = (
   };
 };
 
-const buildPlannerPrompt = ({
-  message,
-  history,
-  role,
-}: {
-  message: string;
-  history?: AiChatHistoryMessage[];
-  role: string;
-}) =>
-  [
-    'Return JSON only. You are the planning pass for a production in-app assistant.',
-    'Never assume hidden state, permissions, or missing required fields.',
-    'Supported intents: conversational, retrieval, draft_action, execute_action, mixed.',
-    'Supported retrieval resources: announcements, events, members, messages, activity.',
-    'Supported action types: create_announcement, update_announcement, create_event, update_event, create_message.',
-    'Use draft_action for low-commitment asks like draft, write, or example.',
-    'Use execute_action for high-commitment asks like create, post, or send, but still only as a plan.',
-    'Populate action.fieldsProvided only with explicit structural values needed before validation, such as recipients or target ids.',
-    'Do not populate title, body, description, location, date, or time. Those fields are generated later from the user message and recent history.',
-    `current_user_role: ${role}`,
-    `recent_history: ${JSON.stringify(history ?? [])}`,
-    `current_message: ${message}`,
-  ].join('\n\n');
-
 const buildFallbackResponse = (
   conversationId: string,
   turnId: string,
@@ -316,7 +293,7 @@ async function runAgentPlanner(args: {
   role: string;
 }): Promise<AgentPlan> {
   const result = await callAI({
-    messages: [{ role: 'user', content: buildPlannerPrompt(args) }],
+    messages: [{ role: 'user', content: buildAssistantPlannerPrompt(args) }],
     responseFormat: 'json_object',
     outputSchema: agentPlanSchema,
     temperature: 0.1,

@@ -83,17 +83,18 @@ type CandidateRecord = {
 type MemberRecord = {
   email: string;
   name: string;
+  role?: string;
 };
 type NormalizedFieldResult =
   | { ok: true; value: string }
   | { ok: false };
 
 export const ALLOWED_INFERRED_FIELDS_BY_ACTION: Record<AgentActionType, Set<string>> = {
-  create_announcement: new Set(['title', 'body']),
-  update_announcement: new Set(['title', 'body']),
+  create_announcement: new Set(['title', 'body', 'recipients']),
+  update_announcement: new Set(['title', 'body', 'recipients']),
   create_event: new Set(['title', 'description', 'location', 'date', 'time']),
   update_event: new Set(['title', 'description', 'location', 'date', 'time']),
-  create_message: new Set(['body']),
+  create_message: new Set(['body', 'recipients']),
 };
 
 const normalize = (value: unknown) =>
@@ -419,7 +420,8 @@ const extractMembers = (items: unknown): MemberRecord[] =>
       if (!item) return [];
       const email = typeof item.email === 'string' ? item.email.trim() : '';
       const name = typeof item.name === 'string' ? item.name.trim() : '';
-      return email ? [{ email, name }] : [];
+      const role = typeof item.role === 'string' ? item.role.trim() : '';
+      return email ? [{ email, name, ...(role ? { role } : {}) }] : [];
     });
 
 const uniqueByEmail = (recipients: RecipientRef[]) =>
@@ -428,6 +430,16 @@ const uniqueByEmail = (recipients: RecipientRef[]) =>
       map.set(normalize(recipient.email), recipient);
       return map;
     }, new Map<string, RecipientRef>()).values()
+  );
+
+const allRecipientsPattern = /^(?:all|everyone|everybody|all members)$/i;
+
+const recipientsFromMembers = (members: MemberRecord[]) =>
+  uniqueByEmail(
+    members.map(member => ({
+      email: member.email,
+      ...(member.name ? { name: member.name } : {}),
+    }))
   );
 
 const resolveNamedMember = (value: string, members: MemberRecord[]) => {
@@ -509,6 +521,27 @@ const resolveRecipientsFromMessage = (message: string, members: MemberRecord[]) 
   return uniqueByEmail(
     matches.map(member => ({ email: member.email, ...(member.name ? { name: member.name } : {}) }))
   );
+};
+
+const resolveInferredRecipients = (candidate: unknown, members: MemberRecord[]) => {
+  if (members.length === 0) {
+    return undefined;
+  }
+
+  if (typeof candidate === 'string' && allRecipientsPattern.test(candidate.trim())) {
+    return recipientsFromMembers(members);
+  }
+
+  if (
+    Array.isArray(candidate) &&
+    candidate.length === 1 &&
+    typeof candidate[0] === 'string' &&
+    allRecipientsPattern.test(candidate[0].trim())
+  ) {
+    return recipientsFromMembers(members);
+  }
+
+  return resolveExplicitRecipients(candidate, members);
 };
 
 const resolveCandidateTarget = (
@@ -830,6 +863,7 @@ export function mergeInferredActionFields(args: {
   actionType: AgentActionType;
   resolvedActionFields: PendingActionFields;
   inferredFields?: Record<string, unknown> | null;
+  availableRecipients?: RecipientRef[];
   userMessage: string;
   recentHistory?: AiChatHistoryMessage[];
   requestTimezone: string;
@@ -838,6 +872,10 @@ export function mergeInferredActionFields(args: {
   const mergedFields: PendingActionFields = { ...args.resolvedActionFields };
   const mergedFieldKeys: string[] = [];
   const allowedFields = ALLOWED_INFERRED_FIELDS_BY_ACTION[args.actionType];
+  const availableRecipientMembers = (args.availableRecipients ?? []).map(recipient => ({
+    email: recipient.email,
+    name: recipient.name ?? '',
+  }));
   const schemaMap = actionFieldSchemaByActionType[args.actionType] as Record<
     string,
     { safeParse: (value: unknown) => { success: boolean; data?: string } }
@@ -845,8 +883,17 @@ export function mergeInferredActionFields(args: {
 
   for (const [field, candidate] of Object.entries(args.inferredFields ?? {})) {
     if (!allowedFields.has(field)) continue;
-    if (field === 'recipients' || field === 'targetRef') continue;
+    if (field === 'targetRef') continue;
     if (hasResolvedValue(mergedFields[field])) continue;
+
+    if (field === 'recipients') {
+      const normalizedRecipients = resolveInferredRecipients(candidate, availableRecipientMembers);
+      if (!normalizedRecipients || normalizedRecipients.length === 0) continue;
+
+      mergedFields[field] = normalizedRecipients;
+      mergedFieldKeys.push(field);
+      continue;
+    }
 
     const schema = schemaMap[field];
     if (!schema) continue;
@@ -879,6 +926,7 @@ export function mergeInferredActionFields(args: {
 export function fillGeneratedActionFields(args: {
   actionType: AgentActionType;
   actionFields: PendingActionFields;
+  availableRecipients?: RecipientRef[];
   userMessage: string;
   recentHistory?: AiChatHistoryMessage[];
   requestTimezone: string;
@@ -887,6 +935,10 @@ export function fillGeneratedActionFields(args: {
   const filledFields: PendingActionFields = { ...args.actionFields };
   const defaultedFieldKeys: string[] = [];
   const inferenceSource = getInferenceSourceText(args.userMessage, args.recentHistory);
+  const availableRecipientMembers = (args.availableRecipients ?? []).map(recipient => ({
+    email: recipient.email,
+    name: recipient.name ?? '',
+  }));
 
   const setDefaultField = (field: string, value: unknown) => {
     if (hasResolvedValue(filledFields[field]) || !hasResolvedValue(value)) {
@@ -896,14 +948,27 @@ export function fillGeneratedActionFields(args: {
     defaultedFieldKeys.push(field);
   };
 
+  const getFallbackRecipients = () => {
+    if (availableRecipientMembers.length === 0) {
+      return undefined;
+    }
+
+    const explicitRecipients = resolveRecipientsFromMessage(inferenceSource, availableRecipientMembers);
+    return explicitRecipients && explicitRecipients.length > 0
+      ? explicitRecipients
+      : recipientsFromMembers(availableRecipientMembers);
+  };
+
   switch (args.actionType) {
     case 'create_announcement':
     case 'update_announcement':
       setDefaultField('title', buildAnnouncementTitle(args.userMessage));
       setDefaultField('body', buildAnnouncementBody(args.userMessage));
+      setDefaultField('recipients', getFallbackRecipients());
       break;
     case 'create_message':
       setDefaultField('body', buildMessageBody(args.userMessage));
+      setDefaultField('recipients', getFallbackRecipients());
       break;
     case 'create_event':
     case 'update_event':
@@ -935,16 +1000,42 @@ export const getActionRequiredRetrievalResources = (
   actionType: AgentActionType
 ): RetrievalTargetResource[] => {
   switch (actionType) {
+    case 'create_announcement':
+      return ['members'];
     case 'create_message':
       return ['members'];
     case 'update_announcement':
-      return ['announcements'];
+      return ['announcements', 'members'];
     case 'update_event':
       return ['events'];
     default:
       return [];
   }
 };
+
+export function getAvailableRecipients(args: {
+  actionType: AgentActionType;
+  retrieval: RetrievalBundle;
+  userEmail: string;
+}): Array<RecipientRef & { role?: string }> {
+  if (
+    args.actionType !== 'create_announcement' &&
+    args.actionType !== 'update_announcement' &&
+    args.actionType !== 'create_message'
+  ) {
+    return [];
+  }
+
+  const members = extractMembers(args.retrieval.context.members).filter(member =>
+    args.actionType === 'create_message' ? normalize(member.email) !== normalize(args.userEmail) : true
+  );
+
+  return members.map(member => ({
+    email: member.email,
+    ...(member.name ? { name: member.name } : {}),
+    ...(member.role ? { role: member.role } : {}),
+  }));
+}
 
 export function resolveActionFields(args: {
   actionType: AgentActionType;
@@ -985,19 +1076,6 @@ export function resolveActionFields(args: {
     return {
       ...remainingFields,
       ...(targetRef ? { targetRef } : {}),
-    };
-  }
-
-  if (args.actionType === 'create_message') {
-    const { recipients: _ignoredRecipients, ...remainingFields } = baseFields;
-    const members = extractMembers(args.retrieval.context.members);
-    const explicitRecipients = resolveExplicitRecipients(args.fieldsProvided.recipients, members);
-    const resolvedRecipients =
-      explicitRecipients ?? resolveRecipientsFromMessage(args.message, members);
-
-    return {
-      ...remainingFields,
-      ...(resolvedRecipients ? { recipients: resolvedRecipients } : {}),
     };
   }
 

@@ -10,12 +10,14 @@ import type {
 } from '@/lib/ai-chat';
 import {
   getActionRequiredRetrievalResources,
+  mergeInferredActionFields,
   resolveActionFields,
 } from '@/lib/assistant/agent/action-fields';
 import { authorizeAction } from '@/lib/assistant/agent/authorize';
 import { getAgentContext } from '@/lib/assistant/agent/context';
 import { generateDraftPreview } from '@/lib/assistant/agent/drafts';
 import { executePendingAction } from '@/lib/assistant/agent/executor';
+import { runGeminiFieldValidator } from '@/lib/assistant/agent/field-validator';
 import { getAssistantActionFlag } from '@/lib/assistant/agent/feature-flags';
 import {
   announcementPatchSchema,
@@ -52,6 +54,7 @@ import type {
 import { withTimeout } from '@/lib/dashboard-load';
 import { displayGroupRole } from '@/lib/group-permissions';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
+import { addBreadcrumb } from '@/lib/telemetry';
 
 const genericRetryFallback =
   "I'm having trouble processing that request right now—can you try rephrasing it?";
@@ -406,6 +409,8 @@ export async function handleAssistantTurn({
   history,
   userEmail,
   requestId,
+  requestTimezone,
+  requestReceivedAt,
 }: {
   userId: string;
   orgId: string;
@@ -415,15 +420,21 @@ export async function handleAssistantTurn({
   history?: AiChatHistoryMessage[];
   userEmail?: string;
   requestId?: string;
+  requestTimezone?: string;
+  requestReceivedAt?: string;
 }): Promise<AssistantTurnResponse> {
   const turnId = crypto.randomUUID();
   const fallbackConversationId = conversationId || crypto.randomUUID();
+  const effectiveRequestTimezone = requestTimezone || 'UTC';
+  const effectiveRequestReceivedAt = requestReceivedAt || new Date().toISOString();
   let resolvedConversationId = fallbackConversationId;
   let requestPayload = {
     message: typeof message === 'string' ? message : (message as Record<string, unknown>),
     history: history ?? [],
     conversationId: fallbackConversationId,
     requestId: requestId ?? null,
+    requestTimezone: effectiveRequestTimezone,
+    requestReceivedAt: effectiveRequestReceivedAt,
   };
 
   try {
@@ -1039,7 +1050,46 @@ export async function handleAssistantTurn({
       });
     }
 
-    const requiredFields = evaluateRequiredFields(actionType, resolvedActionFields);
+    let enrichedActionFields = resolvedActionFields;
+
+    const fieldValidatorRun = await runLlmStepWithRetry({
+      step: 'field_validator',
+      fn: async () =>
+        runGeminiFieldValidator({
+          actionType,
+          userMessage: normalizedCommand.text,
+          recentHistory: history,
+          resolvedActionFields,
+          requestTimezone: effectiveRequestTimezone,
+          requestReceivedAt: effectiveRequestReceivedAt,
+        }),
+    });
+
+    if (fieldValidatorRun.ok) {
+      const mergedInference = mergeInferredActionFields({
+        actionType,
+        resolvedActionFields,
+        inferredFields: fieldValidatorRun.value.inferredFields,
+        userMessage: normalizedCommand.text,
+        recentHistory: history,
+        requestTimezone: effectiveRequestTimezone,
+        requestReceivedAt: effectiveRequestReceivedAt,
+      });
+      enrichedActionFields = mergedInference.mergedFields;
+
+      await addBreadcrumb('assistant.field_validator_result', {
+        actionType,
+        usedInference: fieldValidatorRun.value.usedInference,
+        mergedFieldKeys: mergedInference.mergedFieldKeys,
+        // Confidence is telemetry only. It must never affect gating or execution safety.
+        confidence: fieldValidatorRun.value.telemetry?.confidence ?? null,
+        // Gemini-reported missing fields are debug-only. Backend deterministic validation is authoritative.
+        modelMissingFields: fieldValidatorRun.value.telemetry?.modelMissingFields ?? [],
+        notes: fieldValidatorRun.value.telemetry?.notes ?? [],
+      });
+    }
+
+    const requiredFields = evaluateRequiredFields(actionType, enrichedActionFields);
     if (requiredFields.missingFields.length > 0 && requiredFields.clarificationMessage) {
       return persistTurnResult({
         userId,
@@ -1066,7 +1116,7 @@ export async function handleAssistantTurn({
         generateDraftPreview({
           actionType,
           message: normalizedCommand.text,
-          fieldsProvided: resolvedActionFields,
+          fieldsProvided: enrichedActionFields,
           retrieval,
         }),
     });
@@ -1093,7 +1143,7 @@ export async function handleAssistantTurn({
 
     const postDraftRequirements = evaluateRequiredFields(
       actionType,
-      resolvedActionFields,
+      enrichedActionFields,
       draftRun.value
     );
     if (postDraftRequirements.missingFields.length > 0 && postDraftRequirements.clarificationMessage) {
@@ -1122,7 +1172,7 @@ export async function handleAssistantTurn({
       orgId,
       groupId,
       actionType,
-      actionFields: resolvedActionFields,
+      actionFields: enrichedActionFields,
       payload: draftRun.value,
     });
 

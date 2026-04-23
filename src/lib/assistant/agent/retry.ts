@@ -12,7 +12,7 @@ export async function runLlmStepWithRetry<T>({
   step,
   fn,
 }: {
-  step: 'planner' | 'draft';
+  step: 'planner' | 'draft' | 'field_validator';
   fn: () => Promise<T>;
 }): Promise<{ ok: true; value: T; retryCount: number; timeoutFlag: boolean } | { ok: false; retryCount: number; timeoutFlag: boolean }> {
   let retryCount = 0;

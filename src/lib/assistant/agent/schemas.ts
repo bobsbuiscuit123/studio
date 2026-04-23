@@ -18,11 +18,19 @@ export const recipientSchema = z
   })
   .strict();
 
+const nonEmptyTrimmedStringSchema = z.string().trim().min(1);
+const titleFieldSchema = nonEmptyTrimmedStringSchema.max(160);
+const bodyFieldSchema = nonEmptyTrimmedStringSchema.max(5_000);
+const descriptionFieldSchema = nonEmptyTrimmedStringSchema.max(5_000);
+const locationFieldSchema = nonEmptyTrimmedStringSchema.max(240);
+const dateFieldSchema = nonEmptyTrimmedStringSchema;
+const timeFieldSchema = nonEmptyTrimmedStringSchema;
+
 export const announcementDraftPreviewSchema = z
   .object({
     kind: z.literal('announcement'),
-    title: z.string().trim().min(1).max(160).optional(),
-    body: z.string().trim().min(1).max(5_000).optional(),
+    title: titleFieldSchema.optional(),
+    body: bodyFieldSchema.optional(),
     recipients: z.array(recipientSchema).min(1).optional(),
   })
   .strict();
@@ -30,11 +38,11 @@ export const announcementDraftPreviewSchema = z
 export const eventDraftPreviewSchema = z
   .object({
     kind: z.literal('event'),
-    title: z.string().trim().min(1).max(160).optional(),
-    description: z.string().trim().min(1).max(5_000).optional(),
-    date: z.string().trim().min(1).optional(),
-    time: z.string().trim().min(1).optional(),
-    location: z.string().trim().min(1).max(240).optional(),
+    title: titleFieldSchema.optional(),
+    description: descriptionFieldSchema.optional(),
+    date: dateFieldSchema.optional(),
+    time: timeFieldSchema.optional(),
+    location: locationFieldSchema.optional(),
   })
   .strict();
 
@@ -42,7 +50,7 @@ export const messageDraftPreviewSchema = z
   .object({
     kind: z.literal('message'),
     recipients: z.array(recipientSchema).min(1).optional(),
-    body: z.string().trim().min(1).max(5_000).optional(),
+    body: bodyFieldSchema.optional(),
   })
   .strict();
 
@@ -54,26 +62,71 @@ export const draftPreviewSchema = z.discriminatedUnion('kind', [
 
 export const announcementPatchSchema = z
   .object({
-    title: z.string().trim().min(1).max(160).optional(),
-    body: z.string().trim().min(1).max(5_000).optional(),
+    title: titleFieldSchema.optional(),
+    body: bodyFieldSchema.optional(),
     recipients: z.array(recipientSchema).min(1).optional(),
   })
   .strict();
 
 export const eventPatchSchema = z
   .object({
-    title: z.string().trim().min(1).max(160).optional(),
-    description: z.string().trim().min(1).max(5_000).optional(),
-    date: z.string().trim().min(1).optional(),
-    time: z.string().trim().min(1).optional(),
-    location: z.string().trim().min(1).max(240).optional(),
+    title: titleFieldSchema.optional(),
+    description: descriptionFieldSchema.optional(),
+    date: dateFieldSchema.optional(),
+    time: timeFieldSchema.optional(),
+    location: locationFieldSchema.optional(),
   })
   .strict();
 
 export const messagePatchSchema = z
   .object({
     recipients: z.array(recipientSchema).min(1).optional(),
-    body: z.string().trim().min(1).max(5_000).optional(),
+    body: bodyFieldSchema.optional(),
+  })
+  .strict();
+
+export const actionFieldSchemaByActionType = {
+  create_announcement: {
+    title: titleFieldSchema,
+    body: bodyFieldSchema,
+  },
+  update_announcement: {
+    title: titleFieldSchema,
+    body: bodyFieldSchema,
+  },
+  create_event: {
+    title: titleFieldSchema,
+    description: descriptionFieldSchema,
+    location: locationFieldSchema,
+    date: dateFieldSchema,
+    time: timeFieldSchema,
+  },
+  update_event: {
+    title: titleFieldSchema,
+    description: descriptionFieldSchema,
+    location: locationFieldSchema,
+    date: dateFieldSchema,
+    time: timeFieldSchema,
+  },
+  create_message: {
+    body: bodyFieldSchema,
+  },
+} as const;
+
+export const geminiFieldValidationResultSchema = z
+  .object({
+    inferredFields: z.record(z.unknown()).default({}),
+    usedInference: z.boolean(),
+    telemetry: z
+      .object({
+        // Confidence is telemetry only. It must never influence gating or execution safety.
+        confidence: z.number().min(0).max(1).optional(),
+        // Gemini-reported missing fields are debug-only. Backend deterministic validation is authoritative.
+        modelMissingFields: z.array(z.string().trim().min(1)).max(10).optional(),
+        notes: z.array(z.string().trim().min(1)).max(10).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

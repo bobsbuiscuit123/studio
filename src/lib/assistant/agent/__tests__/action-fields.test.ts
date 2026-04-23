@@ -2,8 +2,34 @@ import { describe, expect, it } from 'vitest';
 
 import {
   getActionRequiredRetrievalResources,
+  mergeInferredActionFields,
+  normalizeInferredField,
   resolveActionFields,
 } from '@/lib/assistant/agent/action-fields';
+import type { GeminiFieldValidationResult } from '@/lib/assistant/agent/types';
+import { evaluateRequiredFields } from '@/lib/assistant/agent/requirements';
+
+const DEFAULT_TIMEZONE = 'America/Chicago';
+const BEFORE_EVENING = '2026-04-23T18:00:00.000Z';
+const AFTER_EVENING = '2026-04-24T01:30:00.000Z';
+
+const applyValidatorResult = (result: GeminiFieldValidationResult, overrides?: {
+  actionType?: Parameters<typeof mergeInferredActionFields>[0]['actionType'];
+  resolvedActionFields?: Parameters<typeof mergeInferredActionFields>[0]['resolvedActionFields'];
+  userMessage?: string;
+  recentHistory?: Parameters<typeof mergeInferredActionFields>[0]['recentHistory'];
+  requestTimezone?: string;
+  requestReceivedAt?: string;
+}) =>
+  mergeInferredActionFields({
+    actionType: overrides?.actionType ?? 'create_announcement',
+    resolvedActionFields: overrides?.resolvedActionFields ?? {},
+    inferredFields: result.inferredFields,
+    userMessage: overrides?.userMessage ?? 'send an announcement reminding everyone to pay dues',
+    recentHistory: overrides?.recentHistory,
+    requestTimezone: overrides?.requestTimezone ?? DEFAULT_TIMEZONE,
+    requestReceivedAt: overrides?.requestReceivedAt ?? BEFORE_EVENING,
+  });
 
 describe('action field resolution', () => {
   it('requires members retrieval for create_message', () => {
@@ -69,5 +95,327 @@ describe('action field resolution', () => {
       { email: 'alice@example.com', name: 'Alice Smith' },
       { email: 'bob@example.com' },
     ]);
+  });
+
+  it('treats follow-up announcement phrasing as draft body', () => {
+    const fields = resolveActionFields({
+      actionType: 'create_announcement',
+      fieldsProvided: {},
+      message: 'reminding them to pay dues',
+      retrieval: {
+        context: {},
+        usedEntities: [],
+      },
+    });
+
+    expect(fields.body).toBe('reminding them to pay dues');
+  });
+
+  it('does not infer announcement body from a generic command alone', () => {
+    const fields = resolveActionFields({
+      actionType: 'create_announcement',
+      fieldsProvided: {},
+      message: 'send an announcement',
+      retrieval: {
+        context: {},
+        usedEntities: [],
+      },
+    });
+
+    expect(fields.body).toBeUndefined();
+  });
+});
+
+describe('Gemini advisory field merging', () => {
+  it('ignores Gemini modelMissingFields for gating', () => {
+    const merged = applyValidatorResult({
+      inferredFields: {
+        body: 'Reminder that dues are still outstanding.',
+      },
+      usedInference: true,
+      telemetry: {
+        modelMissingFields: ['body'],
+      },
+    });
+
+    const required = evaluateRequiredFields('create_announcement', merged.mergedFields);
+    expect(required.missingFields).toEqual([]);
+  });
+
+  it('ignores Gemini confidence for gating', () => {
+    const lowConfidence = applyValidatorResult({
+      inferredFields: {
+        body: 'Reminder that dues are still outstanding.',
+      },
+      usedInference: true,
+      telemetry: {
+        confidence: 0.01,
+      },
+    });
+
+    const highConfidence = applyValidatorResult({
+      inferredFields: {
+        body: 'Reminder that dues are still outstanding.',
+      },
+      usedInference: true,
+      telemetry: {
+        confidence: 0.99,
+      },
+    });
+
+    expect(lowConfidence).toEqual(highConfidence);
+  });
+
+  it('never overwrites user-provided fields', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          body: 'AI body',
+        },
+        usedInference: true,
+      },
+      {
+        resolvedActionFields: {
+          body: 'User body',
+        },
+      }
+    );
+
+    expect(merged.mergedFields.body).toBe('User body');
+  });
+
+  it('never overwrites deterministically resolved recipients or targets', () => {
+    const mergedMessage = applyValidatorResult(
+      {
+        inferredFields: {
+          body: 'AI body',
+          recipients: [{ email: 'x@example.com' }],
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_message',
+        resolvedActionFields: {
+          recipients: [{ email: 'resolved@example.com' }],
+        },
+        userMessage: 'send them a reminder',
+      }
+    );
+
+    const mergedUpdate = applyValidatorResult(
+      {
+        inferredFields: {
+          title: 'Updated title',
+          targetRef: 'ai-target',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'update_event',
+        resolvedActionFields: {
+          targetRef: 'resolved-target',
+        },
+        userMessage: 'update the election event tomorrow at 7',
+      }
+    );
+
+    expect(mergedMessage.mergedFields.recipients).toEqual([{ email: 'resolved@example.com' }]);
+    expect(mergedUpdate.mergedFields.targetRef).toBe('resolved-target');
+  });
+
+  it('drops disallowed inferred fields', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          recipients: [{ email: 'x@example.com' }],
+          targetRef: 'event-1',
+          body: 'Hello team',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_message',
+        userMessage: 'write a message about dues',
+      }
+    );
+
+    expect(merged.mergedFields).toEqual({
+      body: 'Hello team',
+    });
+  });
+
+  it('infers event date and time for tomorrow at 7', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections tomorrow at 7',
+      }
+    );
+
+    expect(merged.mergedFields.date).toBe('2026-04-24');
+    expect(merged.mergedFields.time).toBe('19:00');
+  });
+
+  it('infers event date and default evening time for next Friday evening', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections next Friday evening',
+      }
+    );
+
+    expect(merged.mergedFields.date).toBe('2026-04-24');
+    expect(merged.mergedFields.time).toBe('19:00');
+  });
+
+  it('keeps clarification path for this Friday without time', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections this Friday',
+      }
+    );
+
+    expect(merged.mergedFields.date).toBe('2026-04-24');
+    expect(merged.mergedFields.time).toBeUndefined();
+
+    const required = evaluateRequiredFields('create_event', merged.mergedFields);
+    expect(required.missingFields).toEqual(['time']);
+  });
+
+  it('infers tonight only when evening is still upcoming', () => {
+    const upcoming = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections tonight',
+        requestReceivedAt: BEFORE_EVENING,
+      }
+    );
+
+    const late = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections tonight',
+        requestReceivedAt: AFTER_EVENING,
+      }
+    );
+
+    expect(upcoming.mergedFields.date).toBe('2026-04-23');
+    expect(upcoming.mergedFields.time).toBe('19:00');
+    expect(late.mergedFields.date).toBeUndefined();
+    expect(late.mergedFields.time).toBeUndefined();
+  });
+
+  it('infers this evening only when evening is still upcoming', () => {
+    const upcoming = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections this evening',
+        requestReceivedAt: BEFORE_EVENING,
+      }
+    );
+
+    const late = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections this evening',
+        requestReceivedAt: AFTER_EVENING,
+      }
+    );
+
+    expect(upcoming.mergedFields.date).toBe('2026-04-23');
+    expect(upcoming.mergedFields.time).toBe('19:00');
+    expect(late.mergedFields.date).toBeUndefined();
+    expect(late.mergedFields.time).toBeUndefined();
+  });
+
+  it('falls back to clarification for this weekend', () => {
+    const merged = applyValidatorResult(
+      {
+        inferredFields: {
+          date: 'candidate-date',
+          time: '7:00 PM',
+        },
+        usedInference: true,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'create event for elections this weekend',
+      }
+    );
+
+    expect(merged.mergedFields.date).toBeUndefined();
+    expect(merged.mergedFields.time).toBeUndefined();
+  });
+});
+
+describe('normalizeInferredField', () => {
+  it('supports recent-history continuation for time enrichment', () => {
+    const result = normalizeInferredField({
+      actionType: 'create_event',
+      field: 'time',
+      value: '7:00 PM',
+      userMessage: 'at 7',
+      recentHistory: [
+        { role: 'assistant', content: 'What date and time should this event be scheduled for?' },
+        { role: 'user', content: 'tomorrow' },
+      ],
+      requestTimezone: DEFAULT_TIMEZONE,
+      requestReceivedAt: BEFORE_EVENING,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: '19:00',
+    });
   });
 });

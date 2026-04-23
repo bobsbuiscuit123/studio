@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 import { runWithAiAction } from '@/ai/ai-action-context';
-import { getRequestDayKey } from '@/lib/day-key';
+import { getClientTimeZoneFromRequest, getRequestDayKey } from '@/lib/day-key';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
@@ -284,6 +284,8 @@ export async function POST(request: Request) {
         conversationId: parsed.data.conversationId,
         history: parsed.data.history,
         requestId,
+        requestTimezone: getClientTimeZoneFromRequest(request) ?? 'UTC',
+        requestReceivedAt: new Date().toISOString(),
       });
 
       console.info('[ai-chat] request completed', {

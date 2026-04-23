@@ -4,6 +4,7 @@ import {
   announcementPatchSchema,
   assistantCommandSchema,
   eventPatchSchema,
+  geminiFieldValidationResultSchema,
   messagePatchSchema,
 } from '@/lib/assistant/agent/schemas';
 
@@ -48,5 +49,33 @@ describe('preview patch schemas', () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it('parses strict Gemini field-validator payloads', () => {
+    const parsed = geminiFieldValidationResultSchema.safeParse({
+      inferredFields: {
+        body: 'Reminder about dues',
+      },
+      usedInference: true,
+      telemetry: {
+        confidence: 0.74,
+        modelMissingFields: ['title'],
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects Gemini validator payloads that try to change action routing', () => {
+    const parsed = geminiFieldValidationResultSchema.safeParse({
+      inferredFields: {
+        body: 'Reminder about dues',
+      },
+      usedInference: true,
+      actionType: 'create_event',
+      intent: 'execute_action',
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

@@ -119,6 +119,12 @@ const resolveAnnouncementIndex = (announcements: Announcement[], targetRef: stri
 };
 
 export async function createAnnouncement(input: CreateAnnouncementInput) {
+  const title = input.title.trim();
+  const body = input.body.trim();
+  if (!title || !body) {
+    throw new Error('Announcement title and body are required.');
+  }
+
   await ensureAnnouncementPermission(input);
   const { currentData, announcements } = await loadAnnouncementsState(input);
   const nextId =
@@ -129,8 +135,8 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
 
   const announcement: Announcement = {
     id: nextId,
-    title: input.title.trim(),
-    content: input.body.trim(),
+    title,
+    content: body,
     author: input.userEmail,
     date: new Date().toISOString(),
     read: false,

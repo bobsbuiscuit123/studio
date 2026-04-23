@@ -35,9 +35,19 @@ describe('evaluateRequiredFields', () => {
     expect(result.clarificationMessage).toBe('What should this message say?');
   });
 
-  it('accepts announcements with either title or body', () => {
+  it('requires both title and body for create announcements', () => {
     const result = evaluateRequiredFields('create_announcement', {
       title: 'Volunteer Day',
+    });
+
+    expect(result.missingFields).toEqual(['body']);
+    expect(result.clarificationMessage).toBe('What should this announcement say?');
+  });
+
+  it('accepts announcements when both title and body are present', () => {
+    const result = evaluateRequiredFields('create_announcement', {
+      title: 'Volunteer Day',
+      body: 'Please join us for volunteer day on Saturday.',
     });
 
     expect(result.missingFields).toEqual([]);

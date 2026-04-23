@@ -194,6 +194,9 @@ const getValidatorMissingFields = (actionType: AgentActionType, missingFields: s
   return missingFields.filter(field => allowedFields.has(field));
 };
 
+const mergeMissingFields = (...values: string[][]) =>
+  Array.from(new Set(values.flatMap(items => items).filter(Boolean)));
+
 const getValidatorClarificationFallback = (
   actionType: AgentActionType,
   missingFields: string[]
@@ -204,7 +207,12 @@ const getValidatorClarificationFallback = (
 
   switch (actionType) {
     case 'create_announcement':
-      return 'What should this announcement say?';
+      if (missingFields.includes('title') && missingFields.includes('body')) {
+        return 'What title and body should this announcement use?';
+      }
+      return missingFields.includes('title')
+        ? 'What title should this announcement use?'
+        : 'What should this announcement say?';
     case 'update_announcement':
       return 'What should I change in this announcement?';
     case 'create_event':
@@ -1205,19 +1213,25 @@ export async function handleAssistantTurn({
       actionType,
       fieldValidatorRun.value.missingFields
     );
+    const preDraftRequirements = evaluateRequiredFields(actionType, enrichedActionFields);
+    const combinedMissingFields = mergeMissingFields(
+      validatorMissingFields,
+      preDraftRequirements.missingFields
+    );
 
     await addBreadcrumb('assistant.field_validator_result', {
       actionType,
       usedInference: fieldValidatorRun.value.usedInference,
       mergedFieldKeys: mergedInference.mergedFieldKeys,
       missingFields: validatorMissingFields,
+      requiredFieldsStillMissing: preDraftRequirements.missingFields,
       clarificationMessage: fieldValidatorRun.value.clarificationMessage ?? null,
       // Confidence is telemetry only. It must never affect gating or execution safety.
       confidence: fieldValidatorRun.value.telemetry?.confidence ?? null,
       notes: fieldValidatorRun.value.telemetry?.notes ?? [],
     });
 
-    if (validatorMissingFields.length > 0) {
+    if (combinedMissingFields.length > 0) {
       return persistTurnResult({
         userId,
         orgId,
@@ -1231,8 +1245,9 @@ export async function handleAssistantTurn({
           resolvedConversationId,
           turnId,
           fieldValidatorRun.value.clarificationMessage?.trim() ||
-            getValidatorClarificationFallback(actionType, validatorMissingFields),
-          validatorMissingFields
+            preDraftRequirements.clarificationMessage ||
+            getValidatorClarificationFallback(actionType, combinedMissingFields),
+          combinedMissingFields
         ),
         actionType,
       });

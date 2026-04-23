@@ -138,6 +138,7 @@ describe('Gemini authoritative field merging', () => {
   it('accepts Gemini-generated announcement fields for gating', () => {
     const merged = applyValidatorResult({
       inferredFields: {
+        title: 'Dues Reminder',
         body: 'Reminder that dues are still outstanding.',
       },
       missingFields: [],
@@ -151,6 +152,7 @@ describe('Gemini authoritative field merging', () => {
   it('ignores Gemini confidence for gating', () => {
     const lowConfidence = applyValidatorResult({
       inferredFields: {
+        title: 'Dues Reminder',
         body: 'Reminder that dues are still outstanding.',
       },
       missingFields: [],
@@ -162,6 +164,7 @@ describe('Gemini authoritative field merging', () => {
 
     const highConfidence = applyValidatorResult({
       inferredFields: {
+        title: 'Dues Reminder',
         body: 'Reminder that dues are still outstanding.',
       },
       missingFields: [],

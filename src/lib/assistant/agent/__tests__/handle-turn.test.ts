@@ -119,6 +119,7 @@ beforeEach(() => {
         ok: true,
         value: {
           inferredFields: {
+            title: 'Dues Reminder',
             body: 'Reminder that dues are due this week.',
           },
           missingFields: [],
@@ -136,6 +137,7 @@ beforeEach(() => {
       ok: true,
       value: {
         kind: 'announcement',
+        title: 'Dues Reminder',
         body: 'Reminder that dues are due this week.',
       },
       retryCount: 0,
@@ -170,6 +172,7 @@ describe('handleAssistantTurn', () => {
     expect(createPendingAction).toHaveBeenCalledWith(
       expect.objectContaining({
         actionFields: expect.objectContaining({
+          title: 'Dues Reminder',
           body: 'Reminder that dues are due this week.',
         }),
       })
@@ -336,7 +339,7 @@ describe('handleAssistantTurn', () => {
     expect(createPendingAction).not.toHaveBeenCalled();
   });
 
-  it('treats missing preview fields after validator success as a draft failure', async () => {
+  it('surfaces clarification before draft when required announcement fields remain empty', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -380,23 +383,24 @@ describe('handleAssistantTurn', () => {
       orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
       groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
       userEmail: 'leader@example.com',
-      requestId: 'req-draft-failure',
+      requestId: 'req-validator-underreported',
       message: 'reminding them to pay dues',
       requestTimezone: 'America/Chicago',
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('response');
-    if (result.state !== 'response') {
-      throw new Error('Expected fallback response result.');
+    expect(result.state).toBe('needs_clarification');
+    if (result.state !== 'needs_clarification') {
+      throw new Error('Expected clarification result.');
     }
 
-    expect(result.diagnostics).toEqual({
-      phase: 'draft',
-      detail: 'Draft preview omitted required fields: title, body',
-      requestId: 'req-draft-failure',
-    });
+    expect(result.message).toBe('What title should this announcement use?');
+    expect(result.missingFields).toEqual(['title']);
     expect(createPendingAction).not.toHaveBeenCalled();
+    expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
+      'planner',
+      'field_validator',
+    ]);
   });
 
   it('includes fallback diagnostics when the planner fails', async () => {

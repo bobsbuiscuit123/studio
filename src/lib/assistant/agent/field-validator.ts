@@ -9,7 +9,7 @@ import type {
 } from '@/lib/assistant/agent/types';
 
 const REQUIRED_FIELD_SPEC: Record<AgentActionType, string[]> = {
-  create_announcement: ['title or body'],
+  create_announcement: ['title', 'body'],
   update_announcement: ['title or body'],
   create_event: ['date', 'time'],
   update_event: ['at least one of title, description, location, date, time'],
@@ -30,7 +30,10 @@ const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Determine which Gemini-owned fields are explicit, reasonably inferable, or still missing.',
   'For fields you can determine, generate the final field values that should be stored before draft assembly.',
   'Generate polished user-facing content for copy fields such as title, body, description, and location when they are explicit or reasonably inferable.',
+  'For new announcements, short intents like "remind everyone to pay dues in an announcement" are enough to generate both a concise title and a complete announcement body.',
+  'For direct messages, short intents like "send Alex a reminder about dues" are enough to generate a complete message body once recipients are resolved.',
   'If a required Gemini-owned field cannot be reasonably inferred, omit it from inferredFields, include it in missingFields, and provide a concise clarificationMessage for the user.',
+  'missingFields must include every required Gemini-owned field that is still blank after your inference pass.',
   'You must not change intent or action type.',
   'You must not decide permissions.',
   'You must not decide whether the action is safe to execute.',
@@ -41,6 +44,7 @@ const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Use resolved_action_fields only as fixed structural context, not as a source of missing copy generation.',
   'Use recent history only to interpret the current request as a continuation, not as hidden state.',
   'Never copy an imperative request verbatim into a user-facing field unless the user clearly already wrote final-form content.',
+  'Never return empty strings, placeholders, or partial sentence fragments in inferredFields.',
   'Confidence is telemetry only and will not control gating.',
 ].join(' ');
 
@@ -82,7 +86,7 @@ export async function runGeminiFieldValidator(args: {
     ],
     responseFormat: 'json_object',
     outputSchema: geminiFieldValidationResultSchema,
-    temperature: 0.1,
+    temperature: 0.25,
     timeoutMs: 12_000,
   });
 

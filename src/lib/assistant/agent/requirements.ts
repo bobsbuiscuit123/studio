@@ -74,8 +74,21 @@ export function evaluateRequiredFields(
   switch (actionType) {
     case 'create_announcement': {
       const { title, body } = getAnnouncementFields(fieldsProvided, preview);
-      const missing = !hasText(title) && !hasText(body) ? ['title', 'body'] : [];
-      return buildResult(missing, missing.length ? 'What should this announcement say?' : null);
+      const missing = [!hasText(title) ? 'title' : null, !hasText(body) ? 'body' : null].filter(
+        (value): value is string => Boolean(value)
+      );
+      if (missing.length === 0) {
+        return buildResult([], null);
+      }
+      if (missing.length === 2) {
+        return buildResult(missing, 'What title and body should this announcement use?');
+      }
+      return buildResult(
+        missing,
+        missing[0] === 'title'
+          ? 'What title should this announcement use?'
+          : 'What should this announcement say?'
+      );
     }
     case 'update_announcement': {
       if (!hasText(fieldsProvided.targetRef)) {

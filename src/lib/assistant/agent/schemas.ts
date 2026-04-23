@@ -232,6 +232,14 @@ const assistantTurnBaseSchema = z
   .object({
     conversationId: z.string().uuid(),
     turnId: z.string().uuid(),
+    diagnostics: z
+      .object({
+        phase: z.enum(['planner', 'draft', 'field_validator', 'orchestrator', 'unknown']),
+        detail: z.string().trim().min(1).optional(),
+        requestId: z.string().trim().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .merge(retryMetadataSchema);
 

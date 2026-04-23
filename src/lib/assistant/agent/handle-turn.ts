@@ -49,6 +49,7 @@ import type {
   AgentPlan,
   AssistantCommand,
   AssistantTurnResponse,
+  AssistantTurnDiagnostics,
   DraftPreview,
 } from '@/lib/assistant/agent/types';
 import { withTimeout } from '@/lib/dashboard-load';
@@ -58,6 +59,8 @@ import { addBreadcrumb } from '@/lib/telemetry';
 
 const genericRetryFallback =
   "I'm having trouble processing that request right now—can you try rephrasing it?";
+
+const MAX_DIAGNOSTIC_DETAIL_CHARS = 240;
 
 const confirmationPhrases = new Set(['post it', 'send it', 'create it', 'confirm']);
 
@@ -185,7 +188,8 @@ const buildFallbackResponse = (
   conversationId: string,
   turnId: string,
   retryCount: number,
-  timeoutFlag: boolean
+  timeoutFlag: boolean,
+  diagnostics?: AssistantTurnDiagnostics
 ): AssistantTurnResponse => ({
   state: 'response',
   conversationId,
@@ -193,6 +197,7 @@ const buildFallbackResponse = (
   reply: genericRetryFallback,
   retryCount,
   timeoutFlag,
+  diagnostics,
 });
 
 const buildNeedsClarification = (
@@ -216,7 +221,8 @@ const buildError = (
   conversationId: string,
   turnId: string,
   message: string,
-  pendingActionId?: string
+  pendingActionId?: string,
+  diagnostics?: AssistantTurnDiagnostics
 ): AssistantTurnResponse => ({
   state: 'error',
   conversationId,
@@ -225,6 +231,7 @@ const buildError = (
   pendingActionId,
   retryCount: 0,
   timeoutFlag: false,
+  diagnostics,
 });
 
 const buildResponse = (
@@ -232,7 +239,8 @@ const buildResponse = (
   turnId: string,
   reply: string,
   retryCount = 0,
-  timeoutFlag = false
+  timeoutFlag = false,
+  diagnostics?: AssistantTurnDiagnostics
 ): AssistantTurnResponse => ({
   state: 'response',
   conversationId,
@@ -240,7 +248,34 @@ const buildResponse = (
   reply,
   retryCount,
   timeoutFlag,
+  diagnostics,
 });
+
+const sanitizeDiagnosticDetail = (value: unknown) => {
+  const raw = typeof value === 'string' ? value : String(value ?? '');
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.slice(0, MAX_DIAGNOSTIC_DETAIL_CHARS);
+};
+
+const buildDiagnostics = ({
+  phase,
+  detail,
+  requestId,
+}: {
+  phase: AssistantTurnDiagnostics['phase'];
+  detail?: unknown;
+  requestId?: string;
+}): AssistantTurnDiagnostics => {
+  const sanitizedDetail = sanitizeDiagnosticDetail(detail);
+  return {
+    phase,
+    ...(sanitizedDetail ? { detail: sanitizedDetail } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
+};
 
 const getPatchSchemaForPreview = (preview: DraftPreview) => {
   switch (preview.kind) {
@@ -395,6 +430,7 @@ async function persistTurnResult(args: {
           ? 'failure'
           : null),
     error: args.result.state === 'error' ? args.result.message : null,
+    diagnostics: args.result.diagnostics ?? null,
   });
 
   return args.result;
@@ -843,7 +879,12 @@ export async function handleAssistantTurn({
             resolvedConversationId,
             turnId,
             draftRun.retryCount,
-            draftRun.timeoutFlag
+            draftRun.timeoutFlag,
+            buildDiagnostics({
+              phase: 'draft',
+              detail: draftRun.lastErrorMessage,
+              requestId,
+            })
           ),
           actionType: pending.actionType,
         });
@@ -899,7 +940,12 @@ export async function handleAssistantTurn({
           resolvedConversationId,
           turnId,
           plannerRun.retryCount,
-          plannerRun.timeoutFlag
+          plannerRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'planner',
+            detail: plannerRun.lastErrorMessage,
+            requestId,
+          })
         ),
       });
     }
@@ -1135,7 +1181,12 @@ export async function handleAssistantTurn({
           resolvedConversationId,
           turnId,
           draftRun.retryCount,
-          draftRun.timeoutFlag
+          draftRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'draft',
+            detail: draftRun.lastErrorMessage,
+            requestId,
+          })
         ),
         actionType,
       });
@@ -1228,7 +1279,13 @@ export async function handleAssistantTurn({
       result: buildError(
         resolvedConversationId,
         turnId,
-        error instanceof Error ? error.message : 'Assistant request failed.'
+        error instanceof Error ? error.message : 'Assistant request failed.',
+        undefined,
+        buildDiagnostics({
+          phase: 'orchestrator',
+          detail: error instanceof Error ? error.message : String(error),
+          requestId,
+        })
       ),
       errorCode: 'UNKNOWN',
     });

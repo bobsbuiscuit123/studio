@@ -108,12 +108,19 @@ export type AssistantEntityRef = {
   entityType: 'announcement' | 'event' | 'message';
 };
 
+export type AssistantTurnDiagnostics = {
+  phase: 'planner' | 'draft' | 'field_validator' | 'orchestrator' | 'unknown';
+  detail?: string;
+  requestId?: string;
+};
+
 export type AssistantTurnBase = {
   state: AssistantTurnState;
   conversationId: string;
   turnId: string;
   retryCount: number;
   timeoutFlag: boolean;
+  diagnostics?: AssistantTurnDiagnostics;
 };
 
 export type AssistantTurnResponse =

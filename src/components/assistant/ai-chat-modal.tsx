@@ -13,6 +13,7 @@ import { Bot, CheckCircle2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide
 import type { AiChatClientMessage } from "@/lib/ai-chat";
 import type {
   AssistantCommand,
+  AssistantTurnDiagnostics,
   DraftPreview,
   RecipientRef,
 } from "@/lib/assistant/agent/types";
@@ -164,6 +165,49 @@ const getUsedEntitiesLabel = (usedEntities: string[]) =>
   usedEntities
     .map(entity => entity.replace(/_/g, " "))
     .join(", ");
+
+const getDiagnosticPhaseLabel = (phase: AssistantTurnDiagnostics["phase"]) => {
+  switch (phase) {
+    case "planner":
+      return "Planner";
+    case "draft":
+      return "Draft generator";
+    case "field_validator":
+      return "Field validator";
+    case "orchestrator":
+      return "Orchestrator";
+    default:
+      return "Assistant";
+  }
+};
+
+function AssistantDiagnosticsBlock({
+  diagnostics,
+}: {
+  diagnostics?: AssistantTurnDiagnostics;
+}) {
+  if (!diagnostics) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs text-muted-foreground/85">
+      <p>
+        Failure step: <span className="font-medium text-foreground/90">{getDiagnosticPhaseLabel(diagnostics.phase)}</span>
+      </p>
+      {diagnostics.detail ? (
+        <p className="mt-1 whitespace-pre-wrap break-words">
+          Error: {diagnostics.detail}
+        </p>
+      ) : null}
+      {diagnostics.requestId ? (
+        <p className="mt-1">
+          Trace: {diagnostics.requestId.slice(0, 8)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function AssistantTurnContent({
   message,
@@ -499,6 +543,7 @@ function AssistantTurnContent({
         <p className="whitespace-pre-wrap text-sm leading-6 text-rose-50/95">
           {turn.message}
         </p>
+        <AssistantDiagnosticsBlock diagnostics={turn.diagnostics} />
       </div>
     );
   }
@@ -525,6 +570,7 @@ function AssistantTurnContent({
         <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
           {turn.reply}
         </p>
+        <AssistantDiagnosticsBlock diagnostics={turn.diagnostics} />
         {turn.retryCount > 0 || turn.timeoutFlag ? (
           <p className="text-xs text-muted-foreground/80">
             {turn.timeoutFlag ? "That request hit a timeout." : "That request needed retries."}

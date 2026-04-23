@@ -30,10 +30,14 @@ export async function runLlmStepWithRetry<T>({
 }: {
   step: LlmRetryStep;
   fn: () => Promise<T>;
-}): Promise<{ ok: true; value: T; retryCount: number; timeoutFlag: boolean } | { ok: false; retryCount: number; timeoutFlag: boolean }> {
+}): Promise<
+  | { ok: true; value: T; retryCount: number; timeoutFlag: boolean }
+  | { ok: false; retryCount: number; timeoutFlag: boolean; lastErrorMessage?: string }
+> {
   const policy = STEP_RETRY_POLICY[step];
   let retryCount = 0;
   let timeoutFlag = false;
+  let lastErrorMessage: string | undefined;
 
   for (let attempt = 0; attempt <= policy.maxRetries; attempt += 1) {
     try {
@@ -41,6 +45,7 @@ export async function runLlmStepWithRetry<T>({
       return { ok: true, value, retryCount, timeoutFlag };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error ?? '');
+      lastErrorMessage = message;
       if (/timeout/i.test(message)) {
         timeoutFlag = true;
       }
@@ -54,7 +59,7 @@ export async function runLlmStepWithRetry<T>({
       });
 
       if (attempt === policy.maxRetries || !isTransientFailure(error)) {
-        return { ok: false, retryCount, timeoutFlag };
+        return { ok: false, retryCount, timeoutFlag, lastErrorMessage };
       }
 
       retryCount += 1;
@@ -69,5 +74,5 @@ export async function runLlmStepWithRetry<T>({
     }
   }
 
-  return { ok: false, retryCount, timeoutFlag };
+  return { ok: false, retryCount, timeoutFlag, lastErrorMessage };
 }

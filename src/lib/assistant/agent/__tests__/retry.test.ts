@@ -35,8 +35,12 @@ describe('runLlmStepWithRetry', () => {
     });
 
     expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected retry exhaustion.');
+    }
     expect(result.retryCount).toBe(2);
     expect(result.timeoutFlag).toBe(true);
+    expect(result.lastErrorMessage).toBe('network timeout');
   }, 10_000);
 
   it('does not retry the advisory field validator step', async () => {
@@ -51,8 +55,12 @@ describe('runLlmStepWithRetry', () => {
     });
 
     expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('Expected field validator failure.');
+    }
     expect(result.retryCount).toBe(0);
     expect(result.timeoutFlag).toBe(true);
     expect(attempts).toBe(1);
+    expect(result.lastErrorMessage).toBe('network timeout');
   }, 10_000);
 });

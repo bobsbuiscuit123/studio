@@ -108,6 +108,7 @@ vi.mock('@/lib/assistant/agent/retry', () => ({
 
 import { createPendingAction } from '@/lib/assistant/agent/pending-actions';
 import { handleAssistantTurn } from '@/lib/assistant/agent/handle-turn';
+import { runLlmStepWithRetry } from '@/lib/assistant/agent/retry';
 
 describe('handleAssistantTurn', () => {
   it('preserves deterministic behavior when the Gemini field validator fails', async () => {
@@ -138,5 +139,37 @@ describe('handleAssistantTurn', () => {
         }),
       })
     );
+  });
+
+  it('includes fallback diagnostics when the planner fails', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementationOnce(async () => ({
+      ok: false,
+      retryCount: 2,
+      timeoutFlag: true,
+      lastErrorMessage: 'AI request timed out. Please try again.',
+    }));
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      requestId: 'req-12345678',
+      message: 'send an announcement reminding everyone to pay dues',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('response');
+    if (result.state !== 'response') {
+      throw new Error('Expected response result.');
+    }
+
+    expect(result.diagnostics).toEqual({
+      phase: 'planner',
+      detail: 'AI request timed out. Please try again.',
+      requestId: 'req-12345678',
+    });
+    expect(result.reply).toContain("I'm having trouble processing that request right now");
   });
 });

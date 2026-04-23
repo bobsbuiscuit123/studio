@@ -27,6 +27,7 @@ export const normalizeStringList = (
 export const normalizeMessage = (value: unknown): Message | null => {
   if (!isRecord(value)) return null;
 
+  const id = toTrimmedString(value.id);
   const sender = normalizeMessageActor(toTrimmedString(value.sender));
   const text = toTrimmedString(value.text);
   const timestamp = typeof value.timestamp === 'string' ? value.timestamp : '';
@@ -37,11 +38,27 @@ export const normalizeMessage = (value: unknown): Message | null => {
   }
 
   return {
+    ...(id ? { id } : {}),
     sender,
     text,
     timestamp,
     readBy,
   };
+};
+
+export const getMessageEntityId = (
+  message: Message | Pick<Message, 'id' | 'sender' | 'text' | 'timestamp'> | null | undefined
+) => {
+  const id = toTrimmedString(message?.id);
+  if (id) {
+    return id;
+  }
+
+  const sender = normalizeMessageActor(message?.sender);
+  const text = toTrimmedString(message?.text);
+  const timestamp = typeof message?.timestamp === 'string' ? message.timestamp : '';
+  if (!sender || !text || !timestamp) return '';
+  return `${sender}:${timestamp}:${text}`;
 };
 
 export const getMessageKey = (
@@ -175,6 +192,7 @@ export const upsertMessageInList = (messages: unknown, incoming: unknown): Messa
   };
 
   if (
+    existing.id === mergedMessage.id &&
     existing.sender === mergedMessage.sender &&
     existing.text === mergedMessage.text &&
     existing.timestamp === mergedMessage.timestamp &&
@@ -230,6 +248,94 @@ export const upsertGroupChatMessage = (
 
     const nextMessages = upsertMessageInList(chat.messages, incoming);
     if (nextMessages === chat.messages) {
+      return chat;
+    }
+
+    changed = true;
+    return {
+      ...chat,
+      messages: nextMessages,
+    };
+  });
+
+  return changed ? nextGroupChats : normalizedGroupChats;
+};
+
+export const removeConversationMessages = (
+  messagesByConversation: unknown,
+  conversationKey: string,
+  messageEntityIds: Iterable<string>
+) => {
+  const normalizedConversationKey = normalizeMessageActor(conversationKey);
+  const normalizedMessages = normalizeMessageMap(messagesByConversation);
+  if (!normalizedConversationKey) {
+    return normalizedMessages;
+  }
+
+  const idsToDelete = new Set(
+    Array.from(messageEntityIds, value => toTrimmedString(value)).filter(Boolean)
+  );
+  if (idsToDelete.size === 0) {
+    return normalizedMessages;
+  }
+
+  const currentMessages = normalizedMessages[normalizedConversationKey] ?? [];
+  const nextMessages = currentMessages.filter(message => !idsToDelete.has(getMessageEntityId(message)));
+  if (nextMessages.length === currentMessages.length) {
+    return normalizedMessages;
+  }
+
+  if (nextMessages.length === 0) {
+    const { [normalizedConversationKey]: _deleted, ...rest } = normalizedMessages;
+    return rest;
+  }
+
+  return {
+    ...normalizedMessages,
+    [normalizedConversationKey]: nextMessages,
+  };
+};
+
+export const clearConversationMessages = (
+  messagesByConversation: unknown,
+  conversationKey: string
+) => {
+  const normalizedConversationKey = normalizeMessageActor(conversationKey);
+  const normalizedMessages = normalizeMessageMap(messagesByConversation);
+  if (!normalizedConversationKey || !(normalizedConversationKey in normalizedMessages)) {
+    return normalizedMessages;
+  }
+
+  const { [normalizedConversationKey]: _deleted, ...rest } = normalizedMessages;
+  return rest;
+};
+
+export const removeGroupChatMessages = (
+  groupChats: unknown,
+  chatId: string,
+  messageEntityIds: Iterable<string>
+) => {
+  const normalizedGroupChats = normalizeGroupChats(groupChats);
+  const normalizedChatId = toTrimmedString(chatId);
+  if (!normalizedChatId) {
+    return normalizedGroupChats;
+  }
+
+  const idsToDelete = new Set(
+    Array.from(messageEntityIds, value => toTrimmedString(value)).filter(Boolean)
+  );
+  if (idsToDelete.size === 0) {
+    return normalizedGroupChats;
+  }
+
+  let changed = false;
+  const nextGroupChats = normalizedGroupChats.map(chat => {
+    if (chat.id !== normalizedChatId) {
+      return chat;
+    }
+
+    const nextMessages = chat.messages.filter(message => !idsToDelete.has(getMessageEntityId(message)));
+    if (nextMessages.length === chat.messages.length) {
       return chat;
     }
 

@@ -6,11 +6,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, MessageSquarePlus, Search, Send, Users } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquarePlus, MoreHorizontal, Search, Send, Trash2, Users } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +29,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +44,8 @@ import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
 import {
   MESSAGE_TEXT_MAX_CHARS,
+  clearConversationMessages,
+  getMessageEntityId,
   getMessageTimestampMs,
   isMessageFromActor,
   markMessageReadByActor,
@@ -36,10 +54,11 @@ import {
   normalizeGroupChats,
   normalizeMessageActor,
   normalizeMessageMap,
+  removeConversationMessages,
+  removeGroupChatMessages,
   upsertConversationMessage,
   upsertGroupChatMessage,
 } from "@/lib/message-state";
-import { getMessageEntityId } from "@/lib/notification-routing";
 import type { GroupChat, Member, Message } from "@/lib/mock-data";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -499,6 +518,12 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const { toast } = useToast();
   const [lastMessageAt, setLastMessageAt] = useState(0);
   const [isSending, setIsSending] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [isDeleteSelectedDialogOpen, setIsDeleteSelectedDialogOpen] = useState(false);
+  const [isDeleteConversationDialogOpen, setIsDeleteConversationDialogOpen] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasAutoScrolledOnOpenRef = useRef(false);
@@ -562,6 +587,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     const currentChat = groupChatById.get(conversation.chat.id);
     return currentChat?.messages || [];
   }, [conversation, groupChatById, safeAllMessages, user]);
+  const selectedMessageIdSet = useMemo(() => new Set(selectedMessageIds), [selectedMessageIds]);
 
   useEffect(() => {
     if (!conversation || !currentUserEmail) return;
@@ -596,6 +622,21 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       });
     }
   }, [conversation, currentUserEmail, setAllMessages, setGroupChats]);
+
+  useEffect(() => {
+    const activeMessageIds = new Set(
+      activeMessages.map(message => getMessageEntityId(message)).filter(Boolean)
+    );
+    setSelectedMessageIds(currentSelection => {
+      const nextSelection = currentSelection.filter(messageId => activeMessageIds.has(messageId));
+      return nextSelection.length === currentSelection.length ? currentSelection : nextSelection;
+    });
+
+    if (activeMessages.length === 0) {
+      setIsSelectionMode(false);
+      setIsDeleteSelectedDialogOpen(false);
+    }
+  }, [activeMessages]);
 
   useEffect(() => {
     if (!focusedMessageId || loading) {
@@ -661,6 +702,37 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     return () => window.clearInterval(interval);
   }, [refreshConversationState]);
 
+  const exitSelectionMode = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedMessageIds([]);
+    setIsDeleteSelectedDialogOpen(false);
+  }, []);
+
+  const toggleMessageSelection = useCallback((messageId: string) => {
+    if (!messageId) {
+      return;
+    }
+
+    setSelectedMessageIds(currentSelection =>
+      currentSelection.includes(messageId)
+        ? currentSelection.filter(currentId => currentId !== messageId)
+        : [...currentSelection, messageId]
+    );
+  }, []);
+
+  const handleSelectableMessageKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>, messageId: string) => {
+    if (!isSelectionMode) {
+      return;
+    }
+
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    toggleMessageSelection(messageId);
+  }, [isSelectionMode, toggleMessageSelection]);
+
   const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
       return;
@@ -668,6 +740,136 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
     event.preventDefault();
     void messageForm.handleSubmit(handleSendMessage)();
+  };
+
+  const handleDeleteSelectedMessages = async () => {
+    if (!conversation) return;
+    if (selectedMessageIds.length === 0) return;
+
+    const selectedOrgId = orgId ?? window.localStorage.getItem("selectedOrgId");
+    const selectedGroupId = clubId ?? window.sessionStorage.getItem("selectedGroupId");
+    if (!selectedOrgId || !selectedGroupId) {
+      toast({
+        title: "Delete failed",
+        description: "No active group is selected.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDeletingSelected(true);
+
+    const response = await fetch("/api/messages/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        conversation.type === "dm"
+          ? {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              deleteMode: "messages",
+              conversationType: "dm",
+              partnerEmail: conversation.partner.email,
+              messageEntityIds: selectedMessageIds,
+            }
+          : {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              deleteMode: "messages",
+              conversationType: "group",
+              chatId: conversation.chat.id,
+              messageEntityIds: selectedMessageIds,
+            }
+      ),
+    }).then(async res => {
+      const json = await res.json().catch(() => null);
+      return { ok: res.ok, data: json };
+    }).catch(() => ({ ok: false, data: null }));
+
+    setIsDeletingSelected(false);
+
+    if (!response.ok) {
+      toast({
+        title: "Delete failed",
+        description: response.data?.error?.message || "The selected messages could not be deleted.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (conversation.type === "dm") {
+      const conversationKey = getConversationId(user?.email || currentUserEmail, conversation.partner.email);
+      setLocalMessages(prev => removeConversationMessages(prev, conversationKey, selectedMessageIds));
+    } else {
+      setLocalGroupChats(prev => removeGroupChatMessages(prev, conversation.chat.id, selectedMessageIds));
+    }
+
+    if (focusedMessageId && selectedMessageIdSet.has(focusedMessageId)) {
+      router.replace(`/messages/${conversationId}`);
+    }
+
+    setIsDeleteSelectedDialogOpen(false);
+    exitSelectionMode();
+    void refreshConversationState();
+    toast({
+      title: selectedMessageIds.length === 1 ? "Message deleted" : "Messages deleted",
+      description: "Deleted permanently for everyone in this conversation.",
+    });
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!conversation || conversation.type !== "dm") return;
+
+    const selectedOrgId = orgId ?? window.localStorage.getItem("selectedOrgId");
+    const selectedGroupId = clubId ?? window.sessionStorage.getItem("selectedGroupId");
+    if (!selectedOrgId || !selectedGroupId) {
+      toast({
+        title: "Delete failed",
+        description: "No active group is selected.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDeletingConversation(true);
+
+    const response = await fetch("/api/messages/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orgId: selectedOrgId,
+        groupId: selectedGroupId,
+        deleteMode: "conversation",
+        conversationType: "dm",
+        partnerEmail: conversation.partner.email,
+      }),
+    }).then(async res => {
+      const json = await res.json().catch(() => null);
+      return { ok: res.ok, data: json };
+    }).catch(() => ({ ok: false, data: null }));
+
+    setIsDeletingConversation(false);
+
+    if (!response.ok) {
+      toast({
+        title: "Delete failed",
+        description: response.data?.error?.message || "The conversation could not be deleted.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const conversationKey = getConversationId(user?.email || currentUserEmail, conversation.partner.email);
+    setLocalMessages(prev => clearConversationMessages(prev, conversationKey));
+    setIsDeleteConversationDialogOpen(false);
+    exitSelectionMode();
+    messageForm.reset();
+    void refreshConversationState();
+    router.push("/messages");
+    toast({
+      title: "Conversation deleted",
+      description: "The conversation was permanently deleted for both people.",
+    });
   };
 
   const handleSendMessage = async (values: z.infer<typeof messageFormSchema>) => {
@@ -823,6 +1025,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   const title = conversation.type === "dm" ? conversation.partner.name : conversation.chat.name;
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
+  const selectionCount = selectedMessageIds.length;
+  const threadActionsDisabled = isDeletingSelected || isDeletingConversation;
 
   return (
     <div className="messages-screen messages-thread-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
@@ -840,6 +1044,36 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
         <div className="min-w-0 flex-1">
           <p className="truncate text-base font-semibold text-foreground">{title}</p>
         </div>
+        {isSelectionMode ? (
+          <Button variant="ghost" size="sm" onClick={exitSelectionMode} disabled={threadActionsDisabled}>
+            Cancel
+          </Button>
+        ) : activeMessages.length > 0 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" disabled={threadActionsDisabled}>
+                <MoreHorizontal className="h-5 w-5" />
+                <span className="sr-only">Open message actions</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setIsSelectionMode(true)}>
+                Select messages
+              </DropdownMenuItem>
+              {conversation.type === "dm" ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => setIsDeleteConversationDialogOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    Delete conversation
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
 
       <div
@@ -857,16 +1091,31 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
               const sender = memberByEmail.get(normalizeMessageActor(message.sender));
               const messageId = getMessageEntityId(message);
               const isFocusedMessage = focusedMessageId === messageId;
+              const isSelected = selectedMessageIdSet.has(messageId);
               return (
                 <div
                   key={`${messageId}-${index}`}
                   id={`message-${encodeURIComponent(messageId)}`}
-                  className={cn("flex w-full scroll-mt-24", isMine ? "justify-end" : "justify-start")}
+                  className={cn(
+                    "flex w-full scroll-mt-24 items-end gap-2",
+                    isMine ? "justify-end" : "justify-start",
+                    isSelectionMode && "cursor-pointer"
+                  )}
+                  role={isSelectionMode ? "button" : undefined}
+                  tabIndex={isSelectionMode ? 0 : undefined}
+                  aria-pressed={isSelectionMode ? isSelected : undefined}
+                  onClick={isSelectionMode ? () => toggleMessageSelection(messageId) : undefined}
+                  onKeyDown={isSelectionMode ? event => handleSelectableMessageKeyDown(event, messageId) : undefined}
                 >
+                  {isSelectionMode && !isMine ? (
+                    <Checkbox checked={isSelected} aria-hidden="true" className="pointer-events-none mb-2" />
+                  ) : null}
                   <div
                     className={cn(
                       "max-w-[82%] rounded-2xl px-4 py-3 text-sm break-words transition-colors",
                       isMine ? "bg-primary text-primary-foreground" : "bg-muted",
+                      isSelectionMode && "ring-1 ring-border/70",
+                      isSelected && "ring-2 ring-primary ring-offset-2 ring-offset-background",
                       isFocusedMessage && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
                     )}
                   >
@@ -878,6 +1127,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                       {formatTimestamp(message.timestamp)}
                     </p>
                   </div>
+                  {isSelectionMode && isMine ? (
+                    <Checkbox checked={isSelected} aria-hidden="true" className="pointer-events-none mb-2" />
+                  ) : null}
                 </div>
               );
             })}
@@ -887,28 +1139,92 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       </div>
 
       <div className="header shrink-0 border-t bg-background px-4 pt-3 pb-[calc(0.85rem+var(--safe-area-bottom-runtime))]">
-        <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
-          <div className="flex-1">
-            <Textarea
-              {...composerField}
-              autoComplete="off"
-              enterKeyHint="send"
-              placeholder="Message"
-              disabled={isSending}
-              rows={1}
-              onKeyDown={handleComposerKeyDown}
-              className="max-h-40 min-h-11 resize-none rounded-xl border-border/70 py-3"
-            />
-            {messageForm.formState.errors.text ? (
-              <p className="mt-2 text-sm text-destructive">{messageForm.formState.errors.text.message}</p>
-            ) : null}
+        {isSelectionMode ? (
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">
+                {selectionCount > 0 ? `${selectionCount} message${selectionCount === 1 ? "" : "s"} selected` : "Select messages to delete"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Deleted messages are removed permanently for everyone in this conversation.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setIsDeleteSelectedDialogOpen(true)}
+              disabled={selectionCount === 0 || threadActionsDisabled}
+            >
+              {isDeletingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete
+            </Button>
           </div>
-          <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending}>
-            <Send className="h-4 w-4" />
-            <span className="sr-only">Send message</span>
-          </Button>
-        </form>
+        ) : (
+          <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
+            <div className="flex-1">
+              <Textarea
+                {...composerField}
+                autoComplete="off"
+                enterKeyHint="send"
+                placeholder="Message"
+                disabled={isSending}
+                rows={1}
+                onKeyDown={handleComposerKeyDown}
+                className="max-h-40 min-h-11 resize-none rounded-xl border-border/70 py-3"
+              />
+              {messageForm.formState.errors.text ? (
+                <p className="mt-2 text-sm text-destructive">{messageForm.formState.errors.text.message}</p>
+              ) : null}
+            </div>
+            <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending}>
+              <Send className="h-4 w-4" />
+              <span className="sr-only">Send message</span>
+            </Button>
+          </form>
+        )}
       </div>
+
+      <AlertDialog open={isDeleteSelectedDialogOpen} onOpenChange={setIsDeleteSelectedDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectionCount === 1 ? "this message" : "these messages"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the selected {selectionCount === 1 ? "message" : "messages"} for everyone in this conversation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline" disabled={isDeletingSelected}>Cancel</Button>
+            </AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDeleteSelectedMessages} disabled={isDeletingSelected}>
+              {isDeletingSelected ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete permanently
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isDeleteConversationDialogOpen} onOpenChange={setIsDeleteConversationDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the entire conversation for both people. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel asChild>
+              <Button variant="outline" disabled={isDeletingConversation}>Cancel</Button>
+            </AlertDialogCancel>
+            <Button variant="destructive" onClick={handleDeleteConversation} disabled={isDeletingConversation}>
+              {isDeletingConversation ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Delete conversation
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

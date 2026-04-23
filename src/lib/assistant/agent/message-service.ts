@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import type { Message } from '@/lib/mock-data';
+import { getMessageEntityId } from '@/lib/message-state';
 import { sendPushToUsers } from '@/lib/send-push';
 import type { RecipientRef } from '@/lib/assistant/agent/types';
 
@@ -9,6 +10,9 @@ const getConversationId = (email1: string, email2: string) => [email1, email2].s
 
 const getMessagePreview = (value: string) =>
   value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+
+const normalizeMessageEntityIds = (values: string[]) =>
+  Array.from(new Set(values.map(value => value.trim()).filter(Boolean)));
 
 const resolveMessageTimestamp = (value?: string) => {
   if (!value) {
@@ -96,12 +100,7 @@ const buildMessageAuditEnvelope = ({
   conversationType: 'dm' | 'group';
   conversationKey?: string;
   chatId?: string;
-  message: {
-    sender: string;
-    text: string;
-    timestamp: string;
-    readBy: string[];
-  };
+  message: Message;
 }) =>
   JSON.stringify({
     version: 1,
@@ -110,6 +109,134 @@ const buildMessageAuditEnvelope = ({
     chatId,
     message,
   });
+
+const loadAuthorizedGroupState = async ({
+  admin,
+  orgId,
+  groupId,
+  userId,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  orgId: string;
+  groupId: string;
+  userId: string;
+}) => {
+  const { data: membership, error: membershipError } = await admin
+    .from('group_memberships')
+    .select('role')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (membershipError) {
+    throw new Error(membershipError.message);
+  }
+  if (!membership) {
+    throw new Error('Access denied.');
+  }
+
+  const { data: stateRow, error: stateError } = await admin
+    .from('group_state')
+    .select('data')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+
+  if (stateError) {
+    throw new Error(stateError.message);
+  }
+
+  return ((stateRow?.data as Record<string, unknown> | null) ?? {}) as Record<string, any>;
+};
+
+const parseMessageAuditContent = (value: unknown) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as {
+      conversationType?: 'dm' | 'group';
+      conversationKey?: string;
+      chatId?: string;
+      message?: Message;
+    };
+  } catch {
+    return null;
+  }
+};
+
+const purgeMessageAuditRows = async ({
+  admin,
+  orgId,
+  groupId,
+  conversationType,
+  conversationKey,
+  chatId,
+  messageEntityIds,
+  clearConversation = false,
+}: {
+  admin: ReturnType<typeof createSupabaseAdmin>;
+  orgId: string;
+  groupId: string;
+  conversationType: 'dm' | 'group';
+  conversationKey?: string;
+  chatId?: string;
+  messageEntityIds?: string[];
+  clearConversation?: boolean;
+}) => {
+  const { data: auditRows, error: auditRowsError } = await admin
+    .from('messages')
+    .select('id, content')
+    .eq('org_id', orgId)
+    .eq('group_id', groupId);
+
+  if (auditRowsError) {
+    throw new Error(auditRowsError.message);
+  }
+
+  const idsToDelete = new Set(messageEntityIds ?? []);
+  const matchingAuditIds = (auditRows ?? []).flatMap(row => {
+    const rowId = typeof row.id === 'string' ? row.id : '';
+    if (!rowId) {
+      return [];
+    }
+
+    const parsedContent = parseMessageAuditContent(row.content);
+    if (!parsedContent || parsedContent.conversationType !== conversationType) {
+      return [];
+    }
+
+    if (conversationType === 'dm' && parsedContent.conversationKey !== conversationKey) {
+      return [];
+    }
+
+    if (conversationType === 'group' && parsedContent.chatId !== chatId) {
+      return [];
+    }
+
+    if (clearConversation) {
+      return [rowId];
+    }
+
+    const messageEntityId = getMessageEntityId(parsedContent.message);
+    return idsToDelete.has(messageEntityId) ? [rowId] : [];
+  });
+
+  if (matchingAuditIds.length === 0) {
+    return;
+  }
+
+  const { error: deleteAuditError } = await admin
+    .from('messages')
+    .delete()
+    .in('id', matchingAuditIds);
+
+  if (deleteAuditError) {
+    throw new Error(deleteAuditError.message);
+  }
+};
 
 type BaseInput = {
   userId: string;
@@ -135,6 +262,37 @@ type CreateMessageInput =
       conversationType: 'group';
       chatId: string;
     });
+
+type DeleteMessageInput =
+  | {
+      mode: 'messages';
+      conversationType: 'dm';
+      userId: string;
+      userEmail: string;
+      orgId: string;
+      groupId: string;
+      partnerEmail: string;
+      messageEntityIds: string[];
+    }
+  | {
+      mode: 'messages';
+      conversationType: 'group';
+      userId: string;
+      userEmail: string;
+      orgId: string;
+      groupId: string;
+      chatId: string;
+      messageEntityIds: string[];
+    }
+  | {
+      mode: 'conversation';
+      conversationType: 'dm';
+      userId: string;
+      userEmail: string;
+      orgId: string;
+      groupId: string;
+      partnerEmail: string;
+    };
 
 export async function createMessage(input: CreateMessageInput) {
   const admin = createSupabaseAdmin();
@@ -387,5 +545,163 @@ export async function createMessage(input: CreateMessageInput) {
     entityType: 'message' as const,
     message: 'Message sent successfully.',
     record: message,
+  };
+}
+
+export async function deleteMessageContent(input: DeleteMessageInput) {
+  const admin = createSupabaseAdmin();
+  const currentData = await loadAuthorizedGroupState({
+    admin,
+    orgId: input.orgId,
+    groupId: input.groupId,
+    userId: input.userId,
+  });
+  const normalizedActorEmail = normalizeEmail(input.userEmail);
+  const nextData = { ...currentData };
+
+  let deletedMessageEntityIds: string[] = [];
+  let conversationDeleted = false;
+
+  if (input.conversationType === 'dm') {
+    const conversationKey = getConversationId(normalizedActorEmail, normalizeEmail(input.partnerEmail));
+    const currentMessages =
+      currentData.messages && typeof currentData.messages === 'object'
+        ? (currentData.messages as Record<string, unknown>)
+        : {};
+    const existingMessages = Array.isArray(currentMessages[conversationKey])
+      ? (currentMessages[conversationKey] as Message[])
+      : [];
+    const nextMessages = { ...currentMessages };
+
+    if (input.mode === 'conversation') {
+      deletedMessageEntityIds = existingMessages.map(message => getMessageEntityId(message)).filter(Boolean);
+      delete nextMessages[conversationKey];
+      nextData.messages = nextMessages;
+      conversationDeleted = true;
+    } else {
+      const idsToDelete = new Set(normalizeMessageEntityIds(input.messageEntityIds));
+      const keptMessages = existingMessages.filter(message => !idsToDelete.has(getMessageEntityId(message)));
+      deletedMessageEntityIds = existingMessages
+        .filter(message => idsToDelete.has(getMessageEntityId(message)))
+        .map(message => getMessageEntityId(message))
+        .filter(Boolean);
+
+      if (deletedMessageEntityIds.length === 0) {
+        return { deletedCount: 0, deletedMessageEntityIds: [], conversationDeleted: false };
+      }
+
+      if (keptMessages.length === 0) {
+        delete nextMessages[conversationKey];
+      } else {
+        nextMessages[conversationKey] = keptMessages;
+      }
+      nextData.messages = nextMessages;
+    }
+
+    const { error } = await admin
+      .from('group_state')
+      .upsert(
+        {
+          org_id: input.orgId,
+          group_id: input.groupId,
+          data: nextData,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'group_id' }
+      );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    try {
+      await purgeMessageAuditRows({
+        admin,
+        orgId: input.orgId,
+        groupId: input.groupId,
+        conversationType: 'dm',
+        conversationKey,
+        messageEntityIds: deletedMessageEntityIds,
+        clearConversation: input.mode === 'conversation',
+      });
+    } catch (error) {
+      console.error('Message audit purge failed', error);
+    }
+
+    return {
+      deletedCount: deletedMessageEntityIds.length,
+      deletedMessageEntityIds,
+      conversationDeleted,
+    };
+  }
+
+  const groupChats = Array.isArray(currentData.groupChats) ? currentData.groupChats : [];
+  const chatIndex = groupChats.findIndex(chat => chat && typeof chat === 'object' && chat.id === input.chatId);
+  if (chatIndex === -1) {
+    throw new Error('Conversation not found.');
+  }
+
+  const chat = groupChats[chatIndex];
+  const memberEmails = Array.isArray(chat.members)
+    ? chat.members
+        .map((member: unknown) => (typeof member === 'string' ? normalizeEmail(member) : ''))
+        .filter(Boolean)
+    : [];
+  if (!memberEmails.includes(normalizedActorEmail)) {
+    throw new Error('You are not in this conversation.');
+  }
+
+  const existingMessages = Array.isArray(chat.messages) ? (chat.messages as Message[]) : [];
+  const idsToDelete = new Set(normalizeMessageEntityIds(input.messageEntityIds));
+  const keptMessages = existingMessages.filter(message => !idsToDelete.has(getMessageEntityId(message)));
+  deletedMessageEntityIds = existingMessages
+    .filter(message => idsToDelete.has(getMessageEntityId(message)))
+    .map(message => getMessageEntityId(message))
+    .filter(Boolean);
+
+  if (deletedMessageEntityIds.length === 0) {
+    return { deletedCount: 0, deletedMessageEntityIds: [], conversationDeleted: false };
+  }
+
+  const updatedChats = [...groupChats];
+  updatedChats[chatIndex] = {
+    ...chat,
+    messages: keptMessages,
+  };
+  nextData.groupChats = updatedChats;
+
+  const { error } = await admin
+    .from('group_state')
+    .upsert(
+      {
+        org_id: input.orgId,
+        group_id: input.groupId,
+        data: nextData,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'group_id' }
+    );
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  try {
+    await purgeMessageAuditRows({
+      admin,
+      orgId: input.orgId,
+      groupId: input.groupId,
+      conversationType: 'group',
+      chatId: input.chatId,
+      messageEntityIds: deletedMessageEntityIds,
+    });
+  } catch (error) {
+    console.error('Message audit purge failed', error);
+  }
+
+  return {
+    deletedCount: deletedMessageEntityIds.length,
+    deletedMessageEntityIds,
+    conversationDeleted: false,
   };
 }

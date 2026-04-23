@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import type { Message } from '@/lib/mock-data';
+import { getMessageEntityId as getSharedMessageEntityId } from '@/lib/message-state';
 
 export const notificationTypeValues = [
   'message',
@@ -62,13 +63,7 @@ const encodeConversationRouteId = (parentId: string, parentType?: AppNotificatio
   return `group__${encodeURIComponent(parentId)}`;
 };
 
-export const getMessageEntityId = (message: Message) => {
-  if (typeof message.id === 'string' && message.id.trim()) {
-    return message.id;
-  }
-
-  return `${message.sender}:${message.timestamp}:${message.text}`;
-};
+export const getMessageEntityId = (message: Message) => getSharedMessageEntityId(message);
 
 export const buildNotificationHref = (route: NotificationRoute) => {
   const query = toSearchParams(route.searchParams);

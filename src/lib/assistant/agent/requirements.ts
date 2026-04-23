@@ -7,11 +7,64 @@ type RequirementsEvaluation = {
 
 const hasText = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
 const hasRecipients = (value: unknown) => Array.isArray(value) && value.length > 0;
+const hasAnyText = (...values: unknown[]) => values.some(hasText);
 
 const buildResult = (missingFields: string[], clarificationMessage: string | null): RequirementsEvaluation => ({
   missingFields,
   clarificationMessage,
 });
+
+const getAnnouncementFields = (fieldsProvided: Record<string, unknown>, preview?: DraftPreview | null) =>
+  preview?.kind === 'announcement'
+    ? { title: preview.title, body: preview.body }
+    : { title: fieldsProvided.title, body: fieldsProvided.body };
+
+const getEventFields = (fieldsProvided: Record<string, unknown>, preview?: DraftPreview | null) =>
+  preview?.kind === 'event'
+    ? {
+        title: preview.title,
+        description: preview.description,
+        date: preview.date,
+        time: preview.time,
+        location: preview.location,
+      }
+    : {
+        title: fieldsProvided.title,
+        description: fieldsProvided.description,
+        date: fieldsProvided.date,
+        time: fieldsProvided.time,
+        location: fieldsProvided.location,
+      };
+
+const getMessageFields = (fieldsProvided: Record<string, unknown>, preview?: DraftPreview | null) =>
+  preview?.kind === 'message'
+    ? { recipients: preview.recipients, body: preview.body }
+    : { recipients: fieldsProvided.recipients, body: fieldsProvided.body };
+
+export function evaluateStructuralRequiredFields(
+  actionType: AgentActionType,
+  fieldsProvided: Record<string, unknown>
+): RequirementsEvaluation {
+  switch (actionType) {
+    case 'update_announcement': {
+      const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
+      return buildResult(
+        missing,
+        missing.length ? 'Which announcement would you like me to update?' : null
+      );
+    }
+    case 'update_event': {
+      const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
+      return buildResult(missing, missing.length ? 'Which event would you like me to update?' : null);
+    }
+    case 'create_message': {
+      const missing = !hasRecipients(fieldsProvided.recipients) ? ['recipients'] : [];
+      return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
+    }
+    default:
+      return buildResult([], null);
+  }
+}
 
 export function evaluateRequiredFields(
   actionType: AgentActionType,
@@ -20,21 +73,20 @@ export function evaluateRequiredFields(
 ): RequirementsEvaluation {
   switch (actionType) {
     case 'create_announcement': {
-      const title = preview?.kind === 'announcement' ? preview.title : fieldsProvided.title;
-      const body = preview?.kind === 'announcement' ? preview.body : fieldsProvided.body;
+      const { title, body } = getAnnouncementFields(fieldsProvided, preview);
       const missing = !hasText(title) && !hasText(body) ? ['title', 'body'] : [];
       return buildResult(missing, missing.length ? 'What should this announcement say?' : null);
     }
     case 'update_announcement': {
-      const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
-      return buildResult(
-        missing,
-        missing.length ? 'Which announcement would you like me to update?' : null
-      );
+      if (!hasText(fieldsProvided.targetRef)) {
+        return buildResult(['targetRef'], 'Which announcement would you like me to update?');
+      }
+      const { title, body } = getAnnouncementFields(fieldsProvided, preview);
+      const missing = !hasText(title) && !hasText(body) ? ['title', 'body'] : [];
+      return buildResult(missing, missing.length ? 'What should I change in this announcement?' : null);
     }
     case 'create_event': {
-      const date = preview?.kind === 'event' ? preview.date : fieldsProvided.date;
-      const time = preview?.kind === 'event' ? preview.time : fieldsProvided.time;
+      const { date, time } = getEventFields(fieldsProvided, preview);
       const missing = [!hasText(date) ? 'date' : null, !hasText(time) ? 'time' : null].filter(
         (value): value is string => Boolean(value)
       );
@@ -44,13 +96,30 @@ export function evaluateRequiredFields(
       );
     }
     case 'update_event': {
-      const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
-      return buildResult(missing, missing.length ? 'Which event would you like me to update?' : null);
+      if (!hasText(fieldsProvided.targetRef)) {
+        return buildResult(['targetRef'], 'Which event would you like me to update?');
+      }
+      const { title, description, date, time, location } = getEventFields(fieldsProvided, preview);
+      const missing = !hasAnyText(title, description, date, time, location)
+        ? ['title', 'description', 'date', 'time', 'location']
+        : [];
+      return buildResult(missing, missing.length ? 'What should I change in this event?' : null);
     }
     case 'create_message': {
-      const recipients = preview?.kind === 'message' ? preview.recipients : fieldsProvided.recipients;
-      const missing = !hasRecipients(recipients) ? ['recipients'] : [];
-      return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
+      const { recipients, body } = getMessageFields(fieldsProvided, preview);
+      const missing = [
+        !hasRecipients(recipients) ? 'recipients' : null,
+        !hasText(body) ? 'body' : null,
+      ].filter((value): value is string => Boolean(value));
+      if (missing.length === 0) {
+        return buildResult([], null);
+      }
+      if (missing.length === 2) {
+        return buildResult(missing, 'Who should receive this message, and what should it say?');
+      }
+      return buildResult(missing, missing[0] === 'recipients'
+        ? 'Who should receive this message?'
+        : 'What should this message say?');
     }
     default:
       return buildResult([], null);

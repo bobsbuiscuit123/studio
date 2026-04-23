@@ -67,10 +67,12 @@ describe('preview patch schemas', () => {
       inferredFields: {
         body: 'Reminder about dues',
       },
+      missingFields: [],
       usedInference: true,
+      clarificationMessage: undefined,
       telemetry: {
         confidence: 0.74,
-        modelMissingFields: ['title'],
+        notes: ['Used recent dues reminder context.'],
       },
     });
 

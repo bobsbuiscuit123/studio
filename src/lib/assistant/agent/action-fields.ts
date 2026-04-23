@@ -64,8 +64,6 @@ export const hasResolvedValue = (value: unknown) => {
   return value !== null && value !== undefined;
 };
 
-const hasText = (value: unknown) => typeof value === 'string' && value.trim().length > 0;
-
 const asRecord = (value: unknown): NamedRecord | null =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as NamedRecord)
@@ -191,43 +189,6 @@ const resolveRecipientsFromMessage = (message: string, members: MemberRecord[]) 
   return uniqueByEmail(
     matches.map(member => ({ email: member.email, ...(member.name ? { name: member.name } : {}) }))
   );
-};
-
-const extractAnnouncementBodyFromMessage = (message: string) => {
-  let candidate = message.trim();
-  if (!candidate) {
-    return undefined;
-  }
-
-  const leadingInstructionPatterns = [
-    /^(please\s+)?(send|post|create|write|draft|make|publish|share)\s+(out\s+)?(an?\s+)?announcement\b[:\s,-]*/i,
-    /^(please\s+)?(send|post|create|write|draft|make|publish|share)\s+(an?\s+)?annou?n?c(e)?m?e?n?t?\b[:\s,-]*/i,
-    /^(please\s+)?announcement\b[:\s,-]*/i,
-  ];
-
-  for (const pattern of leadingInstructionPatterns) {
-    candidate = candidate.replace(pattern, '').trim();
-  }
-
-  candidate = candidate.replace(/^to\s+/i, '').trim();
-
-  if (!candidate) {
-    return undefined;
-  }
-
-  const normalizedCandidate = normalize(candidate);
-  if (
-    normalizedCandidate === 'announcement' ||
-    normalizedCandidate === 'an announcement' ||
-    normalizedCandidate === 'send announcement' ||
-    normalizedCandidate === 'post announcement' ||
-    normalizedCandidate === 'create announcement' ||
-    normalizedCandidate === 'write announcement'
-  ) {
-    return undefined;
-  }
-
-  return candidate;
 };
 
 const resolveCandidateTarget = (
@@ -617,14 +578,13 @@ export function resolveActionFields(args: {
   retrieval: RetrievalBundle;
 }): PendingActionFields {
   const baseFields = { ...args.fieldsProvided };
+  const geminiOwnedFields = ALLOWED_INFERRED_FIELDS_BY_ACTION[args.actionType];
+  for (const field of geminiOwnedFields) {
+    delete baseFields[field];
+  }
 
   if (args.actionType === 'create_announcement') {
-    const inferredBody = extractAnnouncementBodyFromMessage(args.message);
-
-    return {
-      ...baseFields,
-      ...(hasText(baseFields.body) ? {} : inferredBody ? { body: inferredBody } : {}),
-    };
+    return baseFields;
   }
 
   if (args.actionType === 'update_announcement') {

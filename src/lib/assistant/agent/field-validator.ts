@@ -10,10 +10,10 @@ import type {
 
 const REQUIRED_FIELD_SPEC: Record<AgentActionType, string[]> = {
   create_announcement: ['title or body'],
-  update_announcement: ['targetRef', 'title or body'],
+  update_announcement: ['title or body'],
   create_event: ['date', 'time'],
-  update_event: ['targetRef', 'date', 'time'],
-  create_message: ['recipients', 'body'],
+  update_event: ['at least one of title, description, location, date, time'],
+  create_message: ['body'],
 };
 
 const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
@@ -26,8 +26,11 @@ const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
 
 const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Return JSON only.',
-  'You are an advisory field-enrichment validator for an already-selected in-app action.',
-  'You may enrich missing pre-draft fields only when they are reasonably inferable from the user message and recent history.',
+  'You are the authoritative field-generation validator for an already-selected in-app action.',
+  'Determine which Gemini-owned fields are explicit, reasonably inferable, or still missing.',
+  'For fields you can determine, generate the final field values that should be stored before draft assembly.',
+  'Generate polished user-facing content for copy fields such as title, body, description, and location when they are explicit or reasonably inferable.',
+  'If a required Gemini-owned field cannot be reasonably inferred, omit it from inferredFields, include it in missingFields, and provide a concise clarificationMessage for the user.',
   'You must not change intent or action type.',
   'You must not decide permissions.',
   'You must not decide whether the action is safe to execute.',
@@ -35,8 +38,10 @@ const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'You must never infer recipients.',
   'You must never infer targetRef.',
   'You must not return permissions or execution metadata.',
+  'Use resolved_action_fields only as fixed structural context, not as a source of missing copy generation.',
   'Use recent history only to interpret the current request as a continuation, not as hidden state.',
-  'Confidence and modelMissingFields are telemetry only and will not control gating.',
+  'Never copy an imperative request verbatim into a user-facing field unless the user clearly already wrote final-form content.',
+  'Confidence is telemetry only and will not control gating.',
 ].join(' ');
 
 const buildFieldValidatorPrompt = (args: {
@@ -56,7 +61,7 @@ const buildFieldValidatorPrompt = (args: {
     `request_received_at: ${args.requestReceivedAt}`,
     `recent_history: ${JSON.stringify(args.recentHistory ?? [])}`,
     `user_message: ${args.userMessage}`,
-    'Return only valid JSON matching: {"inferredFields": Record<string, unknown>, "usedInference": boolean, "telemetry"?: {"confidence"?: number, "modelMissingFields"?: string[], "notes"?: string[]}}',
+    'Return only valid JSON matching: {"inferredFields": Record<string, unknown>, "missingFields": string[], "clarificationMessage"?: string, "usedInference": boolean, "telemetry"?: {"confidence"?: number, "notes"?: string[]}}',
   ].join('\n\n');
 
 export async function runGeminiFieldValidator(args: {

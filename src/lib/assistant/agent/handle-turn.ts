@@ -9,6 +9,7 @@ import type {
   AiChatPlannerResult,
 } from '@/lib/ai-chat';
 import {
+  ALLOWED_INFERRED_FIELDS_BY_ACTION,
   getActionRequiredRetrievalResources,
   mergeInferredActionFields,
   resolveActionFields,
@@ -38,7 +39,10 @@ import {
   updatePendingActionPayload,
 } from '@/lib/assistant/agent/pending-actions';
 import { fetchAgentRetrievalContext } from '@/lib/assistant/agent/retrieval';
-import { evaluateRequiredFields } from '@/lib/assistant/agent/requirements';
+import {
+  evaluateRequiredFields,
+  evaluateStructuralRequiredFields,
+} from '@/lib/assistant/agent/requirements';
 import { runLlmStepWithRetry } from '@/lib/assistant/agent/retry';
 import {
   buildAssistantStorageUnavailableTurn,
@@ -178,11 +182,41 @@ const buildPlannerPrompt = ({
     'Supported action types: create_announcement, update_announcement, create_event, update_event, create_message.',
     'Use draft_action for low-commitment asks like draft, write, or example.',
     'Use execute_action for high-commitment asks like create, post, or send, but still only as a plan.',
-    'Populate action.fieldsProvided only with values explicitly present in the user request or recent history. Never invent dates, times, recipients, or target ids.',
+    'Populate action.fieldsProvided only with explicit structural values needed before validation, such as recipients or target ids.',
+    'Do not populate title, body, description, location, date, or time. Those fields are generated later from the user message and recent history.',
     `current_user_role: ${role}`,
     `recent_history: ${JSON.stringify(history ?? [])}`,
     `current_message: ${message}`,
   ].join('\n\n');
+
+const getValidatorMissingFields = (actionType: AgentActionType, missingFields: string[]) => {
+  const allowedFields = ALLOWED_INFERRED_FIELDS_BY_ACTION[actionType];
+  return missingFields.filter(field => allowedFields.has(field));
+};
+
+const getValidatorClarificationFallback = (
+  actionType: AgentActionType,
+  missingFields: string[]
+) => {
+  if (missingFields.length === 0) {
+    return 'Could you tell me a bit more?';
+  }
+
+  switch (actionType) {
+    case 'create_announcement':
+      return 'What should this announcement say?';
+    case 'update_announcement':
+      return 'What should I change in this announcement?';
+    case 'create_event':
+      return 'What date and time should this event be scheduled for?';
+    case 'update_event':
+      return 'What should I change in this event?';
+    case 'create_message':
+      return 'What should this message say?';
+    default:
+      return 'Could you tell me a bit more?';
+  }
+};
 
 const buildFallbackResponse = (
   conversationId: string,
@@ -1097,6 +1131,26 @@ export async function handleAssistantTurn({
     }
 
     let enrichedActionFields = resolvedActionFields;
+    const structuralRequirements = evaluateStructuralRequiredFields(actionType, resolvedActionFields);
+    if (structuralRequirements.missingFields.length > 0 && structuralRequirements.clarificationMessage) {
+      return persistTurnResult({
+        userId,
+        orgId,
+        groupId,
+        conversationId: resolvedConversationId,
+        turnId,
+        requestPayload,
+        normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
+        retrievalPayload: retrieval.context as Record<string, unknown>,
+        result: buildNeedsClarification(
+          resolvedConversationId,
+          turnId,
+          structuralRequirements.clarificationMessage,
+          structuralRequirements.missingFields
+        ),
+        actionType,
+      });
+    }
 
     const fieldValidatorRun = await runLlmStepWithRetry({
       step: 'field_validator',
@@ -1111,32 +1165,59 @@ export async function handleAssistantTurn({
         }),
     });
 
-    if (fieldValidatorRun.ok) {
-      const mergedInference = mergeInferredActionFields({
+    if (!fieldValidatorRun.ok) {
+      return persistTurnResult({
+        userId,
+        orgId,
+        groupId,
+        conversationId: resolvedConversationId,
+        turnId,
+        requestPayload,
+        normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
+        retrievalPayload: retrieval.context as Record<string, unknown>,
+        result: buildFallbackResponse(
+          resolvedConversationId,
+          turnId,
+          fieldValidatorRun.retryCount,
+          fieldValidatorRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'field_validator',
+            detail: fieldValidatorRun.lastErrorMessage,
+            requestId,
+          })
+        ),
         actionType,
-        resolvedActionFields,
-        inferredFields: fieldValidatorRun.value.inferredFields,
-        userMessage: normalizedCommand.text,
-        recentHistory: history,
-        requestTimezone: effectiveRequestTimezone,
-        requestReceivedAt: effectiveRequestReceivedAt,
-      });
-      enrichedActionFields = mergedInference.mergedFields;
-
-      await addBreadcrumb('assistant.field_validator_result', {
-        actionType,
-        usedInference: fieldValidatorRun.value.usedInference,
-        mergedFieldKeys: mergedInference.mergedFieldKeys,
-        // Confidence is telemetry only. It must never affect gating or execution safety.
-        confidence: fieldValidatorRun.value.telemetry?.confidence ?? null,
-        // Gemini-reported missing fields are debug-only. Backend deterministic validation is authoritative.
-        modelMissingFields: fieldValidatorRun.value.telemetry?.modelMissingFields ?? [],
-        notes: fieldValidatorRun.value.telemetry?.notes ?? [],
       });
     }
 
-    const requiredFields = evaluateRequiredFields(actionType, enrichedActionFields);
-    if (requiredFields.missingFields.length > 0 && requiredFields.clarificationMessage) {
+    const mergedInference = mergeInferredActionFields({
+      actionType,
+      resolvedActionFields,
+      inferredFields: fieldValidatorRun.value.inferredFields,
+      userMessage: normalizedCommand.text,
+      recentHistory: history,
+      requestTimezone: effectiveRequestTimezone,
+      requestReceivedAt: effectiveRequestReceivedAt,
+    });
+    enrichedActionFields = mergedInference.mergedFields;
+
+    const validatorMissingFields = getValidatorMissingFields(
+      actionType,
+      fieldValidatorRun.value.missingFields
+    );
+
+    await addBreadcrumb('assistant.field_validator_result', {
+      actionType,
+      usedInference: fieldValidatorRun.value.usedInference,
+      mergedFieldKeys: mergedInference.mergedFieldKeys,
+      missingFields: validatorMissingFields,
+      clarificationMessage: fieldValidatorRun.value.clarificationMessage ?? null,
+      // Confidence is telemetry only. It must never affect gating or execution safety.
+      confidence: fieldValidatorRun.value.telemetry?.confidence ?? null,
+      notes: fieldValidatorRun.value.telemetry?.notes ?? [],
+    });
+
+    if (validatorMissingFields.length > 0) {
       return persistTurnResult({
         userId,
         orgId,
@@ -1149,8 +1230,9 @@ export async function handleAssistantTurn({
         result: buildNeedsClarification(
           resolvedConversationId,
           turnId,
-          requiredFields.clarificationMessage,
-          requiredFields.missingFields
+          fieldValidatorRun.value.clarificationMessage?.trim() ||
+            getValidatorClarificationFallback(actionType, validatorMissingFields),
+          validatorMissingFields
         ),
         actionType,
       });
@@ -1207,11 +1289,16 @@ export async function handleAssistantTurn({
         requestPayload,
         normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
         retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildNeedsClarification(
+        result: buildFallbackResponse(
           resolvedConversationId,
           turnId,
-          postDraftRequirements.clarificationMessage,
-          postDraftRequirements.missingFields
+          draftRun.retryCount,
+          draftRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'draft',
+            detail: `Draft preview omitted required fields: ${postDraftRequirements.missingFields.join(', ')}`,
+            requestId,
+          })
         ),
         actionType,
       });

@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
 
-import { evaluateRequiredFields } from '@/lib/assistant/agent/requirements';
+import {
+  evaluateRequiredFields,
+  evaluateStructuralRequiredFields,
+} from '@/lib/assistant/agent/requirements';
 
 describe('evaluateRequiredFields', () => {
-  it('requires date and time for create_event', () => {
+  it('requires recipients before validating a message draft', () => {
+    const result = evaluateStructuralRequiredFields('create_message', {
+      body: 'Hello team',
+    });
+
+    expect(result.missingFields).toEqual(['recipients']);
+    expect(result.clarificationMessage).toBe('Who should receive this message?');
+  });
+
+  it('requires date and time for a completed create_event payload', () => {
     const result = evaluateRequiredFields('create_event', {
       title: 'Election Night',
     });
@@ -14,13 +26,13 @@ describe('evaluateRequiredFields', () => {
     );
   });
 
-  it('requires recipients for create_message', () => {
+  it('requires body for a completed create_message payload', () => {
     const result = evaluateRequiredFields('create_message', {
-      body: 'Hello team',
+      recipients: [{ email: 'team@example.com' }],
     });
 
-    expect(result.missingFields).toEqual(['recipients']);
-    expect(result.clarificationMessage).toBe('Who should receive this message?');
+    expect(result.missingFields).toEqual(['body']);
+    expect(result.clarificationMessage).toBe('What should this message say?');
   });
 
   it('accepts announcements with either title or body', () => {
@@ -30,5 +42,14 @@ describe('evaluateRequiredFields', () => {
 
     expect(result.missingFields).toEqual([]);
     expect(result.clarificationMessage).toBeNull();
+  });
+
+  it('requires actual update content for update_event payloads', () => {
+    const result = evaluateRequiredFields('update_event', {
+      targetRef: 'evt-1',
+    });
+
+    expect(result.missingFields).toEqual(['title', 'description', 'date', 'time', 'location']);
+    expect(result.clarificationMessage).toBe('What should I change in this event?');
   });
 });

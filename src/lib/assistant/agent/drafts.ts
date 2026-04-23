@@ -10,7 +10,10 @@ import type { RetrievalBundle } from '@/lib/assistant/agent/retrieval';
 const baseDraftInstructions = [
   'Return JSON only.',
   'Generate a structured in-app draft preview.',
-  'Do not invent recipients, dates, or times that the user did not provide.',
+  'Treat provided_fields as the authoritative resolved action fields.',
+  'Assemble the preview from provided_fields and retrieval context, not by reinterpreting the raw user request as missing field content.',
+  'Do not invent recipients, target references, or scheduling details that are absent from provided_fields.',
+  'Do not replace provided field content with copied imperative request text.',
   'Keep the draft concise, helpful, and ready for preview editing.',
 ].join(' ');
 

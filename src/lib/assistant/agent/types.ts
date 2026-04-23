@@ -181,13 +181,13 @@ export type PendingActionFields = {
 export type GeminiFieldValidationTelemetry = {
   // Confidence is telemetry only. It must never influence gating or execution safety.
   confidence?: number;
-  // Gemini-reported missing fields are debug-only. Backend deterministic validation is authoritative.
-  modelMissingFields?: string[];
   notes?: string[];
 };
 
 export type GeminiFieldValidationResult = {
   inferredFields: Record<string, unknown>;
+  missingFields: string[];
+  clarificationMessage?: string;
   usedInference: boolean;
   telemetry?: GeminiFieldValidationTelemetry;
 };

@@ -97,10 +97,13 @@ describe('action field resolution', () => {
     ]);
   });
 
-  it('treats follow-up announcement phrasing as draft body', () => {
+  it('leaves Gemini-owned announcement fields unset for validator generation', () => {
     const fields = resolveActionFields({
       actionType: 'create_announcement',
-      fieldsProvided: {},
+      fieldsProvided: {
+        title: 'Dues Reminder',
+        body: 'Please pay your dues this week.',
+      },
       message: 'reminding them to pay dues',
       retrieval: {
         context: {},
@@ -108,34 +111,37 @@ describe('action field resolution', () => {
       },
     });
 
-    expect(fields.body).toBe('reminding them to pay dues');
+    expect(fields).toEqual({});
   });
 
-  it('does not infer announcement body from a generic command alone', () => {
+  it('keeps structural target refs while stripping Gemini-owned update fields', () => {
     const fields = resolveActionFields({
-      actionType: 'create_announcement',
-      fieldsProvided: {},
-      message: 'send an announcement',
+      actionType: 'update_announcement',
+      fieldsProvided: {
+        targetRef: '12',
+        body: 'Updated announcement body',
+      },
+      message: 'update announcement 12',
       retrieval: {
         context: {},
         usedEntities: [],
       },
     });
 
-    expect(fields.body).toBeUndefined();
+    expect(fields).toEqual({
+      targetRef: '12',
+    });
   });
 });
 
-describe('Gemini advisory field merging', () => {
-  it('ignores Gemini modelMissingFields for gating', () => {
+describe('Gemini authoritative field merging', () => {
+  it('accepts Gemini-generated announcement fields for gating', () => {
     const merged = applyValidatorResult({
       inferredFields: {
         body: 'Reminder that dues are still outstanding.',
       },
+      missingFields: [],
       usedInference: true,
-      telemetry: {
-        modelMissingFields: ['body'],
-      },
     });
 
     const required = evaluateRequiredFields('create_announcement', merged.mergedFields);
@@ -147,6 +153,7 @@ describe('Gemini advisory field merging', () => {
       inferredFields: {
         body: 'Reminder that dues are still outstanding.',
       },
+      missingFields: [],
       usedInference: true,
       telemetry: {
         confidence: 0.01,
@@ -157,6 +164,7 @@ describe('Gemini advisory field merging', () => {
       inferredFields: {
         body: 'Reminder that dues are still outstanding.',
       },
+      missingFields: [],
       usedInference: true,
       telemetry: {
         confidence: 0.99,
@@ -172,6 +180,7 @@ describe('Gemini advisory field merging', () => {
         inferredFields: {
           body: 'AI body',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -191,6 +200,7 @@ describe('Gemini advisory field merging', () => {
           body: 'AI body',
           recipients: [{ email: 'x@example.com' }],
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -208,6 +218,7 @@ describe('Gemini advisory field merging', () => {
           title: 'Updated title',
           targetRef: 'ai-target',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -231,6 +242,7 @@ describe('Gemini advisory field merging', () => {
           targetRef: 'event-1',
           body: 'Hello team',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -251,6 +263,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -270,6 +283,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -289,6 +303,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -311,6 +326,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -326,6 +342,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -348,6 +365,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -363,6 +381,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {
@@ -385,6 +404,7 @@ describe('Gemini advisory field merging', () => {
           date: 'candidate-date',
           time: '7:00 PM',
         },
+        missingFields: [],
         usedInference: true,
       },
       {

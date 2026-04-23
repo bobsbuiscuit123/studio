@@ -120,13 +120,13 @@ export const actionFieldSchemaByActionType = {
 export const geminiFieldValidationResultSchema = z
   .object({
     inferredFields: z.record(z.unknown()).default({}),
+    missingFields: z.array(z.string().trim().min(1)).max(10).default([]),
+    clarificationMessage: z.string().trim().min(1).max(500).optional(),
     usedInference: z.boolean(),
     telemetry: z
       .object({
         // Confidence is telemetry only. It must never influence gating or execution safety.
         confidence: z.number().min(0).max(1).optional(),
-        // Gemini-reported missing fields are debug-only. Backend deterministic validation is authoritative.
-        modelMissingFields: z.array(z.string().trim().min(1)).max(10).optional(),
         notes: z.array(z.string().trim().min(1)).max(10).optional(),
       })
       .strict()

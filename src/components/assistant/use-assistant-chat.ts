@@ -3,13 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  AI_CHAT_HISTORY_LIMIT,
   aiChatErrorResponseSchema,
   assistantTurnResponseSchema,
   type AiChatClientMessage,
   type AiChatFailureStage,
-  type AiChatHistoryMessage,
 } from "@/lib/ai-chat";
+import { buildAssistantHistoryPayload } from "@/components/assistant/history";
 import type { AssistantCommand } from "@/lib/assistant/agent/types";
 import {
   ASSISTANT_OPEN_EVENT,
@@ -79,20 +78,6 @@ const createClientMessage = (
   createdAt: new Date().toISOString(),
   ...options,
 });
-
-const buildHistoryPayload = (
-  messages: AiChatClientMessage[]
-): AiChatHistoryMessage[] =>
-  messages
-    .filter(
-      (message): message is AiChatClientMessage & { role: "user" | "assistant" } =>
-        (message.role === "user" || message.role === "assistant") && !message.status
-    )
-    .slice(-AI_CHAT_HISTORY_LIMIT)
-    .map(message => ({
-      role: message.role,
-      content: message.content,
-    }));
 
 const getTurnDisplayText = (turn: ReturnType<typeof assistantTurnResponseSchema.parse>) =>
   "reply" in turn ? turn.reply : turn.message;
@@ -176,7 +161,9 @@ export function useAssistantChat({
         },
         body: JSON.stringify({
           message: isTextMessage ? trimmedMessage : message,
-          history: buildHistoryPayload(nextMessages.filter(item => item.id !== pendingMessage.id)),
+          history: buildAssistantHistoryPayload(
+            nextMessages.filter(item => item.id !== pendingMessage.id)
+          ),
           conversationId,
         }),
         signal: controller.signal,

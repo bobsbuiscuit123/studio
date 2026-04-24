@@ -55,7 +55,7 @@ const ENTITY_SELECTS: Record<AiChatEntity, string[]> = {
   transactions: ['transactions:data->transactions'],
 };
 
-const AI_CHAT_HISTORY_PROMPT_CHARS = 480;
+const AI_CHAT_HISTORY_PROMPT_CHARS = 2_500;
 const AI_CHAT_CURRENT_MESSAGE_PROMPT_CHARS = 1_600;
 const AI_CHAT_ANNOUNCEMENT_CONTENT_CHARS = 320;
 const AI_CHAT_EVENT_DESCRIPTION_CHARS = 280;

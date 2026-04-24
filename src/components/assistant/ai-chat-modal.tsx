@@ -207,10 +207,12 @@ function AssistantDiagnosticsBlock({
 
 function AssistantTurnContent({
   message,
+  isUser,
   onCommand,
   isSending,
 }: {
   message: AiChatClientMessage;
+  isUser: boolean;
   onCommand: (command: AssistantCommand) => void;
   isSending: boolean;
 }) {
@@ -226,7 +228,12 @@ function AssistantTurnContent({
 
   if (!turn) {
     return (
-      <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
+      <p
+        className={cn(
+          "whitespace-pre-wrap text-sm leading-6",
+          isUser ? "text-emerald-950" : "text-foreground/92"
+        )}
+      >
         {message.content}
       </p>
     );
@@ -910,6 +917,7 @@ export function AIChatModal({
                     ) : (
                       <AssistantTurnContent
                         message={message}
+                        isUser={isUser}
                         onCommand={onCommand}
                         isSending={isSending}
                       />

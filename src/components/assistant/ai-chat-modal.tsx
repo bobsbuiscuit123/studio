@@ -414,24 +414,6 @@ function AssistantTurnContent({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {turn.ui.canEdit ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={isSending}
-              onClick={() =>
-                onCommand({
-                  kind: "edit_preview",
-                  pendingActionId: turn.pendingActionId,
-                  preview: buildPatchFromEditorState(turn.preview, currentEditor),
-                })
-              }
-            >
-              Update Preview
-            </Button>
-          ) : null}
-
           {turn.ui.canRegenerate ? (
             <Button
               type="button"
@@ -480,6 +462,9 @@ function AssistantTurnContent({
                 onCommand({
                   kind: "confirm",
                   pendingActionId: turn.pendingActionId,
+                  ...(turn.ui.canEdit
+                    ? { preview: buildPatchFromEditorState(turn.preview, currentEditor) }
+                    : {}),
                 })
               }
             >

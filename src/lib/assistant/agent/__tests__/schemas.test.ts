@@ -62,6 +62,21 @@ describe('preview patch schemas', () => {
     expect(parsed.success).toBe(true);
   });
 
+  it('parses confirm commands that include a preview patch', () => {
+    const parsed = assistantCommandSchema.safeParse({
+      kind: 'confirm',
+      pendingActionId: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      preview: {
+        kind: 'announcement',
+        patch: {
+          body: 'Updated body',
+        },
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
   it('parses strict Gemini field-validator payloads', () => {
     const parsed = geminiFieldValidationResultSchema.safeParse({
       inferredFields: {

@@ -193,7 +193,13 @@ export const agentPlanSchema = z
 
 export const assistantCommandSchema: z.ZodType<AssistantCommand> = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('message'), text: z.string().trim().min(1).max(2_000) }).strict(),
-  z.object({ kind: z.literal('confirm'), pendingActionId: z.string().uuid().optional() }).strict(),
+  z
+    .object({
+      kind: z.literal('confirm'),
+      pendingActionId: z.string().uuid().optional(),
+      preview: draftPreviewPatchSchema.optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal('cancel'), pendingActionId: z.string().uuid() }).strict(),
   z
     .object({

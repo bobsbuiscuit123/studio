@@ -82,7 +82,14 @@ export type DraftPreview =
 
 export type AssistantCommand =
   | { kind: 'message'; text: string }
-  | { kind: 'confirm'; pendingActionId?: string }
+  | {
+      kind: 'confirm';
+      pendingActionId?: string;
+      preview?:
+        | { kind: 'announcement'; patch: Partial<AnnouncementDraftPreview> }
+        | { kind: 'event'; patch: Partial<EventDraftPreview> }
+        | { kind: 'message'; patch: Partial<MessageDraftPreview> };
+    }
   | { kind: 'cancel'; pendingActionId: string }
   | {
       kind: 'edit_preview';

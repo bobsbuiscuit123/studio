@@ -642,6 +642,58 @@ export async function handleAssistantTurn({
         });
       }
 
+      if (normalizedCommand.preview) {
+        if (normalizedCommand.preview.kind !== pending.currentPayload.kind) {
+          return persistTurnResult({
+            userId,
+            orgId,
+            groupId,
+            conversationId: resolvedConversationId,
+            turnId,
+            requestPayload,
+            result: buildError(
+              resolvedConversationId,
+              turnId,
+              'Invalid edit. Please adjust your changes.',
+              pending.id
+            ),
+            errorCode: 'VALIDATION',
+          });
+        }
+
+        const mergedPreview = mergePreviewPatch(
+          pending.currentPayload,
+          normalizedCommand.preview.patch as Record<string, unknown>
+        );
+        const editRequirements = evaluateRequiredFields(
+          pending.actionType,
+          pending.actionFields,
+          mergedPreview
+        );
+        if (editRequirements.missingFields.length > 0 && editRequirements.clarificationMessage) {
+          return persistTurnResult({
+            userId,
+            orgId,
+            groupId,
+            conversationId: resolvedConversationId,
+            turnId,
+            requestPayload,
+            result: buildNeedsClarification(
+              resolvedConversationId,
+              turnId,
+              editRequirements.clarificationMessage,
+              editRequirements.missingFields,
+              pending.id
+            ),
+          });
+        }
+
+        await updatePendingActionPayload({
+          id: pending.id,
+          currentPayload: mergedPreview,
+        });
+      }
+
       const executionResult = await executePendingAction({
         pendingActionId: pending.id,
         conversationId: resolvedConversationId,

@@ -455,6 +455,49 @@ const mergeAuthoritativeFieldsIntoPreview = (
   }
 };
 
+const buildPreviewFromAuthoritativeFields = ({
+  actionType,
+  fieldsProvided,
+  seedPreview,
+}: {
+  actionType: AgentActionType;
+  fieldsProvided: Record<string, unknown>;
+  seedPreview?: DraftPreview | null;
+}) => {
+  switch (actionType) {
+    case 'create_announcement':
+    case 'update_announcement':
+      return parseDraftPreview({
+        ...(seedPreview?.kind === 'announcement' ? seedPreview : { kind: 'announcement' as const }),
+        kind: 'announcement',
+        ...(hasNonEmptyString(fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(hasNonEmptyString(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+      });
+    case 'create_event':
+    case 'update_event':
+      return parseDraftPreview({
+        ...(seedPreview?.kind === 'event' ? seedPreview : { kind: 'event' as const }),
+        kind: 'event',
+        ...(hasNonEmptyString(fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(hasNonEmptyString(fieldsProvided.description)
+          ? { description: fieldsProvided.description }
+          : {}),
+        ...(hasNonEmptyString(fieldsProvided.date) ? { date: fieldsProvided.date } : {}),
+        ...(hasNonEmptyString(fieldsProvided.time) ? { time: fieldsProvided.time } : {}),
+        ...(hasNonEmptyString(fieldsProvided.location) ? { location: fieldsProvided.location } : {}),
+      });
+    case 'create_message':
+      return parseDraftPreview({
+        ...(seedPreview?.kind === 'message' ? seedPreview : { kind: 'message' as const }),
+        kind: 'message',
+        ...(hasRecipientList(fieldsProvided.recipients) ? { recipients: fieldsProvided.recipients } : {}),
+        ...(hasNonEmptyString(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+      });
+    default:
+      return seedPreview ?? parseDraftPreview({ kind: 'announcement' });
+  }
+};
+
 async function resolveUserEmail(userId: string) {
   const admin = createSupabaseAdmin();
   const { data, error } = await admin.from('profiles').select('email').eq('id', userId).maybeSingle();
@@ -1482,6 +1525,7 @@ export async function handleAssistantTurn({
       });
     }
 
+    const draftSeedPreview = pendingDraftFollowUp?.currentPayload ?? null;
     const draftRun = await runLlmStepWithRetry({
       step: 'draft',
       fn: async () =>
@@ -1490,38 +1534,30 @@ export async function handleAssistantTurn({
           message: normalizedCommand.text,
           fieldsProvided: enrichedActionFields,
           retrieval,
+          seedPreview: draftSeedPreview,
         }),
     });
 
+    let mergedDraftPreview: DraftPreview;
     if (!draftRun.ok) {
-      return persistTurnResult({
-        userId,
-        orgId,
-        groupId,
-        conversationId: resolvedConversationId,
-        turnId,
-        requestPayload,
-        normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
-        retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildFallbackResponse(
-          resolvedConversationId,
-          turnId,
-          draftRun.retryCount,
-          draftRun.timeoutFlag,
-          buildDiagnostics({
-            phase: 'draft',
-            detail: draftRun.lastErrorMessage,
-            requestId,
-          })
-        ),
+      mergedDraftPreview = buildPreviewFromAuthoritativeFields({
         actionType,
+        fieldsProvided: enrichedActionFields,
+        seedPreview: draftSeedPreview,
       });
+      await addBreadcrumb('assistant.draft_fallback_preview', {
+        actionType,
+        retryCount: draftRun.retryCount,
+        timeoutFlag: draftRun.timeoutFlag,
+        reason: draftRun.lastErrorMessage ?? null,
+        usedSeedPreview: Boolean(draftSeedPreview),
+      });
+    } else {
+      mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
+        draftRun.value,
+        enrichedActionFields
+      );
     }
-
-    const mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
-      draftRun.value,
-      enrichedActionFields
-    );
 
     const postDraftRequirements = evaluateRequiredFields(
       actionType,

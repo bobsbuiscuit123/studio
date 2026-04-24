@@ -527,6 +527,78 @@ describe('handleAssistantTurn', () => {
     );
   });
 
+  it('falls back to an authoritative preview when the draft step times out', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...announcementPlannerValue,
+            action: { ...announcementPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              title: 'Quick Dues Reminder',
+              body: 'Please pay your dues this week.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: false,
+        retryCount: 2,
+        timeoutFlag: true,
+        lastErrorMessage: 'AI request timed out. Please try again.',
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      requestId: 'req-draft-timeout-fallback',
+      message: 'make it shorter',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview).toEqual({
+      kind: 'announcement',
+      title: 'Quick Dues Reminder',
+      body: 'Please pay your dues this week.',
+    });
+    expect(result.retryCount).toBe(2);
+    expect(result.timeoutFlag).toBe(true);
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          kind: 'announcement',
+          title: 'Quick Dues Reminder',
+          body: 'Please pay your dues this week.',
+        },
+      })
+    );
+  });
+
   it('reuses the active pending announcement draft for update_announcement follow-ups', async () => {
     vi.mocked(getLatestValidPendingAction).mockResolvedValue({
       id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',

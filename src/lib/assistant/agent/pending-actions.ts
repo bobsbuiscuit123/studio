@@ -224,13 +224,18 @@ export async function getLatestValidPendingAction(args: {
 export async function updatePendingActionPayload(args: {
   id: string;
   currentPayload: DraftPreview;
+  actionFields?: PendingActionFields;
 }) {
   const admin = createSupabaseAdmin();
+  const updatePayload: Record<string, unknown> = {
+    current_payload: args.currentPayload,
+  };
+  if (args.actionFields) {
+    updatePayload.action_fields = args.actionFields;
+  }
   const { error } = await admin
     .from('assistant_pending_actions')
-    .update({
-      current_payload: args.currentPayload,
-    })
+    .update(updatePayload)
     .eq('id', args.id);
 
   if (error) {

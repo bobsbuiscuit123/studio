@@ -1,5 +1,18 @@
 import type { AiChatHistoryMessage } from '@/lib/ai-chat';
 
+type PlannerTargetCandidate = {
+  id: string;
+  title: string;
+  date?: string;
+};
+
+type PlannerDraftContext = {
+  pendingActionId: string;
+  actionType: string;
+  currentPayload: unknown;
+  targetRef?: string;
+};
+
 export const ASSISTANT_ACTION_CAPABILITY_GUIDANCE = [
   'Supported action types are limited to these in-app operations only:',
   '- create_announcement: draft or plan posting an in-app announcement with a title and body. Announcements are always group-wide and go to everyone.',
@@ -7,6 +20,12 @@ export const ASSISTANT_ACTION_CAPABILITY_GUIDANCE = [
   '- create_event: draft or plan creating an in-app event with title, description, date, time, and location.',
   '- update_event: draft or plan edits to an existing in-app event.',
   '- create_message: draft or plan sending an in-app direct or group message to members.',
+  'If recent_history includes assistant_state: draft_preview or assistant_state: awaiting_confirmation for an announcement draft and the current message is a short editorial follow-up about that draft, classify it as update_announcement.',
+  'If recent_history includes assistant_state: draft_preview or assistant_state: awaiting_confirmation for an event draft and the current message is a short editorial follow-up about that draft, classify it as update_event.',
+  'When the user is revising the active draft from recent_history or active_draft_context, do not require action.fieldsProvided.targetRef. The active draft context is the edit target.',
+  'If current_message clearly refers to one existing announcement or event in the available target lists, classify as the matching update action and set action.fieldsProvided.targetRef to that candidate id.',
+  'If current_message is ambiguous between multiple existing targets, keep the update action but leave action.fieldsProvided.targetRef empty so the assistant can ask for clarification.',
+  'If active_draft_context exists and current_message sounds like a revision to that draft, prefer the active draft over existing targets unless the user clearly names a different existing announcement or event.',
   'Unsupported or miscellaneous capability requests must stay conversational with no action.',
   'Examples of unsupported requests: making a flyer, poster, graphic, image, logo, slide deck, brochure, PDF, invitation design, video, banner, website, export, file, or other visual/document asset.',
   'Do not force unsupported requests into create_announcement, create_event, or create_message just because the topic mentions an event or needs copy.',
@@ -17,10 +36,16 @@ export const buildAssistantPlannerPrompt = ({
   message,
   history,
   role,
+  activeDraft,
+  announcementTargets,
+  eventTargets,
 }: {
   message: string;
   history?: AiChatHistoryMessage[];
   role: string;
+  activeDraft?: PlannerDraftContext | null;
+  announcementTargets?: PlannerTargetCandidate[];
+  eventTargets?: PlannerTargetCandidate[];
 }) =>
   [
     'Return JSON only. You are the planning pass for a production in-app assistant.',
@@ -35,5 +60,8 @@ export const buildAssistantPlannerPrompt = ({
     'Do not populate title, body, description, location, date, or time. Those fields are generated later from the user message and recent history.',
     `current_user_role: ${role}`,
     `recent_history: ${JSON.stringify(history ?? [])}`,
+    `active_draft_context: ${JSON.stringify(activeDraft ?? null)}`,
+    `available_announcement_targets: ${JSON.stringify(announcementTargets ?? [])}`,
+    `available_event_targets: ${JSON.stringify(eventTargets ?? [])}`,
     `current_message: ${message}`,
   ].join('\n\n');

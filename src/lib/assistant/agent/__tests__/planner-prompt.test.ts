@@ -37,4 +37,42 @@ describe('assistant planner prompt', () => {
       'If the user asks for an unsupported asset or deliverable, set intent to conversational, omit action'
     );
   });
+
+  it('tells the planner to treat draft follow-ups as update actions without target ids', () => {
+    const prompt = buildAssistantPlannerPrompt({
+      message: 'make it shorter',
+      history: [
+        {
+          role: 'assistant',
+          content:
+            'assistant_state: draft_preview\nassistant_reply: Here is a draft announcement.\ndraft_payload: {"kind":"announcement","title":"Dues Reminder","body":"Please pay your dues this week."}',
+        },
+      ],
+      role: 'Admin',
+      activeDraft: {
+        pendingActionId: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+        actionType: 'create_announcement',
+        currentPayload: {
+          kind: 'announcement',
+          title: 'Dues Reminder',
+          body: 'Please pay your dues this week.',
+        },
+      },
+      announcementTargets: [
+        { id: '12', title: 'Board Elections' },
+        { id: '18', title: 'Dues Reminder' },
+      ],
+    });
+
+    expect(prompt).toContain(
+      'classify it as update_announcement'
+    );
+    expect(prompt).toContain(
+      'do not require action.fieldsProvided.targetRef. The active draft context is the edit target.'
+    );
+    expect(prompt).toContain('active_draft_context:');
+    expect(prompt).toContain('available_announcement_targets:');
+    expect(prompt).toContain('"id":"18"');
+    expect(prompt).toContain('If current_message clearly refers to one existing announcement or event');
+  });
 });

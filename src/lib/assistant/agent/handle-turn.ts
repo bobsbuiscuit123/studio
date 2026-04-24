@@ -2,6 +2,7 @@ import { callAI } from '@/ai/genkit';
 import {
   AI_CHAT_RESPONDER_SYSTEM_PROMPT,
   buildAiChatResponderPrompt,
+  fetchAiChatDataContext,
 } from '@/lib/ai-chat-server';
 import type {
   AiChatEntity,
@@ -53,6 +54,7 @@ import type {
   AgentActionType,
   AgentPlan,
   AssistantCommand,
+  PendingAction,
   AssistantTurnResponse,
   AssistantTurnDiagnostics,
   DraftPreview,
@@ -94,6 +96,127 @@ const getActionLabel = (actionType: AgentActionType) => {
 
 const getPreviewState = (intent: AgentPlan['intent']) =>
   intent === 'execute_action' ? 'awaiting_confirmation' : 'draft_preview';
+
+type PlannerTargetCandidate = {
+  id: string;
+  title: string;
+  date?: string;
+};
+
+type PlannerDraftContext = {
+  pendingActionId: string;
+  actionType: AgentActionType;
+  currentPayload: DraftPreview;
+  targetRef?: string;
+};
+
+const extractPlannerTargetCandidates = (items: unknown): PlannerTargetCandidate[] =>
+  (Array.isArray(items) ? items : [])
+    .slice(-6)
+    .flatMap(item => {
+      const record = item && typeof item === 'object' && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : null;
+      if (!record) {
+        return [];
+      }
+
+      const id =
+        typeof record.id === 'string' || typeof record.id === 'number'
+          ? String(record.id)
+          : '';
+      const title = typeof record.title === 'string' ? record.title.trim() : '';
+      const date =
+        typeof record.date === 'string'
+          ? record.date
+          : record.date instanceof Date
+            ? record.date.toISOString()
+            : undefined;
+
+      return id && title ? [{ id, title, ...(date ? { date } : {}) }] : [];
+    });
+
+const toPlannerDraftContext = (pending: PendingAction | null): PlannerDraftContext | null =>
+  isPendingActionReusable(pending)
+    ? {
+        pendingActionId: pending.id,
+        actionType: pending.actionType,
+        currentPayload: pending.currentPayload,
+        ...(hasNonEmptyString(pending.actionFields.targetRef)
+          ? { targetRef: pending.actionFields.targetRef }
+          : {}),
+      }
+    : null;
+
+const isPendingActionReusable = (pending: PendingAction | null | undefined): pending is PendingAction =>
+  Boolean(
+    pending &&
+      (pending.status === 'pending' || pending.status === 'confirmed') &&
+      Date.parse(pending.expiresAt) > Date.now()
+  );
+
+const getDraftFollowUpPendingAction = ({
+  plannedActionType,
+  plannedFieldsProvided,
+  pending,
+}: {
+  plannedActionType: AgentActionType;
+  plannedFieldsProvided: Record<string, unknown>;
+  pending: PendingAction | null;
+}) => {
+  if (!isPendingActionReusable(pending)) {
+    return null;
+  }
+
+  if (hasNonEmptyString(plannedFieldsProvided.targetRef)) {
+    return null;
+  }
+
+  if (
+    plannedActionType === 'update_announcement' &&
+    pending.currentPayload.kind === 'announcement' &&
+    (pending.actionType === 'create_announcement' || pending.actionType === 'update_announcement')
+  ) {
+    return pending;
+  }
+
+  if (
+    plannedActionType === 'update_event' &&
+    pending.currentPayload.kind === 'event' &&
+    (pending.actionType === 'create_event' || pending.actionType === 'update_event')
+  ) {
+    return pending;
+  }
+
+  return null;
+};
+
+const mergePendingDraftStructuralFields = ({
+  actionType,
+  resolvedActionFields,
+  pending,
+}: {
+  actionType: AgentActionType;
+  resolvedActionFields: Record<string, unknown>;
+  pending: PendingAction | null;
+}) => {
+  if (!pending) {
+    return resolvedActionFields;
+  }
+
+  if (
+    (actionType === 'update_announcement' || actionType === 'update_event') &&
+    !hasNonEmptyString(resolvedActionFields.targetRef) &&
+    hasNonEmptyString(pending.actionFields.targetRef)
+  ) {
+    return {
+      ...resolvedActionFields,
+      targetRef: pending.actionFields.targetRef,
+    };
+  }
+
+  return resolvedActionFields;
+};
 
 const getEditableFields = (preview: DraftPreview) => {
   switch (preview.kind) {
@@ -345,6 +468,9 @@ async function runAgentPlanner(args: {
   message: string;
   history?: AiChatHistoryMessage[];
   role: string;
+  activeDraft?: PlannerDraftContext | null;
+  announcementTargets?: PlannerTargetCandidate[];
+  eventTargets?: PlannerTargetCandidate[];
 }): Promise<AgentPlan> {
   const result = await callAI({
     messages: [{ role: 'user', content: buildAssistantPlannerPrompt(args) }],
@@ -536,6 +662,42 @@ export async function handleAssistantTurn({
     }
 
     const normalizedCommand = normalizeIncomingCommand(message);
+    const latestPendingAction =
+      normalizedCommand.kind === 'message'
+        ? await getLatestValidPendingAction({
+            userId,
+            orgId,
+            groupId,
+            conversationId: resolvedConversationId,
+          })
+        : null;
+    const plannerTargetContext =
+      normalizedCommand.kind === 'message'
+        ? await withTimeout(
+            async () => {
+              const admin = createSupabaseAdmin();
+              const plannerContext = await fetchAiChatDataContext({
+                admin,
+                groupId,
+                entities: ['announcements', 'events'],
+                role: context.role,
+              });
+
+              return {
+                announcementTargets: extractPlannerTargetCandidates(plannerContext.context.announcements),
+                eventTargets: extractPlannerTargetCandidates(plannerContext.context.events),
+              };
+            },
+            4_000,
+            { label: 'Assistant planner targets' }
+          ).catch(() => ({
+            announcementTargets: [] as PlannerTargetCandidate[],
+            eventTargets: [] as PlannerTargetCandidate[],
+          }))
+        : {
+            announcementTargets: [] as PlannerTargetCandidate[],
+            eventTargets: [] as PlannerTargetCandidate[],
+          };
 
     if (normalizedCommand.kind === 'cancel') {
       const pending = await getScopedPendingActionById({
@@ -1018,6 +1180,9 @@ export async function handleAssistantTurn({
         message: normalizedCommand.text,
         history,
         role: displayGroupRole(context.role),
+        activeDraft: toPlannerDraftContext(latestPendingAction),
+        announcementTargets: plannerTargetContext.announcementTargets,
+        eventTargets: plannerTargetContext.eventTargets,
       }),
     });
 
@@ -1143,12 +1308,21 @@ export async function handleAssistantTurn({
       }
     }
 
-    const actionType = plannedAction.type;
-    const resolvedActionFields = resolveActionFields({
+    const pendingDraftFollowUp = getDraftFollowUpPendingAction({
+      plannedActionType: plannedAction.type,
+      plannedFieldsProvided: plannedAction.fieldsProvided,
+      pending: latestPendingAction,
+    });
+    const actionType = pendingDraftFollowUp?.actionType ?? plannedAction.type;
+    const resolvedActionFields = mergePendingDraftStructuralFields({
       actionType,
-      fieldsProvided: plannedAction.fieldsProvided,
-      message: normalizedCommand.text,
-      retrieval,
+      resolvedActionFields: resolveActionFields({
+        actionType,
+        fieldsProvided: plannedAction.fieldsProvided,
+        message: normalizedCommand.text,
+        retrieval,
+      }),
+      pending: pendingDraftFollowUp,
     });
     const authorization = authorizeAction(actionType, context);
     if (!authorization.ok) {
@@ -1379,15 +1553,28 @@ export async function handleAssistantTurn({
       });
     }
 
-    const pendingAction = await createPendingAction({
-      conversationId: resolvedConversationId,
-      userId,
-      orgId,
-      groupId,
-      actionType,
-      actionFields: enrichedActionFields,
-      payload: mergedDraftPreview,
-    });
+    const pendingActionId = pendingDraftFollowUp?.id;
+    if (pendingActionId) {
+      await updatePendingActionPayload({
+        id: pendingActionId,
+        currentPayload: mergedDraftPreview,
+        actionFields: enrichedActionFields,
+      });
+    }
+
+    const pendingAction = pendingActionId
+      ? {
+          id: pendingActionId,
+        }
+      : await createPendingAction({
+          conversationId: resolvedConversationId,
+          userId,
+          orgId,
+          groupId,
+          actionType,
+          actionFields: enrichedActionFields,
+          payload: mergedDraftPreview,
+        });
 
     const previewState = getPreviewState(normalizedPlan.intent);
     const result: AssistantTurnResponse = {

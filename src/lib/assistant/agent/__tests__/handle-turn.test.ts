@@ -2,6 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+vi.mock('@/lib/ai-chat-server', () => ({
+  AI_CHAT_RESPONDER_SYSTEM_PROMPT: 'test responder prompt',
+  buildAiChatResponderPrompt: vi.fn().mockReturnValue('test responder request'),
+  fetchAiChatDataContext: vi.fn().mockResolvedValue({
+    context: {
+      announcements: [],
+      events: [],
+    },
+    usedEntities: [],
+  }),
+}));
+
 vi.mock('@/lib/telemetry', () => ({
   addBreadcrumb: vi.fn().mockResolvedValue(undefined),
 }));
@@ -65,6 +77,10 @@ vi.mock('@/lib/assistant/agent/retry', () => ({
 }));
 
 import { createPendingAction } from '@/lib/assistant/agent/pending-actions';
+import {
+  getLatestValidPendingAction,
+  updatePendingActionPayload,
+} from '@/lib/assistant/agent/pending-actions';
 import { handleAssistantTurn } from '@/lib/assistant/agent/handle-turn';
 import { runLlmStepWithRetry } from '@/lib/assistant/agent/retry';
 
@@ -91,6 +107,20 @@ const messagePlannerValue = {
     fieldsProvided: {
       recipients: ['alex@example.com'],
     },
+    fieldsMissing: [],
+    requiresPreview: true,
+    requiresConfirmation: true,
+  },
+  confidence: 0.9,
+};
+
+const updateAnnouncementPlannerValue = {
+  intent: 'draft_action' as const,
+  summary: 'Revise the active announcement draft.',
+  needsRetrieval: false,
+  action: {
+    type: 'update_announcement' as const,
+    fieldsProvided: {},
     fieldsMissing: [],
     requiresPreview: true,
     requiresConfirmation: true,
@@ -495,6 +525,219 @@ describe('handleAssistantTurn', () => {
         },
       })
     );
+  });
+
+  it('reuses the active pending announcement draft for update_announcement follow-ups', async () => {
+    vi.mocked(getLatestValidPendingAction).mockResolvedValue({
+      id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      actionType: 'create_announcement',
+      actionFields: {
+        title: 'Dues Reminder',
+        body: 'This is a reminder that dues still need to be paid.',
+      },
+      originalDraftPayload: {
+        kind: 'announcement',
+        title: 'Dues Reminder',
+        body: 'This is a reminder that dues still need to be paid.',
+      },
+      currentPayload: {
+        kind: 'announcement',
+        title: 'Dues Reminder',
+        body: 'This is a reminder that dues still need to be paid.',
+      },
+      status: 'pending',
+      idempotencyKey: 'idem-existing',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      expiresAt: '2099-04-23T19:00:00.000Z',
+      resultEntityId: null,
+      resultEntityType: null,
+      resultMessage: null,
+    });
+
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...updateAnnouncementPlannerValue,
+            action: { ...updateAnnouncementPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              title: 'Quick Dues Reminder',
+              body: 'Please pay your dues this week.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'announcement',
+          title: 'Quick Dues Reminder',
+          body: 'Please pay your dues this week.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      message: 'make it shorter',
+      history: [
+        {
+          role: 'assistant',
+          content:
+            'assistant_state: draft_preview\nassistant_reply: Here is a draft announcement.\ndraft_payload: {"kind":"announcement","title":"Dues Reminder","body":"This is a reminder that dues still need to be paid."}\npending_action_id: 182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+        },
+      ],
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.pendingActionId).toBe('182ef2d1-3f77-4b24-88b8-75be9fbd9c50');
+    expect(result.preview).toEqual({
+      kind: 'announcement',
+      title: 'Quick Dues Reminder',
+      body: 'Please pay your dues this week.',
+    });
+    expect(createPendingAction).not.toHaveBeenCalled();
+    expect(updatePendingActionPayload).toHaveBeenCalledWith({
+      id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      currentPayload: {
+        kind: 'announcement',
+        title: 'Quick Dues Reminder',
+        body: 'Please pay your dues this week.',
+      },
+      actionFields: {
+        title: 'Quick Dues Reminder',
+        body: 'Please pay your dues this week.',
+      },
+    });
+  });
+
+  it('keeps an explicit targetRef update separate from the active draft', async () => {
+    vi.mocked(getLatestValidPendingAction).mockResolvedValue({
+      id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      actionType: 'create_announcement',
+      actionFields: {
+        title: 'Draft Dues Reminder',
+        body: 'Current draft body.',
+      },
+      originalDraftPayload: {
+        kind: 'announcement',
+        title: 'Draft Dues Reminder',
+        body: 'Current draft body.',
+      },
+      currentPayload: {
+        kind: 'announcement',
+        title: 'Draft Dues Reminder',
+        body: 'Current draft body.',
+      },
+      status: 'pending',
+      idempotencyKey: 'idem-existing',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      expiresAt: '2099-04-23T19:00:00.000Z',
+      resultEntityId: null,
+      resultEntityType: null,
+      resultMessage: null,
+    });
+
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...updateAnnouncementPlannerValue,
+            action: {
+              ...updateAnnouncementPlannerValue.action,
+              fieldsProvided: { targetRef: '18' },
+            },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              body: 'Updated posted announcement body.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'announcement',
+          title: 'Board Elections',
+          body: 'Updated posted announcement body.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      message: 'update the board elections announcement',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'update_announcement',
+        actionFields: expect.objectContaining({
+          targetRef: '18',
+        }),
+      })
+    );
+    expect(updatePendingActionPayload).not.toHaveBeenCalled();
   });
 
   it('includes fallback diagnostics when the planner fails', async () => {

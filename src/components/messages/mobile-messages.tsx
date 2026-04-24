@@ -1126,7 +1126,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                     {conversation.type === "group" && !isMine ? (
                       <p className="mb-1 text-[11px] font-medium text-muted-foreground">{sender?.name || message.sender}</p>
                     ) : null}
-                    <p>{message.text}</p>
+                    <p className="whitespace-pre-wrap">{message.text}</p>
                     <p className={cn("mt-1 text-right text-[11px]", isMine ? "text-primary-foreground/70" : "text-muted-foreground")}>
                       {formatTimestamp(message.timestamp)}
                     </p>

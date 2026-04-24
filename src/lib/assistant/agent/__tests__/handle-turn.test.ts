@@ -424,6 +424,79 @@ describe('handleAssistantTurn', () => {
     ]);
   });
 
+  it('preserves the authoritative announcement body when the draft preview omits it', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...announcementPlannerValue,
+            action: { ...announcementPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              title: 'Dues Reminder',
+              body: 'Reminder that dues are due this week.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'announcement',
+          title: 'Dues Reminder',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      requestId: 'req-draft-omitted-body',
+      message: 'send an announcement reminding everyone to pay dues',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview).toEqual({
+      kind: 'announcement',
+      title: 'Dues Reminder',
+      body: 'Reminder that dues are due this week.',
+    });
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: {
+          kind: 'announcement',
+          title: 'Dues Reminder',
+          body: 'Reminder that dues are due this week.',
+        },
+      })
+    );
+  });
+
   it('includes fallback diagnostics when the planner fails', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementationOnce(async () => ({
       ok: false,

@@ -278,6 +278,60 @@ const mergePreviewPatch = (preview: DraftPreview, patch: Record<string, unknown>
     ...patch,
   });
 
+const hasNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const hasRecipientList = (value: unknown): boolean => Array.isArray(value) && value.length > 0;
+
+const mergeAuthoritativeFieldsIntoPreview = (
+  preview: DraftPreview,
+  fieldsProvided: Record<string, unknown>
+) => {
+  switch (preview.kind) {
+    case 'announcement':
+      return parseDraftPreview({
+        ...preview,
+        ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
+          ? {}
+          : { title: fieldsProvided.title }),
+        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
+          ? {}
+          : { body: fieldsProvided.body }),
+      });
+    case 'event':
+      return parseDraftPreview({
+        ...preview,
+        ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
+          ? {}
+          : { title: fieldsProvided.title }),
+        ...(hasNonEmptyString(preview.description) || !hasNonEmptyString(fieldsProvided.description)
+          ? {}
+          : { description: fieldsProvided.description }),
+        ...(hasNonEmptyString(preview.date) || !hasNonEmptyString(fieldsProvided.date)
+          ? {}
+          : { date: fieldsProvided.date }),
+        ...(hasNonEmptyString(preview.time) || !hasNonEmptyString(fieldsProvided.time)
+          ? {}
+          : { time: fieldsProvided.time }),
+        ...(hasNonEmptyString(preview.location) || !hasNonEmptyString(fieldsProvided.location)
+          ? {}
+          : { location: fieldsProvided.location }),
+      });
+    case 'message':
+      return parseDraftPreview({
+        ...preview,
+        ...(hasRecipientList(preview.recipients) || !hasRecipientList(fieldsProvided.recipients)
+          ? {}
+          : { recipients: fieldsProvided.recipients }),
+        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
+          ? {}
+          : { body: fieldsProvided.body }),
+      });
+    default:
+      return preview;
+  }
+};
+
 async function resolveUserEmail(userId: string) {
   const admin = createSupabaseAdmin();
   const { data, error } = await admin.from('profiles').select('email').eq('id', userId).maybeSingle();
@@ -872,19 +926,24 @@ export async function handleAssistantTurn({
         });
       }
 
+      const regeneratedPreview = mergeAuthoritativeFieldsIntoPreview(
+        draftRun.value,
+        pending.actionFields
+      );
+
       await updatePendingActionPayload({
         id: pending.id,
-        currentPayload: draftRun.value,
+        currentPayload: regeneratedPreview,
       });
 
       const result: AssistantTurnResponse = {
         state: 'draft_preview',
         conversationId: resolvedConversationId,
         turnId,
-        reply: buildPreviewReply(draftRun.value, false),
-        preview: draftRun.value,
+        reply: buildPreviewReply(regeneratedPreview, false),
+        preview: regeneratedPreview,
         pendingActionId: pending.id,
-        ui: buildPreviewUi(draftRun.value, pending.actionType),
+        ui: buildPreviewUi(regeneratedPreview, pending.actionType),
         retryCount: draftRun.retryCount,
         timeoutFlag: draftRun.timeoutFlag,
       };
@@ -1233,10 +1292,15 @@ export async function handleAssistantTurn({
       });
     }
 
+    const mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
+      draftRun.value,
+      enrichedActionFields
+    );
+
     const postDraftRequirements = evaluateRequiredFields(
       actionType,
       enrichedActionFields,
-      draftRun.value
+      mergedDraftPreview
     );
     if (postDraftRequirements.missingFields.length > 0 && postDraftRequirements.clarificationMessage) {
       return persistTurnResult({
@@ -1270,7 +1334,7 @@ export async function handleAssistantTurn({
       groupId,
       actionType,
       actionFields: enrichedActionFields,
-      payload: draftRun.value,
+      payload: mergedDraftPreview,
     });
 
     const previewState = getPreviewState(normalizedPlan.intent);
@@ -1278,10 +1342,10 @@ export async function handleAssistantTurn({
       state: previewState,
       conversationId: resolvedConversationId,
       turnId,
-      reply: buildPreviewReply(draftRun.value, previewState === 'awaiting_confirmation'),
-      preview: draftRun.value,
+      reply: buildPreviewReply(mergedDraftPreview, previewState === 'awaiting_confirmation'),
+      preview: mergedDraftPreview,
       pendingActionId: pendingAction.id,
-      ui: buildPreviewUi(draftRun.value, actionType),
+      ui: buildPreviewUi(mergedDraftPreview, actionType),
       retryCount: draftRun.retryCount,
       timeoutFlag: draftRun.timeoutFlag,
     };

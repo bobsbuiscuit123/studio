@@ -14,6 +14,7 @@ import {
   ASSISTANT_OPEN_EVENT,
   clearAssistantPrefill,
 } from "@/lib/assistant/prefill";
+import { publishAssistantEmailDraft } from "@/lib/assistant/email-draft-handoff";
 import { useClubData } from "@/lib/data-hooks";
 
 type AssistantOpenEventDetail = {
@@ -81,6 +82,48 @@ const createClientMessage = (
 
 const getTurnDisplayText = (turn: ReturnType<typeof assistantTurnResponseSchema.parse>) =>
   "reply" in turn ? turn.reply : turn.message;
+
+const getEmailDraftForSuccessTurn = ({
+  command,
+  messages,
+  turn,
+}: {
+  command: AssistantCommand | null;
+  messages: AiChatClientMessage[];
+  turn: ReturnType<typeof assistantTurnResponseSchema.parse>;
+}) => {
+  if (turn.state !== "success" || turn.entityRef?.entityType !== "email") {
+    return null;
+  }
+
+  if (
+    command?.kind === "confirm" &&
+    command.preview?.kind === "email"
+  ) {
+    const subject = command.preview.patch.subject?.trim() ?? "";
+    const body = command.preview.patch.body?.trim() ?? "";
+    if (subject && body) {
+      return { subject, body };
+    }
+  }
+
+  const pendingActionId = turn.entityRef.entityId;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const candidateTurn = messages[index]?.turn;
+    if (!candidateTurn || !("preview" in candidateTurn)) {
+      continue;
+    }
+    if (candidateTurn.pendingActionId !== pendingActionId || candidateTurn.preview.kind !== "email") {
+      continue;
+    }
+
+    const subject = candidateTurn.preview.subject?.trim() ?? "";
+    const body = candidateTurn.preview.body?.trim() ?? "";
+    return subject && body ? { subject, body } : null;
+  }
+
+  return null;
+};
 
 export function useAssistantChat({
   enableExternalOpen = false,
@@ -189,14 +232,21 @@ export function useAssistantChat({
       const assistantReply = createClientMessage("assistant", getTurnDisplayText(turn), {
         turn,
       });
-
-      setAssistantMessages(currentMessages =>
-        currentMessages.map(currentMessage =>
-          currentMessage.id === pendingMessage.id ? assistantReply : currentMessage
-        )
+      const resolvedMessages = nextMessages.map(currentMessage =>
+        currentMessage.id === pendingMessage.id ? assistantReply : currentMessage
       );
 
+      setAssistantMessages(resolvedMessages);
+
       if (turn.state === "success") {
+        const emailDraft = getEmailDraftForSuccessTurn({
+          command: isTextMessage ? null : message,
+          messages: resolvedMessages,
+          turn,
+        });
+        if (emailDraft) {
+          publishAssistantEmailDraft(emailDraft);
+        }
         void refreshData().catch(() => false);
       }
     } catch (error) {

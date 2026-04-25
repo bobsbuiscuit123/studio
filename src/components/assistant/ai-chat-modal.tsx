@@ -57,6 +57,7 @@ type PopupSize = {
 
 type PreviewEditorState = {
   title: string;
+  subject: string;
   body: string;
   description: string;
   date: string;
@@ -116,8 +117,13 @@ const recipientsToText = (recipients?: RecipientRef[]) =>
 
 const previewToEditorState = (preview: DraftPreview): PreviewEditorState => ({
   title: preview.kind === "announcement" || preview.kind === "event" ? preview.title ?? "" : "",
+  subject: preview.kind === "email" ? preview.subject ?? "" : "",
   body:
-    preview.kind === "announcement" ? preview.body ?? "" : preview.kind === "message" ? preview.body ?? "" : "",
+    preview.kind === "announcement" || preview.kind === "email"
+      ? preview.body ?? ""
+      : preview.kind === "message"
+        ? preview.body ?? ""
+        : "",
   description: preview.kind === "event" ? preview.description ?? "" : "",
   date: preview.kind === "event" ? preview.date ?? "" : "",
   time: preview.kind === "event" ? preview.time ?? "" : "",
@@ -163,6 +169,14 @@ const buildPatchFromEditorState = (preview: DraftPreview, editor: PreviewEditorS
           ...(parseRecipients(editor.recipientsText) ? { recipients: parseRecipients(editor.recipientsText) } : {}),
         },
       };
+    case "email":
+      return {
+        kind: "email" as const,
+        patch: {
+          ...(editor.subject.trim() ? { subject: editor.subject.trim() } : {}),
+          ...(editor.body.trim() ? { body: editor.body.trim() } : {}),
+        },
+      };
     default:
       return {
         kind: "announcement" as const,
@@ -179,6 +193,8 @@ const getPreviewKindLabel = (preview: DraftPreview) => {
       return "Event";
     case "message":
       return "Message";
+    case "email":
+      return "Email";
     default:
       return "Draft";
   }
@@ -354,7 +370,26 @@ function AssistantTurnContent({
             </div>
           ) : null}
 
-          {turn.preview.kind === "announcement" ? (
+          {turn.preview.kind === "email" ? (
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                Subject
+              </label>
+              <Input
+                value={currentEditor.subject}
+                onChange={event =>
+                  setEditor(current => ({
+                    ...(current ?? currentEditor),
+                    subject: event.target.value,
+                  }))
+                }
+                disabled={isSending || !turn.ui.canEdit}
+                className="h-10 border-white/10 bg-white/5 text-sm"
+              />
+            </div>
+          ) : null}
+
+          {turn.preview.kind === "announcement" || turn.preview.kind === "email" ? (
             <div className="mt-3 space-y-2">
               <label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
                 Body

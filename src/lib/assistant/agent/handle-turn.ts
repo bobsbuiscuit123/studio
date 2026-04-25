@@ -25,6 +25,7 @@ import { getAssistantActionFlag } from '@/lib/assistant/agent/feature-flags';
 import {
   announcementPatchSchema,
   assistantCommandSchema,
+  emailPatchSchema,
   eventPatchSchema,
   agentPlanSchema,
   messagePatchSchema,
@@ -77,6 +78,7 @@ const draftableActionTypes = new Set<AgentActionType>([
   'create_event',
   'update_event',
   'create_message',
+  'create_email',
 ]);
 
 const getActionLabel = (actionType: AgentActionType) => {
@@ -89,6 +91,8 @@ const getActionLabel = (actionType: AgentActionType) => {
       return 'events';
     case 'create_message':
       return 'messages';
+    case 'create_email':
+      return 'emails';
     default:
       return 'that';
   }
@@ -226,6 +230,8 @@ const getEditableFields = (preview: DraftPreview) => {
       return ['title', 'description', 'date', 'time', 'location'];
     case 'message':
       return ['recipients', 'body'];
+    case 'email':
+      return ['subject', 'body'];
     default:
       return [];
   }
@@ -248,6 +254,8 @@ const buildPreviewReply = (preview: DraftPreview, awaitingConfirmation: boolean)
       ? 'announcement'
       : preview.kind === 'event'
         ? 'event'
+        : preview.kind === 'email'
+          ? 'email'
         : 'message';
 
   return awaitingConfirmation
@@ -390,6 +398,8 @@ const getPatchSchemaForPreview = (preview: DraftPreview) => {
       return eventPatchSchema;
     case 'message':
       return messagePatchSchema;
+    case 'email':
+      return emailPatchSchema;
     default:
       return announcementPatchSchema;
   }
@@ -450,6 +460,16 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? {}
           : { body: fieldsProvided.body }),
       });
+    case 'email':
+      return parseDraftPreview({
+        ...preview,
+        ...(hasNonEmptyString(preview.subject) || !hasNonEmptyString(fieldsProvided.subject)
+          ? {}
+          : { subject: fieldsProvided.subject }),
+        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
+          ? {}
+          : { body: fieldsProvided.body }),
+      });
     default:
       return preview;
   }
@@ -491,6 +511,13 @@ const buildPreviewFromAuthoritativeFields = ({
         ...(seedPreview?.kind === 'message' ? seedPreview : { kind: 'message' as const }),
         kind: 'message',
         ...(hasRecipientList(fieldsProvided.recipients) ? { recipients: fieldsProvided.recipients } : {}),
+        ...(hasNonEmptyString(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+      });
+    case 'create_email':
+      return parseDraftPreview({
+        ...(seedPreview?.kind === 'email' ? seedPreview : { kind: 'email' as const }),
+        kind: 'email',
+        ...(hasNonEmptyString(fieldsProvided.subject) ? { subject: fieldsProvided.subject } : {}),
         ...(hasNonEmptyString(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     default:

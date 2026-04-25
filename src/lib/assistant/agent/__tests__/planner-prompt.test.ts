@@ -19,6 +19,12 @@ describe('assistant planner prompt', () => {
     expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
       'create_message: draft or plan sending an in-app direct or group message'
     );
+    expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
+      'create_email: draft or plan filling the email tab composer'
+    );
+    expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
+      'Prefer create_email over create_message when the user explicitly asks for an email'
+    );
   });
 
   it('routes unsupported asset requests to conversational with no action', () => {
@@ -31,7 +37,7 @@ describe('assistant planner prompt', () => {
     expect(prompt).toContain('Unsupported or miscellaneous capability requests must stay conversational with no action.');
     expect(prompt).toContain('making a flyer, poster, graphic, image, logo, slide deck');
     expect(prompt).toContain(
-      'Do not force unsupported requests into create_announcement, create_event, or create_message'
+      'Do not force unsupported requests into create_announcement, create_event, create_message, or create_email'
     );
     expect(prompt).toContain(
       'If the user asks for an unsupported asset or deliverable, set intent to conversational, omit action'

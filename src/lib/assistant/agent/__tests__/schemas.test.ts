@@ -4,6 +4,8 @@ import {
   announcementDraftPreviewSchema,
   announcementPatchSchema,
   assistantCommandSchema,
+  emailDraftPreviewSchema,
+  emailPatchSchema,
   eventPatchSchema,
   geminiFieldValidationResultSchema,
   messagePatchSchema,
@@ -34,6 +36,25 @@ describe('preview patch schemas', () => {
       date: '2026-11-04',
       location: 'Gym',
       extra: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it('parses email draft previews with a stable discriminator', () => {
+    const parsed = emailDraftPreviewSchema.safeParse({
+      kind: 'email',
+      subject: 'Bake Sale Reminder',
+      body: 'Please stop by the bake sale after school.',
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects unknown email patch keys', () => {
+    const parsed = emailPatchSchema.safeParse({
+      subject: 'Hello',
+      unsafe: 'nope',
     });
 
     expect(parsed.success).toBe(false);

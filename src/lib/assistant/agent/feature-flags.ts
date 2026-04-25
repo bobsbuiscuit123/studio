@@ -34,6 +34,10 @@ export const ASSISTANT_ACTION_FLAGS: Record<AgentActionType, AssistantActionFlag
     draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_CREATE_MESSAGE, true),
     executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_CREATE_MESSAGE, true),
   },
+  create_email: {
+    draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_CREATE_EMAIL, true),
+    executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_CREATE_EMAIL, true),
+  },
 };
 
 export const getAssistantActionFlag = (actionType: AgentActionType) =>

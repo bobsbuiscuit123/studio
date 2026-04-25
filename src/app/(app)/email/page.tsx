@@ -1,7 +1,7 @@
 
 "use client";
 
-import { Suspense, useState, useMemo, useEffect, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -21,9 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { notifyOrgAiUsageChanged, useMembers, useCurrentUserRole } from "@/lib/data-hooks";
-import type { GenerateEmailOutput } from "@/ai/flows/generate-email";
+import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
+import {
+  ASSISTANT_EMAIL_DRAFT_EVENT,
+  clearAssistantEmailDraft,
+  readAssistantEmailDraft,
+  type AssistantEmailDraft,
+} from "@/lib/assistant/email-draft-handoff";
 
 
 const promptFormSchema = z.object({
@@ -45,14 +50,30 @@ function EmailPageInner() {
   const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
   const [hydratedFromQuery, setHydratedFromQuery] = useState(false);
   const [showAi, setShowAi] = useState(false);
-  const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
+  const applyAssistantDraft = useCallback((draft: AssistantEmailDraft) => {
+    setEmailContent({
+      subject: draft.subject,
+      body: draft.body,
+    });
+    setHydratedFromQuery(true);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("subject", draft.subject);
+      url.searchParams.set("body", draft.body);
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
+
   const openEmailAssistant = (prompt: string) => {
     openAssistantWithContext(
       [
         "I’m on the email page for this group.",
         prompt,
-        "Draft a subject and body for an email to members. Keep it editable and do not send anything automatically.",
+        "Draft a subject and body for an email to members.",
+        "Use the email action so confirming fills the email tab composer only.",
+        "Do not send anything automatically.",
       ].join(" ")
     );
   };
@@ -78,15 +99,42 @@ function EmailPageInner() {
 
   useEffect(() => {
     if (hydratedFromQuery) return;
+    const storedDraft = readAssistantEmailDraft();
+    if (storedDraft) {
+      applyAssistantDraft(storedDraft);
+      clearAssistantEmailDraft();
+      return;
+    }
+
     const subject = searchParams.get("subject");
     const body = searchParams.get("body");
     if (!subject && !body) return;
     setEmailContent({
-      subject: subject ? decodeURIComponent(subject) : "",
-      body: body ? decodeURIComponent(body) : "",
+      subject: subject ?? "",
+      body: body ?? "",
     });
     setHydratedFromQuery(true);
-  }, [hydratedFromQuery, searchParams]);
+  }, [applyAssistantDraft, hydratedFromQuery, searchParams]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleAssistantEmailDraft = (event: Event) => {
+      const draft = (event as CustomEvent<{ draft?: AssistantEmailDraft }>).detail?.draft;
+      if (!draft?.subject || !draft?.body) {
+        return;
+      }
+
+      applyAssistantDraft(draft);
+      clearAssistantEmailDraft();
+    };
+
+    window.addEventListener(ASSISTANT_EMAIL_DRAFT_EVENT, handleAssistantEmailDraft as EventListener);
+    return () =>
+      window.removeEventListener(ASSISTANT_EMAIL_DRAFT_EVENT, handleAssistantEmailDraft as EventListener);
+  }, [applyAssistantDraft]);
 
   const handleGenerateDraft = async (values: z.infer<typeof promptFormSchema>) => {
     openEmailAssistant(values.prompt);

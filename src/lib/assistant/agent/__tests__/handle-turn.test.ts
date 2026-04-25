@@ -42,6 +42,7 @@ vi.mock('@/lib/assistant/agent/context', () => ({
       canCreateEvents: true,
       canUpdateEvents: true,
       canMessageMembers: true,
+      canCreateEmails: true,
     },
   }),
 }));
@@ -107,6 +108,20 @@ const messagePlannerValue = {
     fieldsProvided: {
       recipients: ['alex@example.com'],
     },
+    fieldsMissing: [],
+    requiresPreview: true,
+    requiresConfirmation: true,
+  },
+  confidence: 0.9,
+};
+
+const emailPlannerValue = {
+  intent: 'draft_action' as const,
+  summary: 'Draft an email.',
+  needsRetrieval: false,
+  action: {
+    type: 'create_email' as const,
+    fieldsProvided: {},
     fieldsMissing: [],
     requiresPreview: true,
     requiresConfirmation: true,
@@ -204,6 +219,85 @@ describe('handleAssistantTurn', () => {
         actionFields: expect.objectContaining({
           title: 'Dues Reminder',
           body: 'Reminder that dues are due this week.',
+        }),
+      })
+    );
+  });
+
+  it('creates editable email drafts from validator-owned subject and body fields', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...emailPlannerValue,
+            action: { ...emailPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              subject: 'ELA Test Reminder',
+              body: 'Please remember the ELA test on April 30 and plan accordingly.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'email',
+          subject: 'ELA Test Reminder',
+          body: 'Please remember the ELA test on April 30 and plan accordingly.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      message: 'draft an email to members about the ela test on the 30th',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview.kind).toBe('email');
+    if (result.preview.kind !== 'email') {
+      throw new Error('Expected email preview.');
+    }
+
+    expect(result.preview.subject).toBe('ELA Test Reminder');
+    expect(result.preview.body).toContain('April 30');
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'create_email',
+        actionFields: expect.objectContaining({
+          subject: 'ELA Test Reminder',
+          body: 'Please remember the ELA test on April 30 and plan accordingly.',
+        }),
+        payload: expect.objectContaining({
+          kind: 'email',
+          subject: 'ELA Test Reminder',
         }),
       })
     );

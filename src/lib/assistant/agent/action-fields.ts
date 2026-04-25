@@ -95,6 +95,7 @@ export const ALLOWED_INFERRED_FIELDS_BY_ACTION: Record<AgentActionType, Set<stri
   create_event: new Set(['title', 'description', 'location', 'date', 'time']),
   update_event: new Set(['title', 'description', 'location', 'date', 'time']),
   create_message: new Set(['body']),
+  create_email: new Set(['subject', 'body']),
 };
 
 const normalize = (value: unknown) =>

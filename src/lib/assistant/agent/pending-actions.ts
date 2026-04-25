@@ -23,7 +23,8 @@ const mapPendingAction = (value: Record<string, unknown>): PendingAction => ({
   resultEntityType:
     value.result_entity_type === 'announcement' ||
     value.result_entity_type === 'event' ||
-    value.result_entity_type === 'message'
+    value.result_entity_type === 'message' ||
+    value.result_entity_type === 'email'
       ? value.result_entity_type
       : null,
   resultMessage: typeof value.result_message === 'string' ? value.result_message : null,

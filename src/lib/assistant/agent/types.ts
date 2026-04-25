@@ -25,7 +25,8 @@ export type AgentActionType =
   | 'update_announcement'
   | 'create_event'
   | 'update_event'
-  | 'create_message';
+  | 'create_message'
+  | 'create_email';
 
 export type RetrievalTargetResource =
   | 'announcements'
@@ -75,10 +76,17 @@ export type MessageDraftPreview = {
   body?: string;
 };
 
+export type EmailDraftPreview = {
+  kind: 'email';
+  subject?: string;
+  body?: string;
+};
+
 export type DraftPreview =
   | AnnouncementDraftPreview
   | EventDraftPreview
-  | MessageDraftPreview;
+  | MessageDraftPreview
+  | EmailDraftPreview;
 
 export type AssistantCommand =
   | { kind: 'message'; text: string }
@@ -88,7 +96,8 @@ export type AssistantCommand =
       preview?:
         | { kind: 'announcement'; patch: Partial<AnnouncementDraftPreview> }
         | { kind: 'event'; patch: Partial<EventDraftPreview> }
-        | { kind: 'message'; patch: Partial<MessageDraftPreview> };
+        | { kind: 'message'; patch: Partial<MessageDraftPreview> }
+        | { kind: 'email'; patch: Partial<EmailDraftPreview> };
     }
   | { kind: 'cancel'; pendingActionId: string }
   | {
@@ -97,7 +106,8 @@ export type AssistantCommand =
       preview:
         | { kind: 'announcement'; patch: Partial<AnnouncementDraftPreview> }
         | { kind: 'event'; patch: Partial<EventDraftPreview> }
-        | { kind: 'message'; patch: Partial<MessageDraftPreview> };
+        | { kind: 'message'; patch: Partial<MessageDraftPreview> }
+        | { kind: 'email'; patch: Partial<EmailDraftPreview> };
     }
   | { kind: 'regenerate'; pendingActionId: string };
 
@@ -111,7 +121,7 @@ export type AssistantUiActions = {
 
 export type AssistantEntityRef = {
   entityId: string;
-  entityType: 'announcement' | 'event' | 'message';
+  entityType: 'announcement' | 'event' | 'message' | 'email';
 };
 
 export type AssistantTurnDiagnostics = {
@@ -219,14 +229,15 @@ export type PendingAction = {
 
 export type AgentContext = {
   role: 'admin' | 'officer' | 'member';
-  permissions: {
-    canCreateAnnouncements: boolean;
-    canUpdateAnnouncements: boolean;
-    canCreateEvents: boolean;
-    canUpdateEvents: boolean;
-    canMessageMembers: boolean;
+    permissions: {
+      canCreateAnnouncements: boolean;
+      canUpdateAnnouncements: boolean;
+      canCreateEvents: boolean;
+      canUpdateEvents: boolean;
+      canMessageMembers: boolean;
+      canCreateEmails: boolean;
+    };
   };
-};
 
 export type AssistantTurnPersistInput = {
   conversationId: string;

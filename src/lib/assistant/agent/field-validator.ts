@@ -14,6 +14,7 @@ const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
   create_event: ['title', 'description', 'location', 'date', 'time'],
   update_event: ['title', 'description', 'location', 'date', 'time'],
   create_message: ['body'],
+  create_email: ['subject', 'body'],
 };
 
 const FIELD_VALIDATOR_SYSTEM_PROMPT = [
@@ -27,6 +28,7 @@ const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Generate polished user-facing content for copy fields such as title, body, description, and location.',
   'For new announcements, short intents like "remind everyone to pay dues in an announcement" are enough to generate both a concise title and a complete announcement body.',
   'For direct messages, short intents like "send Alex a reminder about dues" are enough to generate a complete message body once recipients are resolved.',
+  'For group emails, generate both a clear subject line and a ready-to-edit email body.',
   'For events, if date, time, or location are not explicitly provided, choose reasonable editable defaults relative to request_received_at and request_timezone.',
   'For events, return date in YYYY-MM-DD format and time in HH:MM 24-hour format, both interpreted in request_timezone.',
   'When the user gives a calendar day like "the 30th", resolve it relative to request_received_at and request_timezone. Do not substitute a different date.',

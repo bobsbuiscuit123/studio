@@ -20,6 +20,7 @@ export const recipientSchema = z
 
 const nonEmptyTrimmedStringSchema = z.string().trim().min(1);
 const titleFieldSchema = nonEmptyTrimmedStringSchema.max(160);
+const subjectFieldSchema = nonEmptyTrimmedStringSchema.max(200);
 const bodyFieldSchema = nonEmptyTrimmedStringSchema.max(5_000);
 const descriptionFieldSchema = nonEmptyTrimmedStringSchema.max(5_000);
 const locationFieldSchema = nonEmptyTrimmedStringSchema.max(240);
@@ -28,6 +29,7 @@ const timeFieldSchema = nonEmptyTrimmedStringSchema;
 const announcementKindSchema = z.enum(['announcement']);
 const eventKindSchema = z.enum(['event']);
 const messageKindSchema = z.enum(['message']);
+const emailKindSchema = z.enum(['email']);
 
 export const announcementDraftPreviewSchema = z
   .object({
@@ -57,10 +59,19 @@ export const messageDraftPreviewSchema = z
   })
   .strict();
 
+export const emailDraftPreviewSchema = z
+  .object({
+    kind: emailKindSchema,
+    subject: subjectFieldSchema.optional(),
+    body: bodyFieldSchema.optional(),
+  })
+  .strict();
+
 export const draftPreviewSchema = z.discriminatedUnion('kind', [
   announcementDraftPreviewSchema,
   eventDraftPreviewSchema,
   messageDraftPreviewSchema,
+  emailDraftPreviewSchema,
 ]);
 
 export const announcementPatchSchema = z
@@ -83,6 +94,13 @@ export const eventPatchSchema = z
 export const messagePatchSchema = z
   .object({
     recipients: z.array(recipientSchema).min(1).optional(),
+    body: bodyFieldSchema.optional(),
+  })
+  .strict();
+
+export const emailPatchSchema = z
+  .object({
+    subject: subjectFieldSchema.optional(),
     body: bodyFieldSchema.optional(),
   })
   .strict();
@@ -113,6 +131,10 @@ export const actionFieldSchemaByActionType = {
   create_message: {
     body: bodyFieldSchema,
   },
+  create_email: {
+    subject: subjectFieldSchema,
+    body: bodyFieldSchema,
+  },
 } as const;
 
 export const geminiFieldValidationResultSchema = z
@@ -136,6 +158,7 @@ export const draftPreviewPatchSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('announcement'), patch: announcementPatchSchema }).strict(),
   z.object({ kind: z.literal('event'), patch: eventPatchSchema }).strict(),
   z.object({ kind: z.literal('message'), patch: messagePatchSchema }).strict(),
+  z.object({ kind: z.literal('email'), patch: emailPatchSchema }).strict(),
 ]);
 
 export const retryMetadataSchema = z
@@ -151,6 +174,7 @@ export const agentActionTypeSchema = z.enum([
   'create_event',
   'update_event',
   'create_message',
+  'create_email',
 ]) satisfies z.ZodType<AgentActionType>;
 
 export const agentIntentSchema = z.enum([
@@ -299,7 +323,7 @@ export const assistantTurnResponseSchema = z.discriminatedUnion('state', [
       entityRef: z
         .object({
           entityId: z.string().trim().min(1),
-          entityType: z.enum(['announcement', 'event', 'message']),
+          entityType: z.enum(['announcement', 'event', 'message', 'email']),
         })
         .strict()
         .optional(),

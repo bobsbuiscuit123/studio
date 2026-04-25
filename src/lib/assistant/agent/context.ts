@@ -31,6 +31,7 @@ export async function getAgentContext(
       canCreateEvents: canEdit,
       canUpdateEvents: canEdit,
       canMessageMembers: true,
+      canCreateEmails: canEdit,
     },
   };
 }

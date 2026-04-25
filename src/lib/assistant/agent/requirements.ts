@@ -41,6 +41,11 @@ const getMessageFields = (fieldsProvided: Record<string, unknown>, preview?: Dra
     ? { recipients: preview.recipients, body: preview.body }
     : { recipients: fieldsProvided.recipients, body: fieldsProvided.body };
 
+const getEmailFields = (fieldsProvided: Record<string, unknown>, preview?: DraftPreview | null) =>
+  preview?.kind === 'email'
+    ? { subject: preview.subject, body: preview.body }
+    : { subject: fieldsProvided.subject, body: fieldsProvided.body };
+
 export function evaluateStructuralRequiredFields(
   actionType: AgentActionType,
   fieldsProvided: Record<string, unknown>
@@ -133,6 +138,25 @@ export function evaluateRequiredFields(
       return buildResult(missing, missing[0] === 'recipients'
         ? 'Who should receive this message?'
         : 'What should this message say?');
+    }
+    case 'create_email': {
+      const { subject, body } = getEmailFields(fieldsProvided, preview);
+      const missing = [
+        !hasText(subject) ? 'subject' : null,
+        !hasText(body) ? 'body' : null,
+      ].filter((value): value is string => Boolean(value));
+      if (missing.length === 0) {
+        return buildResult([], null);
+      }
+      if (missing.length === 2) {
+        return buildResult(missing, 'What subject and body should this email use?');
+      }
+      return buildResult(
+        missing,
+        missing[0] === 'subject'
+          ? 'What subject should this email use?'
+          : 'What should this email say?'
+      );
     }
     default:
       return buildResult([], null);

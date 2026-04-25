@@ -1,6 +1,7 @@
 import { callAI } from '@/ai/genkit';
 import {
   announcementDraftPreviewSchema,
+  emailDraftPreviewSchema,
   eventDraftPreviewSchema,
   messageDraftPreviewSchema,
 } from '@/lib/assistant/agent/schemas';
@@ -9,7 +10,7 @@ import type { RetrievalBundle } from '@/lib/assistant/agent/retrieval';
 
 const baseDraftInstructions = [
   'Return JSON only.',
-  'Generate a structured in-app draft preview.',
+  'Generate a structured editable draft preview.',
   'Treat provided_fields as the authoritative resolved action fields.',
   'Assemble the preview from provided_fields and retrieval context, not by reinterpreting the raw user request as missing field content.',
   'Do not invent recipients, target references, or scheduling details that are absent from provided_fields.',
@@ -66,13 +67,21 @@ export async function generateDraftPreview(args: {
             temperature: 0.3,
             timeoutMs: 18_000,
           })
-        : await callAI({
-            messages: [{ role: 'user', content: prompt }],
-            responseFormat: 'json_object',
-            outputSchema: messageDraftPreviewSchema,
-            temperature: 0.35,
-            timeoutMs: 18_000,
-          });
+        : args.actionType === 'create_message'
+          ? await callAI({
+              messages: [{ role: 'user', content: prompt }],
+              responseFormat: 'json_object',
+              outputSchema: messageDraftPreviewSchema,
+              temperature: 0.35,
+              timeoutMs: 18_000,
+            })
+          : await callAI({
+              messages: [{ role: 'user', content: prompt }],
+              responseFormat: 'json_object',
+              outputSchema: emailDraftPreviewSchema,
+              temperature: 0.3,
+              timeoutMs: 18_000,
+            });
 
   if (!result.ok) {
     throw new Error(result.error.detail || result.error.message);

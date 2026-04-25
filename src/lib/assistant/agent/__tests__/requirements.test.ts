@@ -35,6 +35,13 @@ describe('evaluateRequiredFields', () => {
     expect(result.clarificationMessage).toBe('What should this message say?');
   });
 
+  it('requires subject and body for a completed create_email payload', () => {
+    const result = evaluateRequiredFields('create_email', {});
+
+    expect(result.missingFields).toEqual(['subject', 'body']);
+    expect(result.clarificationMessage).toBe('What subject and body should this email use?');
+  });
+
   it('requires both title and body for create announcements', () => {
     const result = evaluateRequiredFields('create_announcement', {
       title: 'Volunteer Day',

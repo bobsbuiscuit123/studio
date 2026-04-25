@@ -16,6 +16,7 @@ import {
   createAnnouncement,
   updateAnnouncement,
 } from '@/lib/assistant/agent/announcement-service';
+import { createEmailDraft } from '@/lib/assistant/agent/email-service';
 import { createEvent, updateEvent } from '@/lib/assistant/agent/event-service';
 import { createMessage } from '@/lib/assistant/agent/message-service';
 
@@ -89,6 +90,8 @@ const canExecutePendingAction = (pendingAction: PendingAction, context: AgentCon
       return context.permissions.canUpdateEvents;
     case 'create_message':
       return context.permissions.canMessageMembers;
+    case 'create_email':
+      return context.permissions.canCreateEmails;
     default:
       return false;
   }
@@ -195,7 +198,7 @@ export async function executePendingAction(args: {
               time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time ?? '' : '',
               location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
             })
-          : pending.actionType === 'update_event'
+        : pending.actionType === 'update_event'
             ? await updateEvent({
                 userId: args.userId,
                 orgId: args.orgId,
@@ -206,6 +209,15 @@ export async function executePendingAction(args: {
                 date: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.date : undefined,
                 time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time : undefined,
                 location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
+              })
+          : pending.actionType === 'create_email'
+            ? await createEmailDraft({
+                userId: args.userId,
+                orgId: args.orgId,
+                groupId: args.groupId,
+                pendingActionId: claimed.id,
+                subject: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.subject ?? '' : '',
+                body: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.body ?? '' : '',
               })
         : await createMessage({
             mode: 'recipients',

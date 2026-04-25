@@ -9,7 +9,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { Bot, CheckCircle2, Loader2, MoveDiagonal2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { Bot, CheckCircle2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import type { AiChatClientMessage } from "@/lib/ai-chat";
@@ -867,7 +867,7 @@ export function AIChatModal({
     [typedCount]
   );
 
-  const handleResizePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!layout?.resizable) {
       return;
     }
@@ -890,7 +890,7 @@ export function AIChatModal({
 
     resizeSessionRef.current = controller;
     document.body.style.userSelect = "none";
-    document.body.style.cursor = "nwse-resize";
+    document.body.style.cursor = "nesw-resize";
 
     const stopResize = () => {
       document.body.style.userSelect = previousUserSelect;
@@ -1131,15 +1131,11 @@ export function AIChatModal({
         </div>
 
         {layout.resizable ? (
-          <button
-            type="button"
-            className="assistant-popup-resize-handle"
+          <div
+            className="assistant-popup-resize-corner"
             onPointerDown={handleResizePointerDown}
-            aria-label="Resize assistant panel"
-            title="Drag to resize"
-          >
-            <MoveDiagonal2 className="h-3.5 w-3.5" />
-          </button>
+            aria-hidden="true"
+          />
         ) : null}
 
         <div

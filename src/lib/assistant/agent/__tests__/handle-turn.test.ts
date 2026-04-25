@@ -209,7 +209,7 @@ describe('handleAssistantTurn', () => {
     );
   });
 
-  it('backfills a message body when the validator returns no content fields', async () => {
+  it('asks for clarification when the validator returns no message body', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -240,15 +240,10 @@ describe('handleAssistantTurn', () => {
       }
 
       return {
-        ok: true,
-        value: {
-          kind: 'message',
-          recipients: [{ email: 'alex@example.com' }],
-          body:
-            'Just a quick note to follow up on this request. Feel free to edit any details before sending.',
-        },
+        ok: false,
         retryCount: 0,
         timeoutFlag: false,
+        lastErrorMessage: 'Draft step should not run when required fields are missing.',
       };
     });
 
@@ -262,24 +257,17 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('draft_preview');
-    if (result.state !== 'draft_preview') {
-      throw new Error('Expected draft preview result.');
+    expect(result.state).toBe('needs_clarification');
+    if (result.state !== 'needs_clarification') {
+      throw new Error('Expected clarification result.');
     }
 
-    expect(createPendingAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionFields: expect.objectContaining({
-          recipients: [{ email: 'alex@example.com' }],
-          body:
-            'Just a quick note to follow up on this request. Feel free to edit any details before sending.',
-        }),
-      })
-    );
+    expect(result.message).toBe('What should this message say?');
+    expect(result.missingFields).toEqual(['body']);
+    expect(createPendingAction).not.toHaveBeenCalled();
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
       'planner',
       'field_validator',
-      'draft',
     ]);
   });
 
@@ -382,7 +370,7 @@ describe('handleAssistantTurn', () => {
     expect(createPendingAction).not.toHaveBeenCalled();
   });
 
-  it('backfills missing announcement fields before draft', async () => {
+  it('asks for clarification when Gemini leaves required announcement fields empty', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -412,14 +400,10 @@ describe('handleAssistantTurn', () => {
       }
 
       return {
-        ok: true,
-        value: {
-          kind: 'announcement',
-          title: 'Dues Reminder',
-          body: 'Reminder that dues are due this week.',
-        },
+        ok: false,
         retryCount: 0,
         timeoutFlag: false,
+        lastErrorMessage: 'Draft step should not run when required fields are missing.',
       };
     });
 
@@ -434,23 +418,17 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('draft_preview');
-    if (result.state !== 'draft_preview') {
-      throw new Error('Expected draft preview result.');
+    expect(result.state).toBe('needs_clarification');
+    if (result.state !== 'needs_clarification') {
+      throw new Error('Expected clarification result.');
     }
 
-    expect(createPendingAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionFields: expect.objectContaining({
-          title: 'Dues Reminder',
-          body: 'Reminder that dues are due this week.',
-        }),
-      })
-    );
+    expect(result.message).toBe('What title should this announcement use?');
+    expect(result.missingFields).toEqual(['title']);
+    expect(createPendingAction).not.toHaveBeenCalled();
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
       'planner',
       'field_validator',
-      'draft',
     ]);
   });
 

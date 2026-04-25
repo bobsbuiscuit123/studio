@@ -282,11 +282,11 @@ describe('Gemini authoritative field merging', () => {
     });
   });
 
-  it('infers event date and time for tomorrow at 7', () => {
+  it('keeps Gemini-provided event date and time fields after format normalization', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
-          date: 'candidate-date',
+          date: '2026-04-30',
           time: '7:00 PM',
         },
         missingFields: [],
@@ -294,135 +294,35 @@ describe('Gemini authoritative field merging', () => {
       },
       {
         actionType: 'create_event',
-        userMessage: 'create event for elections tomorrow at 7',
+        userMessage: 'create event for elections on the 30th at 7',
       }
     );
 
-    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.date).toBe('2026-04-30');
     expect(filled.filledFields.time).toBe('19:00');
   });
 
-  it('infers event date and default evening time for next Friday evening', () => {
+  it('accepts Gemini-resolved ordinal dates without re-inferring them from the raw request', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
+          date: '2026-04-30',
+          time: '18:00',
         },
         missingFields: [],
         usedInference: true,
       },
       {
         actionType: 'create_event',
-        userMessage: 'create event for elections next Friday evening',
+        userMessage: 'put an ela test on the 30th on the calendar',
       }
     );
 
-    expect(filled.filledFields.date).toBe('2026-04-24');
-    expect(filled.filledFields.time).toBe('19:00');
-  });
-
-  it('fills a default event time when the request gives only a date', () => {
-    const filled = applyValidatorResultWithDefaults(
-      {
-        inferredFields: {
-          date: 'candidate-date',
-        },
-        missingFields: [],
-        usedInference: true,
-      },
-      {
-        actionType: 'create_event',
-        userMessage: 'create event for elections this Friday',
-      }
-    );
-
-    expect(filled.filledFields.date).toBe('2026-04-24');
+    expect(filled.filledFields.date).toBe('2026-04-30');
     expect(filled.filledFields.time).toBe('18:00');
-
-    const required = evaluateRequiredFields('create_event', filled.filledFields);
-    expect(required.missingFields).toEqual([]);
   });
 
-  it('infers tonight only when evening is still upcoming', () => {
-    const upcoming = applyValidatorResultWithDefaults(
-      {
-        inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
-        },
-        missingFields: [],
-        usedInference: true,
-      },
-      {
-        actionType: 'create_event',
-        userMessage: 'create event for elections tonight',
-        requestReceivedAt: BEFORE_EVENING,
-      }
-    );
-
-    const late = applyValidatorResultWithDefaults(
-      {
-        inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
-        },
-        missingFields: [],
-        usedInference: true,
-      },
-      {
-        actionType: 'create_event',
-        userMessage: 'create event for elections tonight',
-        requestReceivedAt: AFTER_EVENING,
-      }
-    );
-
-    expect(upcoming.filledFields.date).toBe('2026-04-23');
-    expect(upcoming.filledFields.time).toBe('19:00');
-    expect(late.filledFields.date).toBe('2026-04-24');
-    expect(late.filledFields.time).toBe('18:00');
-  });
-
-  it('infers this evening only when evening is still upcoming', () => {
-    const upcoming = applyValidatorResultWithDefaults(
-      {
-        inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
-        },
-        missingFields: [],
-        usedInference: true,
-      },
-      {
-        actionType: 'create_event',
-        userMessage: 'create event for elections this evening',
-        requestReceivedAt: BEFORE_EVENING,
-      }
-    );
-
-    const late = applyValidatorResultWithDefaults(
-      {
-        inferredFields: {
-          date: 'candidate-date',
-          time: '7:00 PM',
-        },
-        missingFields: [],
-        usedInference: true,
-      },
-      {
-        actionType: 'create_event',
-        userMessage: 'create event for elections this evening',
-        requestReceivedAt: AFTER_EVENING,
-      }
-    );
-
-    expect(upcoming.filledFields.date).toBe('2026-04-23');
-    expect(upcoming.filledFields.time).toBe('19:00');
-    expect(late.filledFields.date).toBe('2026-04-24');
-    expect(late.filledFields.time).toBe('18:00');
-  });
-
-  it('fills event defaults for an underspecified weekend request', () => {
+  it('does not backfill event fields when the validator returns nothing', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {},
@@ -431,16 +331,17 @@ describe('Gemini authoritative field merging', () => {
       },
       {
         actionType: 'create_event',
-        userMessage: 'create event for elections this weekend',
+        userMessage: 'create event for elections this Friday',
       }
     );
 
-    expect(filled.filledFields.date).toBe('2026-04-24');
-    expect(filled.filledFields.time).toBe('18:00');
-    expect(filled.filledFields.location).toBe('TBD');
+    expect(filled.filledFields).toEqual({});
+
+    const required = evaluateRequiredFields('create_event', filled.filledFields);
+    expect(required.missingFields).toEqual(['date', 'time']);
   });
 
-  it('backfills announcement copy when the validator returns nothing', () => {
+  it('does not backfill announcement copy when the validator returns nothing', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {},
@@ -452,14 +353,14 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(filled.filledFields).toEqual({
-      title: 'Dues Reminder',
-      body:
-        'This is a reminder that dues still need to be paid. Please submit your dues as soon as possible. Thank you.',
-    });
+    expect(filled.filledFields).toEqual({});
+    expect(evaluateRequiredFields('create_announcement', filled.filledFields).missingFields).toEqual([
+      'title',
+      'body',
+    ]);
   });
 
-  it('backfills message copy when the validator returns nothing', () => {
+  it('does not backfill message copy when the validator returns nothing', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {},
@@ -477,14 +378,13 @@ describe('Gemini authoritative field merging', () => {
 
     expect(filled.filledFields).toEqual({
       recipients: [{ email: 'alex@example.com' }],
-      body:
-        'Just a quick reminder that dues are still due. Please submit yours when you can. Thank you.',
     });
+    expect(evaluateRequiredFields('create_message', filled.filledFields).missingFields).toEqual(['body']);
   });
 });
 
 describe('normalizeInferredField', () => {
-  it('supports recent-history continuation for time enrichment', () => {
+  it('normalizes Gemini time strings without re-inferring them from chat history', () => {
     const result = normalizeInferredField({
       actionType: 'create_event',
       field: 'time',
@@ -501,6 +401,22 @@ describe('normalizeInferredField', () => {
     expect(result).toEqual({
       ok: true,
       value: '19:00',
+    });
+  });
+
+  it('accepts canonical Gemini date keys directly', () => {
+    const result = normalizeInferredField({
+      actionType: 'create_event',
+      field: 'date',
+      value: '2026-04-30',
+      userMessage: 'put an ela test on the 30th on the calendar',
+      requestTimezone: DEFAULT_TIMEZONE,
+      requestReceivedAt: BEFORE_EVENING,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: '2026-04-30',
     });
   });
 });

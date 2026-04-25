@@ -134,6 +134,8 @@ const countWords = (value: string) =>
     .split(' ')
     .filter(Boolean).length;
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export const hasResolvedValue = (value: unknown) => {
   if (typeof value === 'string') {
     return value.trim().length > 0;
@@ -735,6 +737,22 @@ const normalizeCandidateTime = (value: string) => {
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };
 
+const normalizeCandidateDate = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (ISO_DATE_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  const isoDateMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})T/);
+  if (isoDateMatch?.[1]) {
+    return isoDateMatch[1];
+  }
+
+  return null;
+};
+
 const getDaypartFromText = (sourceText: string) => {
   const normalizedSource = normalize(sourceText);
   if (/\b(morning)\b/i.test(normalizedSource)) return 'morning';
@@ -835,24 +853,13 @@ export function normalizeInferredField(args: {
     return { ok: false };
   }
 
-  const sourceText = getInferenceSourceText(args.userMessage, args.recentHistory);
-
   if (args.field === 'date') {
-    const dateKey = getRelativeDateKeyFromSource(
-      sourceText,
-      args.requestTimezone,
-      args.requestReceivedAt
-    );
+    const dateKey = normalizeCandidateDate(trimmedValue);
     return dateKey ? { ok: true, value: dateKey } : { ok: false };
   }
 
   if (args.field === 'time') {
-    const timeValue = getRelativeTimeFromSource({
-      sourceText,
-      candidateTime: trimmedValue,
-      requestTimezone: args.requestTimezone,
-      requestReceivedAt: args.requestReceivedAt,
-    });
+    const timeValue = normalizeCandidateTime(trimmedValue);
     return timeValue ? { ok: true, value: timeValue } : { ok: false };
   }
 
@@ -932,66 +939,9 @@ export function fillGeneratedActionFields(args: {
   requestTimezone: string;
   requestReceivedAt: string;
 }): { filledFields: PendingActionFields; defaultedFieldKeys: string[] } {
-  const filledFields: PendingActionFields = { ...args.actionFields };
-  const defaultedFieldKeys: string[] = [];
-  const inferenceSource = getInferenceSourceText(args.userMessage, args.recentHistory);
-  const availableRecipientMembers = (args.availableRecipients ?? []).map(recipient => ({
-    email: recipient.email,
-    name: recipient.name ?? '',
-  }));
-
-  const setDefaultField = (field: string, value: unknown) => {
-    if (hasResolvedValue(filledFields[field]) || !hasResolvedValue(value)) {
-      return;
-    }
-    filledFields[field] = value;
-    defaultedFieldKeys.push(field);
-  };
-
-  const getFallbackRecipients = () => {
-    if (availableRecipientMembers.length === 0) {
-      return undefined;
-    }
-
-    const explicitRecipients = resolveRecipientsFromMessage(inferenceSource, availableRecipientMembers);
-    return explicitRecipients && explicitRecipients.length > 0
-      ? explicitRecipients
-      : recipientsFromMembers(availableRecipientMembers);
-  };
-
-  switch (args.actionType) {
-    case 'create_announcement':
-    case 'update_announcement':
-      setDefaultField('title', buildAnnouncementTitle(args.userMessage));
-      setDefaultField('body', buildAnnouncementBody(args.userMessage));
-      break;
-    case 'create_message':
-      setDefaultField('body', buildMessageBody(args.userMessage));
-      setDefaultField('recipients', getFallbackRecipients());
-      break;
-    case 'create_event':
-    case 'update_event':
-      setDefaultField('title', buildEventTitle(args.userMessage));
-      setDefaultField('description', buildEventDescription(args.userMessage));
-      setDefaultField('location', extractExplicitLocation(args.userMessage) ?? DEFAULT_EVENT_LOCATION);
-      setDefaultField(
-        'date',
-        buildDefaultEventDate(inferenceSource, args.requestTimezone, args.requestReceivedAt)
-      );
-      setDefaultField(
-        'time',
-        buildDefaultEventTime({
-          sourceText: inferenceSource,
-          requestTimezone: args.requestTimezone,
-          requestReceivedAt: args.requestReceivedAt,
-        })
-      );
-      break;
-  }
-
   return {
-    filledFields,
-    defaultedFieldKeys,
+    filledFields: { ...args.actionFields },
+    defaultedFieldKeys: [],
   };
 }
 

@@ -1501,6 +1501,26 @@ export async function handleAssistantTurn({
     });
 
     if (preDraftRequirements.missingFields.length > 0) {
+      if (preDraftRequirements.clarificationMessage) {
+        return persistTurnResult({
+          userId,
+          orgId,
+          groupId,
+          conversationId: resolvedConversationId,
+          turnId,
+          requestPayload,
+          normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
+          retrievalPayload: retrieval.context as Record<string, unknown>,
+          result: buildNeedsClarification(
+            resolvedConversationId,
+            turnId,
+            preDraftRequirements.clarificationMessage,
+            preDraftRequirements.missingFields
+          ),
+          actionType,
+        });
+      }
+
       return persistTurnResult({
         userId,
         orgId,
@@ -1574,16 +1594,11 @@ export async function handleAssistantTurn({
         requestPayload,
         normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
         retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildFallbackResponse(
+        result: buildNeedsClarification(
           resolvedConversationId,
           turnId,
-          draftRun.retryCount,
-          draftRun.timeoutFlag,
-          buildDiagnostics({
-            phase: 'draft',
-            detail: `Draft preview omitted required fields: ${postDraftRequirements.missingFields.join(', ')}`,
-            requestId,
-          })
+          postDraftRequirements.clarificationMessage,
+          postDraftRequirements.missingFields
         ),
         actionType,
       });

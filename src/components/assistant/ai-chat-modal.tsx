@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Bot, CheckCircle2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 import type { AiChatClientMessage } from "@/lib/ai-chat";
 import type {
@@ -205,6 +206,46 @@ function AssistantDiagnosticsBlock({
   );
 }
 
+function AssistantRichText({
+  content,
+  className,
+}: {
+  content: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "text-sm leading-6 [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.95em] [&_em]:italic [&_li]:pl-1 [&_li]:marker:text-muted-foreground/80 [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_p]:m-0 [&_p+p]:mt-4 [&_strong]:font-semibold [&_ul]:my-0 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5",
+        className
+      )}
+    >
+      <ReactMarkdown
+        components={{
+          p: ({ node: _node, ...props }) => <p {...props} />,
+          ul: ({ node: _node, ...props }) => <ul {...props} />,
+          ol: ({ node: _node, ...props }) => <ol {...props} />,
+          li: ({ node: _node, ...props }) => <li {...props} />,
+          strong: ({ node: _node, className: strongClassName, ...props }) => (
+            <strong className={cn("font-semibold text-foreground", strongClassName)} {...props} />
+          ),
+          em: ({ node: _node, ...props }) => <em {...props} />,
+          a: ({ node: _node, className: linkClassName, ...props }) => (
+            <a className={cn("text-foreground underline underline-offset-2", linkClassName)} {...props} />
+          ),
+          code: ({ node: _node, className: codeClassName, children, ...props }) => (
+            <code className={cn("font-medium", codeClassName)} {...props}>
+              {String(children).replace(/\n$/, "")}
+            </code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 function AssistantTurnContent({
   message,
   isUser,
@@ -227,15 +268,19 @@ function AssistantTurnContent({
   }, [preview, turn?.turnId]);
 
   if (!turn) {
+    if (isUser) {
+      return (
+        <p className="whitespace-pre-wrap text-sm leading-6 text-emerald-950">
+          {message.content}
+        </p>
+      );
+    }
+
     return (
-      <p
-        className={cn(
-          "whitespace-pre-wrap text-sm leading-6",
-          isUser ? "text-emerald-950" : "text-foreground/92"
-        )}
-      >
-        {message.content}
-      </p>
+      <AssistantRichText
+        content={message.content}
+        className="text-foreground/92"
+      />
     );
   }
 
@@ -261,7 +306,7 @@ function AssistantTurnContent({
             {previewKindLabel}
           </span>
         </div>
-        <p className="text-sm leading-6 text-foreground/92">{turn.reply}</p>
+        <AssistantRichText content={turn.reply} className="text-foreground/92" />
 
         <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
           {turn.preview.kind === "announcement" || turn.preview.kind === "event" ? (
@@ -489,9 +534,7 @@ function AssistantTurnContent({
             </span>
           ) : null}
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-          {turn.reply}
-        </p>
+        <AssistantRichText content={turn.reply} className="text-foreground/92" />
       </div>
     );
   }
@@ -503,9 +546,7 @@ function AssistantTurnContent({
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm font-medium">Executing</span>
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-          {turn.reply}
-        </p>
+        <AssistantRichText content={turn.reply} className="text-foreground/92" />
       </div>
     );
   }
@@ -517,9 +558,7 @@ function AssistantTurnContent({
           <CheckCircle2 className="h-4 w-4" />
           <span className="text-sm font-medium">Completed</span>
         </div>
-        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-          {turn.message}
-        </p>
+        <AssistantRichText content={turn.message} className="text-foreground/92" />
       </div>
     );
   }
@@ -528,9 +567,7 @@ function AssistantTurnContent({
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium text-rose-100/90">Assistant Error</p>
-        <p className="whitespace-pre-wrap text-sm leading-6 text-rose-50/95">
-          {turn.message}
-        </p>
+        <AssistantRichText content={turn.message} className="text-rose-50/95" />
         <AssistantDiagnosticsBlock diagnostics={turn.diagnostics} />
       </div>
     );
@@ -540,9 +577,7 @@ function AssistantTurnContent({
     return (
       <div className="space-y-2">
         <p className="text-sm font-medium text-amber-100/90">Need Clarification</p>
-        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-          {turn.message}
-        </p>
+        <AssistantRichText content={turn.message} className="text-foreground/92" />
         {turn.missingFields?.length ? (
           <p className="text-xs text-muted-foreground/80">
             Still needed: {turn.missingFields.join(", ")}
@@ -555,9 +590,7 @@ function AssistantTurnContent({
   if (turn.state === "response") {
     return (
       <div className="space-y-2">
-        <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-          {turn.reply}
-        </p>
+        <AssistantRichText content={turn.reply} className="text-foreground/92" />
         <AssistantDiagnosticsBlock diagnostics={turn.diagnostics} />
         {turn.retryCount > 0 || turn.timeoutFlag ? (
           <p className="text-xs text-muted-foreground/80">
@@ -568,11 +601,7 @@ function AssistantTurnContent({
     );
   }
 
-  return (
-    <p className="whitespace-pre-wrap text-sm leading-6 text-foreground/92">
-      {turn.reply}
-    </p>
-  );
+  return <AssistantRichText content={turn.reply} className="text-foreground/92" />;
 }
 
 export function AIChatModal({
@@ -836,9 +865,10 @@ export function AIChatModal({
                           <p className="assistant-message-label text-rose-100/85">
                             Assistant Error
                           </p>
-                          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-rose-50/95">
-                            {message.content}
-                          </p>
+                          <AssistantRichText
+                            content={message.content}
+                            className="mt-2 text-rose-50/95"
+                          />
                         </div>
                         {message.retryInput ? (
                           <Button

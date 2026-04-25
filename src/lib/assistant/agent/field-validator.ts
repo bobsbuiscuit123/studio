@@ -14,7 +14,9 @@ const ALLOWED_INFERENCE_FIELDS: Record<AgentActionType, string[]> = {
   create_event: ['title', 'description', 'location', 'date', 'time'],
   update_event: ['title', 'description', 'location', 'date', 'time'],
   create_message: ['body'],
+  update_message: ['body'],
   create_email: ['subject', 'body'],
+  update_email: ['subject', 'body'],
 };
 
 const FIELD_VALIDATOR_SYSTEM_PROMPT = [

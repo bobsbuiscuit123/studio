@@ -35,11 +35,27 @@ describe('evaluateRequiredFields', () => {
     expect(result.clarificationMessage).toBe('What should this message say?');
   });
 
+  it('allows update_message payloads when recipients are preserved but only the audience changes', () => {
+    const result = evaluateRequiredFields('update_message', {
+      recipients: [{ email: 'team@example.com' }],
+    });
+
+    expect(result.missingFields).toEqual([]);
+    expect(result.clarificationMessage).toBeNull();
+  });
+
   it('requires subject and body for a completed create_email payload', () => {
     const result = evaluateRequiredFields('create_email', {});
 
     expect(result.missingFields).toEqual(['subject', 'body']);
     expect(result.clarificationMessage).toBe('What subject and body should this email use?');
+  });
+
+  it('requires actual edit content for update_email payloads', () => {
+    const result = evaluateRequiredFields('update_email', {});
+
+    expect(result.missingFields).toEqual(['subject', 'body']);
+    expect(result.clarificationMessage).toBe('What should I change in this email?');
   });
 
   it('requires both title and body for create announcements', () => {

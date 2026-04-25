@@ -59,6 +59,10 @@ describe('action field resolution', () => {
     expect(getActionRequiredRetrievalResources('create_message')).toEqual(['members']);
   });
 
+  it('requires members retrieval for update_message', () => {
+    expect(getActionRequiredRetrievalResources('update_message')).toEqual(['members']);
+  });
+
   it('resolves a unique event target from retrieved titles', () => {
     const fields = resolveActionFields({
       actionType: 'update_event',
@@ -117,6 +121,28 @@ describe('action field resolution', () => {
     expect(fields.recipients).toEqual([
       { email: 'alice@example.com', name: 'Alice Smith' },
       { email: 'bob@example.com' },
+    ]);
+  });
+
+  it('resolves updated recipients against retrieved members for update_message', () => {
+    const fields = resolveActionFields({
+      actionType: 'update_message',
+      fieldsProvided: {
+        recipients: ['Alice Smith'],
+      },
+      message: 'also send it to Alice Smith',
+      retrieval: {
+        context: {
+          members: [
+            { name: 'Alice Smith', email: 'alice@example.com' },
+          ],
+        },
+        usedEntities: ['members'],
+      },
+    });
+
+    expect(fields.recipients).toEqual([
+      { email: 'alice@example.com', name: 'Alice Smith' },
     ]);
   });
 

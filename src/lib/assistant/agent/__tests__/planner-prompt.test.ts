@@ -20,7 +20,13 @@ describe('assistant planner prompt', () => {
       'create_message: draft or plan sending an in-app direct or group message'
     );
     expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
+      'update_message: draft or plan edits to the active in-app message draft'
+    );
+    expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
       'create_email: draft or plan filling the email tab composer'
+    );
+    expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
+      'update_email: draft or plan edits to the active email draft'
     );
     expect(ASSISTANT_ACTION_CAPABILITY_GUIDANCE).toContain(
       'Prefer create_email over create_message when the user explicitly asks for an email'
@@ -37,7 +43,7 @@ describe('assistant planner prompt', () => {
     expect(prompt).toContain('Unsupported or miscellaneous capability requests must stay conversational with no action.');
     expect(prompt).toContain('making a flyer, poster, graphic, image, logo, slide deck');
     expect(prompt).toContain(
-      'Do not force unsupported requests into create_announcement, create_event, create_message, or create_email'
+      'Do not force unsupported requests into create_announcement, create_event, create_message, create_email, update_message, or update_email'
     );
     expect(prompt).toContain(
       'If the user asks for an unsupported asset or deliverable, set intent to conversational, omit action'

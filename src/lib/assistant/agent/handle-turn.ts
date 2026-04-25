@@ -78,7 +78,9 @@ const draftableActionTypes = new Set<AgentActionType>([
   'create_event',
   'update_event',
   'create_message',
+  'update_message',
   'create_email',
+  'update_email',
 ]);
 
 const getActionLabel = (actionType: AgentActionType) => {
@@ -90,8 +92,10 @@ const getActionLabel = (actionType: AgentActionType) => {
     case 'update_event':
       return 'events';
     case 'create_message':
+    case 'update_message':
       return 'messages';
     case 'create_email':
+    case 'update_email':
       return 'emails';
     default:
       return 'that';
@@ -192,6 +196,22 @@ const getDraftFollowUpPendingAction = ({
     return pending;
   }
 
+  if (
+    plannedActionType === 'update_message' &&
+    pending.currentPayload.kind === 'message' &&
+    (pending.actionType === 'create_message' || pending.actionType === 'update_message')
+  ) {
+    return pending;
+  }
+
+  if (
+    plannedActionType === 'update_email' &&
+    pending.currentPayload.kind === 'email' &&
+    (pending.actionType === 'create_email' || pending.actionType === 'update_email')
+  ) {
+    return pending;
+  }
+
   return null;
 };
 
@@ -216,6 +236,18 @@ const mergePendingDraftStructuralFields = ({
     return {
       ...resolvedActionFields,
       targetRef: pending.actionFields.targetRef,
+    };
+  }
+
+  if (
+    (actionType === 'create_message' || actionType === 'update_message') &&
+    !hasRecipientList(resolvedActionFields.recipients) &&
+    pending.currentPayload.kind === 'message' &&
+    hasRecipientList(pending.currentPayload.recipients)
+  ) {
+    return {
+      ...resolvedActionFields,
+      recipients: pending.currentPayload.recipients,
     };
   }
 
@@ -418,11 +450,18 @@ const hasRecipientList = (value: unknown): boolean => Array.isArray(value) && va
 
 const mergeAuthoritativeFieldsIntoPreview = (
   preview: DraftPreview,
-  fieldsProvided: Record<string, unknown>
+  fieldsProvided: Record<string, unknown>,
+  fallbackPreview?: DraftPreview | null
 ) => {
   switch (preview.kind) {
     case 'announcement':
       return parseDraftPreview({
+        ...(fallbackPreview?.kind === 'announcement' && hasNonEmptyString(fallbackPreview.title)
+          ? { title: fallbackPreview.title }
+          : {}),
+        ...(fallbackPreview?.kind === 'announcement' && hasNonEmptyString(fallbackPreview.body)
+          ? { body: fallbackPreview.body }
+          : {}),
         ...preview,
         ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
           ? {}
@@ -433,6 +472,21 @@ const mergeAuthoritativeFieldsIntoPreview = (
       });
     case 'event':
       return parseDraftPreview({
+        ...(fallbackPreview?.kind === 'event' && hasNonEmptyString(fallbackPreview.title)
+          ? { title: fallbackPreview.title }
+          : {}),
+        ...(fallbackPreview?.kind === 'event' && hasNonEmptyString(fallbackPreview.description)
+          ? { description: fallbackPreview.description }
+          : {}),
+        ...(fallbackPreview?.kind === 'event' && hasNonEmptyString(fallbackPreview.date)
+          ? { date: fallbackPreview.date }
+          : {}),
+        ...(fallbackPreview?.kind === 'event' && hasNonEmptyString(fallbackPreview.time)
+          ? { time: fallbackPreview.time }
+          : {}),
+        ...(fallbackPreview?.kind === 'event' && hasNonEmptyString(fallbackPreview.location)
+          ? { location: fallbackPreview.location }
+          : {}),
         ...preview,
         ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
           ? {}
@@ -452,6 +506,12 @@ const mergeAuthoritativeFieldsIntoPreview = (
       });
     case 'message':
       return parseDraftPreview({
+        ...(fallbackPreview?.kind === 'message' && hasRecipientList(fallbackPreview.recipients)
+          ? { recipients: fallbackPreview.recipients }
+          : {}),
+        ...(fallbackPreview?.kind === 'message' && hasNonEmptyString(fallbackPreview.body)
+          ? { body: fallbackPreview.body }
+          : {}),
         ...preview,
         ...(hasRecipientList(preview.recipients) || !hasRecipientList(fieldsProvided.recipients)
           ? {}
@@ -462,6 +522,12 @@ const mergeAuthoritativeFieldsIntoPreview = (
       });
     case 'email':
       return parseDraftPreview({
+        ...(fallbackPreview?.kind === 'email' && hasNonEmptyString(fallbackPreview.subject)
+          ? { subject: fallbackPreview.subject }
+          : {}),
+        ...(fallbackPreview?.kind === 'email' && hasNonEmptyString(fallbackPreview.body)
+          ? { body: fallbackPreview.body }
+          : {}),
         ...preview,
         ...(hasNonEmptyString(preview.subject) || !hasNonEmptyString(fieldsProvided.subject)
           ? {}
@@ -507,6 +573,7 @@ const buildPreviewFromAuthoritativeFields = ({
         ...(hasNonEmptyString(fieldsProvided.location) ? { location: fieldsProvided.location } : {}),
       });
     case 'create_message':
+    case 'update_message':
       return parseDraftPreview({
         ...(seedPreview?.kind === 'message' ? seedPreview : { kind: 'message' as const }),
         kind: 'message',
@@ -514,6 +581,7 @@ const buildPreviewFromAuthoritativeFields = ({
         ...(hasNonEmptyString(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     case 'create_email':
+    case 'update_email':
       return parseDraftPreview({
         ...(seedPreview?.kind === 'email' ? seedPreview : { kind: 'email' as const }),
         kind: 'email',
@@ -1212,7 +1280,8 @@ export async function handleAssistantTurn({
 
       const regeneratedPreview = mergeAuthoritativeFieldsIntoPreview(
         draftRun.value,
-        pending.actionFields
+        pending.actionFields,
+        pending.currentPayload
       );
 
       await updatePendingActionPayload({
@@ -1602,7 +1671,8 @@ export async function handleAssistantTurn({
     } else {
       mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
         draftRun.value,
-        enrichedActionFields
+        enrichedActionFields,
+        draftSeedPreview
       );
     }
 

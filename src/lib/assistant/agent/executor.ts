@@ -89,9 +89,12 @@ const canExecutePendingAction = (pendingAction: PendingAction, context: AgentCon
     case 'update_event':
       return context.permissions.canUpdateEvents;
     case 'create_message':
+    case 'update_message':
       return context.permissions.canMessageMembers;
     case 'create_email':
       return context.permissions.canCreateEmails;
+    case 'update_email':
+      return context.permissions.canUpdateEmails;
     default:
       return false;
   }
@@ -210,7 +213,7 @@ export async function executePendingAction(args: {
                 time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time : undefined,
                 location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
               })
-          : pending.actionType === 'create_email'
+          : pending.actionType === 'create_email' || pending.actionType === 'update_email'
             ? await createEmailDraft({
                 userId: args.userId,
                 orgId: args.orgId,

@@ -34,9 +34,17 @@ export const ASSISTANT_ACTION_FLAGS: Record<AgentActionType, AssistantActionFlag
     draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_CREATE_MESSAGE, true),
     executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_CREATE_MESSAGE, true),
   },
+  update_message: {
+    draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_UPDATE_MESSAGE, true),
+    executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_UPDATE_MESSAGE, true),
+  },
   create_email: {
     draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_CREATE_EMAIL, true),
     executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_CREATE_EMAIL, true),
+  },
+  update_email: {
+    draftEnabled: boolEnv(process.env.ASSISTANT_DRAFT_UPDATE_EMAIL, true),
+    executeEnabled: boolEnv(process.env.ASSISTANT_EXECUTE_UPDATE_EMAIL, true),
   },
 };
 

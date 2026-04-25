@@ -67,7 +67,7 @@ export async function generateDraftPreview(args: {
             temperature: 0.3,
             timeoutMs: 18_000,
           })
-        : args.actionType === 'create_message'
+        : args.actionType === 'create_message' || args.actionType === 'update_message'
           ? await callAI({
               messages: [{ role: 'user', content: prompt }],
               responseFormat: 'json_object',

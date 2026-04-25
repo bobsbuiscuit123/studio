@@ -66,6 +66,10 @@ export function evaluateStructuralRequiredFields(
       const missing = !hasRecipients(fieldsProvided.recipients) ? ['recipients'] : [];
       return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
     }
+    case 'update_message': {
+      const missing = !hasRecipients(fieldsProvided.recipients) ? ['recipients'] : [];
+      return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
+    }
     default:
       return buildResult([], null);
   }
@@ -139,6 +143,17 @@ export function evaluateRequiredFields(
         ? 'Who should receive this message?'
         : 'What should this message say?');
     }
+    case 'update_message': {
+      const { recipients, body } = getMessageFields(fieldsProvided, preview);
+      const missing =
+        !hasRecipients(recipients) && !hasText(body)
+          ? ['recipients', 'body']
+          : [];
+      return buildResult(
+        missing,
+        missing.length ? 'What should I change in this message?' : null
+      );
+    }
     case 'create_email': {
       const { subject, body } = getEmailFields(fieldsProvided, preview);
       const missing = [
@@ -156,6 +171,14 @@ export function evaluateRequiredFields(
         missing[0] === 'subject'
           ? 'What subject should this email use?'
           : 'What should this email say?'
+      );
+    }
+    case 'update_email': {
+      const { subject, body } = getEmailFields(fieldsProvided, preview);
+      const missing = !hasAnyText(subject, body) ? ['subject', 'body'] : [];
+      return buildResult(
+        missing,
+        missing.length ? 'What should I change in this email?' : null
       );
     }
     default:

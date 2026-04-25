@@ -26,7 +26,9 @@ export type AgentActionType =
   | 'create_event'
   | 'update_event'
   | 'create_message'
-  | 'create_email';
+  | 'update_message'
+  | 'create_email'
+  | 'update_email';
 
 export type RetrievalTargetResource =
   | 'announcements'
@@ -236,6 +238,7 @@ export type AgentContext = {
       canUpdateEvents: boolean;
       canMessageMembers: boolean;
       canCreateEmails: boolean;
+      canUpdateEmails: boolean;
     };
   };
 

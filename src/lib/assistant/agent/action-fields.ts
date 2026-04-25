@@ -95,7 +95,9 @@ export const ALLOWED_INFERRED_FIELDS_BY_ACTION: Record<AgentActionType, Set<stri
   create_event: new Set(['title', 'description', 'location', 'date', 'time']),
   update_event: new Set(['title', 'description', 'location', 'date', 'time']),
   create_message: new Set(['body']),
+  update_message: new Set(['body']),
   create_email: new Set(['subject', 'body']),
+  update_email: new Set(['subject', 'body']),
 };
 
 const normalize = (value: unknown) =>
@@ -951,6 +953,7 @@ export const getActionRequiredRetrievalResources = (
 ): RetrievalTargetResource[] => {
   switch (actionType) {
     case 'create_message':
+    case 'update_message':
       return ['members'];
     case 'update_announcement':
       return ['announcements'];
@@ -967,13 +970,16 @@ export function getAvailableRecipients(args: {
   userEmail: string;
 }): Array<RecipientRef & { role?: string }> {
   if (
-    args.actionType !== 'create_message'
+    args.actionType !== 'create_message' &&
+    args.actionType !== 'update_message'
   ) {
     return [];
   }
 
   const members = extractMembers(args.retrieval.context.members).filter(member =>
-    args.actionType === 'create_message' ? normalize(member.email) !== normalize(args.userEmail) : true
+    args.actionType === 'create_message' || args.actionType === 'update_message'
+      ? normalize(member.email) !== normalize(args.userEmail)
+      : true
   );
 
   return members.map(member => ({
@@ -1025,7 +1031,7 @@ export function resolveActionFields(args: {
     };
   }
 
-  if (args.actionType === 'create_message') {
+  if (args.actionType === 'create_message' || args.actionType === 'update_message') {
     const members = extractMembers(args.retrieval.context.members);
     const recipients =
       resolveExplicitRecipients(args.fieldsProvided.recipients, members) ??

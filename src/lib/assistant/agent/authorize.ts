@@ -31,8 +31,16 @@ export function authorizeAction(
       return context.permissions.canMessageMembers
         ? { ok: true }
         : { ok: false, message: unauthorizedMessage };
+    case 'update_message':
+      return context.permissions.canMessageMembers
+        ? { ok: true }
+        : { ok: false, message: unauthorizedMessage };
     case 'create_email':
       return context.permissions.canCreateEmails
+        ? { ok: true }
+        : { ok: false, message: unauthorizedMessage };
+    case 'update_email':
+      return context.permissions.canUpdateEmails
         ? { ok: true }
         : { ok: false, message: unauthorizedMessage };
     default:

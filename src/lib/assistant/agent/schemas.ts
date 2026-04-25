@@ -131,7 +131,14 @@ export const actionFieldSchemaByActionType = {
   create_message: {
     body: bodyFieldSchema,
   },
+  update_message: {
+    body: bodyFieldSchema,
+  },
   create_email: {
+    subject: subjectFieldSchema,
+    body: bodyFieldSchema,
+  },
+  update_email: {
     subject: subjectFieldSchema,
     body: bodyFieldSchema,
   },
@@ -174,7 +181,9 @@ export const agentActionTypeSchema = z.enum([
   'create_event',
   'update_event',
   'create_message',
+  'update_message',
   'create_email',
+  'update_email',
 ]) satisfies z.ZodType<AgentActionType>;
 
 export const agentIntentSchema = z.enum([

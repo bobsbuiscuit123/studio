@@ -43,6 +43,7 @@ vi.mock('@/lib/assistant/agent/context', () => ({
       canUpdateEvents: true,
       canMessageMembers: true,
       canCreateEmails: true,
+      canUpdateEmails: true,
     },
   }),
 }));
@@ -121,6 +122,34 @@ const emailPlannerValue = {
   needsRetrieval: false,
   action: {
     type: 'create_email' as const,
+    fieldsProvided: {},
+    fieldsMissing: [],
+    requiresPreview: true,
+    requiresConfirmation: true,
+  },
+  confidence: 0.9,
+};
+
+const updateMessagePlannerValue = {
+  intent: 'draft_action' as const,
+  summary: 'Revise the active message draft.',
+  needsRetrieval: false,
+  action: {
+    type: 'update_message' as const,
+    fieldsProvided: {},
+    fieldsMissing: [],
+    requiresPreview: true,
+    requiresConfirmation: true,
+  },
+  confidence: 0.9,
+};
+
+const updateEmailPlannerValue = {
+  intent: 'draft_action' as const,
+  summary: 'Revise the active email draft.',
+  needsRetrieval: false,
+  action: {
+    type: 'update_email' as const,
     fieldsProvided: {},
     fieldsMissing: [],
     requiresPreview: true,
@@ -783,6 +812,235 @@ describe('handleAssistantTurn', () => {
       actionFields: {
         title: 'Quick Dues Reminder',
         body: 'Please pay your dues this week.',
+      },
+    });
+  });
+
+  it('reuses the active pending message draft for update_message follow-ups and keeps recipients', async () => {
+    vi.mocked(getLatestValidPendingAction).mockResolvedValue({
+      id: '8d3a2f1d-20de-49db-a240-7925fdc4fb0a',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      actionType: 'create_message',
+      actionFields: {
+        recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+        body: 'Please remember to bring your form tomorrow.',
+      },
+      originalDraftPayload: {
+        kind: 'message',
+        recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+        body: 'Please remember to bring your form tomorrow.',
+      },
+      currentPayload: {
+        kind: 'message',
+        recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+        body: 'Please remember to bring your form tomorrow.',
+      },
+      status: 'pending',
+      idempotencyKey: 'idem-message',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      expiresAt: '2099-04-23T19:00:00.000Z',
+      resultEntityId: null,
+      resultEntityType: null,
+      resultMessage: null,
+    });
+
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...updateMessagePlannerValue,
+            action: { ...updateMessagePlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              body: 'Quick reminder to bring your form tomorrow.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'message',
+          body: 'Quick reminder to bring your form tomorrow.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      message: 'make it shorter',
+      history: [
+        {
+          role: 'assistant',
+          content:
+            'assistant_state: draft_preview\nassistant_reply: Here is a draft message.\ndraft_payload: {"kind":"message","recipients":[{"email":"alex@example.com","name":"Alex"}],"body":"Please remember to bring your form tomorrow."}\npending_action_id: 8d3a2f1d-20de-49db-a240-7925fdc4fb0a',
+        },
+      ],
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.pendingActionId).toBe('8d3a2f1d-20de-49db-a240-7925fdc4fb0a');
+    expect(result.preview).toEqual({
+      kind: 'message',
+      recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+      body: 'Quick reminder to bring your form tomorrow.',
+    });
+    expect(createPendingAction).not.toHaveBeenCalled();
+    expect(updatePendingActionPayload).toHaveBeenCalledWith({
+      id: '8d3a2f1d-20de-49db-a240-7925fdc4fb0a',
+      currentPayload: {
+        kind: 'message',
+        recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+        body: 'Quick reminder to bring your form tomorrow.',
+      },
+      actionFields: {
+        recipients: [{ email: 'alex@example.com', name: 'Alex' }],
+        body: 'Quick reminder to bring your form tomorrow.',
+      },
+    });
+  });
+
+  it('reuses the active pending email draft for update_email follow-ups and keeps the subject', async () => {
+    vi.mocked(getLatestValidPendingAction).mockResolvedValue({
+      id: '80f96c38-a1b7-4cbf-a8f0-56f1bb4f4ab0',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      actionType: 'create_email',
+      actionFields: {
+        subject: 'ELA Test Reminder',
+        body: 'Please remember the ELA test on April 30 and plan accordingly.',
+      },
+      originalDraftPayload: {
+        kind: 'email',
+        subject: 'ELA Test Reminder',
+        body: 'Please remember the ELA test on April 30 and plan accordingly.',
+      },
+      currentPayload: {
+        kind: 'email',
+        subject: 'ELA Test Reminder',
+        body: 'Please remember the ELA test on April 30 and plan accordingly.',
+      },
+      status: 'pending',
+      idempotencyKey: 'idem-email',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      expiresAt: '2099-04-23T19:00:00.000Z',
+      resultEntityId: null,
+      resultEntityType: null,
+      resultMessage: null,
+    });
+
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...updateEmailPlannerValue,
+            action: { ...updateEmailPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              subject: 'ELA Test Reminder',
+              body: 'Quick reminder that the ELA test is April 30.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'email',
+          body: 'Quick reminder that the ELA test is April 30.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      message: 'make it shorter',
+      history: [
+        {
+          role: 'assistant',
+          content:
+            'assistant_state: draft_preview\nassistant_reply: Here is a draft email.\ndraft_payload: {"kind":"email","subject":"ELA Test Reminder","body":"Please remember the ELA test on April 30 and plan accordingly."}\npending_action_id: 80f96c38-a1b7-4cbf-a8f0-56f1bb4f4ab0',
+        },
+      ],
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.pendingActionId).toBe('80f96c38-a1b7-4cbf-a8f0-56f1bb4f4ab0');
+    expect(result.preview).toEqual({
+      kind: 'email',
+      subject: 'ELA Test Reminder',
+      body: 'Quick reminder that the ELA test is April 30.',
+    });
+    expect(createPendingAction).not.toHaveBeenCalled();
+    expect(updatePendingActionPayload).toHaveBeenCalledWith({
+      id: '80f96c38-a1b7-4cbf-a8f0-56f1bb4f4ab0',
+      currentPayload: {
+        kind: 'email',
+        subject: 'ELA Test Reminder',
+        body: 'Quick reminder that the ELA test is April 30.',
+      },
+      actionFields: {
+        subject: 'ELA Test Reminder',
+        body: 'Quick reminder that the ELA test is April 30.',
       },
     });
   });

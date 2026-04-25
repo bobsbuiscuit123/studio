@@ -5,10 +5,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { Bot, CheckCircle2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { Bot, CheckCircle2, Loader2, MoveDiagonal2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import type { AiChatClientMessage } from "@/lib/ai-chat";
@@ -40,10 +41,18 @@ type AIChatModalProps = {
 type PopupLayout = {
   left: number;
   width: number;
+  height: number;
   top?: number;
   bottom?: number;
+  maxWidth: number;
   maxHeight: number;
   tailOffset: number;
+  resizable: boolean;
+};
+
+type PopupSize = {
+  width: number;
+  height: number;
 };
 
 type PreviewEditorState = {
@@ -59,12 +68,19 @@ type PreviewEditorState = {
 const POPUP_HORIZONTAL_MARGIN = 10;
 const POPUP_MAX_WIDTH = 420;
 const POPUP_MAX_HEIGHT = 560;
+const POPUP_MAX_RESIZABLE_WIDTH = 760;
+const POPUP_MAX_RESIZABLE_HEIGHT = 720;
+const POPUP_MIN_WIDTH = 320;
+const POPUP_MIN_HEIGHT = 340;
+const POPUP_DEFAULT_HEIGHT_ABOVE = 460;
+const POPUP_DEFAULT_HEIGHT_BELOW = 520;
 const POPUP_HEIGHT_RATIO = 0.58;
 const POPUP_MIN_BOTTOM = 92;
 const POPUP_MIN_TAIL_OFFSET = 34;
 const POPUP_GAP = 18;
 const POPUP_VIEWPORT_EDGE_GAP = 18;
 const EMPTY_STATE_TEXT = "Ask about your group or draft something quick.";
+const POPUP_SIZE_STORAGE_KEY = "caspo-assistant-popup-size-v1";
 
 const formatTimestamp = (value: string) => {
   const date = new Date(value);
@@ -84,6 +100,16 @@ const clamp = (value: number, min: number, max: number) =>
 const getViewportHeight = () => window.visualViewport?.height ?? window.innerHeight;
 
 const getKeyboardInset = () => Math.max(0, window.innerHeight - getViewportHeight());
+
+const isIosEnvironment = () => {
+  const platform = navigator.platform;
+  const userAgent = navigator.userAgent;
+
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && navigator.maxTouchPoints > 1);
+};
+
+const canResizePopup = (placement: AIChatModalProps["placement"]) =>
+  placement === "below" && window.innerWidth >= 768 && !isIosEnvironment();
 
 const recipientsToText = (recipients?: RecipientRef[]) =>
   (recipients ?? []).map(recipient => recipient.email).join(", ");
@@ -619,13 +645,54 @@ export function AIChatModal({
 }: AIChatModalProps) {
   const [mounted, setMounted] = useState(false);
   const [layout, setLayout] = useState<PopupLayout | null>(null);
+  const [preferredSize, setPreferredSize] = useState<PopupSize | null>(null);
   const [typedCount, setTypedCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const resizeSessionRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    try {
+      const rawValue = window.localStorage.getItem(POPUP_SIZE_STORAGE_KEY);
+      if (!rawValue) return;
+
+      const parsedValue = JSON.parse(rawValue) as Partial<PopupSize>;
+      if (
+        typeof parsedValue.width !== "number" ||
+        !Number.isFinite(parsedValue.width) ||
+        typeof parsedValue.height !== "number" ||
+        !Number.isFinite(parsedValue.height)
+      ) {
+        return;
+      }
+
+      setPreferredSize({
+        width: parsedValue.width,
+        height: parsedValue.height,
+      });
+    } catch {
+      window.localStorage.removeItem(POPUP_SIZE_STORAGE_KEY);
+    }
+  }, [mounted]);
+
+  useEffect(() => {
+    if (!mounted || !preferredSize) return;
+
+    window.localStorage.setItem(POPUP_SIZE_STORAGE_KEY, JSON.stringify(preferredSize));
+  }, [mounted, preferredSize]);
+
+  useEffect(
+    () => () => {
+      resizeSessionRef.current?.abort();
+    },
+    []
+  );
 
   useEffect(() => {
     if (!open) {
@@ -685,9 +752,16 @@ export function AIChatModal({
       const viewportWidth = window.innerWidth;
       const viewportHeight = getViewportHeight();
       const keyboardInset = getKeyboardInset();
-      const width = Math.min(
-        POPUP_MAX_WIDTH,
-        Math.max(300, viewportWidth - POPUP_HORIZONTAL_MARGIN * 2)
+      const isResizable = canResizePopup(placement);
+      const maxWidth = Math.min(
+        isResizable ? POPUP_MAX_RESIZABLE_WIDTH : POPUP_MAX_WIDTH,
+        viewportWidth - POPUP_HORIZONTAL_MARGIN * 2
+      );
+      const minWidth = Math.min(isResizable ? POPUP_MIN_WIDTH : 300, maxWidth);
+      const width = clamp(
+        isResizable ? preferredSize?.width ?? POPUP_MAX_WIDTH : POPUP_MAX_WIDTH,
+        minWidth,
+        maxWidth
       );
       const centeredLeft = rect.left + rect.width / 2 - width / 2;
       const left = clamp(
@@ -711,20 +785,29 @@ export function AIChatModal({
         const anchoredTop = rect.bottom + POPUP_GAP;
         const availableHeight = viewportHeight - anchoredTop - POPUP_VIEWPORT_EDGE_GAP;
         const maxHeight = Math.min(
-          POPUP_MAX_HEIGHT,
-          Math.max(340, availableHeight)
+          isResizable ? POPUP_MAX_RESIZABLE_HEIGHT : POPUP_MAX_HEIGHT,
+          Math.max(POPUP_MIN_HEIGHT, availableHeight)
+        );
+        const minHeight = Math.min(POPUP_MIN_HEIGHT, maxHeight);
+        const height = clamp(
+          isResizable ? preferredSize?.height ?? POPUP_DEFAULT_HEIGHT_BELOW : POPUP_DEFAULT_HEIGHT_BELOW,
+          minHeight,
+          maxHeight
         );
 
         setLayout({
           left: anchoredLeft,
           width,
+          height,
           top: anchoredTop,
+          maxWidth,
           maxHeight,
           tailOffset: clamp(
             anchorCenter - anchoredLeft,
             POPUP_MIN_TAIL_OFFSET,
             width - POPUP_MIN_TAIL_OFFSET
           ),
+          resizable: isResizable,
         });
         return;
       }
@@ -733,15 +816,19 @@ export function AIChatModal({
       const bottom = Math.max(POPUP_MIN_BOTTOM, anchoredBottom, keyboardInset + 12);
       const maxHeight = Math.min(
         POPUP_MAX_HEIGHT,
-        Math.max(340, viewportHeight * POPUP_HEIGHT_RATIO)
+        Math.max(POPUP_MIN_HEIGHT, viewportHeight * POPUP_HEIGHT_RATIO)
       );
+      const height = Math.min(maxHeight, POPUP_DEFAULT_HEIGHT_ABOVE);
 
       setLayout({
         left,
         width,
+        height,
         bottom,
+        maxWidth,
         maxHeight,
         tailOffset,
+        resizable: false,
       });
     };
 
@@ -760,7 +847,7 @@ export function AIChatModal({
       window.visualViewport?.removeEventListener("resize", updateLayout);
       window.visualViewport?.removeEventListener("scroll", updateLayout);
     };
-  }, [anchorRef, open, placement]);
+  }, [anchorRef, open, placement, preferredSize]);
 
   useEffect(() => {
     if (!open) return;
@@ -780,11 +867,60 @@ export function AIChatModal({
     [typedCount]
   );
 
+  const handleResizePointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!layout?.resizable) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resizeSessionRef.current?.abort();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startWidth = layout.width;
+    const startHeight = layout.height;
+    const maxWidth = layout.maxWidth;
+    const maxHeight = layout.maxHeight;
+    const minWidth = Math.min(POPUP_MIN_WIDTH, maxWidth);
+    const minHeight = Math.min(POPUP_MIN_HEIGHT, maxHeight);
+    const previousUserSelect = document.body.style.userSelect;
+    const previousCursor = document.body.style.cursor;
+    const controller = new AbortController();
+
+    resizeSessionRef.current = controller;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "nwse-resize";
+
+    const stopResize = () => {
+      document.body.style.userSelect = previousUserSelect;
+      document.body.style.cursor = previousCursor;
+
+      if (resizeSessionRef.current === controller) {
+        resizeSessionRef.current = null;
+      }
+
+      controller.abort();
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = clamp(startWidth + (startX - moveEvent.clientX), minWidth, maxWidth);
+      const nextHeight = clamp(startHeight + (moveEvent.clientY - startY), minHeight, maxHeight);
+
+      setPreferredSize({
+        width: nextWidth,
+        height: nextHeight,
+      });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { signal: controller.signal });
+    window.addEventListener("pointerup", stopResize, { signal: controller.signal });
+    window.addEventListener("pointercancel", stopResize, { signal: controller.signal });
+  };
+
   if (!mounted || !open || !layout) {
     return null;
   }
-
-  const popupHeight = Math.min(layout.maxHeight, placement === "below" ? 520 : 460);
 
   return createPortal(
     <>
@@ -807,7 +943,7 @@ export function AIChatModal({
           width: `${layout.width}px`,
           ...(layout.top !== undefined ? { top: `${layout.top}px` } : {}),
           ...(layout.bottom !== undefined ? { bottom: `${layout.bottom}px` } : {}),
-          height: `${popupHeight}px`,
+          height: `${layout.height}px`,
           maxHeight: `${layout.maxHeight}px`,
         }}
         onClick={event => event.stopPropagation()}
@@ -993,6 +1129,18 @@ export function AIChatModal({
             </div>
           </div>
         </div>
+
+        {layout.resizable ? (
+          <button
+            type="button"
+            className="assistant-popup-resize-handle"
+            onPointerDown={handleResizePointerDown}
+            aria-label="Resize assistant panel"
+            title="Drag to resize"
+          >
+            <MoveDiagonal2 className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
 
         <div
           className="assistant-popup-tail"

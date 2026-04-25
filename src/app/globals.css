@@ -784,6 +784,31 @@ main,
   filter: brightness(1.03);
 }
 
+.assistant-popup-resize-handle {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  z-index: 2;
+  display: inline-flex;
+  height: 30px;
+  width: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.85);
+  background: hsl(var(--background) / 0.82);
+  color: hsl(var(--muted-foreground));
+  cursor: nwse-resize;
+  touch-action: none;
+  transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.assistant-popup-resize-handle:hover {
+  background: hsl(var(--background) / 0.94);
+  color: hsl(var(--foreground));
+  transform: scale(1.03);
+}
+
 .assistant-popup-tail {
   position: absolute;
   bottom: -9px;

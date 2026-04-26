@@ -363,11 +363,13 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(filled.filledFields).toEqual({
-      date: '2026-04-30',
-      time: '18:00',
-      location: 'TBD',
-    });
+    expect(filled.filledFields.date).toBe('2026-04-30');
+    expect(filled.filledFields.time).toBe('18:00');
+    expect(filled.filledFields.location).toBe('TBD');
+    expect(typeof filled.filledFields.title).toBe('string');
+    expect(String(filled.filledFields.title).trim().length).toBeGreaterThan(0);
+    expect(typeof filled.filledFields.description).toBe('string');
+    expect(String(filled.filledFields.description)).toContain('30th');
 
     const required = evaluateRequiredFields('create_event', filled.filledFields);
     expect(required.missingFields).toEqual([]);
@@ -392,11 +394,13 @@ describe('Gemini authoritative field merging', () => {
       }
     );
 
-    expect(filled.filledFields).toEqual({
-      date: '2026-04-30',
-      time: '19:00',
-      location: 'TBD',
-    });
+    expect(filled.filledFields.date).toBe('2026-04-30');
+    expect(filled.filledFields.time).toBe('19:00');
+    expect(filled.filledFields.location).toBe('TBD');
+    expect(typeof filled.filledFields.title).toBe('string');
+    expect(String(filled.filledFields.title).trim().length).toBeGreaterThan(0);
+    expect(typeof filled.filledFields.description).toBe('string');
+    expect(String(filled.filledFields.description)).toContain('30th');
   });
 
   it('does not backfill announcement copy when the validator returns nothing', () => {

@@ -1086,6 +1086,16 @@ export function fillGeneratedActionFields(args: {
   const filledFields: PendingActionFields = { ...args.actionFields };
   const defaultedFieldKeys: string[] = [];
 
+  if (!hasResolvedValue(filledFields.title)) {
+    filledFields.title = buildEventTitle(sourceText);
+    defaultedFieldKeys.push('title');
+  }
+
+  if (!hasResolvedValue(filledFields.description)) {
+    filledFields.description = buildEventDescription(sourceText);
+    defaultedFieldKeys.push('description');
+  }
+
   if (!hasResolvedValue(filledFields.date)) {
     filledFields.date = buildDefaultEventDate(
       sourceText,

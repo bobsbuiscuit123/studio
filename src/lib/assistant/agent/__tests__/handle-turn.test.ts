@@ -405,6 +405,8 @@ describe('handleAssistantTurn', () => {
       throw new Error('Expected event preview.');
     }
 
+    expect(result.preview.title).toBe('ELA Test');
+    expect(result.preview.description).toBe('Prepare for the upcoming ELA test.');
     expect(result.preview.date).toBe('2026-04-30');
     expect(result.preview.time).toBe('18:00');
     expect(result.preview.location).toBe('TBD');
@@ -412,6 +414,8 @@ describe('handleAssistantTurn', () => {
       expect.objectContaining({
         actionType: 'create_event',
         actionFields: expect.objectContaining({
+          title: expect.any(String),
+          description: expect.any(String),
           date: '2026-04-30',
           time: '18:00',
           location: 'TBD',

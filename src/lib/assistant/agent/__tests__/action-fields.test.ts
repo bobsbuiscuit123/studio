@@ -348,7 +348,7 @@ describe('Gemini authoritative field merging', () => {
     expect(filled.filledFields.time).toBe('18:00');
   });
 
-  it('does not backfill event fields when the validator returns nothing', () => {
+  it('backfills create_event scheduling fields when the validator returns nothing', () => {
     const filled = applyValidatorResultWithDefaults(
       {
         inferredFields: {},
@@ -357,14 +357,46 @@ describe('Gemini authoritative field merging', () => {
       },
       {
         actionType: 'create_event',
-        userMessage: 'create event for elections this Friday',
+        userMessage: 'put an ela test on the 30th on the calendar',
+        requestTimezone: 'America/New_York',
+        requestReceivedAt: '2026-04-26T16:59:00.000Z',
       }
     );
 
-    expect(filled.filledFields).toEqual({});
+    expect(filled.filledFields).toEqual({
+      date: '2026-04-30',
+      time: '18:00',
+      location: 'TBD',
+    });
 
     const required = evaluateRequiredFields('create_event', filled.filledFields);
-    expect(required.missingFields).toEqual(['date', 'time']);
+    expect(required.missingFields).toEqual([]);
+  });
+
+  it('uses prior user context to fill create_event scheduling follow-ups', () => {
+    const filled = applyValidatorResultWithDefaults(
+      {
+        inferredFields: {},
+        missingFields: [],
+        usedInference: false,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'at 7',
+        recentHistory: [
+          { role: 'user', content: 'put an ela test on the 30th on the calendar' },
+          { role: 'assistant', content: 'What date and time should this event be scheduled for?' },
+        ],
+        requestTimezone: 'America/New_York',
+        requestReceivedAt: '2026-04-26T16:59:00.000Z',
+      }
+    );
+
+    expect(filled.filledFields).toEqual({
+      date: '2026-04-30',
+      time: '19:00',
+      location: 'TBD',
+    });
   });
 
   it('does not backfill announcement copy when the validator returns nothing', () => {

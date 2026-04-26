@@ -130,6 +130,20 @@ const emailPlannerValue = {
   confidence: 0.9,
 };
 
+const eventPlannerValue = {
+  intent: 'draft_action' as const,
+  summary: 'Draft an event.',
+  needsRetrieval: false,
+  action: {
+    type: 'create_event' as const,
+    fieldsProvided: {},
+    fieldsMissing: [],
+    requiresPreview: true,
+    requiresConfirmation: true,
+  },
+  confidence: 0.9,
+};
+
 const updateMessagePlannerValue = {
   intent: 'draft_action' as const,
   summary: 'Revise the active message draft.',
@@ -330,6 +344,85 @@ describe('handleAssistantTurn', () => {
         }),
       })
     );
+  });
+
+  it('keeps drafting create_event requests when local scheduling fallback fills validator gaps', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...eventPlannerValue,
+            action: { ...eventPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {},
+            missingFields: [],
+            usedInference: false,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'event',
+          title: 'ELA Test',
+          description: 'Prepare for the upcoming ELA test.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      message: 'put an ela test on the 30th on the calendar',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview.kind).toBe('event');
+    if (result.preview.kind !== 'event') {
+      throw new Error('Expected event preview.');
+    }
+
+    expect(result.preview.date).toBe('2026-04-30');
+    expect(result.preview.time).toBe('18:00');
+    expect(result.preview.location).toBe('TBD');
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionType: 'create_event',
+        actionFields: expect.objectContaining({
+          date: '2026-04-30',
+          time: '18:00',
+          location: 'TBD',
+        }),
+      })
+    );
+    expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
+      'planner',
+      'field_validator',
+      'draft',
+    ]);
   });
 
   it('asks for clarification when the validator returns no message body', async () => {

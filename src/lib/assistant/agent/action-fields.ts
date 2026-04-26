@@ -23,6 +23,32 @@ const WEEKDAY_TO_INDEX: Record<string, number> = {
   friday: 5,
   saturday: 6,
 };
+const MONTH_NAME_TO_INDEX: Record<string, number> = {
+  jan: 0,
+  january: 0,
+  feb: 1,
+  february: 1,
+  mar: 2,
+  march: 2,
+  apr: 3,
+  april: 3,
+  may: 4,
+  jun: 5,
+  june: 5,
+  jul: 6,
+  july: 6,
+  aug: 7,
+  august: 7,
+  sep: 8,
+  sept: 8,
+  september: 8,
+  oct: 9,
+  october: 9,
+  nov: 10,
+  november: 10,
+  dec: 11,
+  december: 11,
+};
 
 const DAYPART_DEFAULTS = {
   morning: '09:00',
@@ -138,6 +164,11 @@ const countWords = (value: string) =>
     .filter(Boolean).length;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const ORDINAL_DAY_PATTERN = /\b(?:on\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b/i;
+const MONTH_DAY_PATTERN =
+  /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
+const DAY_OF_MONTH_PATTERN =
+  /\b(\d{1,2})(?:st|nd|rd|th)?\s+of\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
 
 export const hasResolvedValue = (value: unknown) => {
   if (typeof value === 'string') {
@@ -380,6 +411,8 @@ const buildDefaultEventDate = (
   requestTimezone: string,
   requestReceivedAt: string
 ) =>
+  resolveMonthAndDayFromSource(sourceText, requestTimezone, requestReceivedAt) ??
+  resolveOrdinalDayFromSource(sourceText, requestTimezone, requestReceivedAt) ??
   getRelativeDateKeyFromSource(sourceText, requestTimezone, requestReceivedAt) ??
   addDaysToDateKey(getZonedReference(requestReceivedAt, requestTimezone).localDate, 1);
 
@@ -605,7 +638,7 @@ const resolveCandidateTarget = (
 };
 
 const getInferenceSourceText = (userMessage: string, recentHistory?: AiChatHistoryMessage[]) =>
-  [...(recentHistory ?? []).map(item => item.content), userMessage]
+  [...(recentHistory ?? []).filter(item => item.role === 'user').map(item => item.content), userMessage]
     .map(value => value.trim())
     .filter(Boolean)
     .join('\n');
@@ -651,6 +684,9 @@ const getZonedReference = (requestReceivedAt: string, requestTimezone: string) =
     hour,
     minute,
     weekdayIndex,
+    year,
+    monthIndex: month - 1,
+    dayOfMonth: day,
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
   };
 };
@@ -658,6 +694,98 @@ const getZonedReference = (requestReceivedAt: string, requestTimezone: string) =
 const addDaysToDateKey = (baseDate: Date, daysToAdd: number) => {
   const nextDate = new Date(baseDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
   return nextDate.toISOString().slice(0, 10);
+};
+
+const buildDateKey = (year: number, monthIndex: number, dayOfMonth: number) =>
+  `${String(year).padStart(4, '0')}-${String(monthIndex + 1).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`;
+
+const isValidCalendarDate = (year: number, monthIndex: number, dayOfMonth: number) => {
+  if (dayOfMonth < 1 || dayOfMonth > 31) {
+    return false;
+  }
+
+  const candidate = new Date(Date.UTC(year, monthIndex, dayOfMonth));
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === monthIndex &&
+    candidate.getUTCDate() === dayOfMonth
+  );
+};
+
+const resolveMonthAndDayFromSource = (
+  sourceText: string,
+  requestTimezone: string,
+  requestReceivedAt: string
+) => {
+  const normalizedSource = normalize(sourceText);
+  if (!normalizedSource) {
+    return null;
+  }
+
+  const reference = getZonedReference(requestReceivedAt, requestTimezone);
+  const monthDayMatch = normalizedSource.match(MONTH_DAY_PATTERN);
+  const dayOfMonthMatch = normalizedSource.match(DAY_OF_MONTH_PATTERN);
+  const rawMonth = monthDayMatch?.[1] ?? dayOfMonthMatch?.[2];
+  const rawDay = monthDayMatch?.[2] ?? dayOfMonthMatch?.[1];
+  if (!rawMonth || !rawDay) {
+    return null;
+  }
+
+  const monthIndex = MONTH_NAME_TO_INDEX[rawMonth.toLowerCase()];
+  const dayOfMonth = Number(rawDay);
+  if (typeof monthIndex !== 'number' || Number.isNaN(dayOfMonth)) {
+    return null;
+  }
+
+  for (let yearOffset = 0; yearOffset <= 2; yearOffset += 1) {
+    const year = reference.year + yearOffset;
+    if (!isValidCalendarDate(year, monthIndex, dayOfMonth)) {
+      continue;
+    }
+    const dateKey = buildDateKey(year, monthIndex, dayOfMonth);
+    if (dateKey >= reference.dateKey) {
+      return dateKey;
+    }
+  }
+
+  return null;
+};
+
+const resolveOrdinalDayFromSource = (
+  sourceText: string,
+  requestTimezone: string,
+  requestReceivedAt: string
+) => {
+  const normalizedSource = normalize(sourceText);
+  if (!normalizedSource) {
+    return null;
+  }
+
+  const ordinalMatch = normalizedSource.match(ORDINAL_DAY_PATTERN);
+  if (!ordinalMatch?.[1]) {
+    return null;
+  }
+
+  const dayOfMonth = Number(ordinalMatch[1]);
+  if (Number.isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+    return null;
+  }
+
+  const reference = getZonedReference(requestReceivedAt, requestTimezone);
+  for (let monthOffset = 0; monthOffset <= 23; monthOffset += 1) {
+    const totalMonthIndex = reference.monthIndex + monthOffset;
+    const year = reference.year + Math.floor(totalMonthIndex / 12);
+    const monthIndex = ((totalMonthIndex % 12) + 12) % 12;
+    if (monthOffset === 0 && dayOfMonth < reference.dayOfMonth) {
+      continue;
+    }
+    if (!isValidCalendarDate(year, monthIndex, dayOfMonth)) {
+      continue;
+    }
+    return buildDateKey(year, monthIndex, dayOfMonth);
+  }
+
+  return null;
 };
 
 const getRelativeDateKeyFromSource = (
@@ -804,7 +932,12 @@ const getRelativeTimeFromSource = (args: {
       return `${String(normalizedHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     }
 
-    return normalizeCandidateTime(args.candidateTime);
+    if (hour > 12 || hour === 0) {
+      return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    }
+
+    const inferredHour = hour <= 7 ? hour + 12 : hour;
+    return `${String(inferredHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
   }
 
   if (daypart === 'evening') {
@@ -942,9 +1075,43 @@ export function fillGeneratedActionFields(args: {
   requestTimezone: string;
   requestReceivedAt: string;
 }): { filledFields: PendingActionFields; defaultedFieldKeys: string[] } {
+  if (args.actionType !== 'create_event') {
+    return {
+      filledFields: { ...args.actionFields },
+      defaultedFieldKeys: [],
+    };
+  }
+
+  const sourceText = getInferenceSourceText(args.userMessage, args.recentHistory);
+  const filledFields: PendingActionFields = { ...args.actionFields };
+  const defaultedFieldKeys: string[] = [];
+
+  if (!hasResolvedValue(filledFields.date)) {
+    filledFields.date = buildDefaultEventDate(
+      sourceText,
+      args.requestTimezone,
+      args.requestReceivedAt
+    );
+    defaultedFieldKeys.push('date');
+  }
+
+  if (!hasResolvedValue(filledFields.time)) {
+    filledFields.time = buildDefaultEventTime({
+      sourceText,
+      requestTimezone: args.requestTimezone,
+      requestReceivedAt: args.requestReceivedAt,
+    });
+    defaultedFieldKeys.push('time');
+  }
+
+  if (!hasResolvedValue(filledFields.location)) {
+    filledFields.location = extractExplicitLocation(sourceText) ?? DEFAULT_EVENT_LOCATION;
+    defaultedFieldKeys.push('location');
+  }
+
   return {
-    filledFields: { ...args.actionFields },
-    defaultedFieldKeys: [],
+    filledFields,
+    defaultedFieldKeys,
   };
 }
 

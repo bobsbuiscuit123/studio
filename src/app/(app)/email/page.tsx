@@ -23,6 +23,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { useMembers, useCurrentUserRole } from "@/lib/data-hooks";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
+import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import {
   ASSISTANT_EMAIL_DRAFT_EVENT,
   clearAssistantEmailDraft,
@@ -187,22 +188,19 @@ function EmailPageInner() {
       <div className="tab-page-content">
     <div className="grid gap-6 pt-2">
       <Card>
-        <CardHeader className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2"><Mail /> Compose email</CardTitle>
+        <CardHeader>
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <CardTitle className="flex items-center gap-2"><Mail /> Compose email</CardTitle>
+              <AssistantInlineTrigger
+                onClick={() => {
+                  setShowAi(false);
+                  openEmailAssistant("Draft an email to all members of this group.");
+                }}
+              />
+            </div>
             <CardDescription>Start manually, then use the assistant if you want help drafting.</CardDescription>
           </div>
-          <Button
-            type="button"
-            variant="default"
-            className={aiSparkle}
-            onClick={() => {
-              setShowAi(false);
-              openEmailAssistant("Draft an email to all members of this group.");
-            }}
-          >
-            <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
-          </Button>
         </CardHeader>
         {showAi && (
           <CardContent className="border-b pb-4">

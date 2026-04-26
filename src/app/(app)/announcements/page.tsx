@@ -42,6 +42,7 @@ import { useToast } from "@/hooks/use-toast";
 import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
 import type { Announcement, Attachment, ClubForm } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
+import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { cn } from "@/lib/utils";
@@ -545,24 +546,21 @@ function AnnouncementsPageInner() {
       {canEditContent && (
         <div className="md:col-span-1">
             <Card>
-            <CardHeader className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
+            <CardHeader>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
+                    <AssistantInlineTrigger
+                      onClick={() => {
+                        setShowAi(false);
+                        openAnnouncementAssistant(
+                          "Draft an announcement for this group. Ask for any missing details instead of guessing."
+                        );
+                      }}
+                    />
+                  </div>
                   <CardDescription>Start manually, or fill with AI.</CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  variant="default"
-                  className={aiSparkle}
-                  onClick={() => {
-                    setShowAi(false);
-                    openAnnouncementAssistant(
-                      "Draft an announcement for this group. Ask for any missing details instead of guessing."
-                    );
-                  }}
-                >
-                  <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
-                </Button>
             </CardHeader>
             <CardContent className="space-y-6">
               {!showAi && (

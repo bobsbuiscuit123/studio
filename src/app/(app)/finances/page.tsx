@@ -31,6 +31,7 @@ import type { Transaction } from "@/lib/mock-data";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
+import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 
@@ -220,27 +221,22 @@ export default function FinancesPage() {
         </div>
         <div className="md:col-span-1">
              {role === 'Admin' && (
-             <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
+              <Card>
+                <CardHeader>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-3">
                     <CardTitle className="flex items-center gap-2"><Landmark /> Add Transaction</CardTitle>
+                    <AssistantInlineTrigger
+                      onClick={() => {
+                        setShowAi(false);
+                        openFinanceAssistant(
+                          "Help me draft a transaction entry for this group and keep it ready for manual review."
+                        );
+                      }}
+                    />
+                  </div>
                     <CardDescription>Enter details manually, or ask AI to fill them.</CardDescription>
                   </div>
-                  <Button
-                    type="button"
-                    variant="default"
-                    className={aiSparkle}
-                    onClick={() => {
-                      setShowAi(false);
-                      openFinanceAssistant(
-                        "Help me draft a transaction entry for this group and keep it ready for manual review."
-                      );
-                    }}
-                  >
-                    <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
-                  </Button>
-                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-6">

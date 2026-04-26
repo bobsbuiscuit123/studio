@@ -60,6 +60,7 @@ import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
+import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import { cn } from "@/lib/utils";
 
 const formSchema = z.object({
@@ -611,24 +612,21 @@ export default function CalendarPage() {
       <div className="flex flex-col space-y-4">
         {canEditContent && (
             <Card className="mobile-panel">
-            <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-                <div>
-                  <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
+            <CardHeader>
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <CardTitle className="flex items-center gap-2"><CalendarDays /> Add Event</CardTitle>
+                    <AssistantInlineTrigger
+                      onClick={() => {
+                        setShowAi(false);
+                        openCalendarAssistant(
+                          "Draft an event for this group and ask me for any missing date or time instead of guessing."
+                        );
+                      }}
+                    />
+                  </div>
                   <CardDescription>Enter details manually, or let AI draft them.</CardDescription>
                 </div>
-                <Button
-                  type="button"
-                  variant="default"
-                  className={`w-full sm:w-auto ${aiSparkle}`}
-                  onClick={() => {
-                    setShowAi(false);
-                    openCalendarAssistant(
-                      "Draft an event for this group and ask me for any missing date or time instead of guessing."
-                    );
-                  }}
-                >
-                  <Sparkles className="h-4 w-4 mr-1" /> Use Assistant
-                </Button>
             </CardHeader>
             <CardContent className="space-y-6">
                 {!showAi && (

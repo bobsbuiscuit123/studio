@@ -68,15 +68,7 @@ function EmailPageInner() {
   }, []);
 
   const openEmailAssistant = (prompt: string) => {
-    openAssistantWithContext(
-      [
-        "I’m on the email page for this group.",
-        prompt,
-        "Draft a subject and body for an email to members.",
-        "Use the email action so confirming fills the email tab composer only.",
-        "Do not send anything automatically.",
-      ].join(" ")
-    );
+    openAssistantWithContext(prompt);
   };
 
   const promptForm = useForm<z.infer<typeof promptFormSchema>>({
@@ -195,7 +187,7 @@ function EmailPageInner() {
               <AssistantInlineTrigger
                 onClick={() => {
                   setShowAi(false);
-                  openEmailAssistant("Draft an email to all members of this group.");
+                  openEmailAssistant("Draft an email regarding the following:");
                 }}
               />
             </div>

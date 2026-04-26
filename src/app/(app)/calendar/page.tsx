@@ -175,13 +175,7 @@ export default function CalendarPage() {
   const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
   const openCalendarAssistant = (prompt: string) => {
-    openAssistantWithContext(
-      [
-        "I’m on the calendar page for this group.",
-        prompt,
-        "If this should become an event, use the assistant event preview and confirmation flow and do not guess missing date or time.",
-      ].join(" ")
-    );
+    openAssistantWithContext(prompt);
   };
 
   useEffect(() => {
@@ -619,9 +613,7 @@ export default function CalendarPage() {
                     <AssistantInlineTrigger
                       onClick={() => {
                         setShowAi(false);
-                        openCalendarAssistant(
-                          "Draft an event for this group and ask me for any missing date or time instead of guessing."
-                        );
+                        openCalendarAssistant("Create an event regarding the following:");
                       }}
                     />
                   </div>

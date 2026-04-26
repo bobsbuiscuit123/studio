@@ -8,8 +8,7 @@ type SearchParamGetter = {
   get: (key: string) => string | null;
 };
 
-export const buildAssistantPrefill = (contextText: string) =>
-  `Context: ${contextText}\nHelp me with recommended next steps. `;
+export const buildAssistantPrefill = (contextText: string) => contextText.trim();
 
 export const getAssistantPrefill = (params?: SearchParamGetter | null) => {
   const fromQuery = params?.get(ASSISTANT_PREFILL_QUERY_KEY) ?? '';

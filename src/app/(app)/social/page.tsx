@@ -86,19 +86,8 @@ export default function SocialPage() {
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const aiRequestInFlightRef = useRef(false);
-  const openSocialAssistant = (prompt: string, hasImages: boolean) => {
-    openAssistantWithContext(
-      [
-        "I’m on the social page for this group.",
-        prompt,
-        hasImages
-          ? "There are images selected on the page, but you cannot inspect them, so focus on strong social copy and caption ideas."
-          : null,
-        "Help me draft the post inside the assistant instead of publishing anything automatically.",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    );
+  const openSocialAssistant = (prompt: string) => {
+    openAssistantWithContext(prompt);
   };
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -203,7 +192,7 @@ export default function SocialPage() {
   };
 
   const handleGenerateSubmit = async (values: z.infer<typeof formSchema>) => {
-    openSocialAssistant(values.prompt, Boolean(values.photos?.length));
+    openSocialAssistant(values.prompt);
     toast({
       title: "Assistant opened",
       description: "Finish the social post draft in the assistant.",

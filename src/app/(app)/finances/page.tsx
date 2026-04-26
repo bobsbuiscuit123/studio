@@ -54,13 +54,7 @@ export default function FinancesPage() {
   const { role } = useCurrentUserRole();
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
   const openFinanceAssistant = (prompt: string) => {
-    openAssistantWithContext(
-      [
-        "I’m on the finances page for this group.",
-        prompt,
-        "Help me turn this into a clean transaction draft with description, amount, date, and whether it is a deposit or withdrawal. Do not save anything automatically.",
-      ].join(" ")
-    );
+    openAssistantWithContext(prompt);
   };
 
   const form = useForm<z.infer<typeof promptFormSchema>>({
@@ -229,9 +223,7 @@ export default function FinancesPage() {
                     <AssistantInlineTrigger
                       onClick={() => {
                         setShowAi(false);
-                        openFinanceAssistant(
-                          "Help me draft a transaction entry for this group and keep it ready for manual review."
-                        );
+                        openFinanceAssistant("Create a transaction draft regarding the following:");
                       }}
                     />
                   </div>

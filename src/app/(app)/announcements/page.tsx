@@ -155,13 +155,7 @@ function AnnouncementsPageInner() {
   const aiRequestInFlightRef = useRef(false);
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const openAnnouncementAssistant = (prompt: string) => {
-    openAssistantWithContext(
-      [
-        `I’m on the announcements page for ${clubName || "this group"}.`,
-        prompt,
-        "If this should become an announcement, use the normal assistant preview and confirmation flow before posting.",
-      ].join(" ")
-    );
+    openAssistantWithContext(prompt);
   };
 
   useEffect(() => {
@@ -553,9 +547,7 @@ function AnnouncementsPageInner() {
                     <AssistantInlineTrigger
                       onClick={() => {
                         setShowAi(false);
-                        openAnnouncementAssistant(
-                          "Draft an announcement for this group. Ask for any missing details instead of guessing."
-                        );
+                        openAnnouncementAssistant("Make and send an announcement regarding the following:");
                       }}
                     />
                   </div>

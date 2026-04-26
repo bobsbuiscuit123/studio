@@ -75,13 +75,7 @@ export default function SlidesPage() {
   const [printableContent, setPrintableContent] = useState<PresentationType | null>(null);
   const aiRequestInFlightRef = useRef(false);
   const openSlidesAssistant = (prompt: string) => {
-    openAssistantWithContext(
-      [
-        "I’m on the slides page for this group.",
-        prompt,
-        "Help me draft a slide outline and talking points inside the assistant. Do not create or save slides automatically.",
-      ].join(" ")
-    );
+    openAssistantWithContext(prompt);
   };
 
 

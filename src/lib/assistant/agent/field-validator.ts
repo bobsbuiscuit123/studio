@@ -1,7 +1,7 @@
 import { callAI } from '@/ai/genkit';
 import type { AiChatHistoryMessage } from '@/lib/ai-chat';
 import {
-  geminiFieldValidationResultSchema,
+  getGeminiFieldValidationResultSchema,
 } from '@/lib/assistant/agent/schemas';
 import {
   buildFieldValidatorPrompt,
@@ -90,6 +90,7 @@ export async function runGeminiFieldValidator(args: {
   requestTimezone: string;
   requestReceivedAt: string;
 }): Promise<GeminiFieldValidationResult> {
+  const outputSchema = getGeminiFieldValidationResultSchema(args.actionType);
   const result = await callAI({
     messages: [
       { role: 'system', content: FIELD_VALIDATOR_SYSTEM_PROMPT },
@@ -99,7 +100,7 @@ export async function runGeminiFieldValidator(args: {
       },
     ],
     responseFormat: 'json_object',
-    outputSchema: geminiFieldValidationResultSchema,
+    outputSchema,
     temperature: 0.35,
     timeoutMs: 12_000,
   });
@@ -108,7 +109,7 @@ export async function runGeminiFieldValidator(args: {
     throw new Error(result.error.detail || result.error.message);
   }
 
-  const parsed = geminiFieldValidationResultSchema.parse(result.data);
+  const parsed = outputSchema.parse(result.data);
   const generatedFieldValidation = validateGeminiGeneratedFields(
     args.actionType,
     parsed.inferredFields

@@ -144,6 +144,80 @@ export const actionFieldSchemaByActionType = {
   },
 } as const;
 
+const fieldValidatorDateFieldSchema = dateFieldSchema.regex(/^\d{4}-\d{2}-\d{2}$/);
+const fieldValidatorTimeFieldSchema = timeFieldSchema.regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+
+export const geminiInferredFieldsSchemaByActionType = {
+  create_announcement: z
+    .object({
+      title: titleFieldSchema,
+      body: bodyFieldSchema,
+    })
+    .strict(),
+  update_announcement: z
+    .object({
+      title: titleFieldSchema,
+      body: bodyFieldSchema,
+    })
+    .strict(),
+  create_event: z
+    .object({
+      title: titleFieldSchema,
+      description: descriptionFieldSchema,
+      location: locationFieldSchema,
+      date: fieldValidatorDateFieldSchema,
+      time: fieldValidatorTimeFieldSchema,
+    })
+    .strict(),
+  update_event: z
+    .object({
+      title: titleFieldSchema,
+      description: descriptionFieldSchema,
+      location: locationFieldSchema,
+      date: fieldValidatorDateFieldSchema,
+      time: fieldValidatorTimeFieldSchema,
+    })
+    .strict(),
+  create_message: z
+    .object({
+      body: bodyFieldSchema,
+    })
+    .strict(),
+  update_message: z
+    .object({
+      body: bodyFieldSchema,
+    })
+    .strict(),
+  create_email: z
+    .object({
+      subject: subjectFieldSchema,
+      body: bodyFieldSchema,
+    })
+    .strict(),
+  update_email: z
+    .object({
+      subject: subjectFieldSchema,
+      body: bodyFieldSchema,
+    })
+    .strict(),
+} satisfies Record<AgentActionType, z.ZodTypeAny>;
+
+const geminiFieldValidationBaseSchema = z
+  .object({
+    missingFields: z.array(z.string().trim().min(1)).max(10).default([]),
+    clarificationMessage: z.string().trim().min(1).max(500).optional(),
+    usedInference: z.boolean(),
+    telemetry: z
+      .object({
+        // Confidence is telemetry only. It must never influence gating or execution safety.
+        confidence: z.number().min(0).max(1).optional(),
+        notes: z.array(z.string().trim().min(1)).max(10).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 export const geminiFieldValidationResultSchema = z
   .object({
     inferredFields: z.record(z.unknown()).default({}),
@@ -160,6 +234,13 @@ export const geminiFieldValidationResultSchema = z
       .optional(),
   })
   .strict();
+
+export const getGeminiFieldValidationResultSchema = (actionType: AgentActionType) =>
+  geminiFieldValidationBaseSchema
+    .extend({
+      inferredFields: geminiInferredFieldsSchemaByActionType[actionType],
+    })
+    .strict();
 
 export const draftPreviewPatchSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('announcement'), patch: announcementPatchSchema }).strict(),

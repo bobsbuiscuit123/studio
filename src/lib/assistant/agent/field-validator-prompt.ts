@@ -14,6 +14,7 @@ export const FIELD_VALIDATOR_FIELDS_BY_ACTION: Record<AgentActionType, string[]>
 
 const GENERIC_FIELD_GENERATION_CONTRACT = [
   'inferredFields must include a usable non-empty value for every field listed in fields_to_generate.',
+  'Return inferredFields as an object with exactly the fields_to_generate keys, no fewer.',
   'Never omit a listed field, never return null for it, and never leave it blank.',
   'Every generated field must be ready for downstream storage and draft assembly without extra interpretation.',
   'If a field allows an editable placeholder, use a concrete placeholder such as "TBD" rather than leaving it missing.',

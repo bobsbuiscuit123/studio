@@ -8,6 +8,7 @@ import {
   emailPatchSchema,
   eventPatchSchema,
   geminiFieldValidationResultSchema,
+  getGeminiFieldValidationResultSchema,
   messagePatchSchema,
 } from '@/lib/assistant/agent/schemas';
 
@@ -99,7 +100,7 @@ describe('preview patch schemas', () => {
   });
 
   it('parses strict Gemini field-validator payloads', () => {
-    const parsed = geminiFieldValidationResultSchema.safeParse({
+    const parsed = getGeminiFieldValidationResultSchema('create_message').safeParse({
       inferredFields: {
         body: 'Reminder about dues',
       },
@@ -113,6 +114,34 @@ describe('preview patch schemas', () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it('requires action-specific Gemini-generated fields', () => {
+    const parsed = getGeminiFieldValidationResultSchema('create_announcement').safeParse({
+      inferredFields: {
+        body: 'Reminder about dues',
+      },
+      missingFields: [],
+      usedInference: true,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it('requires stored-format Gemini-generated event dates and times', () => {
+    const parsed = getGeminiFieldValidationResultSchema('create_event').safeParse({
+      inferredFields: {
+        title: 'ELA Test',
+        description: 'Prepare for the ELA test.',
+        location: 'TBD',
+        date: 'April 30',
+        time: '6pm',
+      },
+      missingFields: [],
+      usedInference: true,
+    });
+
+    expect(parsed.success).toBe(false);
   });
 
   it('rejects Gemini validator payloads that try to change action routing', () => {

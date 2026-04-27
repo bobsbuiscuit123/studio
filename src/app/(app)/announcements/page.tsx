@@ -3,7 +3,7 @@
 
 import { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
-import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles, Lock } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -43,7 +43,6 @@ import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurre
 import type { Announcement, Attachment, ClubForm } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { cn } from "@/lib/utils";
 
@@ -78,13 +77,6 @@ const deriveAnnouncementTitleFromContent = (content?: string | null, fallback?: 
   const fallbackText = String(fallback ?? '').trim();
   const value = cleaned || fallbackText || 'Announcement';
   return value.length > 80 ? `${value.slice(0, 77).trimEnd()}...` : value;
-};
-
-const formatAnnouncementBadgeLabel = (value?: string | null) => {
-  const cleaned = String(value ?? '')
-    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
-    .trim();
-  return cleaned || 'Private';
 };
 
 const normalizeAnnouncementForDisplay = <T extends { title?: string | null; content?: string | null }>(
@@ -122,7 +114,6 @@ function AnnouncementsPageInner() {
     error,
     loading,
     refreshData,
-    clubId,
   } = useAnnouncements();
   const {
     data: forms,
@@ -139,7 +130,6 @@ function AnnouncementsPageInner() {
   const { data: members } = useMembers();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [clubName, setClubName] = useState("");
   const [printableContent, setPrintableContent] = useState<any>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,23 +150,9 @@ function AnnouncementsPageInner() {
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
   const [highlightedAnnouncementId, setHighlightedAnnouncementId] = useState<string | null>(null);
   const aiRequestInFlightRef = useRef(false);
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const openAnnouncementAssistant = (prompt: string) => {
     openAssistantWithContext(prompt);
   };
-
-  useEffect(() => {
-    if (!clubId) return;
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('groups')
-        .select('name')
-        .eq('id', clubId)
-        .maybeSingle();
-      if (!error && data?.name) setClubName(data.name);
-    };
-    load();
-  }, [clubId, supabase]);
 
   useEffect(() => {
     if (printableContent && isDownloading) {
@@ -753,10 +729,6 @@ function AnnouncementsPageInner() {
                                 <span>{announcement.author}</span>
                                 <span aria-hidden="true" className="text-zinc-600">•</span>
                                 <span>{formatFriendlyDate(announcement.date)}</span>
-                                <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700/60 bg-zinc-900/30 px-2 py-0.5 text-xs font-medium text-zinc-500">
-                                  <Lock className="h-3 w-3" aria-hidden="true" />
-                                  {formatAnnouncementBadgeLabel(clubName)}
-                                </span>
                               </CardDescription>
                           </div>
                           {canEditContent && (
@@ -767,7 +739,7 @@ function AnnouncementsPageInner() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <p className="max-w-5xl whitespace-pre-wrap font-sans text-xl font-normal leading-snug text-foreground/85 sm:text-2xl sm:leading-snug">
+                      <p className="max-w-5xl whitespace-pre-wrap font-body text-xl font-normal leading-snug text-foreground/85 sm:text-2xl sm:leading-snug">
                         {announcement.content}
                       </p>
                       {announcement.linkedFormId && !hasButtonAttachment && (

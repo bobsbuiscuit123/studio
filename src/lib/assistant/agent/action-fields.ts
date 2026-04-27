@@ -59,9 +59,14 @@ const DEFAULT_EVENT_TIME = '18:00';
 const DEFAULT_EVENT_LOCATION = 'TBD';
 const REQUEST_PREFIX_PATTERN = /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?/i;
 const COMMAND_NOISE_PATTERN =
-  /\b(?:send|post|create|draft|write|make|publish|share|compose|generate|announce(?:ment)?|message|event|update|reminder|remind|everyone|everybody|team|group|members?|them|all)\b/gi;
+  /\b(?:send|post|create|draft|write|make|publish|share|compose|generate|announce(?:ment)?|message|event|calendar|update|reminder|remind|everyone|everybody|team|group|members?|them|all)\b/gi;
 const TOPIC_STOP_WORD_PATTERN =
-  /\b(?:that|to|about|regarding|please|everyone|everybody|they|their|them|this|the|a|an|need|needs|should|just|quick|in|on|for|with|use)\b/gi;
+  /\b(?:that|to|about|regarding|following|please|everyone|everybody|they|their|them|this|the|a|an|need|needs|should|just|quick|in|on|for|with|use)\b/gi;
+const REQUEST_SCAFFOLDING_PATTERN = /\b(?:(?:the\s+)?following|details?)\s*:?\s*/gi;
+const EVENT_TITLE_SCHEDULING_NOISE_PATTERN =
+  /\b(?:on|at|by|the|today|tomorrow|tonight|morning|afternoon|evening|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}:\d{2}|\d{1,2}(?:st|nd|rd|th|h)?|am|pm)\b/gi;
+const EVENT_TITLE_NOUN_PATTERN =
+  /\b(?:test|exam|quiz|meeting|practice|workshop|fundraiser|election|review|party|social|game|tryout)\b/i;
 
 const TITLE_KEYWORDS = [
   {
@@ -164,7 +169,7 @@ const countWords = (value: string) =>
     .filter(Boolean).length;
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const ORDINAL_DAY_PATTERN = /\b(?:on\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th)\b/i;
+const ORDINAL_DAY_PATTERN = /\b(?:on\s+)?(?:the\s+)?(\d{1,2})(st|nd|rd|th|h)\b/i;
 const MONTH_DAY_PATTERN =
   /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
 const DAY_OF_MONTH_PATTERN =
@@ -188,6 +193,13 @@ const asRecord = (value: unknown): NamedRecord | null =>
 const removeLeadingRequestPhrase = (value: string) =>
   collapseWhitespace(value.replace(REQUEST_PREFIX_PATTERN, ''));
 
+const cleanIntentClause = (value: string) =>
+  collapseWhitespace(
+    value
+      .replace(REQUEST_SCAFFOLDING_PATTERN, ' ')
+      .replace(/^[:\-\s]+/, '')
+  );
+
 const extractIntentClause = (value: string) => {
   const cleaned = removeLeadingRequestPhrase(value);
   if (!cleaned) return '';
@@ -203,12 +215,12 @@ const extractIntentClause = (value: string) => {
   for (const pattern of patterns) {
     const match = cleaned.match(pattern);
     if (match?.[1]) {
-      return collapseWhitespace(match[1]);
+      return cleanIntentClause(match[1]);
     }
   }
 
   const stripped = collapseWhitespace(cleaned.replace(COMMAND_NOISE_PATTERN, ' '));
-  return stripped || cleaned;
+  return cleanIntentClause(stripped || cleaned);
 };
 
 const getKeywordTitle = (sourceText: string, kind: 'announcement' | 'event') => {
@@ -232,6 +244,23 @@ const getFallbackTitleFromClause = (sourceText: string, suffix: string, fallback
   }
 
   return `${toTitleCase(words.join(' '))} ${suffix}`.trim();
+};
+
+const getFallbackEventTitleFromClause = (sourceText: string) => {
+  const clause = extractIntentClause(sourceText);
+  const words = clause
+    .replace(TOPIC_STOP_WORD_PATTERN, ' ')
+    .replace(EVENT_TITLE_SCHEDULING_NOISE_PATTERN, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  if (words.length === 0) {
+    return 'Group Event';
+  }
+
+  const title = toTitleCase(words.join(' ')).replace(/\bEla\b/g, 'ELA');
+  return EVENT_TITLE_NOUN_PATTERN.test(title) ? title : `${title} Event`;
 };
 
 const buildAnnouncementTitle = (sourceText: string) =>
@@ -349,7 +378,7 @@ const buildMessageBody = (sourceText: string) => {
 
 const buildEventTitle = (sourceText: string) =>
   getKeywordTitle(sourceText, 'event') ??
-  getFallbackTitleFromClause(sourceText, 'Event', 'Group Event');
+  getFallbackEventTitleFromClause(sourceText);
 
 const buildEventDescription = (sourceText: string) => {
   const normalizedSource = normalize(sourceText);
@@ -361,6 +390,11 @@ const buildEventDescription = (sourceText: string) => {
   }
 
   const clause = extractIntentClause(sourceText);
+  const conciseTopic = collapseWhitespace(
+    clause
+      .replace(TOPIC_STOP_WORD_PATTERN, ' ')
+      .replace(EVENT_TITLE_SCHEDULING_NOISE_PATTERN, ' ')
+  );
   if (!clause || countWords(clause) < 2) {
     return joinSentences(
       'Please review this event draft',
@@ -383,7 +417,7 @@ const buildEventDescription = (sourceText: string) => {
   }
 
   return joinSentences(
-    sentenceCase(stripTrailingPunctuation(clause)),
+    sentenceCase(stripTrailingPunctuation(conciseTopic || clause)),
     'Please edit any details as needed'
   );
 };

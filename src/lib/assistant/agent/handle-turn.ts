@@ -451,8 +451,16 @@ const hasRecipientList = (value: unknown): boolean => Array.isArray(value) && va
 const mergeAuthoritativeFieldsIntoPreview = (
   preview: DraftPreview,
   fieldsProvided: Record<string, unknown>,
-  fallbackPreview?: DraftPreview | null
+  fallbackPreview?: DraftPreview | null,
+  options?: { preferFields?: boolean }
 ) => {
+  const shouldApplyStringField = (previewValue: unknown, fieldValue: unknown) =>
+    hasNonEmptyString(fieldValue) &&
+    (options?.preferFields || !hasNonEmptyString(previewValue));
+  const shouldApplyRecipientField = (previewValue: unknown, fieldValue: unknown) =>
+    hasRecipientList(fieldValue) &&
+    (options?.preferFields || !hasRecipientList(previewValue));
+
   switch (preview.kind) {
     case 'announcement':
       return parseDraftPreview({
@@ -463,12 +471,8 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
-          ? {}
-          : { title: fieldsProvided.title }),
-        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
-          ? {}
-          : { body: fieldsProvided.body }),
+        ...(shouldApplyStringField(preview.title, fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     case 'event':
       return parseDraftPreview({
@@ -488,21 +492,15 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { location: fallbackPreview.location }
           : {}),
         ...preview,
-        ...(hasNonEmptyString(preview.title) || !hasNonEmptyString(fieldsProvided.title)
-          ? {}
-          : { title: fieldsProvided.title }),
-        ...(hasNonEmptyString(preview.description) || !hasNonEmptyString(fieldsProvided.description)
-          ? {}
-          : { description: fieldsProvided.description }),
-        ...(hasNonEmptyString(preview.date) || !hasNonEmptyString(fieldsProvided.date)
-          ? {}
-          : { date: fieldsProvided.date }),
-        ...(hasNonEmptyString(preview.time) || !hasNonEmptyString(fieldsProvided.time)
-          ? {}
-          : { time: fieldsProvided.time }),
-        ...(hasNonEmptyString(preview.location) || !hasNonEmptyString(fieldsProvided.location)
-          ? {}
-          : { location: fieldsProvided.location }),
+        ...(shouldApplyStringField(preview.title, fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(shouldApplyStringField(preview.description, fieldsProvided.description)
+          ? { description: fieldsProvided.description }
+          : {}),
+        ...(shouldApplyStringField(preview.date, fieldsProvided.date) ? { date: fieldsProvided.date } : {}),
+        ...(shouldApplyStringField(preview.time, fieldsProvided.time) ? { time: fieldsProvided.time } : {}),
+        ...(shouldApplyStringField(preview.location, fieldsProvided.location)
+          ? { location: fieldsProvided.location }
+          : {}),
       });
     case 'message':
       return parseDraftPreview({
@@ -513,12 +511,10 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(hasRecipientList(preview.recipients) || !hasRecipientList(fieldsProvided.recipients)
-          ? {}
-          : { recipients: fieldsProvided.recipients }),
-        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
-          ? {}
-          : { body: fieldsProvided.body }),
+        ...(shouldApplyRecipientField(preview.recipients, fieldsProvided.recipients)
+          ? { recipients: fieldsProvided.recipients }
+          : {}),
+        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     case 'email':
       return parseDraftPreview({
@@ -529,12 +525,10 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(hasNonEmptyString(preview.subject) || !hasNonEmptyString(fieldsProvided.subject)
-          ? {}
-          : { subject: fieldsProvided.subject }),
-        ...(hasNonEmptyString(preview.body) || !hasNonEmptyString(fieldsProvided.body)
-          ? {}
-          : { body: fieldsProvided.body }),
+        ...(shouldApplyStringField(preview.subject, fieldsProvided.subject)
+          ? { subject: fieldsProvided.subject }
+          : {}),
+        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     default:
       return preview;
@@ -1672,7 +1666,8 @@ export async function handleAssistantTurn({
       mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
         draftRun.value,
         enrichedActionFields,
-        draftSeedPreview
+        draftSeedPreview,
+        { preferFields: true }
       );
     }
 

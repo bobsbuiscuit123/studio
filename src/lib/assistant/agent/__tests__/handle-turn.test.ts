@@ -429,6 +429,88 @@ describe('handleAssistantTurn', () => {
     ]);
   });
 
+  it('prefers validator-owned event fields over a noisy draft preview', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...eventPlannerValue,
+            action: { ...eventPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              title: 'ELA Test',
+              description: 'Prepare for the upcoming ELA test.',
+              date: '2026-04-30',
+              time: '18:00',
+              location: 'TBD',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'event',
+          title: 'Following: Ela Test 30h Event',
+          description:
+            'The following: ela test on the 30h Create an event regarding the following: ela test on the 30h.',
+          date: '2026-04-30',
+          time: '18:00',
+          location: 'TBD',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      message: 'Create an event regarding the following: ela test on the 30h',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview.kind).toBe('event');
+    if (result.preview.kind !== 'event') {
+      throw new Error('Expected event preview.');
+    }
+
+    expect(result.preview.title).toBe('ELA Test');
+    expect(result.preview.description).toBe('Prepare for the upcoming ELA test.');
+    expect(createPendingAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          kind: 'event',
+          title: 'ELA Test',
+          description: 'Prepare for the upcoming ELA test.',
+        }),
+      })
+    );
+  });
+
   it('asks for clarification when the validator returns no message body', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {

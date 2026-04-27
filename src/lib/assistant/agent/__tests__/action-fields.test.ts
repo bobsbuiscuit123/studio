@@ -369,10 +369,31 @@ describe('Gemini authoritative field merging', () => {
     expect(typeof filled.filledFields.title).toBe('string');
     expect(String(filled.filledFields.title).trim().length).toBeGreaterThan(0);
     expect(typeof filled.filledFields.description).toBe('string');
-    expect(String(filled.filledFields.description)).toContain('30th');
+    expect(String(filled.filledFields.description).trim().length).toBeGreaterThan(0);
 
     const required = evaluateRequiredFields('create_event', filled.filledFields);
     expect(required.missingFields).toEqual([]);
+  });
+
+  it('strips assistant prompt scaffolding from fallback event copy', () => {
+    const filled = applyValidatorResultWithDefaults(
+      {
+        inferredFields: {},
+        missingFields: [],
+        usedInference: false,
+      },
+      {
+        actionType: 'create_event',
+        userMessage: 'Create an event regarding the following: ela test on the 30h',
+        requestTimezone: 'America/New_York',
+        requestReceivedAt: '2026-04-26T16:59:00.000Z',
+      }
+    );
+
+    expect(filled.filledFields.title).toBe('ELA Test');
+    expect(String(filled.filledFields.description).toLowerCase()).not.toContain('following');
+    expect(String(filled.filledFields.description)).not.toContain('30h');
+    expect(filled.filledFields.date).toBe('2026-04-30');
   });
 
   it('uses prior user context to fill create_event scheduling follow-ups', () => {
@@ -400,7 +421,7 @@ describe('Gemini authoritative field merging', () => {
     expect(typeof filled.filledFields.title).toBe('string');
     expect(String(filled.filledFields.title).trim().length).toBeGreaterThan(0);
     expect(typeof filled.filledFields.description).toBe('string');
-    expect(String(filled.filledFields.description)).toContain('30th');
+    expect(String(filled.filledFields.description).trim().length).toBeGreaterThan(0);
   });
 
   it('does not backfill announcement copy when the validator returns nothing', () => {

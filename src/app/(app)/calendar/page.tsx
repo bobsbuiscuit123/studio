@@ -497,8 +497,8 @@ export default function CalendarPage() {
   return (
     <div className="app-page-shell">
       <div className="app-page-scroll">
-    <div className="grid gap-4 md:gap-8 lg:grid-cols-[minmax(0,1.4fr)_minmax(18rem,0.9fr)]">
-      <div className="space-y-4 md:col-span-2">
+    <div className="mx-auto grid w-full max-w-7xl gap-4 md:gap-6 lg:grid-cols-[minmax(22rem,42rem)_minmax(24rem,1fr)] xl:grid-cols-[minmax(24rem,44rem)_minmax(26rem,1fr)]">
+      <div className="space-y-4 lg:space-y-6">
         <Card className="mobile-panel overflow-hidden">
           <CardContent className="p-3 sm:p-4">
             {!isClient ? (
@@ -603,7 +603,7 @@ export default function CalendarPage() {
           </Card>
         ) : null}
       </div>
-      <div className="flex flex-col space-y-4">
+      <div className="flex min-w-0 flex-col space-y-4 lg:space-y-6">
         {canEditContent && (
             <Card className="mobile-panel">
             <CardHeader>
@@ -657,38 +657,40 @@ export default function CalendarPage() {
                           </FormItem>
                         )}
                       />
-                      <FormField
-                        control={manualForm.control}
-                        name="date"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Date</FormLabel>
-                            <FormControl><Input type="date" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={manualForm.control}
-                        name="time"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Time (optional)</FormLabel>
-                            <FormControl><Input type="time" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={manualForm.control}
-                        name="points"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Points (optional)</FormLabel>
-                            <FormControl><Input type="number" {...field} /></FormControl>
-                          </FormItem>
-                        )}
-                      />
+                      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.75fr)]">
+                        <FormField
+                          control={manualForm.control}
+                          name="date"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Date</FormLabel>
+                              <FormControl><Input type="date" {...field} /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={manualForm.control}
+                          name="time"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Time (optional)</FormLabel>
+                              <FormControl><Input type="time" {...field} /></FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={manualForm.control}
+                          name="points"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Points (optional)</FormLabel>
+                              <FormControl><Input type="number" {...field} /></FormControl>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
                       <FormField
                         control={manualForm.control}
                         name="rsvpRequired"

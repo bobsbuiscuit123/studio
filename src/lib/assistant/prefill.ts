@@ -39,10 +39,10 @@ export const openAssistantWithContext = (contextText: string) => {
   } catch {
     // ignore storage failures
   }
-  const isDesktopWeb =
-    window.matchMedia('(min-width: 768px)').matches && !Capacitor.isNativePlatform();
+  const shouldOpenPopup =
+    Capacitor.isNativePlatform() || window.matchMedia('(min-width: 768px)').matches;
 
-  if (isDesktopWeb) {
+  if (shouldOpenPopup) {
     window.dispatchEvent(
       new CustomEvent(ASSISTANT_OPEN_EVENT, {
         detail: { prefill },

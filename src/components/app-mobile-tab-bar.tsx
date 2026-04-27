@@ -55,7 +55,7 @@ export function AppMobileTabBar() {
     isAssistantSending,
     setAssistantInput,
     setIsAssistantOpen,
-  } = useAssistantChat();
+  } = useAssistantChat({ enableExternalOpen: true });
 
   const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
   const orderedItems: MobileNavItem[] = mobileNavOrder

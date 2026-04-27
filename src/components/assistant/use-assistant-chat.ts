@@ -23,6 +23,9 @@ type AssistantOpenEventDetail = {
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
+const isVisibleAssistantHost = (element: HTMLElement | null) =>
+  Boolean(element && element.getClientRects().length > 0);
+
 const stageLabel = (stage?: AiChatFailureStage) => {
   switch (stage) {
     case "planner":
@@ -144,6 +147,10 @@ export function useAssistantChat({
     }
 
     const handleAssistantOpen = (event: Event) => {
+      if (!isVisibleAssistantHost(assistantButtonRef.current)) {
+        return;
+      }
+
       const detail = (event as CustomEvent<AssistantOpenEventDetail>).detail;
       const prefill = detail?.prefill?.trim();
 

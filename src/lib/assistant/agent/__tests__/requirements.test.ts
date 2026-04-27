@@ -12,7 +12,7 @@ describe('evaluateRequiredFields', () => {
     });
 
     expect(result.missingFields).toEqual(['recipients']);
-    expect(result.clarificationMessage).toBe('Who should receive this message?');
+    expect(result.clarificationMessage).toBe('Missing message recipients.');
   });
 
   it('requires date and time for a completed create_event payload', () => {
@@ -21,9 +21,7 @@ describe('evaluateRequiredFields', () => {
     });
 
     expect(result.missingFields).toEqual(['date', 'time']);
-    expect(result.clarificationMessage).toBe(
-      'What date and time should this event be scheduled for?'
-    );
+    expect(result.clarificationMessage).toBe('Missing event date and time.');
   });
 
   it('requires body for a completed create_message payload', () => {
@@ -32,7 +30,7 @@ describe('evaluateRequiredFields', () => {
     });
 
     expect(result.missingFields).toEqual(['body']);
-    expect(result.clarificationMessage).toBe('What should this message say?');
+    expect(result.clarificationMessage).toBe('Missing message body.');
   });
 
   it('allows update_message payloads when recipients are preserved but only the audience changes', () => {
@@ -48,14 +46,14 @@ describe('evaluateRequiredFields', () => {
     const result = evaluateRequiredFields('create_email', {});
 
     expect(result.missingFields).toEqual(['subject', 'body']);
-    expect(result.clarificationMessage).toBe('What subject and body should this email use?');
+    expect(result.clarificationMessage).toBe('Missing email subject and body.');
   });
 
   it('requires actual edit content for update_email payloads', () => {
     const result = evaluateRequiredFields('update_email', {});
 
     expect(result.missingFields).toEqual(['subject', 'body']);
-    expect(result.clarificationMessage).toBe('What should I change in this email?');
+    expect(result.clarificationMessage).toBe('Missing email update content.');
   });
 
   it('requires both title and body for create announcements', () => {
@@ -64,7 +62,7 @@ describe('evaluateRequiredFields', () => {
     });
 
     expect(result.missingFields).toEqual(['body']);
-    expect(result.clarificationMessage).toBe('What should this announcement say?');
+    expect(result.clarificationMessage).toBe('Missing announcement body.');
   });
 
   it('accepts announcements when both title and body are present', () => {
@@ -83,6 +81,6 @@ describe('evaluateRequiredFields', () => {
     });
 
     expect(result.missingFields).toEqual(['title', 'description', 'date', 'time', 'location']);
-    expect(result.clarificationMessage).toBe('What should I change in this event?');
+    expect(result.clarificationMessage).toBe('Missing event update content.');
   });
 });

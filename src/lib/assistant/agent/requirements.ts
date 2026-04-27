@@ -55,20 +55,20 @@ export function evaluateStructuralRequiredFields(
       const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
       return buildResult(
         missing,
-        missing.length ? 'Which announcement would you like me to update?' : null
+        missing.length ? 'Missing announcement target.' : null
       );
     }
     case 'update_event': {
       const missing = !hasText(fieldsProvided.targetRef) ? ['targetRef'] : [];
-      return buildResult(missing, missing.length ? 'Which event would you like me to update?' : null);
+      return buildResult(missing, missing.length ? 'Missing event target.' : null);
     }
     case 'create_message': {
       const missing = !hasRecipients(fieldsProvided.recipients) ? ['recipients'] : [];
-      return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
+      return buildResult(missing, missing.length ? 'Missing message recipients.' : null);
     }
     case 'update_message': {
       const missing = !hasRecipients(fieldsProvided.recipients) ? ['recipients'] : [];
-      return buildResult(missing, missing.length ? 'Who should receive this message?' : null);
+      return buildResult(missing, missing.length ? 'Missing message recipients.' : null);
     }
     default:
       return buildResult([], null);
@@ -90,22 +90,22 @@ export function evaluateRequiredFields(
         return buildResult([], null);
       }
       if (missing.length === 2) {
-        return buildResult(missing, 'What title and body should this announcement use?');
+        return buildResult(missing, 'Missing announcement title and body.');
       }
       return buildResult(
         missing,
         missing[0] === 'title'
-          ? 'What title should this announcement use?'
-          : 'What should this announcement say?'
+          ? 'Missing announcement title.'
+          : 'Missing announcement body.'
       );
     }
     case 'update_announcement': {
       if (!hasText(fieldsProvided.targetRef)) {
-        return buildResult(['targetRef'], 'Which announcement would you like me to update?');
+        return buildResult(['targetRef'], 'Missing announcement target.');
       }
       const { title, body } = getAnnouncementFields(fieldsProvided, preview);
       const missing = !hasText(title) && !hasText(body) ? ['title', 'body'] : [];
-      return buildResult(missing, missing.length ? 'What should I change in this announcement?' : null);
+      return buildResult(missing, missing.length ? 'Missing announcement update content.' : null);
     }
     case 'create_event': {
       const { date, time } = getEventFields(fieldsProvided, preview);
@@ -114,18 +114,18 @@ export function evaluateRequiredFields(
       );
       return buildResult(
         missing,
-        missing.length ? 'What date and time should this event be scheduled for?' : null
+        missing.length ? 'Missing event date and time.' : null
       );
     }
     case 'update_event': {
       if (!hasText(fieldsProvided.targetRef)) {
-        return buildResult(['targetRef'], 'Which event would you like me to update?');
+        return buildResult(['targetRef'], 'Missing event target.');
       }
       const { title, description, date, time, location } = getEventFields(fieldsProvided, preview);
       const missing = !hasAnyText(title, description, date, time, location)
         ? ['title', 'description', 'date', 'time', 'location']
         : [];
-      return buildResult(missing, missing.length ? 'What should I change in this event?' : null);
+      return buildResult(missing, missing.length ? 'Missing event update content.' : null);
     }
     case 'create_message': {
       const { recipients, body } = getMessageFields(fieldsProvided, preview);
@@ -137,11 +137,11 @@ export function evaluateRequiredFields(
         return buildResult([], null);
       }
       if (missing.length === 2) {
-        return buildResult(missing, 'Who should receive this message, and what should it say?');
+        return buildResult(missing, 'Missing message recipients and body.');
       }
       return buildResult(missing, missing[0] === 'recipients'
-        ? 'Who should receive this message?'
-        : 'What should this message say?');
+        ? 'Missing message recipients.'
+        : 'Missing message body.');
     }
     case 'update_message': {
       const { recipients, body } = getMessageFields(fieldsProvided, preview);
@@ -151,7 +151,7 @@ export function evaluateRequiredFields(
           : [];
       return buildResult(
         missing,
-        missing.length ? 'What should I change in this message?' : null
+        missing.length ? 'Missing message update content.' : null
       );
     }
     case 'create_email': {
@@ -164,13 +164,13 @@ export function evaluateRequiredFields(
         return buildResult([], null);
       }
       if (missing.length === 2) {
-        return buildResult(missing, 'What subject and body should this email use?');
+        return buildResult(missing, 'Missing email subject and body.');
       }
       return buildResult(
         missing,
         missing[0] === 'subject'
-          ? 'What subject should this email use?'
-          : 'What should this email say?'
+          ? 'Missing email subject.'
+          : 'Missing email body.'
       );
     }
     case 'update_email': {
@@ -178,7 +178,7 @@ export function evaluateRequiredFields(
       const missing = !hasAnyText(subject, body) ? ['subject', 'body'] : [];
       return buildResult(
         missing,
-        missing.length ? 'What should I change in this email?' : null
+        missing.length ? 'Missing email update content.' : null
       );
     }
     default:

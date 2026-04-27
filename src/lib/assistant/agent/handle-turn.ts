@@ -20,7 +20,11 @@ import { authorizeAction } from '@/lib/assistant/agent/authorize';
 import { getAgentContext } from '@/lib/assistant/agent/context';
 import { generateDraftPreview } from '@/lib/assistant/agent/drafts';
 import { executePendingAction } from '@/lib/assistant/agent/executor';
-import { runGeminiFieldValidator } from '@/lib/assistant/agent/field-validator';
+import {
+  formatGeneratedFieldValidationError,
+  runGeminiFieldValidator,
+  validateGeminiGeneratedFields,
+} from '@/lib/assistant/agent/field-validator';
 import { getAssistantActionFlag } from '@/lib/assistant/agent/feature-flags';
 import {
   announcementPatchSchema,
@@ -66,7 +70,7 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { addBreadcrumb } from '@/lib/telemetry';
 
 const genericRetryFallback =
-  "I'm having trouble processing that request right now—can you try rephrasing it?";
+  'AI is temporarily unavailable. Please try again later.';
 
 const MAX_DIAGNOSTIC_DETAIL_CHARS = 240;
 
@@ -345,21 +349,25 @@ const buildFallbackResponse = (
   diagnostics,
 });
 
-const buildNeedsClarification = (
+const buildUnavailableResponse = (
   conversationId: string,
   turnId: string,
-  message: string,
+  detail: string,
   missingFields?: string[],
-  pendingActionId?: string
+  _pendingActionId?: string
 ): AssistantTurnResponse => ({
-  state: 'needs_clarification',
+  state: 'response',
   conversationId,
   turnId,
-  message,
-  missingFields,
-  pendingActionId,
+  reply: genericRetryFallback,
   retryCount: 0,
   timeoutFlag: false,
+  diagnostics: {
+    phase: 'orchestrator',
+    detail: missingFields?.length
+      ? `Assistant could not resolve required fields: ${missingFields.join(', ')}.`
+      : detail,
+  },
 });
 
 const buildError = (
@@ -842,10 +850,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That action is no longer active. Want me to create a new draft instead?'
+            'The pending action is no longer active.'
           ),
         });
       }
@@ -886,10 +894,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'What would you like me to post?'
+            'Assistant could not find a pending action to execute.'
           ),
         });
       }
@@ -903,10 +911,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That draft expired. Want me to recreate it?',
+            'The pending draft expired.',
             undefined,
             pending.id
           ),
@@ -921,10 +929,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That action is no longer active. Want me to regenerate it?',
+            'The pending action is no longer active.',
             undefined,
             pending.id
           ),
@@ -967,7 +975,7 @@ export async function handleAssistantTurn({
             conversationId: resolvedConversationId,
             turnId,
             requestPayload,
-            result: buildNeedsClarification(
+            result: buildUnavailableResponse(
               resolvedConversationId,
               turnId,
               editRequirements.clarificationMessage,
@@ -1047,10 +1055,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That draft expired. Want me to recreate it?',
+            'The pending draft expired.',
             undefined,
             pending.id
           ),
@@ -1112,7 +1120,7 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
             editRequirements.clarificationMessage,
@@ -1187,10 +1195,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That action is no longer active. Want me to create a new draft?'
+            'The pending action is no longer active.'
           ),
         });
       }
@@ -1204,10 +1212,10 @@ export async function handleAssistantTurn({
           conversationId: resolvedConversationId,
           turnId,
           requestPayload,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
-            'That draft expired. Want me to recreate it?',
+            'The pending draft expired.',
             undefined,
             pending.id
           ),
@@ -1503,7 +1511,7 @@ export async function handleAssistantTurn({
         requestPayload,
         normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
         retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildNeedsClarification(
+        result: buildUnavailableResponse(
           resolvedConversationId,
           turnId,
           structuralRequirements.clarificationMessage,
@@ -1544,6 +1552,36 @@ export async function handleAssistantTurn({
           buildDiagnostics({
             phase: 'field_validator',
             detail: fieldValidatorRun.lastErrorMessage,
+            requestId,
+          })
+        ),
+        actionType,
+      });
+    }
+
+    const generatedFieldValidation = validateGeminiGeneratedFields(
+      actionType,
+      fieldValidatorRun.value.inferredFields
+    );
+
+    if (!generatedFieldValidation.ok) {
+      return persistTurnResult({
+        userId,
+        orgId,
+        groupId,
+        conversationId: resolvedConversationId,
+        turnId,
+        requestPayload,
+        normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
+        retrievalPayload: retrieval.context as Record<string, unknown>,
+        result: buildFallbackResponse(
+          resolvedConversationId,
+          turnId,
+          fieldValidatorRun.retryCount,
+          fieldValidatorRun.timeoutFlag,
+          buildDiagnostics({
+            phase: 'field_validator',
+            detail: formatGeneratedFieldValidationError(generatedFieldValidation),
             requestId,
           })
         ),
@@ -1596,7 +1634,7 @@ export async function handleAssistantTurn({
           requestPayload,
           normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
           retrievalPayload: retrieval.context as Record<string, unknown>,
-          result: buildNeedsClarification(
+          result: buildUnavailableResponse(
             resolvedConversationId,
             turnId,
             preDraftRequirements.clarificationMessage,
@@ -1680,7 +1718,7 @@ export async function handleAssistantTurn({
         requestPayload,
         normalizedPlan: normalizedPlan as unknown as Record<string, unknown>,
         retrievalPayload: retrieval.context as Record<string, unknown>,
-        result: buildNeedsClarification(
+        result: buildUnavailableResponse(
           resolvedConversationId,
           turnId,
           postDraftRequirements.clarificationMessage,

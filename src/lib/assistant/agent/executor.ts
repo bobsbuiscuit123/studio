@@ -63,19 +63,22 @@ const errorState = (
   timeoutFlag: false,
 });
 
-const needsClarificationState = (
+const restartRequiredState = (
   conversationId: string,
   turnId: string,
-  message: string,
-  pendingActionId?: string
+  detail: string,
+  _pendingActionId?: string
 ): AssistantTurnResponse => ({
-  state: 'needs_clarification',
+  state: 'response',
   conversationId,
   turnId,
-  message,
-  pendingActionId,
+  reply: 'AI is temporarily unavailable. Please try again later.',
   retryCount: 0,
   timeoutFlag: false,
+  diagnostics: {
+    phase: 'orchestrator',
+    detail,
+  },
 });
 
 const canExecutePendingAction = (pendingAction: PendingAction, context: AgentContext) => {
@@ -121,7 +124,11 @@ export async function executePendingAction(args: {
   });
 
   if (!pending) {
-    return needsClarificationState(args.conversationId, args.turnId, 'What would you like me to post?');
+    return restartRequiredState(
+      args.conversationId,
+      args.turnId,
+      'Assistant could not find the pending action to execute.'
+    );
   }
 
   if (pending.status === 'executed') {
@@ -140,10 +147,10 @@ export async function executePendingAction(args: {
   }
 
   if (pending.status !== 'pending' && pending.status !== 'confirmed') {
-    return needsClarificationState(
+    return restartRequiredState(
       args.conversationId,
       args.turnId,
-      'That action is no longer active. Want me to regenerate it?',
+      'The pending action is no longer active.',
       pending.id
     );
   }

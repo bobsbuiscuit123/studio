@@ -347,7 +347,7 @@ describe('handleAssistantTurn', () => {
     );
   });
 
-  it('keeps drafting create_event requests when local scheduling fallback fills validator gaps', async () => {
+  it('treats missing validator event fields as a pipeline failure', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -396,37 +396,20 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('draft_preview');
-    if (result.state !== 'draft_preview') {
-      throw new Error('Expected draft preview result.');
+    expect(result.state).toBe('response');
+    if (result.state !== 'response') {
+      throw new Error('Expected fallback response result.');
     }
 
-    expect(result.preview.kind).toBe('event');
-    if (result.preview.kind !== 'event') {
-      throw new Error('Expected event preview.');
-    }
-
-    expect(result.preview.title).toBe('ELA Test');
-    expect(result.preview.description).toBe('Prepare for the upcoming ELA test.');
-    expect(result.preview.date).toBe('2026-04-30');
-    expect(result.preview.time).toBe('18:00');
-    expect(result.preview.location).toBe('TBD');
-    expect(createPendingAction).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actionType: 'create_event',
-        actionFields: expect.objectContaining({
-          title: expect.any(String),
-          description: expect.any(String),
-          date: '2026-04-30',
-          time: '18:00',
-          location: 'TBD',
-        }),
-      })
-    );
+    expect(result.diagnostics).toEqual({
+      phase: 'field_validator',
+      detail:
+        'Gemini field validator did not return final generated fields (missing: title, description, location, date, time).',
+    });
+    expect(createPendingAction).not.toHaveBeenCalled();
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
       'planner',
       'field_validator',
-      'draft',
     ]);
   });
 
@@ -580,7 +563,7 @@ describe('handleAssistantTurn', () => {
     expect(result.preview.body).toBe('Please remember to bring your form tomorrow.');
   });
 
-  it('asks for clarification when the validator returns no message body', async () => {
+  it('treats missing validator message fields as a pipeline failure', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -628,13 +611,15 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('needs_clarification');
-    if (result.state !== 'needs_clarification') {
-      throw new Error('Expected clarification result.');
+    expect(result.state).toBe('response');
+    if (result.state !== 'response') {
+      throw new Error('Expected fallback response result.');
     }
 
-    expect(result.message).toBe('What should this message say?');
-    expect(result.missingFields).toEqual(['body']);
+    expect(result.diagnostics).toEqual({
+      phase: 'field_validator',
+      detail: 'Gemini field validator did not return final generated fields (missing: body).',
+    });
     expect(createPendingAction).not.toHaveBeenCalled();
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
       'planner',
@@ -642,7 +627,7 @@ describe('handleAssistantTurn', () => {
     ]);
   });
 
-  it('clarifies structural fields before the validator runs', async () => {
+  it('returns a retryable service response when structural fields are unresolved', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -681,13 +666,16 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('needs_clarification');
-    if (result.state !== 'needs_clarification') {
-      throw new Error('Expected clarification result.');
+    expect(result.state).toBe('response');
+    if (result.state !== 'response') {
+      throw new Error('Expected fallback response result.');
     }
 
-    expect(result.message).toBe('Who should receive this message?');
-    expect(result.missingFields).toEqual(['recipients']);
+    expect(result.reply).toBe('AI is temporarily unavailable. Please try again later.');
+    expect(result.diagnostics).toEqual({
+      phase: 'orchestrator',
+      detail: 'Assistant could not resolve required fields: recipients.',
+    });
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual(['planner']);
   });
 
@@ -741,7 +729,7 @@ describe('handleAssistantTurn', () => {
     expect(createPendingAction).not.toHaveBeenCalled();
   });
 
-  it('asks for clarification when Gemini leaves required announcement fields empty', async () => {
+  it('treats underreported validator announcement fields as a pipeline failure', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -789,13 +777,16 @@ describe('handleAssistantTurn', () => {
       requestReceivedAt: '2026-04-23T18:00:00.000Z',
     });
 
-    expect(result.state).toBe('needs_clarification');
-    if (result.state !== 'needs_clarification') {
-      throw new Error('Expected clarification result.');
+    expect(result.state).toBe('response');
+    if (result.state !== 'response') {
+      throw new Error('Expected fallback response result.');
     }
 
-    expect(result.message).toBe('What title should this announcement use?');
-    expect(result.missingFields).toEqual(['title']);
+    expect(result.diagnostics).toEqual({
+      phase: 'field_validator',
+      detail: 'Gemini field validator did not return final generated fields (missing: title).',
+      requestId: 'req-validator-underreported',
+    });
     expect(createPendingAction).not.toHaveBeenCalled();
     expect(vi.mocked(runLlmStepWithRetry).mock.calls.map(([args]) => args.step)).toEqual([
       'planner',
@@ -1428,6 +1419,7 @@ describe('handleAssistantTurn', () => {
           ok: true,
           value: {
             inferredFields: {
+              title: 'Board Elections',
               body: 'Updated posted announcement body.',
             },
             missingFields: [],
@@ -1502,6 +1494,6 @@ describe('handleAssistantTurn', () => {
       detail: 'AI request timed out. Please try again.',
       requestId: 'req-12345678',
     });
-    expect(result.reply).toContain("I'm having trouble processing that request right now");
+    expect(result.reply).toBe('AI is temporarily unavailable. Please try again later.');
   });
 });

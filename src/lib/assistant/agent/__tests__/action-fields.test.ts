@@ -408,7 +408,7 @@ describe('Gemini authoritative field merging', () => {
         userMessage: 'at 7',
         recentHistory: [
           { role: 'user', content: 'put an ela test on the 30th on the calendar' },
-          { role: 'assistant', content: 'What date and time should this event be scheduled for?' },
+          { role: 'assistant', content: 'AI is temporarily unavailable. Please try again later.' },
         ],
         requestTimezone: 'America/New_York',
         requestReceivedAt: '2026-04-26T16:59:00.000Z',
@@ -474,7 +474,7 @@ describe('normalizeInferredField', () => {
       value: '7:00 PM',
       userMessage: 'at 7',
       recentHistory: [
-        { role: 'assistant', content: 'What date and time should this event be scheduled for?' },
+        { role: 'assistant', content: 'AI is temporarily unavailable. Please try again later.' },
         { role: 'user', content: 'tomorrow' },
       ],
       requestTimezone: DEFAULT_TIMEZONE,

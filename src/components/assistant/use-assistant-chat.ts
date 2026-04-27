@@ -86,6 +86,20 @@ const createClientMessage = (
 const getTurnDisplayText = (turn: ReturnType<typeof assistantTurnResponseSchema.parse>) =>
   "reply" in turn ? turn.reply : turn.message;
 
+const shouldOfferTurnRetry = (turn: ReturnType<typeof assistantTurnResponseSchema.parse>) =>
+  turn.state === "needs_clarification" ||
+  ((turn.state === "response" || turn.state === "error") && Boolean(turn.diagnostics));
+
+const isRetryableMessageForInput = (
+  item: AiChatClientMessage,
+  retryInput?: string
+) =>
+  Boolean(
+    retryInput &&
+      item.retryInput === retryInput &&
+      (item.status === "error" || (item.turn && shouldOfferTurnRetry(item.turn)))
+  );
+
 const getEmailDraftForSuccessTurn = ({
   command,
   messages,
@@ -187,7 +201,7 @@ export function useAssistantChat({
     const pendingMessage = createClientMessage("assistant", "", { status: "pending" });
     const nextMessages = (() => {
       const baseMessages = assistantMessages.filter(
-        item => item.status !== "pending" && !(item.status === "error" && item.retryInput === options.retryInput)
+        item => item.status !== "pending" && !isRetryableMessageForInput(item, options.retryInput)
       );
       return nextUserMessage
         ? [...baseMessages, nextUserMessage, pendingMessage]
@@ -238,6 +252,9 @@ export function useAssistantChat({
       setConversationId(turn.conversationId);
       const assistantReply = createClientMessage("assistant", getTurnDisplayText(turn), {
         turn,
+        retryInput: shouldOfferTurnRetry(turn)
+          ? options.retryInput ?? trimmedMessage ?? undefined
+          : undefined,
       });
       const resolvedMessages = nextMessages.map(currentMessage =>
         currentMessage.id === pendingMessage.id ? assistantReply : currentMessage

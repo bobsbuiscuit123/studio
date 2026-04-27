@@ -88,7 +88,7 @@ const serializeAssistantTurnForHistory = (message: AiChatClientMessage) => {
       return trimHistoryContent(
         [
           `assistant_state: ${turn.state}`,
-          `assistant_message: ${turn.message}`,
+          'assistant_reply: AI is temporarily unavailable. Please try again later.',
           turn.missingFields?.length
             ? `missing_fields: ${JSON.stringify(turn.missingFields)}`
             : null,

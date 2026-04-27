@@ -119,12 +119,12 @@ describe("buildAssistantHistoryPayload", () => {
       baseMessage({
         id: "clarification-assistant",
         role: "assistant",
-        content: "Which announcement would you like me to update?",
+        content: "AI is temporarily unavailable. Please try again later.",
         turn: {
           state: "needs_clarification",
           conversationId: "6c35d83c-7d59-4e9e-9cab-37253097598a",
           turnId: "8c7d132f-fd89-49ae-b1d5-06f24fd900cd",
-          message: "Which announcement would you like me to update?",
+          message: "Missing announcement target.",
           missingFields: ["targetRef"],
           pendingActionId: "182ef2d1-3f77-4b24-88b8-75be9fbd9c50",
           retryCount: 0,
@@ -158,12 +158,12 @@ describe("buildAssistantHistoryPayload", () => {
       baseMessage({
         id: "assistant-clarify",
         role: "assistant",
-        content: "Which announcement would you like me to update?",
+        content: "AI is temporarily unavailable. Please try again later.",
         turn: {
           state: "needs_clarification",
           conversationId: "6c35d83c-7d59-4e9e-9cab-37253097598a",
           turnId: "8c7d132f-fd89-49ae-b1d5-06f24fd900cb",
-          message: "Which announcement would you like me to update?",
+          message: "Missing announcement target.",
           missingFields: ["targetRef"],
           pendingActionId: "182ef2d1-3f77-4b24-88b8-75be9fbd9c50",
           retryCount: 0,
@@ -173,6 +173,9 @@ describe("buildAssistantHistoryPayload", () => {
     ]);
 
     expect(history[0].content).toContain("assistant_state: needs_clarification");
+    expect(history[0].content).toContain(
+      "assistant_reply: AI is temporarily unavailable. Please try again later."
+    );
     expect(history[0].content).toContain('missing_fields: ["targetRef"]');
     expect(history[0].content).toContain("pending_action_id: 182ef2d1-3f77-4b24-88b8-75be9fbd9c50");
   });

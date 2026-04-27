@@ -10,10 +10,10 @@ const STEP_RETRY_POLICY = {
     maxRetries: MAX_RETRIES,
     delaysMs: [800, 1800] as const,
   },
-  // Advisory-only step: fall back to deterministic validation instead of retrying.
+  // Authoritative field generation: retry when Gemini returns unusable generated fields.
   field_validator: {
-    maxRetries: 0,
-    delaysMs: [] as const,
+    maxRetries: MAX_RETRIES,
+    delaysMs: [800, 1800] as const,
   },
 } as const;
 
@@ -21,7 +21,9 @@ type LlmRetryStep = keyof typeof STEP_RETRY_POLICY;
 
 const isTransientFailure = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return /timeout|network|fetch failed|5\d\d|provider error|temporarily unavailable/i.test(message);
+  return /timeout|network|fetch failed|5\d\d|provider error|temporarily unavailable|Gemini field validator did not return final generated fields/i.test(
+    message
+  );
 };
 
 export async function runLlmStepWithRetry<T>({

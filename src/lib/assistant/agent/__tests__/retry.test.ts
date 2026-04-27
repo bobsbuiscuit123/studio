@@ -43,24 +43,25 @@ describe('runLlmStepWithRetry', () => {
     expect(result.lastErrorMessage).toBe('network timeout');
   }, 10_000);
 
-  it('does not retry the advisory field validator step', async () => {
+  it('retries unusable generated field failures from the field validator', async () => {
     let attempts = 0;
 
     const result = await runLlmStepWithRetry({
       step: 'field_validator',
       fn: async () => {
         attempts += 1;
-        throw new Error('network timeout');
+        if (attempts < 3) {
+          throw new Error(
+            'Gemini field validator did not return final generated fields (missing: title).'
+          );
+        }
+        return { ok: true };
       },
     });
 
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error('Expected field validator failure.');
-    }
-    expect(result.retryCount).toBe(0);
-    expect(result.timeoutFlag).toBe(true);
-    expect(attempts).toBe(1);
-    expect(result.lastErrorMessage).toBe('network timeout');
+    expect(result.ok).toBe(true);
+    expect(result.retryCount).toBe(2);
+    expect(result.timeoutFlag).toBe(false);
+    expect(attempts).toBe(3);
   }, 10_000);
 });

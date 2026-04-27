@@ -754,7 +754,7 @@ function AnnouncementsPageInner() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      <p className="text-xl font-normal leading-tight text-muted-foreground whitespace-pre-wrap sm:text-2xl">
                         {announcement.content}
                       </p>
                       <div className="text-xs text-muted-foreground">

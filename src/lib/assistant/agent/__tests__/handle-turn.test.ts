@@ -81,6 +81,7 @@ vi.mock('@/lib/assistant/agent/retry', () => ({
 import { createPendingAction } from '@/lib/assistant/agent/pending-actions';
 import {
   getLatestValidPendingAction,
+  getScopedPendingActionById,
   updatePendingActionPayload,
 } from '@/lib/assistant/agent/pending-actions';
 import { handleAssistantTurn } from '@/lib/assistant/agent/handle-turn';
@@ -301,8 +302,8 @@ describe('handleAssistantTurn', () => {
         ok: true,
         value: {
           kind: 'email',
-          subject: 'ELA Test Reminder',
-          body: 'Please remember the ELA test on April 30 and plan accordingly.',
+          subject: 'Following: Ela Test 30h',
+          body: 'Create an email regarding the following: ela test on the 30h.',
         },
         retryCount: 0,
         timeoutFlag: false,
@@ -330,7 +331,7 @@ describe('handleAssistantTurn', () => {
     }
 
     expect(result.preview.subject).toBe('ELA Test Reminder');
-    expect(result.preview.body).toContain('April 30');
+    expect(result.preview.body).toBe('Please remember the ELA test on April 30 and plan accordingly.');
     expect(createPendingAction).toHaveBeenCalledWith(
       expect.objectContaining({
         actionType: 'create_email',
@@ -509,6 +510,74 @@ describe('handleAssistantTurn', () => {
         }),
       })
     );
+  });
+
+  it('prefers validator-owned message fields over a noisy draft preview', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...messagePlannerValue,
+            action: {
+              ...messagePlannerValue.action,
+              fieldsProvided: { ...messagePlannerValue.action.fieldsProvided },
+            },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              body: 'Please remember to bring your form tomorrow.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'message',
+          recipients: [{ email: 'other@example.com' }],
+          body: 'Raw request text leaked into the message.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      message: 'send Alex a reminder to bring the form tomorrow',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview.kind).toBe('message');
+    if (result.preview.kind !== 'message') {
+      throw new Error('Expected message preview.');
+    }
+
+    expect(result.preview.recipients).toEqual([{ email: 'alex@example.com' }]);
+    expect(result.preview.body).toBe('Please remember to bring your form tomorrow.');
   });
 
   it('asks for clarification when the validator returns no message body', async () => {
@@ -734,7 +803,7 @@ describe('handleAssistantTurn', () => {
     ]);
   });
 
-  it('preserves the authoritative announcement body when the draft preview omits it', async () => {
+  it('preserves authoritative announcement fields when the draft preview rewrites them', async () => {
     vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
       if (step === 'planner') {
         return {
@@ -768,7 +837,8 @@ describe('handleAssistantTurn', () => {
         ok: true,
         value: {
           kind: 'announcement',
-          title: 'Dues Reminder',
+          title: 'Following: Dues',
+          body: 'Send an announcement regarding the following: dues.',
         },
         retryCount: 0,
         timeoutFlag: false,
@@ -805,6 +875,88 @@ describe('handleAssistantTurn', () => {
         },
       })
     );
+  });
+
+  it('keeps action fields authoritative when regenerating a draft', async () => {
+    vi.mocked(getScopedPendingActionById).mockResolvedValue({
+      id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      actionType: 'create_announcement',
+      actionFields: {
+        title: 'Dues Reminder',
+        body: 'Reminder that dues are due this week.',
+      },
+      originalDraftPayload: {
+        kind: 'announcement',
+        title: 'Dues Reminder',
+        body: 'Reminder that dues are due this week.',
+      },
+      currentPayload: {
+        kind: 'announcement',
+        title: 'Dues Reminder',
+        body: 'Reminder that dues are due this week.',
+      },
+      status: 'pending',
+      idempotencyKey: 'idem-regenerate',
+      createdAt: '2026-04-23T18:00:00.000Z',
+      expiresAt: '2099-04-23T19:00:00.000Z',
+      resultEntityId: null,
+      resultEntityType: null,
+      resultMessage: null,
+    });
+
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step !== 'draft') {
+        throw new Error(`Unexpected step: ${step}`);
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'announcement',
+          title: 'Following: Dues',
+          body: 'Regenerate this draft with a fresh variation.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      conversationId: '6c35d83c-7d59-4e9e-9cab-37253097598a',
+      message: {
+        kind: 'regenerate',
+        pendingActionId: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      },
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('draft_preview');
+    if (result.state !== 'draft_preview') {
+      throw new Error('Expected draft preview result.');
+    }
+
+    expect(result.preview).toEqual({
+      kind: 'announcement',
+      title: 'Dues Reminder',
+      body: 'Reminder that dues are due this week.',
+    });
+    expect(updatePendingActionPayload).toHaveBeenCalledWith({
+      id: '182ef2d1-3f77-4b24-88b8-75be9fbd9c50',
+      currentPayload: {
+        kind: 'announcement',
+        title: 'Dues Reminder',
+        body: 'Reminder that dues are due this week.',
+      },
+    });
   });
 
   it('falls back to an authoritative preview when the draft step times out', async () => {

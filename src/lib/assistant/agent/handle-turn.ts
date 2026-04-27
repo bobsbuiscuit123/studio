@@ -451,15 +451,10 @@ const hasRecipientList = (value: unknown): boolean => Array.isArray(value) && va
 const mergeAuthoritativeFieldsIntoPreview = (
   preview: DraftPreview,
   fieldsProvided: Record<string, unknown>,
-  fallbackPreview?: DraftPreview | null,
-  options?: { preferFields?: boolean }
+  fallbackPreview?: DraftPreview | null
 ) => {
-  const shouldApplyStringField = (previewValue: unknown, fieldValue: unknown) =>
-    hasNonEmptyString(fieldValue) &&
-    (options?.preferFields || !hasNonEmptyString(previewValue));
-  const shouldApplyRecipientField = (previewValue: unknown, fieldValue: unknown) =>
-    hasRecipientList(fieldValue) &&
-    (options?.preferFields || !hasRecipientList(previewValue));
+  const shouldApplyStringField = (fieldValue: unknown) => hasNonEmptyString(fieldValue);
+  const shouldApplyRecipientField = (fieldValue: unknown) => hasRecipientList(fieldValue);
 
   switch (preview.kind) {
     case 'announcement':
@@ -471,8 +466,8 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(shouldApplyStringField(preview.title, fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
-        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+        ...(shouldApplyStringField(fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(shouldApplyStringField(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     case 'event':
       return parseDraftPreview({
@@ -492,13 +487,13 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { location: fallbackPreview.location }
           : {}),
         ...preview,
-        ...(shouldApplyStringField(preview.title, fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
-        ...(shouldApplyStringField(preview.description, fieldsProvided.description)
+        ...(shouldApplyStringField(fieldsProvided.title) ? { title: fieldsProvided.title } : {}),
+        ...(shouldApplyStringField(fieldsProvided.description)
           ? { description: fieldsProvided.description }
           : {}),
-        ...(shouldApplyStringField(preview.date, fieldsProvided.date) ? { date: fieldsProvided.date } : {}),
-        ...(shouldApplyStringField(preview.time, fieldsProvided.time) ? { time: fieldsProvided.time } : {}),
-        ...(shouldApplyStringField(preview.location, fieldsProvided.location)
+        ...(shouldApplyStringField(fieldsProvided.date) ? { date: fieldsProvided.date } : {}),
+        ...(shouldApplyStringField(fieldsProvided.time) ? { time: fieldsProvided.time } : {}),
+        ...(shouldApplyStringField(fieldsProvided.location)
           ? { location: fieldsProvided.location }
           : {}),
       });
@@ -511,10 +506,10 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(shouldApplyRecipientField(preview.recipients, fieldsProvided.recipients)
+        ...(shouldApplyRecipientField(fieldsProvided.recipients)
           ? { recipients: fieldsProvided.recipients }
           : {}),
-        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+        ...(shouldApplyStringField(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     case 'email':
       return parseDraftPreview({
@@ -525,10 +520,10 @@ const mergeAuthoritativeFieldsIntoPreview = (
           ? { body: fallbackPreview.body }
           : {}),
         ...preview,
-        ...(shouldApplyStringField(preview.subject, fieldsProvided.subject)
+        ...(shouldApplyStringField(fieldsProvided.subject)
           ? { subject: fieldsProvided.subject }
           : {}),
-        ...(shouldApplyStringField(preview.body, fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
+        ...(shouldApplyStringField(fieldsProvided.body) ? { body: fieldsProvided.body } : {}),
       });
     default:
       return preview;
@@ -1666,8 +1661,7 @@ export async function handleAssistantTurn({
       mergedDraftPreview = mergeAuthoritativeFieldsIntoPreview(
         draftRun.value,
         enrichedActionFields,
-        draftSeedPreview,
-        { preferFields: true }
+        draftSeedPreview
       );
     }
 

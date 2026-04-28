@@ -235,11 +235,12 @@ export const getNotificationActivityByKey = ({
     return Math.max(latest, getActivityTimestamp(image.date));
   }, 0);
   const latestFormTimestamp = safeForms.reduce((latest: number, form: ClubForm) => {
+    const formResponses = Array.isArray(form.responses) ? form.responses : [];
     const createdAt =
       !isCurrentUserActor(form.createdBy) && !viewedByCurrentUser(form.viewedBy, currentUserEmail)
         ? getActivityTimestamp(form.createdAt)
         : 0;
-    const latestResponse = form.responses.reduce((responseLatest, response) => {
+    const latestResponse = formResponses.reduce((responseLatest, response) => {
       if (normalizeActivityActor(response.respondentEmail) === currentUserEmail) {
         return responseLatest;
       }

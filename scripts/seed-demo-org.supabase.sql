@@ -156,7 +156,21 @@ begin
         jsonb_build_object('id', 301, 'src', 'https://placehold.co/900x620/164e63/67e8f9?text=Robotics', 'alt', 'Robotics lab demo', 'author', 'mia.chen@student.caspo.demo', 'date', (now() - interval '2 days')::text, 'likes', 18, 'status', 'approved')
       ),
       'forms', jsonb_build_array(
-        jsonb_build_object('id', 'robotics-interest', 'title', 'Robotics committee preferences', 'description', 'Collect subsystem and meeting availability preferences.', 'createdBy', 'priya.raman@school.caspo.demo', 'createdAt', (now() - interval '7 days')::text)
+        jsonb_build_object(
+          'id', 'robotics-interest',
+          'title', 'Robotics committee preferences',
+          'description', 'Collect subsystem and meeting availability preferences.',
+          'questions', jsonb_build_array(
+            jsonb_build_object('id', 'q1', 'prompt', 'Which subsystem are you most interested in?', 'required', true, 'kind', 'single', 'options', jsonb_build_array('Drive', 'CAD', 'Programming', 'Outreach')),
+            jsonb_build_object('id', 'q2', 'prompt', 'Which days can you attend build sessions?', 'required', true, 'kind', 'multi', 'options', jsonb_build_array('Monday', 'Tuesday', 'Wednesday', 'Thursday'))
+          ),
+          'createdBy', 'priya.raman@school.caspo.demo',
+          'createdAt', (now() - interval '7 days')::text,
+          'viewedBy', jsonb_build_array(v_owner_email, 'mia.chen@student.caspo.demo'),
+          'responses', jsonb_build_array(
+            jsonb_build_object('id', 'robotics-interest-response-1', 'respondentEmail', 'mia.chen@student.caspo.demo', 'submittedAt', (now() - interval '6 days')::text, 'answers', jsonb_build_object('q1', 'Programming', 'q2', 'Tuesday, Thursday'))
+          )
+        )
       ),
       'messages', jsonb_build_object(),
       'groupChats', jsonb_build_array(),
@@ -363,7 +377,21 @@ begin
       ),
       'transactions', jsonb_build_array(jsonb_build_object('id', 'sc-txn-1', 'description', 'Festival decorations', 'amount', -92, 'date', (now() - interval '3 days')::text, 'status', 'Withdrawal')),
       'galleryImages', jsonb_build_array(jsonb_build_object('id', 501, 'src', 'https://placehold.co/900x620/7f1d1d/fca5a5?text=Student+Council', 'alt', 'Student council planning', 'author', 'ava.thompson@student.caspo.demo', 'date', (now() - interval '1 day')::text, 'likes', 15, 'status', 'approved')),
-      'forms', jsonb_build_array(jsonb_build_object('id', 'stuco-volunteer-form', 'title', 'Festival volunteer signup', 'description', 'Collect volunteer shift preferences.', 'createdBy', 'hannah.brooks@school.caspo.demo', 'createdAt', (now() - interval '4 days')::text)),
+      'forms', jsonb_build_array(jsonb_build_object(
+        'id', 'stuco-volunteer-form',
+        'title', 'Festival volunteer signup',
+        'description', 'Collect volunteer shift preferences.',
+        'questions', jsonb_build_array(
+          jsonb_build_object('id', 'q1', 'prompt', 'Which shift can you cover?', 'required', true, 'kind', 'single', 'options', jsonb_build_array('Setup', 'Welcome table', 'Cleanup')),
+          jsonb_build_object('id', 'q2', 'prompt', 'Any equipment you can bring?', 'required', false, 'kind', 'shortText')
+        ),
+        'createdBy', 'hannah.brooks@school.caspo.demo',
+        'createdAt', (now() - interval '4 days')::text,
+        'viewedBy', jsonb_build_array('owen.garcia@student.caspo.demo'),
+        'responses', jsonb_build_array(
+          jsonb_build_object('id', 'stuco-volunteer-response-1', 'respondentEmail', 'owen.garcia@student.caspo.demo', 'submittedAt', (now() - interval '3 days')::text, 'answers', jsonb_build_object('q1', 'Setup', 'q2', 'Extension cords'))
+        )
+      )),
       'messages', jsonb_build_object(),
       'groupChats', jsonb_build_array(),
       'socialPosts', jsonb_build_array(),
@@ -427,7 +455,21 @@ begin
       ),
       'transactions', jsonb_build_array(),
       'galleryImages', jsonb_build_array(),
-      'forms', jsonb_build_array(jsonb_build_object('id', 'nhs-hours-form', 'title', 'Service hour verification', 'description', 'Submit tutoring and service hour proof.', 'createdBy', 'victor.chen@school.caspo.demo', 'createdAt', (now() - interval '5 days')::text)),
+      'forms', jsonb_build_array(jsonb_build_object(
+        'id', 'nhs-hours-form',
+        'title', 'Service hour verification',
+        'description', 'Submit tutoring and service hour proof.',
+        'questions', jsonb_build_array(
+          jsonb_build_object('id', 'q1', 'prompt', 'How many hours did you complete?', 'required', true, 'kind', 'shortText'),
+          jsonb_build_object('id', 'q2', 'prompt', 'Who verified your service?', 'required', true, 'kind', 'shortText')
+        ),
+        'createdBy', 'victor.chen@school.caspo.demo',
+        'createdAt', (now() - interval '5 days')::text,
+        'viewedBy', jsonb_build_array('priya.shah@student.caspo.demo'),
+        'responses', jsonb_build_array(
+          jsonb_build_object('id', 'nhs-hours-response-1', 'respondentEmail', 'priya.shah@student.caspo.demo', 'submittedAt', (now() - interval '4 days')::text, 'answers', jsonb_build_object('q1', '3', 'q2', 'Mr. Chen'))
+        )
+      )),
       'messages', jsonb_build_object(),
       'groupChats', jsonb_build_array(),
       'socialPosts', jsonb_build_array(),

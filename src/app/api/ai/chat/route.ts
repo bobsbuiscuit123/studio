@@ -17,6 +17,7 @@ import {
 } from '@/lib/assistant/agent/storage';
 import { parseOptionalPositiveInt, getEffectiveOrgAiAllowance } from '@/lib/org-settings';
 import { rateLimit } from '@/lib/rate-limit';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -123,23 +124,24 @@ export async function POST(request: Request) {
 
       stage = 'membership';
       const admin = createSupabaseAdmin();
-      const { data: membership, error: membershipError } = await admin
-        .from('group_memberships')
-        .select('role')
-        .eq('org_id', orgId)
-        .eq('group_id', groupId)
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      if (membershipError) {
+      let accessResult;
+      try {
+        accessResult = await ensureOrgOwnerGroupMembership({
+          admin,
+          orgId,
+          groupId,
+          userId: user.id,
+        });
+      } catch (membershipError) {
         logRouteFailure(requestId, stage, membershipError);
-        return errorResponse(membershipError.message, 500, {
+        const message = membershipError instanceof Error ? membershipError.message : 'Access check failed.';
+        return errorResponse(message, 500, {
           stage,
           requestId,
-          detail: membershipError.message,
+          detail: message,
         });
       }
-      if (!membership) {
+      if (!accessResult.ok) {
         return errorResponse('Access denied.', 403, {
           code: 'VALIDATION',
           stage,

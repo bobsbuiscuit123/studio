@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 const notificationKeys = ['announcements', 'social', 'messages', 'calendar', 'gallery', 'attendance', 'forms'] as const;
 
@@ -41,15 +42,14 @@ async function requireGroupMembership(orgId: string, groupId: string) {
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership } = await admin
-    .from('group_memberships')
-    .select('group_id')
-    .eq('org_id', orgId)
-    .eq('group_id', groupId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const accessResult = await ensureOrgOwnerGroupMembership({
+    admin,
+    orgId,
+    groupId,
+    userId,
+  });
 
-  if (!membership) {
+  if (!accessResult.ok) {
     return {
       ok: false as const,
       response: NextResponse.json(

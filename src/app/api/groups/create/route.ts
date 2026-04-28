@@ -9,6 +9,7 @@ import { headers } from 'next/headers';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { displayGroupRole } from '@/lib/group-permissions';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -177,6 +178,39 @@ export async function POST(request: Request) {
       }),
       { status: 500, headers: getRateLimitHeaders(limiter) }
     );
+  }
+
+  try {
+    const [{ data: ownerMembershipRows }, { data: orgRow }] = await Promise.all([
+      admin
+        .from('memberships')
+        .select('user_id')
+        .eq('org_id', parsed.data.orgId)
+        .eq('role', 'owner'),
+      admin
+        .from('orgs')
+        .select('owner_id')
+        .eq('id', parsed.data.orgId)
+        .maybeSingle(),
+    ]);
+    const ownerIds = new Set(
+      [
+        ...(ownerMembershipRows ?? []).map(row => row.user_id),
+        orgRow?.owner_id,
+      ].filter((value): value is string => typeof value === 'string' && value.length > 0)
+    );
+    ownerIds.delete(userId);
+
+    for (const ownerId of ownerIds) {
+      await ensureOrgOwnerGroupMembership({
+        admin,
+        orgId: parsed.data.orgId,
+        groupId,
+        userId: ownerId,
+      });
+    }
+  } catch (ownerSyncError) {
+    console.error('[group-create] failed to sync organization owner membership', ownerSyncError);
   }
 
   return NextResponse.json(

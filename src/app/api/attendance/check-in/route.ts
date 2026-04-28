@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 const bodySchema = z.object({
   orgId: z.string().uuid(),
@@ -37,15 +38,14 @@ export async function POST(request: Request) {
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership } = await admin
-    .from('group_memberships')
-    .select('group_id')
-    .eq('org_id', parsed.data.orgId)
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', authUser.id)
-    .maybeSingle();
+  const accessResult = await ensureOrgOwnerGroupMembership({
+    admin,
+    orgId: parsed.data.orgId,
+    groupId: parsed.data.groupId,
+    userId: authUser.id,
+  });
 
-  if (!membership) {
+  if (!accessResult.ok) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
       { status: 403 }

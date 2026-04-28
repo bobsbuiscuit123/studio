@@ -6,6 +6,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { ensureOrgOwnerMembershipsForGroups } from '@/lib/group-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,13 +52,19 @@ export async function GET(request: Request) {
 
   const [
     { data: orgMembership, error: orgMembershipError },
+    { data: orgRow, error: orgError },
     { data: membershipRows, error: membershipError },
   ] = await Promise.all([
     admin
       .from('memberships')
-      .select('org_id')
+      .select('org_id, role')
       .eq('org_id', parsed.data.orgId)
       .eq('user_id', userId)
+      .maybeSingle(),
+    admin
+      .from('orgs')
+      .select('owner_id')
+      .eq('id', parsed.data.orgId)
       .maybeSingle(),
     admin
       .from('group_memberships')
@@ -69,6 +76,13 @@ export async function GET(request: Request) {
   if (orgMembershipError) {
     return NextResponse.json(
       err({ code: 'NETWORK_HTTP_ERROR', message: orgMembershipError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
+  if (orgError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: orgError.message, source: 'network' }),
       { status: 500 }
     );
   }
@@ -95,7 +109,9 @@ export async function GET(request: Request) {
     )
   );
 
-  if (groupIds.length === 0) {
+  const isOrgOwner = orgMembership.role === 'owner' || orgRow?.owner_id === userId;
+
+  if (!isOrgOwner && groupIds.length === 0) {
     return NextResponse.json({
       ok: true,
       data: {
@@ -104,20 +120,14 @@ export async function GET(request: Request) {
     });
   }
 
-  const [{ data: groupRows, error: groupError }, { data: groupStateRows, error: groupStateError }] =
-    await Promise.all([
-      admin
-        .from('groups')
-        .select('id, name, description, join_code')
-        .eq('org_id', parsed.data.orgId)
-        .in('id', groupIds)
-        .order('created_at', { ascending: true }),
-      admin
-        .from('group_state')
-        .select('group_id, data')
-        .eq('org_id', parsed.data.orgId)
-        .in('group_id', groupIds),
-    ]);
+  const groupQuery = admin
+    .from('groups')
+    .select('id, name, description, join_code')
+    .eq('org_id', parsed.data.orgId)
+    .order('created_at', { ascending: true });
+  const { data: groupRows, error: groupError } = isOrgOwner
+    ? await groupQuery
+    : await groupQuery.in('id', groupIds);
 
   if (groupError) {
     return NextResponse.json(
@@ -125,6 +135,35 @@ export async function GET(request: Request) {
       { status: 500 }
     );
   }
+
+  const visibleGroupIds = (groupRows ?? [])
+    .map(group => group.id)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+  if (isOrgOwner) {
+    try {
+      await ensureOrgOwnerMembershipsForGroups({
+        admin,
+        orgId: parsed.data.orgId,
+        userId,
+        groupIds: visibleGroupIds,
+      });
+    } catch (syncError) {
+      const message = syncError instanceof Error ? syncError.message : 'Unable to sync owner group membership.';
+      return NextResponse.json(
+        err({ code: 'NETWORK_HTTP_ERROR', message, source: 'network' }),
+        { status: 500 }
+      );
+    }
+  }
+
+  const { data: groupStateRows, error: groupStateError } = visibleGroupIds.length > 0
+    ? await admin
+        .from('group_state')
+        .select('group_id, data')
+        .eq('org_id', parsed.data.orgId)
+        .in('group_id', visibleGroupIds)
+    : { data: [], error: null };
 
   if (groupStateError) {
     return NextResponse.json(
@@ -139,6 +178,13 @@ export async function GET(request: Request) {
       roleByGroupId.set(row.group_id, row.role ?? 'member');
     }
   });
+  if (isOrgOwner) {
+    visibleGroupIds.forEach(groupId => {
+      if (!roleByGroupId.has(groupId)) {
+        roleByGroupId.set(groupId, 'member');
+      }
+    });
+  }
 
   const logoByGroupId = new Map<string, string>();
   (groupStateRows ?? []).forEach(row => {

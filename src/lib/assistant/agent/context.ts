@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { normalizeGroupRole, canEditGroupContent } from '@/lib/group-permissions';
 import type { AgentContext } from '@/lib/assistant/agent/types';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 export async function getAgentContext(
   userId: string,
@@ -8,19 +9,18 @@ export async function getAgentContext(
   groupId: string
 ): Promise<AgentContext | null> {
   const admin = createSupabaseAdmin();
-  const { data, error } = await admin
-    .from('group_memberships')
-    .select('role')
-    .eq('org_id', orgId)
-    .eq('group_id', groupId)
-    .eq('user_id', userId)
-    .maybeSingle();
+  const accessResult = await ensureOrgOwnerGroupMembership({
+    admin,
+    orgId,
+    groupId,
+    userId,
+  });
 
-  if (error || !data?.role) {
+  if (!accessResult.ok) {
     return null;
   }
 
-  const role = normalizeGroupRole(data.role);
+  const role = normalizeGroupRole(accessResult.role);
   const canEdit = canEditGroupContent(role);
 
   return {

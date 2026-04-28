@@ -13,6 +13,7 @@ import {
 } from '@/lib/group-permissions';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,14 +98,13 @@ export async function GET(request: Request) {
   }
 
   const admin = createSupabaseAdmin();
-  const { data: actingMembership } = await admin
-    .from('group_memberships')
-    .select('user_id')
-    .eq('org_id', parsed.data.orgId)
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (!actingMembership) {
+  const accessResult = await ensureOrgOwnerGroupMembership({
+    admin,
+    orgId: parsed.data.orgId,
+    groupId: parsed.data.groupId,
+    userId,
+  });
+  if (!accessResult.ok) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
       { status: 403 }

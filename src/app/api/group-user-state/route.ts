@@ -11,6 +11,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 const querySchema = z.object({
   orgId: z.string().uuid(),
@@ -51,24 +52,19 @@ async function requireGroupMembership(orgId: string, groupId: string) {
   }
 
   const admin = createSupabaseAdmin();
-  const { data: membership, error: membershipError } = await withTimeout(
+  const accessResult = await withTimeout(
     () =>
-      admin
-        .from('group_memberships')
-        .select('group_id')
-        .eq('org_id', orgId)
-        .eq('group_id', groupId)
-        .eq('user_id', userId)
-        .maybeSingle(),
+      ensureOrgOwnerGroupMembership({
+        admin,
+        orgId,
+        groupId,
+        userId,
+      }),
     DASHBOARD_TIMEOUT_MS,
     { label: 'Group user state membership lookup' }
   );
 
-  if (membershipError) {
-    throw membershipError;
-  }
-
-  if (!membership) {
+  if (!accessResult.ok) {
     return {
       ok: false as const,
       response: NextResponse.json(

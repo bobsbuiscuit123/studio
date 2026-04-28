@@ -16,6 +16,7 @@ import { sendPushToUsers } from '@/lib/send-push';
 import { stableSerialize } from '@/lib/stable-serialize';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
 
 export const dynamic = 'force-dynamic';
 const apiLogger = createDashboardLogger('[Dashboard][API]');
@@ -1030,35 +1031,25 @@ export async function GET(request: Request) {
       );
     }
 
-    const { data: membership, error: membershipError } = await withTimeout(
+    const admin = createSupabaseAdmin();
+    const accessResult = await withTimeout(
       () =>
-        supabase
-          .from('group_memberships')
-          .select('role')
-          .eq('group_id', parsed.data.groupId)
-          .eq('user_id', userData.user.id)
-          .maybeSingle(),
+        ensureOrgOwnerGroupMembership({
+          admin,
+          orgId: parsed.data.orgId,
+          groupId: parsed.data.groupId,
+          userId: userData.user.id,
+        }),
       DASHBOARD_TIMEOUT_MS,
       { label: 'Org state membership lookup' }
     );
-    if (membershipError) {
-      return NextResponse.json(
-        err({
-          code: 'NETWORK_HTTP_ERROR',
-          message: membershipError.message,
-          source: 'network',
-        }),
-        { status: 500, headers: getRateLimitHeaders(limiter) }
-      );
-    }
-    if (!membership) {
+    if (!accessResult.ok) {
       return NextResponse.json(
         err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
         { status: 403, headers: getRateLimitHeaders(limiter) }
       );
     }
 
-    const admin = createSupabaseAdmin();
     const { data: existingState, error } = await withTimeout(
       () =>
         admin
@@ -1314,20 +1305,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: membership } = await supabase
-    .from('group_memberships')
-    .select('role')
-    .eq('group_id', parsed.data.groupId)
-    .eq('user_id', userData.user.id)
-    .maybeSingle();
-  if (!membership) {
+  const admin = createSupabaseAdmin();
+  const accessResult = await ensureOrgOwnerGroupMembership({
+    admin,
+    orgId: parsed.data.orgId,
+    groupId: parsed.data.groupId,
+    userId: userData.user.id,
+  });
+  if (!accessResult.ok) {
     return NextResponse.json(
       err({ code: 'VALIDATION', message: 'Access denied.', source: 'app' }),
       { status: 403, headers: getRateLimitHeaders(limiter) }
     );
   }
 
-  const admin = createSupabaseAdmin();
   const { data: existingState } = await admin
     .from('group_state')
     .select('data')
@@ -1362,7 +1353,7 @@ export async function POST(request: Request) {
       userData.user.email
     ),
   };
-  const groupRole = normalizeGroupRole(membership.role);
+  const groupRole = normalizeGroupRole(accessResult.role);
   const currentMembers = stableSerialize(Array.isArray(currentData.members) ? currentData.members : []);
   const nextMembers = stableSerialize(Array.isArray(nextData.members) ? nextData.members : []);
   if (currentMembers !== nextMembers && !canManageGroupRoles(groupRole)) {

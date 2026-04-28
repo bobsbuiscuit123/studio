@@ -209,9 +209,9 @@ export function OrgOwnerCommandCenter({ orgId, isOwner, onOpenGroup }: OrgOwnerC
           const Icon = item.icon;
           return (
             <Card key={item.label} className="rounded-lg border-border/70 bg-card/95 shadow-sm">
-              <CardContent className="flex items-start justify-between gap-3 p-4">
+              <CardContent className="flex min-h-28 items-center justify-between gap-4 p-5">
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground">{item.label}</p>
+                  <p className="text-xs font-medium uppercase leading-tight text-muted-foreground">{item.label}</p>
                   <p className="mt-2 text-2xl font-semibold text-foreground">{item.value}</p>
                 </div>
                 <Icon className="h-5 w-5 text-emerald-600" />

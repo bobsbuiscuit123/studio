@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Copy, CreditCard, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, BarChart3, Copy, CreditCard, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -20,7 +20,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { OrgOwnerCommandCenter } from "@/components/command-center/org-owner-command-center";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   clearSelectedGroupId,
@@ -511,7 +510,7 @@ export default function ClubsPage() {
 
   return (
     <div className="viewport-page bg-background">
-      <div className="viewport-scroll mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 pb-6 pt-3">
+      <div className="viewport-scroll mx-auto flex w-full max-w-4xl flex-col gap-4 px-4 pb-6 pt-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -616,6 +615,16 @@ export default function ClubsPage() {
             <Button
               variant="outline"
               className="w-full"
+              onClick={() => router.push("/clubs/dashboard")}
+            >
+              <BarChart3 className="mr-2" /> Org Owner Dashboard
+            </Button>
+          ) : null}
+
+          {isOrgOwner ? (
+            <Button
+              variant="outline"
+              className="w-full"
               onClick={() => void handleOpenEditOrganization()}
               disabled={orgSettingsLoading}
             >
@@ -668,12 +677,6 @@ export default function ClubsPage() {
           </div>
 
         </div>
-
-        <OrgOwnerCommandCenter
-          orgId={selectedOrgId}
-          isOwner={isOrgOwner}
-          onOpenGroup={handleEnterClub}
-        />
 
         {loading ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">

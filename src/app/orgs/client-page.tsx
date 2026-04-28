@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CreditCard, Users } from 'lucide-react';
+import { BarChart3, CreditCard, Users } from 'lucide-react';
 
-import { ExecutiveCommandCenter } from '@/components/command-center/executive-command-center';
 import { Logo } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -235,6 +234,8 @@ export default function OrgsPage() {
     router.push('/clubs');
   };
 
+  const hasOwnedOrg = orgs.some(org => org.role === 'owner');
+
   const handleSwitchAccount = async () => {
     setSignOutSubmitting(true);
     const { error } = await supabase.auth.signOut();
@@ -262,12 +263,18 @@ export default function OrgsPage() {
               <h1 className="text-3xl font-semibold text-foreground">Your organizations</h1>
             </div>
           </div>
-          <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
-            {signOutSubmitting ? 'Switching...' : 'Switch account'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {hasOwnedOrg ? (
+              <Button onClick={() => router.push('/orgs/dashboard')} className="rounded-2xl">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                Executive Dashboard
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={handleSwitchAccount} disabled={signOutSubmitting} className="rounded-2xl">
+              {signOutSubmitting ? 'Switching...' : 'Switch account'}
+            </Button>
+          </div>
         </header>
-
-        <ExecutiveCommandCenter onExploreOrg={handleSelectOrg} />
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card className="rounded-[28px] border border-border/70 bg-card/95 shadow-xl backdrop-blur">

@@ -104,8 +104,24 @@ export function ExecutiveCommandCenter({ onExploreOrg }: ExecutiveCommandCenterP
     );
   }
 
-  if (error || !dashboard || dashboard.ownedOrgCount === 0) {
-    return null;
+  if (error || !dashboard) {
+    return (
+      <Card className="rounded-lg border-border/70">
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          {error ? `Executive command center unavailable: ${error}` : "Executive command center unavailable."}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (dashboard.ownedOrgCount === 0) {
+    return (
+      <Card className="rounded-lg border-border/70">
+        <CardContent className="p-4 text-sm text-muted-foreground">
+          This dashboard appears once you own at least one organization.
+        </CardContent>
+      </Card>
+    );
   }
 
   const kpis = [

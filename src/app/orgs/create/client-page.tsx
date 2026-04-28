@@ -258,7 +258,7 @@ export default function OrgCreatePage() {
     : 'rounded-[28px] border border-border/70 bg-card/95 shadow-xl backdrop-blur';
   const secondaryCardClass = isNativeApp
     ? 'rounded-[24px] border border-slate-200 bg-slate-50/80 shadow-none'
-    : 'rounded-[24px] border border-border/70 bg-secondary/35 shadow-none';
+    : 'rounded-[24px] border border-border/70 bg-background/55 shadow-none';
   const infoPanelClass = isNativeApp
     ? 'rounded-2xl bg-white px-4 py-3'
     : 'rounded-2xl border border-border/60 bg-background/70 px-4 py-3';
@@ -266,6 +266,23 @@ export default function OrgCreatePage() {
     ? 'bg-slate-200 text-slate-500'
     : 'bg-secondary text-muted-foreground';
   const stepConnectorClass = isNativeApp ? 'bg-slate-200' : 'bg-border';
+  const paidPlanNoticeClass = isNativeApp
+    ? 'rounded-[24px] border-emerald-200 bg-emerald-50 text-emerald-950'
+    : 'rounded-[24px] border-emerald-500/35 bg-emerald-500/10 text-foreground [&>svg]:text-emerald-400';
+  const purchaseUnavailableNoticeClass = isNativeApp
+    ? 'rounded-[24px] border-amber-200 bg-amber-50 text-amber-950'
+    : 'rounded-[24px] border-amber-500/40 bg-amber-500/10 text-foreground [&>svg]:text-amber-400';
+  const selectedPlanClass = isNativeApp
+    ? 'border-emerald-400 bg-emerald-50 shadow-sm'
+    : 'border-emerald-500/60 bg-emerald-500/10 shadow-sm ring-1 ring-emerald-500/15';
+  const unselectedPlanClass = isNativeApp
+    ? 'border-slate-200 bg-white hover:border-slate-300'
+    : 'border-border/70 bg-background/55 hover:border-emerald-500/35 hover:bg-emerald-500/5';
+  const disabledPlanClass = isNativeApp ? 'cursor-not-allowed opacity-60' : 'cursor-not-allowed opacity-55';
+  const planTitleClass = isNativeApp ? 'text-slate-900' : 'text-foreground';
+  const planDescriptionClass = isNativeApp ? 'text-slate-600' : 'text-muted-foreground';
+  const planMetaClass = isNativeApp ? 'text-slate-500' : 'text-muted-foreground';
+  const restoreFooterClass = isNativeApp ? 'border-slate-100' : 'border-border/70';
 
   useEffect(() => {
     if (!paidPlanBlockedInCreate) {
@@ -669,7 +686,7 @@ export default function OrgCreatePage() {
             {step === 2 ? (
               <div className="space-y-6">
                 {activeSubscriptionProductId ? (
-                  <Alert className="rounded-[24px] border-emerald-200 bg-emerald-50 text-emerald-950">
+                  <Alert className={paidPlanNoticeClass}>
                     <Sparkles className="h-4 w-4" />
                     <AlertTitle>Paid plans are unavailable for this new organization</AlertTitle>
                     <AlertDescription>
@@ -684,7 +701,7 @@ export default function OrgCreatePage() {
                 ) : null}
 
                 {!purchaseAvailability.supported ? (
-                  <Alert className="rounded-[24px] border-amber-200 bg-amber-50 text-amber-950">
+                  <Alert className={purchaseUnavailableNoticeClass}>
                     <AlertTitle>Paid plans require the iOS app</AlertTitle>
                     <AlertDescription>
                       {purchaseAvailability.reason ??
@@ -775,22 +792,20 @@ export default function OrgCreatePage() {
                             (createPaidActionDecision.crossOrgBlocked ||
                               createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
                           }
-                          className={`w-full rounded-[24px] border px-4 py-4 text-left transition ${
-                            isSelected
-                              ? 'border-emerald-400 bg-emerald-50 shadow-sm'
-                              : 'border-slate-200 bg-white hover:border-slate-300'
-                          } ${
+                          className={cn(
+                            'w-full rounded-[24px] border px-4 py-4 text-left transition',
+                            isSelected ? selectedPlanClass : unselectedPlanClass,
                             plan.id !== FREE_PLAN_ID &&
-                            (createPaidActionDecision.crossOrgBlocked ||
-                              createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
-                              ? 'cursor-not-allowed opacity-60'
+                              (createPaidActionDecision.crossOrgBlocked ||
+                                createPaidActionDecision.unassignedSubscriptionRequiresReconcile)
+                              ? disabledPlanClass
                               : ''
-                          }`}
+                          )}
                         >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="font-semibold text-slate-900">{plan.name}</p>
+                                <p className={cn('font-semibold', planTitleClass)}>{plan.name}</p>
                                 {plan.id === recommendedPlan.id && !plan.isFree ? (
                                   <Badge variant="secondary">Recommended</Badge>
                                 ) : null}
@@ -798,11 +813,11 @@ export default function OrgCreatePage() {
                                   <Badge variant="secondary">Current</Badge>
                                 ) : null}
                               </div>
-                              <p className="mt-1 text-sm text-slate-600">{plan.description}</p>
+                              <p className={cn('mt-1 text-sm', planDescriptionClass)}>{plan.description}</p>
                             </div>
                             <div className="shrink-0 text-left sm:text-right">
-                              <p className="font-semibold text-slate-900">{resolvedPrice}</p>
-                              <p className="text-xs text-slate-500">
+                              <p className={cn('font-semibold', planTitleClass)}>{resolvedPrice}</p>
+                              <p className={cn('text-xs', planMetaClass)}>
                                 {plan.monthlyTokenLimit.toLocaleString()} tokens/month
                               </p>
                             </div>
@@ -810,7 +825,7 @@ export default function OrgCreatePage() {
                           {plan.id !== FREE_PLAN_ID &&
                           (createPaidActionDecision.crossOrgBlocked ||
                             createPaidActionDecision.unassignedSubscriptionRequiresReconcile) ? (
-                            <p className="mt-3 text-xs text-slate-500">
+                            <p className={cn('mt-3 text-xs', planMetaClass)}>
                               Paid plans are unavailable while another organization already owns this account's subscription.
                             </p>
                           ) : null}
@@ -935,7 +950,7 @@ export default function OrgCreatePage() {
           </CardFooter>
 
           {step >= 2 ? (
-            <div className="border-t border-slate-100 px-6 pb-6 pt-4">
+            <div className={cn('border-t px-6 pb-6 pt-4', restoreFooterClass)}>
               <div className="flex flex-col items-center gap-3">
                 <Button
                   variant="outline"

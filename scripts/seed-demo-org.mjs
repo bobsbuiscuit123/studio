@@ -1,7 +1,34 @@
-import dotenv from "dotenv";
+import { existsSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 
-dotenv.config({ path: ".env.local" });
+function loadEnvFile(path) {
+  if (!existsSync(path)) return;
+
+  for (const rawLine of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const assignment = line.startsWith("export ") ? line.slice(7).trim() : line;
+    const equalsIndex = assignment.indexOf("=");
+    if (equalsIndex === -1) continue;
+
+    const key = assignment.slice(0, equalsIndex).trim();
+    if (!key || Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+
+    let value = assignment.slice(equalsIndex + 1).trim();
+    const quote = value[0];
+    if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+      value = value.slice(1, -1);
+    }
+    if (quote === '"') {
+      value = value.replace(/\\n/g, "\n");
+    }
+
+    process.env[key] = value;
+  }
+}
+
+loadEnvFile(".env.local");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

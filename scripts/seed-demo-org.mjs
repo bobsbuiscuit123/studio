@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { createClient } from "@supabase/supabase-js";
 
 function loadEnvFile(path) {
   if (!existsSync(path)) return;
@@ -38,9 +37,203 @@ if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
+if (typeof fetch !== "function") {
+  console.error("This seed script needs Node 18+ because it uses built-in fetch.");
+  process.exit(1);
+}
+
+const toQueryError = (error) => ({
+  message: error instanceof Error ? error.message : String(error || "Unknown Supabase error"),
 });
+
+function createRestSupabaseClient(url, serviceRoleKey) {
+  const baseUrl = url.replace(/\/+$/, "");
+  const restUrl = `${baseUrl}/rest/v1`;
+  const headers = {
+    apikey: serviceRoleKey,
+    authorization: `Bearer ${serviceRoleKey}`,
+    "content-type": "application/json",
+  };
+
+  function parseResponseBody(text) {
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+
+  function getResponseMessage(payload, fallback) {
+    if (!payload) return fallback;
+    if (typeof payload === "string") return payload;
+    return payload.message || payload.error_description || payload.error || fallback;
+  }
+
+  async function request(endpoint, options = {}) {
+    const requestUrl = new URL(`${restUrl}/${endpoint}`);
+    for (const [key, value] of options.query || []) {
+      if (value !== undefined && value !== null) {
+        requestUrl.searchParams.append(key, value);
+      }
+    }
+
+    const response = await fetch(requestUrl, {
+      method: options.method || "GET",
+      headers: {
+        ...headers,
+        ...(options.prefer ? { prefer: options.prefer } : {}),
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+
+    const text = await response.text();
+    const payload = parseResponseBody(text);
+    if (!response.ok) {
+      throw new Error(getResponseMessage(payload, response.statusText));
+    }
+    return payload;
+  }
+
+  async function listUsers() {
+    try {
+      const users = [];
+      let page = 1;
+      const perPage = 1000;
+
+      while (page < 20) {
+        const requestUrl = new URL(`${baseUrl}/auth/v1/admin/users`);
+        requestUrl.searchParams.set("page", String(page));
+        requestUrl.searchParams.set("per_page", String(perPage));
+
+        const response = await fetch(requestUrl, {
+          headers,
+        });
+        const text = await response.text();
+        const payload = parseResponseBody(text);
+        if (!response.ok) {
+          throw new Error(getResponseMessage(payload, response.statusText));
+        }
+
+        const pageUsers = Array.isArray(payload) ? payload : payload?.users || [];
+        users.push(...pageUsers);
+        if (pageUsers.length < perPage) break;
+        page += 1;
+      }
+
+      return { data: { users }, error: null };
+    } catch (error) {
+      return { data: null, error: toQueryError(error) };
+    }
+  }
+
+  class QueryBuilder {
+    constructor(table) {
+      this.table = table;
+      this.operation = null;
+      this.columns = "*";
+      this.filters = [];
+      this.payload = undefined;
+      this.onConflict = null;
+    }
+
+    select(columns = "*") {
+      this.operation ||= "select";
+      this.columns = columns;
+      return this;
+    }
+
+    insert(payload) {
+      this.operation = "insert";
+      this.payload = payload;
+      return this;
+    }
+
+    upsert(payload, options = {}) {
+      this.operation = "upsert";
+      this.payload = payload;
+      this.onConflict = options.onConflict || null;
+      return this;
+    }
+
+    delete() {
+      this.operation = "delete";
+      return this;
+    }
+
+    eq(column, value) {
+      this.filters.push([column, `eq.${value}`]);
+      return this;
+    }
+
+    ilike(column, value) {
+      this.filters.push([column, `ilike.${value}`]);
+      return this;
+    }
+
+    in(column, values) {
+      this.filters.push([column, `in.(${values.join(",")})`]);
+      return this;
+    }
+
+    maybeSingle() {
+      return this.execute({ single: true });
+    }
+
+    then(resolve, reject) {
+      return this.execute({ single: false }).then(resolve, reject);
+    }
+
+    async execute({ single }) {
+      try {
+        const query = [...this.filters];
+        let method = "GET";
+        let prefer = null;
+        let body = undefined;
+
+        if (this.operation === "select" || !this.operation) {
+          query.unshift(["select", this.columns]);
+          if (single) query.push(["limit", "1"]);
+        } else if (this.operation === "insert") {
+          method = "POST";
+          body = this.payload;
+          if (this.columns && this.columns !== "*") query.unshift(["select", this.columns]);
+          prefer = this.columns && this.columns !== "*" ? "return=representation" : "return=minimal";
+        } else if (this.operation === "upsert") {
+          method = "POST";
+          body = this.payload;
+          if (this.columns && this.columns !== "*") query.unshift(["select", this.columns]);
+          if (this.onConflict) query.push(["on_conflict", this.onConflict]);
+          prefer = `resolution=merge-duplicates,${this.columns && this.columns !== "*" ? "return=representation" : "return=minimal"}`;
+        } else if (this.operation === "delete") {
+          method = "DELETE";
+          prefer = "return=minimal";
+        }
+
+        const data = await request(this.table, { method, query, prefer, body });
+        if (single) {
+          return { data: Array.isArray(data) ? data[0] || null : data, error: null };
+        }
+        return { data, error: null };
+      } catch (error) {
+        return { data: single ? null : [], error: toQueryError(error) };
+      }
+    }
+  }
+
+  return {
+    auth: {
+      admin: {
+        listUsers,
+      },
+    },
+    from(table) {
+      return new QueryBuilder(table);
+    },
+  };
+}
+
+const supabase = createRestSupabaseClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const args = new Map(
   process.argv.slice(2).flatMap((arg) => {

@@ -19,7 +19,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  buildEngagementReportCsv,
   type ExecutiveDashboardPayload,
   type SearchIndexEntry,
 } from "@/lib/command-center-analytics";
@@ -31,16 +30,6 @@ type ExecutiveCommandCenterProps = {
 
 const formatPercent = (value: number | null | undefined) =>
   typeof value === "number" ? `${value}%` : "--";
-
-const saveCsv = (filename: string, csv: string) => {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-};
 
 const filterSearchEntries = (entries: SearchIndexEntry[], query: string) => {
   const normalized = query.trim().toLowerCase();
@@ -156,13 +145,11 @@ export function ExecutiveCommandCenter({ onExploreOrg }: ExecutiveCommandCenterP
           </p>
           <h2 className="text-2xl font-semibold text-foreground">District operations overview</h2>
         </div>
-        <Button
-          variant="outline"
-          className="h-9 rounded-lg"
-          onClick={() => saveCsv("caspo-engagement-report.csv", buildEngagementReportCsv(dashboard.exportRows))}
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Generate Engagement Report
+        <Button variant="outline" className="h-9 rounded-lg" asChild>
+          <a href="/api/executive-dashboard?format=pdf" download="caspo-engagement-report.pdf">
+            <Download className="mr-2 h-4 w-4" />
+            Generate PDF Report
+          </a>
         </Button>
       </div>
 

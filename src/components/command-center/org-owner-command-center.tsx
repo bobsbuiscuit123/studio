@@ -16,7 +16,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  buildEngagementReportCsv,
   COMMAND_CENTER_HEATMAP_HOURS,
   type HeatmapCell,
   type OrgDashboardGroupRow,
@@ -43,16 +42,6 @@ const formatDate = (value?: string | null) => {
     day: "numeric",
     year: "numeric",
   }).format(parsed);
-};
-
-const saveCsv = (filename: string, csv: string) => {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
 };
 
 const statusBadgeClass = (status: OrgDashboardGroupRow["status"]) =>
@@ -207,18 +196,11 @@ export function OrgOwnerCommandCenter({ orgId, isOwner, onOpenGroup }: OrgOwnerC
           </p>
           <h2 className="text-2xl font-semibold text-foreground">{dashboard.org.name}</h2>
         </div>
-        <Button
-          variant="outline"
-          className="h-9 rounded-lg"
-          onClick={() =>
-            saveCsv(
-              `${dashboard.org.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-engagement-report.csv`,
-              buildEngagementReportCsv(dashboard.exportRows)
-            )
-          }
-        >
-          <Download className="mr-2 h-4 w-4" />
-          Export CSV
+        <Button variant="outline" className="h-9 rounded-lg" asChild>
+          <a href={`/api/org-dashboard?orgId=${encodeURIComponent(orgId)}&format=pdf`} download="caspo-engagement-report.pdf">
+            <Download className="mr-2 h-4 w-4" />
+            Export PDF
+          </a>
         </Button>
       </div>
 

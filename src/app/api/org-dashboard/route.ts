@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import {
+  buildEngagementReportCsv,
   buildOrgDashboardPayload,
   type AssistantActionLogInput,
   type RawGroupInput,
 } from '@/lib/command-center-analytics';
+import { buildEngagementReportPdf } from '@/lib/command-center-report-pdf';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 import { rateLimit } from '@/lib/rate-limit';
 import { err } from '@/lib/result';
@@ -16,7 +18,29 @@ export const dynamic = 'force-dynamic';
 
 const querySchema = z.object({
   orgId: z.string().uuid(),
+  format: z.enum(['csv', 'pdf']).optional(),
 }).strict();
+
+const reportFilenamePart = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'organization';
+
+const csvAttachmentResponse = (csv: string, filename: string) =>
+  new Response(`\uFEFF${csv}`, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Type': 'text/csv; charset=utf-8',
+    },
+  });
+
+const pdfAttachmentResponse = (pdf: Uint8Array, filename: string) =>
+  new Response(pdf, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Type': 'application/pdf',
+    },
+  });
 
 const loadAssistantLogs = async ({
   admin,
@@ -53,6 +77,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const parsed = querySchema.safeParse({
     orgId: url.searchParams.get('orgId'),
+    format: url.searchParams.get('format') || undefined,
   });
   if (!parsed.success) {
     return NextResponse.json(
@@ -172,6 +197,30 @@ export async function GET(request: Request) {
     groups,
     assistantLogs,
   });
+
+  if (parsed.data.format === 'pdf') {
+    return pdfAttachmentResponse(
+      buildEngagementReportPdf(payload.exportRows, {
+        title: `${payload.org.name} Engagement Report`,
+        subtitle: 'Org Owner Command Center',
+        summary: [
+          `Total Active Members: ${payload.kpis.totalActiveMembers.toLocaleString()}`,
+          `Weekly Meeting Density: ${payload.kpis.weeklyMeetingDensity.toLocaleString()}`,
+          `Engagement: ${typeof payload.kpis.engagementPercent === 'number' ? `${payload.kpis.engagementPercent}%` : '--'}`,
+          `Compliance: ${typeof payload.kpis.compliancePercent === 'number' ? `${payload.kpis.compliancePercent}%` : '--'}`,
+          `Tasks Automated: ${payload.kpis.tasksAutomated.toLocaleString()}`,
+        ],
+      }),
+      `${reportFilenamePart(payload.org.name)}-engagement-report.pdf`
+    );
+  }
+
+  if (parsed.data.format === 'csv') {
+    return csvAttachmentResponse(
+      buildEngagementReportCsv(payload.exportRows),
+      `${reportFilenamePart(payload.org.name)}-engagement-report.csv`
+    );
+  }
 
   return NextResponse.json({
     ok: true,

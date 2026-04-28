@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 
 import {
+  buildEngagementReportCsv,
   buildExecutiveDashboardPayload,
   type AssistantActionLogInput,
   type RawGroupInput,
   type RawOrgInput,
 } from '@/lib/command-center-analytics';
+import { buildEngagementReportPdf } from '@/lib/command-center-report-pdf';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 import { rateLimit } from '@/lib/rate-limit';
 import { err } from '@/lib/result';
@@ -13,6 +15,24 @@ import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
+
+const csvAttachmentResponse = (csv: string, filename: string) =>
+  new Response(`\uFEFF${csv}`, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Type': 'text/csv; charset=utf-8',
+    },
+  });
+
+const pdfAttachmentResponse = (pdf: Uint8Array, filename: string) =>
+  new Response(pdf, {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Type': 'application/pdf',
+    },
+  });
 
 const loadAssistantLogs = async ({
   admin,
@@ -41,6 +61,15 @@ export async function GET(request: Request) {
   const ipLimiter = rateLimit(`executive-dashboard:${getRequestIp(request.headers)}`, 60, 60_000);
   if (!ipLimiter.allowed) {
     return rateLimitExceededResponse(ipLimiter);
+  }
+
+  const url = new URL(request.url);
+  const format = url.searchParams.get('format');
+  if (format && format !== 'csv' && format !== 'pdf') {
+    return NextResponse.json(
+      err({ code: 'VALIDATION', message: 'Invalid report format.', source: 'app' }),
+      { status: 400 }
+    );
   }
 
   const supabase = await createSupabaseServerClient();
@@ -105,13 +134,33 @@ export async function GET(request: Request) {
 
   const orgs = Array.from(orgById.values()).sort((left, right) => left.name.localeCompare(right.name));
   if (orgs.length === 0) {
+    const payload = buildExecutiveDashboardPayload({
+      orgs: [],
+      groupsByOrgId: {},
+      assistantLogs: [],
+    });
+    if (format === 'pdf') {
+      return pdfAttachmentResponse(
+        buildEngagementReportPdf(payload.exportRows, {
+          title: 'Caspo Executive Engagement Report',
+          subtitle: 'Executive Command Center',
+          summary: [
+            'Owned Organizations: 0',
+            'Total Impacted Students: 0',
+            'District-Wide Compliance: --',
+            'Total Resource Hours: 0',
+            'Tasks Automated: 0',
+          ],
+        }),
+        'caspo-engagement-report.pdf'
+      );
+    }
+    if (format === 'csv') {
+      return csvAttachmentResponse(buildEngagementReportCsv(payload.exportRows), 'caspo-engagement-report.csv');
+    }
     return NextResponse.json({
       ok: true,
-      data: buildExecutiveDashboardPayload({
-        orgs: [],
-        groupsByOrgId: {},
-        assistantLogs: [],
-      }),
+      data: payload,
     });
   }
 
@@ -165,6 +214,26 @@ export async function GET(request: Request) {
     groupsByOrgId,
     assistantLogs,
   });
+
+  if (format === 'csv') {
+    return csvAttachmentResponse(buildEngagementReportCsv(payload.exportRows), 'caspo-engagement-report.csv');
+  }
+
+  if (format === 'pdf') {
+    return pdfAttachmentResponse(
+      buildEngagementReportPdf(payload.exportRows, {
+        title: 'Caspo Executive Engagement Report',
+        subtitle: `${payload.ownedOrgCount.toLocaleString()} owned organization${payload.ownedOrgCount === 1 ? '' : 's'}`,
+        summary: [
+          `Total Impacted Students: ${payload.kpis.totalImpactedStudents.toLocaleString()}`,
+          `District-Wide Compliance: ${typeof payload.kpis.districtCompliancePercent === 'number' ? `${payload.kpis.districtCompliancePercent}%` : '--'}`,
+          `Total Resource Hours: ${payload.kpis.totalResourceHours.toLocaleString()}`,
+          `Tasks Automated: ${payload.kpis.tasksAutomated.toLocaleString()}`,
+        ],
+      }),
+      'caspo-engagement-report.pdf'
+    );
+  }
 
   return NextResponse.json({
     ok: true,

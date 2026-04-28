@@ -22,6 +22,8 @@ type UpdateAnnouncementInput = {
   body?: string;
 };
 
+const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
+
 const ensureAnnouncementPermission = async (input: {
   userId: string;
   orgId: string;
@@ -69,6 +71,44 @@ const loadAnnouncementsState = async (input: {
     currentData,
     announcements,
   };
+};
+
+const resolveAuthorName = async (input: {
+  userId: string;
+  userEmail: string;
+  currentData: Record<string, any>;
+}) => {
+  const normalizedEmail = normalizeEmail(input.userEmail);
+  const members = Array.isArray(input.currentData.members) ? input.currentData.members : [];
+  const matchingMember = members.find((member: unknown) => {
+    if (!member || typeof member !== 'object') return false;
+    const record = member as Record<string, unknown>;
+    return record.id === input.userId || normalizeEmail(record.email) === normalizedEmail;
+  });
+  const memberName =
+    matchingMember && typeof matchingMember === 'object'
+      ? String((matchingMember as Record<string, unknown>).name ?? '').trim()
+      : '';
+  if (memberName) {
+    return memberName;
+  }
+
+  try {
+    const admin = createSupabaseAdmin();
+    const { data } = await admin
+      .from('profiles')
+      .select('display_name')
+      .eq('id', input.userId)
+      .maybeSingle();
+    const profileName = String(data?.display_name ?? '').trim();
+    if (profileName) {
+      return profileName;
+    }
+  } catch {
+    // Author display is cosmetic; keep announcement creation working if profile lookup is unavailable.
+  }
+
+  return 'Group Member';
 };
 
 const persistAnnouncementsState = async (input: {
@@ -124,6 +164,7 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
 
   await ensureAnnouncementPermission(input);
   const { currentData, announcements } = await loadAnnouncementsState(input);
+  const authorName = await resolveAuthorName({ ...input, currentData });
   const nextId =
     announcements.reduce((maxId, item) => {
       const id = typeof item?.id === 'number' ? item.id : typeof item?.id === 'string' ? Number(item.id) : 0;
@@ -134,7 +175,7 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
     id: nextId,
     title,
     content: body,
-    author: input.userEmail,
+    author: authorName,
     date: new Date().toISOString(),
     read: false,
     viewedBy: [input.userEmail],

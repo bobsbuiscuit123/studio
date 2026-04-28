@@ -91,6 +91,12 @@ const normalizeAnnouncementForDisplay = <T extends { title?: string | null; cont
   };
 };
 
+const normalizeMemberEmail = (value?: string | null) =>
+  String(value ?? "").trim().toLowerCase();
+
+const looksLikeEmailAddress = (value: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 const isImageAttachment = (attachment: Attachment) => {
   const attachmentType = String(attachment.type ?? "").toLowerCase();
   if (attachmentType.startsWith("image/")) {
@@ -141,10 +147,33 @@ function AnnouncementsPageInner() {
   const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
   const memberNameByEmail = useMemo(() => {
     const list = Array.isArray(members) ? members : [];
-    return new Map(list.map(member => [member.email, member.name]));
+    return new Map(
+      list
+        .map(member => [normalizeMemberEmail(member.email), String(member.name ?? "").trim()] as const)
+        .filter(([email, name]) => Boolean(email && name))
+    );
   }, [members]);
-  const resolveMemberName = (value: string) =>
-    memberNameByEmail.get(value) || value;
+  const resolveMemberName = (value: string) => {
+    const raw = String(value ?? "").trim();
+    const resolved = memberNameByEmail.get(normalizeMemberEmail(raw));
+    if (resolved) return resolved;
+
+    const currentUserEmail = normalizeMemberEmail(user?.email);
+    const currentUserName = String(user?.name ?? "").trim();
+    if (currentUserEmail && normalizeMemberEmail(raw) === currentUserEmail && currentUserName) {
+      return currentUserName;
+    }
+
+    return raw;
+  };
+  const resolveAnnouncementAuthorName = (value: string) => {
+    const raw = String(value ?? "").trim();
+    const resolved = resolveMemberName(raw);
+    if (resolved && !looksLikeEmailAddress(resolved)) {
+      return resolved;
+    }
+    return raw && !looksLikeEmailAddress(raw) ? raw : "Group Member";
+  };
   const [showAi, setShowAi] = useState(false);
   const [handledFormId, setHandledFormId] = useState<string | null>(null);
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
@@ -726,7 +755,7 @@ function AnnouncementsPageInner() {
                                   : announcement.title}
                               </CardTitle>
                               <CardDescription className="mt-1 flex flex-wrap items-center gap-2 text-sm font-normal text-zinc-500">
-                                <span>{announcement.author}</span>
+                                <span>{resolveAnnouncementAuthorName(announcement.author)}</span>
                                 <span aria-hidden="true" className="text-zinc-600">•</span>
                                 <span>{formatFriendlyDate(announcement.date)}</span>
                               </CardDescription>

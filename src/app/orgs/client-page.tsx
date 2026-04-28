@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CreditCard, Users } from 'lucide-react';
 
+import { ExecutiveCommandCenter } from '@/components/command-center/executive-command-center';
 import { Logo } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -265,6 +266,8 @@ export default function OrgsPage() {
             {signOutSubmitting ? 'Switching...' : 'Switch account'}
           </Button>
         </header>
+
+        <ExecutiveCommandCenter onExploreOrg={handleSelectOrg} />
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card className="rounded-[28px] border border-border/70 bg-card/95 shadow-xl backdrop-blur">

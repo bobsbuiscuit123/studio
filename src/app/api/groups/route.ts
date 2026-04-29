@@ -7,6 +7,7 @@ import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 import { ensureOrgOwnerMembershipsForGroups } from '@/lib/group-access';
+import { isInlineAssetString } from '@/lib/org-state-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -160,7 +161,7 @@ export async function GET(request: Request) {
   const { data: groupStateRows, error: groupStateError } = visibleGroupIds.length > 0
     ? await admin
         .from('group_state')
-        .select('group_id, data')
+        .select('group_id, logo:data->>logo')
         .eq('org_id', parsed.data.orgId)
         .in('group_id', visibleGroupIds)
     : { data: [], error: null };
@@ -188,8 +189,8 @@ export async function GET(request: Request) {
 
   const logoByGroupId = new Map<string, string>();
   (groupStateRows ?? []).forEach(row => {
-    const logo = (row.data as { logo?: string } | null)?.logo;
-    if (typeof logo === 'string' && logo.trim()) {
+    const logo = typeof row.logo === 'string' ? row.logo.trim() : '';
+    if (logo && !isInlineAssetString(logo)) {
       logoByGroupId.set(row.group_id, logo);
     }
   });

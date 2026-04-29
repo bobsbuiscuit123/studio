@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser, useCurrentUserRole, useForms, useMembers } from "@/lib/data-hooks";
+import { uploadGroupAsset } from "@/lib/group-assets";
 import type { ClubForm, FormQuestion, FormResponse } from "@/lib/mock-data";
 import { useSearchParams } from "next/navigation";
 
@@ -43,7 +44,7 @@ type FormBuilderValues = z.infer<typeof formBuilderSchema>;
 
 function FormsPageInner() {
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.45)]";
-  const { data: forms, updateData: setForms, updateDataAsync: setFormsAsync, loading } = useForms();
+  const { data: forms, updateData: setForms, updateDataAsync: setFormsAsync, loading, clubId, orgId } = useForms();
   const { data: members } = useMembers();
   const { user } = useCurrentUser();
   const { canEditContent, role } = useCurrentUserRole();
@@ -53,6 +54,7 @@ function FormsPageInner() {
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
   const [responseDrafts, setResponseDrafts] = useState<Record<string, Record<string, string>>>({});
   const [resubmittingFormIds, setResubmittingFormIds] = useState<Set<string>>(new Set());
+  const [uploadingFileKey, setUploadingFileKey] = useState<string | null>(null);
 
   const builderForm = useForm<FormBuilderValues>({
     resolver: zodResolver(formBuilderSchema),
@@ -451,21 +453,46 @@ function FormsPageInner() {
                                           );
                                         }
                                         if (q.kind === "file") {
+                                          const fileKey = `${form.id}:${q.id}`;
+                                          const isUploadingFile = uploadingFileKey === fileKey;
                                           return (
                                             <Input
                                               type="file"
+                                              disabled={isUploadingFile}
                                               onChange={async e => {
                                                 const file = e.target.files?.[0];
                                                 if (!file) return;
-                                                const reader = new FileReader();
-                                                reader.onload = () => {
-                                                  const dataUri = typeof reader.result === "string" ? reader.result : "";
+                                                e.currentTarget.value = "";
+                                                if (!orgId || !clubId) {
+                                                  toast({
+                                                    title: "Upload unavailable",
+                                                    description: "Please wait for the group to finish loading.",
+                                                    variant: "destructive",
+                                                  });
+                                                  return;
+                                                }
+                                                setUploadingFileKey(fileKey);
+                                                try {
+                                                  const stored = await uploadGroupAsset({
+                                                    file,
+                                                    orgId,
+                                                    groupId: clubId,
+                                                    scope: "form-response",
+                                                    fileName: file.name,
+                                                  });
                                                   setResponseDrafts(prev => ({
                                                     ...prev,
-                                                    [form.id]: { ...(prev[form.id] || {}), [q.id]: dataUri },
+                                                    [form.id]: { ...(prev[form.id] || {}), [q.id]: stored.url },
                                                   }));
-                                                };
-                                                reader.readAsDataURL(file);
+                                                } catch (error) {
+                                                  toast({
+                                                    title: "Upload failed",
+                                                    description: error instanceof Error ? error.message : "Please try again.",
+                                                    variant: "destructive",
+                                                  });
+                                                } finally {
+                                                  setUploadingFileKey(null);
+                                                }
                                               }}
                                             />
                                           );
@@ -485,8 +512,9 @@ function FormsPageInner() {
                                       })()}
                                     </div>
                                   ))}
-                                  <Button size="sm" onClick={() => handleSubmitResponse(form)}>
-                                    <Send className="h-4 w-4 mr-2" /> Submit response
+                                  <Button size="sm" onClick={() => handleSubmitResponse(form)} disabled={Boolean(uploadingFileKey?.startsWith(`${form.id}:`))}>
+                                    {uploadingFileKey?.startsWith(`${form.id}:`) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                                    Submit response
                                   </Button>
                                 </div>
                               );

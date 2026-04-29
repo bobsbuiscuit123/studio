@@ -13,8 +13,32 @@ import { rateLimit } from '@/lib/rate-limit';
 import { err } from '@/lib/result';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { stripHeavyMediaFromOrgState } from '@/lib/org-state-media';
 
 export const dynamic = 'force-dynamic';
+
+const DASHBOARD_STATE_SELECT = [
+  'org_id',
+  'group_id',
+  'members:data->members',
+  'events:data->events',
+  'announcements:data->announcements',
+  'forms:data->forms',
+  'pointEntries:data->pointEntries',
+  'galleryImages:data->galleryImages',
+  'socialPosts:data->socialPosts',
+].join(', ');
+
+const buildLiteDashboardState = (row: Record<string, unknown>) =>
+  stripHeavyMediaFromOrgState({
+    members: Array.isArray(row.members) ? row.members : [],
+    events: Array.isArray(row.events) ? row.events : [],
+    announcements: Array.isArray(row.announcements) ? row.announcements : [],
+    forms: Array.isArray(row.forms) ? row.forms : [],
+    pointEntries: Array.isArray(row.pointEntries) ? row.pointEntries : [],
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages : [],
+    socialPosts: Array.isArray(row.socialPosts) ? row.socialPosts : [],
+  }) as Record<string, unknown>;
 
 const csvAttachmentResponse = (csv: string, filename: string) =>
   new Response(`\uFEFF${csv}`, {
@@ -174,7 +198,7 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: true }),
       admin
         .from('group_state')
-        .select('org_id, group_id, data')
+        .select(DASHBOARD_STATE_SELECT)
         .in('org_id', orgIds),
       loadAssistantLogs({ admin, orgIds }),
     ]);
@@ -193,7 +217,7 @@ export async function GET(request: Request) {
   const stateByGroupId = new Map<string, Record<string, unknown>>();
   (stateRows ?? []).forEach(row => {
     if (typeof row.group_id === 'string') {
-      stateByGroupId.set(row.group_id, (row.data ?? {}) as Record<string, unknown>);
+      stateByGroupId.set(row.group_id, buildLiteDashboardState(row as Record<string, unknown>));
     }
   });
 

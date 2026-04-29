@@ -132,11 +132,8 @@ const routeNeedsMedia = (pathname?: string | null) => {
     value.startsWith('/gallery/') ||
     value === '/social' ||
     value.startsWith('/social/') ||
-    value === '/announcements' ||
-    value.startsWith('/announcements/') ||
     value.startsWith('/demo/app/gallery') ||
-    value.startsWith('/demo/app/social') ||
-    value.startsWith('/demo/app/announcements')
+    value.startsWith('/demo/app/social')
   );
 };
 const shouldRefreshOnVisibility = () =>
@@ -217,6 +214,67 @@ const dispatchGroupStateSync = (orgId: string, groupId: string) => {
 };
 
 type GroupStateResponse = { ok: true; data: ClubData | null };
+type GroupStatePatch = {
+    path: Array<string | number>;
+    value: unknown;
+};
+type GroupStatePatchResponse = { ok: true; data: null };
+
+const patchableArrayFields: Record<string, Set<string>> = {
+    announcements: new Set(['read', 'viewedBy']),
+    events: new Set(['attendanceRecords', 'attendees', 'lastViewedAttendees', 'read', 'rsvps', 'viewedBy']),
+    forms: new Set(['responses', 'viewedBy']),
+    galleryImages: new Set(['liked', 'likedBy', 'likes', 'read', 'viewedBy']),
+    socialPosts: new Set(['comments', 'liked', 'likedBy', 'likes', 'read', 'viewedBy']),
+};
+
+const buildAtomicArrayPatches = (
+    sectionKey: string,
+    currentValue: unknown,
+    nextValue: unknown
+): GroupStatePatch[] => {
+    const allowedFields = patchableArrayFields[sectionKey];
+    if (!allowedFields || !Array.isArray(currentValue) || !Array.isArray(nextValue)) {
+        return [];
+    }
+    if (currentValue.length !== nextValue.length) {
+        return [];
+    }
+
+    const patches: GroupStatePatch[] = [];
+    for (let index = 0; index < currentValue.length; index += 1) {
+        const currentItem = currentValue[index];
+        const nextItem = nextValue[index];
+        if (!currentItem || !nextItem || typeof currentItem !== 'object' || typeof nextItem !== 'object') {
+            if (stableSerialize(currentItem) !== stableSerialize(nextItem)) {
+                return [];
+            }
+            continue;
+        }
+
+        const currentRecord = currentItem as Record<string, unknown>;
+        const nextRecord = nextItem as Record<string, unknown>;
+        if (getRecordId(currentRecord) !== getRecordId(nextRecord)) {
+            return [];
+        }
+
+        const fields = new Set([...Object.keys(currentRecord), ...Object.keys(nextRecord)]);
+        for (const field of fields) {
+            if (stableSerialize(currentRecord[field]) === stableSerialize(nextRecord[field])) {
+                continue;
+            }
+            if (!allowedFields.has(field)) {
+                return [];
+            }
+            patches.push({
+                path: [sectionKey, index, field],
+                value: nextRecord[field] ?? null,
+            });
+        }
+    }
+
+    return patches.length <= 100 ? patches : [];
+};
 
 type ClubDataStoreValue = {
     clubId: string | null;
@@ -234,6 +292,7 @@ type ClubDataStoreValue = {
         options?: {
             deletedIds?: GroupStateDeletionMap;
             optimisticData?: ClubData;
+            patches?: GroupStatePatch[];
         }
     ) => Promise<boolean>;
     refreshData: () => Promise<boolean>;
@@ -871,6 +930,7 @@ function useClubDataStoreState(): ClubDataStoreValue {
             options?: {
                 deletedIds?: GroupStateDeletionMap;
                 optimisticData?: ClubData;
+                patches?: GroupStatePatch[];
             }
         ) => {
             if (useDemo && demoCtx) {
@@ -941,31 +1001,50 @@ function useClubDataStoreState(): ClubDataStoreValue {
                 }
                 return false;
             }
-            const response = await safeFetchJson<GroupStateResponse>('/api/org-state?return=minimal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    orgId,
-                    groupId: clubId,
-                    data: nextData,
-                    deletedIds: options?.deletedIds,
-                }),
-                timeoutMs: 10_000,
-                retry: { retries: 1 },
-                requestId: createDashboardRequestId('group-state-save'),
-            });
-            if (!response.ok) {
-                console.error(`Error saving data for group ${clubId}`, response.error);
+            let confirmedPayload: ClubData | null = null;
+            const requestedPatches = options?.patches ?? [];
+            const shouldPatch = requestedPatches.length > 0 && !options?.deletedIds;
+            const saveResponse = shouldPatch
+                ? await safeFetchJson<GroupStatePatchResponse>('/api/org-state/patch', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orgId,
+                        groupId: clubId,
+                        patches: requestedPatches,
+                    }),
+                    timeoutMs: 10_000,
+                    retry: { retries: 1 },
+                    requestId: createDashboardRequestId('group-state-patch'),
+                })
+                : await safeFetchJson<GroupStateResponse>('/api/org-state?return=minimal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orgId,
+                        groupId: clubId,
+                        data: nextData,
+                        deletedIds: options?.deletedIds,
+                    }),
+                    timeoutMs: 10_000,
+                    retry: { retries: 1 },
+                    requestId: createDashboardRequestId('group-state-save'),
+                });
+            if (!saveResponse.ok) {
+                console.error(`Error saving data for group ${clubId}`, saveResponse.error);
                 setData(freshCurrentData);
                 groupStateCache.set(getGroupStateCacheKey(orgId, clubId), freshCurrentData);
                 if (includeMedia) {
                     groupStateIncludesMediaCache.set(getGroupStateCacheKey(orgId, clubId), true);
                 }
-                setError(response.error.message || 'Group content could not be saved.');
+                setError(saveResponse.error.message || 'Group content could not be saved.');
                 setStatus('error');
                 return false;
             }
-            const confirmedData = normalizeClubData(response.data.data ?? nextData);
+            if (!shouldPatch) {
+                confirmedPayload = (saveResponse as { ok: true; data: GroupStateResponse }).data.data ?? null;
+            }
+            const confirmedData = normalizeClubData(confirmedPayload ?? nextData);
             setData(prev => {
                 if (prev && stableSerialize(prev) === stableSerialize(confirmedData)) {
                     return prev;
@@ -1078,6 +1157,10 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                 key === 'announcements' || key === 'events' || key === 'galleryImages'
                     ? collectDeletedIds(base[key], valueToStore)
                     : [];
+            const atomicPatches =
+                deletedIds.length === 0
+                    ? buildAtomicArrayPatches(String(key), base[key], valueToStore)
+                    : [];
             return updateClubData(
                 freshBase => {
                     const nextValue =
@@ -1092,6 +1175,7 @@ function useSpecificClubData<K extends keyof ClubData>(key: K) {
                         deletedIds.length > 0
                             ? { [key]: deletedIds }
                             : undefined,
+                    patches: atomicPatches.length > 0 ? atomicPatches : undefined,
                 }
             );
         },

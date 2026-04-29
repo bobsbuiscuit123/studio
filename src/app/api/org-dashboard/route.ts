@@ -13,6 +13,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { err } from '@/lib/result';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+import { stripHeavyMediaFromOrgState } from '@/lib/org-state-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +21,28 @@ const querySchema = z.object({
   orgId: z.string().uuid(),
   format: z.enum(['csv', 'pdf']).optional(),
 }).strict();
+
+const DASHBOARD_STATE_SELECT = [
+  'group_id',
+  'members:data->members',
+  'events:data->events',
+  'announcements:data->announcements',
+  'forms:data->forms',
+  'pointEntries:data->pointEntries',
+  'galleryImages:data->galleryImages',
+  'socialPosts:data->socialPosts',
+].join(', ');
+
+const buildLiteDashboardState = (row: Record<string, unknown>) =>
+  stripHeavyMediaFromOrgState({
+    members: Array.isArray(row.members) ? row.members : [],
+    events: Array.isArray(row.events) ? row.events : [],
+    announcements: Array.isArray(row.announcements) ? row.announcements : [],
+    forms: Array.isArray(row.forms) ? row.forms : [],
+    pointEntries: Array.isArray(row.pointEntries) ? row.pointEntries : [],
+    galleryImages: Array.isArray(row.galleryImages) ? row.galleryImages : [],
+    socialPosts: Array.isArray(row.socialPosts) ? row.socialPosts : [],
+  }) as Record<string, unknown>;
 
 const reportFilenamePart = (value: string) =>
   value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'organization';
@@ -161,7 +184,7 @@ export async function GET(request: Request) {
     groupIds.length > 0
       ? admin
           .from('group_state')
-          .select('group_id, data')
+          .select(DASHBOARD_STATE_SELECT)
           .eq('org_id', parsed.data.orgId)
           .in('group_id', groupIds)
       : Promise.resolve({ data: [], error: null }),
@@ -178,7 +201,7 @@ export async function GET(request: Request) {
   const stateByGroupId = new Map<string, Record<string, unknown>>();
   (stateRows ?? []).forEach(row => {
     if (typeof row.group_id === 'string') {
-      stateByGroupId.set(row.group_id, (row.data ?? {}) as Record<string, unknown>);
+      stateByGroupId.set(row.group_id, buildLiteDashboardState(row as Record<string, unknown>));
     }
   });
 

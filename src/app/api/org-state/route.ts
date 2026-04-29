@@ -17,6 +17,7 @@ import { stableSerialize } from '@/lib/stable-serialize';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
 import { ensureOrgOwnerGroupMembership } from '@/lib/group-access';
+import { restoreStrippedAssets, stripHeavyMediaFromOrgState } from '@/lib/org-state-media';
 
 export const dynamic = 'force-dynamic';
 const apiLogger = createDashboardLogger('[Dashboard][API]');
@@ -383,21 +384,6 @@ const normalizeGalleryImageStatus = (image: Record<string, any>) => ({
   ...image,
   status: 'approved' as const,
 });
-
-const stripHeavyMediaFromOrgState = (data: unknown) => {
-  if (!data || typeof data !== 'object') return data;
-  const source = data as Record<string, any>;
-  return {
-    ...source,
-    galleryImages: Array.isArray(source.galleryImages)
-      ? source.galleryImages.map(image => {
-          if (!image || typeof image !== 'object') return image;
-          const { src: _src, ...rest } = image as Record<string, unknown>;
-          return rest;
-        })
-      : source.galleryImages,
-  };
-};
 
 const mergeGalleryImages = (
   currentGalleryImages: unknown,
@@ -1327,7 +1313,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   const currentData = (existingState?.data ?? {}) as Record<string, any>;
-  const nextData = parsed.data.data as Record<string, any>;
+  const nextData = restoreStrippedAssets(currentData, parsed.data.data) as Record<string, any>;
   const deletedIds = parsed.data.deletedIds ?? {};
   const mergedData: Record<string, any> = {
     ...currentData,

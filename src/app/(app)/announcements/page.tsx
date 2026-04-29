@@ -44,9 +44,11 @@ import type { Announcement, Attachment, ClubForm } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
+import { tryDeleteGroupAsset, uploadGroupAsset } from "@/lib/group-assets";
 import { cn } from "@/lib/utils";
 
 const isNativeApp = Capacitor.isNativePlatform();
+const isRemoteUrl = (value?: string | null) => /^https?:\/\//i.test(String(value ?? ""));
 
 const promptFormSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -120,6 +122,8 @@ function AnnouncementsPageInner() {
     error,
     loading,
     refreshData,
+    clubId,
+    orgId,
   } = useAnnouncements();
   const {
     data: forms,
@@ -140,6 +144,7 @@ function AnnouncementsPageInner() {
   const [isDownloading, setIsDownloading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
@@ -314,34 +319,64 @@ function AnnouncementsPageInner() {
     return () => window.clearTimeout(timeoutId);
   }, [loading, router, safeAnnouncements, searchParams, toast]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (files) {
-      const newAttachments: Attachment[] = [];
-      Array.from(files).forEach(file => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newAttachments.push({
-            name: file.name,
-            dataUri: reader.result as string,
-            type: file.type,
-          });
-          if (newAttachments.length === files.length) {
-            const allAttachments = [...attachments, ...newAttachments];
-            setAttachments(allAttachments);
-            promptForm.setValue("attachments", allAttachments);
-          }
-        };
-        reader.readAsDataURL(file);
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+    if (!orgId || !clubId) {
+      toast({
+        title: "Upload unavailable",
+        description: "Please wait for the group to finish loading.",
+        variant: "destructive",
       });
+      return;
+    }
+
+    setIsUploadingAttachments(true);
+    try {
+      const newAttachments = await Promise.all(
+        files.map(async file => {
+          const stored = await uploadGroupAsset({
+            file,
+            orgId,
+            groupId: clubId,
+            scope: "announcement",
+            fileName: file.name,
+          });
+          return {
+            name: file.name,
+            dataUri: stored.url,
+            type: file.type,
+          } satisfies Attachment;
+        })
+      );
+      const allAttachments = [...attachments, ...newAttachments];
+      setAttachments(allAttachments);
+      promptForm.setValue("attachments", allAttachments);
+    } catch (error) {
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingAttachments(false);
     }
   };
 
   const removeAttachment = (index: number) => {
+    const removed = attachments[index];
     const newAttachments = [...attachments];
     newAttachments.splice(index, 1);
     setAttachments(newAttachments);
     promptForm.setValue("attachments", newAttachments);
+    if (removed?.type !== "button" && orgId && clubId) {
+      void tryDeleteGroupAsset({
+        url: removed.dataUri,
+        orgId,
+        groupId: clubId,
+      });
+    }
   }
   
   const handleEditClick = (announcement: Announcement) => {
@@ -391,14 +426,34 @@ function AnnouncementsPageInner() {
   };
   
   const handleDownloadAttachment = async (attachment: Attachment) => {
-    if (attachment.type === "button" && attachment.dataUri) {
-      router.push(attachment.dataUri);
+    const attachmentUrl = typeof attachment.dataUri === "string" ? attachment.dataUri : "";
+    if (!attachmentUrl) {
+      toast({
+        title: "Attachment unavailable",
+        description: "This legacy attachment needs to be migrated to storage first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (attachment.type === "button") {
+      router.push(attachmentUrl);
       return;
     }
 
     if (isNativeApp) {
       try {
-        const { base64Data, mimeType } = extractAttachmentBase64(attachment.dataUri);
+        if (isRemoteUrl(attachmentUrl)) {
+          await Share.share({
+            title: attachment.name,
+            text: "Save or share this attachment",
+            url: attachmentUrl,
+            dialogTitle: "Save or share attachment",
+          });
+          return;
+        }
+
+        const { base64Data, mimeType } = extractAttachmentBase64(attachmentUrl);
         const safeFileName = buildAttachmentFileName(attachment.name, mimeType);
         const path = `announcements/${Date.now()}-${safeFileName}`;
         const file = await Filesystem.writeFile({
@@ -427,7 +482,7 @@ function AnnouncementsPageInner() {
     }
 
     const link = document.createElement("a");
-    link.href = attachment.dataUri;
+    link.href = attachmentUrl;
     link.download = attachment.name;
     document.body.appendChild(link);
     link.click();
@@ -603,8 +658,8 @@ function AnnouncementsPageInner() {
                   <FormItem>
                     <FormLabel>Attachments (Optional)</FormLabel>
                     <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                          <Paperclip className="mr-2" />
+                      <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploadingAttachments}>
+                          {isUploadingAttachments ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2" />}
                           Add Files
                       </Button>
                       <FormControl>
@@ -636,7 +691,7 @@ function AnnouncementsPageInner() {
                   )}
 
                 <div className="flex justify-end">
-                  <Button type="submit">
+                  <Button type="submit" disabled={isUploadingAttachments || isSavingAnnouncement}>
                     {editingAnnouncement ? "Save Changes" : "Post"}
                   </Button>
                 </div>
@@ -666,8 +721,8 @@ function AnnouncementsPageInner() {
                       <FormItem>
                         <FormLabel>Attachments (Optional)</FormLabel>
                         <div className="flex items-center gap-2">
-                          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                              <Paperclip className="mr-2" />
+                          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploadingAttachments}>
+                              {isUploadingAttachments ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2" />}
                               Add Files
                           </Button>
                           <FormControl>
@@ -698,7 +753,7 @@ function AnnouncementsPageInner() {
                         </div>
                       )}
 
-                      <Button type="submit" disabled={isLoading} className={`w-full ${aiSparkle}`}>
+                      <Button type="submit" disabled={isLoading || isUploadingAttachments} className={`w-full ${aiSparkle}`}>
                       {isLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (

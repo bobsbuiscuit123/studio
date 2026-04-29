@@ -1,5 +1,6 @@
 export type OrgSettings = {
   joinCode: string | null;
+  logoUrl: string | null;
   memberLimitOverride: number | null;
   aiTokenLimitOverride: number | null;
 };

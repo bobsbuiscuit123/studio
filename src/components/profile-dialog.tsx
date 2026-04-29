@@ -28,6 +28,8 @@ import {
   restoreRevenueCatPurchases,
 } from "@/lib/revenuecat-subscriptions";
 import { DeleteAccountAction } from "@/components/delete-account-action";
+import { compressImageFile } from "@/lib/image-resizer";
+import { tryDeleteStoredImage, uploadImageToStorage } from "@/lib/storage-images";
 
 type ProfileDialogProps = {
   isOpen: boolean;
@@ -100,6 +102,12 @@ const convertAvatarFileToDataUrl = async (file: File) => {
   return readBlobAsDataUrl(blob);
 };
 
+const revokeObjectPreview = (url?: string | null) => {
+  if (url?.startsWith("blob:")) {
+    URL.revokeObjectURL(url);
+  }
+};
+
 export function ProfileDialog({
   isOpen,
   onOpenChange,
@@ -116,6 +124,7 @@ export function ProfileDialog({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(
     user?.avatar || null
   );
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false);
   const [legalDialog, setLegalDialog] = useState<"terms" | "privacy" | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -133,8 +142,15 @@ export function ProfileDialog({
       setEmail(user?.email || "");
       setAvatar(user?.avatar || "");
       setAvatarPreview(user?.avatar || null);
+      setAvatarFile(null);
     }
   }, [user, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      revokeObjectPreview(avatarPreview);
+    };
+  }, [avatarPreview]);
 
   const handleManageBilling = () => {
     if (!selectedOrgId) return;
@@ -204,8 +220,19 @@ export function ProfileDialog({
       return;
     }
     try {
-      const nextAvatar = await convertAvatarFileToDataUrl(file);
-      setAvatarPreview(nextAvatar);
+      if (mode === "demo") {
+        const nextAvatar = await convertAvatarFileToDataUrl(file);
+        setAvatarFile(null);
+        setAvatarPreview(nextAvatar);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
+      setAvatarFile(file);
+      setAvatarPreview(previous => {
+        revokeObjectPreview(previous);
+        return objectUrl;
+      });
     } catch (error) {
       console.error("Failed to process avatar image", error);
       toast({
@@ -221,26 +248,81 @@ export function ProfileDialog({
   };
 
   const handleSave = async () => {
-    if (user) {
-      setIsSaving(true);
-      try {
-        await onSave({
-          name,
-          avatar: avatarPreview || avatar,
+    if (!user) {
+      onOpenChange(false);
+      return;
+    }
+
+    setIsSaving(true);
+    let uploadedAvatarUrl: string | null = null;
+    try {
+      let nextAvatar = avatarPreview || avatar;
+
+      if (avatarFile) {
+        if (!selectedOrgId) {
+          throw new Error("Select an organization before updating your picture.");
+        }
+
+        const compressedFile = await compressImageFile(avatarFile, {
+          maxSizeMB: 0.2,
+          maxWidthOrHeight: AVATAR_MAX_DIMENSION,
+          initialQuality: AVATAR_JPEG_QUALITY,
+          fileType: "image/webp",
         });
-      } catch (error) {
-        console.error("Failed to save profile", error);
-        toast({
-          title: "Couldn't save profile",
-          description: "Your picture was not saved. Please try again.",
-          variant: "destructive",
+        const uploaded = await uploadImageToStorage({
+          file: compressedFile,
+          orgId: selectedOrgId,
+          scope: "avatar",
+          fileName: avatarFile.name,
         });
-        setIsSaving(false);
-        return;
+        uploadedAvatarUrl = uploaded.url;
+        nextAvatar = uploaded.url;
       }
+
+      await onSave({
+        name,
+        avatar: nextAvatar,
+      });
+
+      if (uploadedAvatarUrl && avatar && avatar !== uploadedAvatarUrl && selectedOrgId) {
+        await tryDeleteStoredImage({
+          url: avatar,
+          orgId: selectedOrgId,
+          scope: "avatar",
+        });
+      }
+
+      setAvatar(nextAvatar);
+      setAvatarFile(null);
+      setAvatarPreview(nextAvatar);
+      onOpenChange(false);
+    } catch (error) {
+      if (uploadedAvatarUrl && selectedOrgId) {
+        await tryDeleteStoredImage({
+          url: uploadedAvatarUrl,
+          orgId: selectedOrgId,
+          scope: "avatar",
+        });
+      }
+      console.error("Failed to save profile", error);
+      toast({
+        title: "Couldn't save profile",
+        description: error instanceof Error ? error.message : "Your picture was not saved. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
       setIsSaving(false);
     }
-    onOpenChange(false);
+  };
+
+  const handleDialogOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      revokeObjectPreview(avatarPreview);
+      setAvatarFile(null);
+      setAvatar(user?.avatar || "");
+      setAvatarPreview(user?.avatar || null);
+    }
+    onOpenChange(nextOpen);
   };
 
   const handleLogoutConfirm = async () => {
@@ -251,7 +333,7 @@ export function ProfileDialog({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <Dialog open={isOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>

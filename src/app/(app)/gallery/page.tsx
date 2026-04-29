@@ -35,7 +35,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { resizeImage } from "@/lib/image-resizer";
+import { compressImageFile } from "@/lib/image-resizer";
+import { deleteStoredImage, tryDeleteStoredImage, uploadImageToStorage } from "@/lib/storage-images";
 import {
   DEFAULT_NATIVE_CHROME_RESYNC_DELAYS,
   scheduleNativeChromeResync,
@@ -59,7 +60,10 @@ const createGalleryImageId = (offset: number = 0) =>
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),
-  images: z.array(z.custom<File>()).min(1, "At least one image is required."),
+  images: z
+    .array(z.custom<File>())
+    .min(1, "At least one image is required.")
+    .max(MAX_GALLERY_IMAGES, `You can upload up to ${MAX_GALLERY_IMAGES} images at once.`),
 });
 
 export default function GalleryPage() {
@@ -69,6 +73,8 @@ export default function GalleryPage() {
     error,
     loading,
     refreshData,
+    orgId,
+    clubId,
   } = useGalleryImages();
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
@@ -90,17 +96,17 @@ export default function GalleryPage() {
 
     scheduleNativeChromeResync(GALLERY_CHROME_RESYNC_DELAYS);
   };
-  
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
       const currentFiles = form.getValues("images") || [];
       const newFiles = Array.from(files);
       form.setValue("images", [...currentFiles, ...newFiles]);
-      
+
       const newPreviews: string[] = [];
       Array.from(files).forEach(file => {
-          newPreviews.push(URL.createObjectURL(file));
+        newPreviews.push(URL.createObjectURL(file));
       });
       setPreviewImages(prev => [...prev, ...newPreviews]);
     }
@@ -143,7 +149,7 @@ export default function GalleryPage() {
       reassertNativeChrome();
     }
   };
-  
+
   const removePreviewImage = (index: number) => {
     const updatedFiles = [...(form.getValues("images") || [])];
     updatedFiles.splice(index, 1);
@@ -157,70 +163,95 @@ export default function GalleryPage() {
 
   const handleUpload = async (values: z.infer<typeof uploadFormSchema>) => {
     if (!user) return;
+    if (!orgId || !clubId) {
+      toast({
+        title: "Upload Failed",
+        description: "Select an organization and group before uploading images.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsUploading(true);
-    
+    const uploadedUrls: string[] = [];
+
     try {
-        const compressedImageSrcs = await Promise.all(
-            values.images.map(file => resizeImage(file))
-        );
-
-        // Validate that all returned sources are valid data URIs
-        const validImageSrcs = compressedImageSrcs.filter(src => typeof src === 'string' && src.startsWith('data:image/'));
-
-        if (validImageSrcs.length !== compressedImageSrcs.length) {
-            toast({
-                title: "Some images failed to process",
-                description: "Not all images could be processed correctly. Please try them again.",
-                variant: "destructive"
-            });
-        }
-        
-        if (validImageSrcs.length === 0) {
-            toast({ title: "Upload Failed", description: "No valid images could be processed.", variant: "destructive" });
-            setIsUploading(false);
-            return;
-        }
-
-        const newImages: GalleryImage[] = validImageSrcs.map((imgSrc, index) => ({
-            id: createGalleryImageId(index),
-            src: imgSrc,
-            alt: values.alt || "User uploaded image",
-            author: user.name,
-            date: new Date().toLocaleDateString(),
-            likes: 0,
-            likedBy: [],
-            status: 'approved',
-            read: false,
-        }));
-        
-        const saved = await setImagesAsync(prevImages => [...newImages, ...prevImages].slice(0, MAX_GALLERY_IMAGES));
-        if (!saved) {
-            toast({
-                title: "Upload Failed",
-                description: "The images were processed, but they were not saved to your organization. Please try again.",
-                variant: "destructive",
-            });
-            setIsUploading(false);
-            return;
-        }
-
-        toast({
-            title: "Images uploaded successfully!",
-            description: `${validImageSrcs.length} images were uploaded.`,
-            duration: 7000
+      const newImages: GalleryImage[] = [];
+      const filesToUpload = values.images.slice(0, MAX_GALLERY_IMAGES);
+      for (const [index, file] of filesToUpload.entries()) {
+        const compressedFile = await compressImageFile(file);
+        const uploaded = await uploadImageToStorage({
+          file: compressedFile,
+          orgId,
+          groupId: clubId,
+          scope: "gallery",
+          fileName: file.name,
         });
+        uploadedUrls.push(uploaded.url);
+        newImages.push({
+          id: createGalleryImageId(index),
+          src: uploaded.url,
+          alt: values.alt || "User uploaded image",
+          author: user.name,
+          date: new Date().toLocaleDateString(),
+          likes: 0,
+          likedBy: [],
+          status: 'approved',
+          read: false,
+        });
+      }
 
-        form.reset();
-        previewImages.forEach(revokePreviewUrl);
-        setPreviewImages([]);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
+      let evictedImages: GalleryImage[] = [];
+      const saved = await setImagesAsync(prevImages => {
+        const nextImages = [...newImages, ...prevImages];
+        evictedImages = nextImages.slice(MAX_GALLERY_IMAGES);
+        return nextImages.slice(0, MAX_GALLERY_IMAGES);
+      });
+      if (!saved) {
+        await Promise.all(
+          uploadedUrls.map(url =>
+            tryDeleteStoredImage({ url, orgId, groupId: clubId, scope: "gallery" })
+          )
+        );
+        toast({
+          title: "Upload Failed",
+          description: "The images uploaded, but they were not saved to your organization. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      await Promise.all(
+        evictedImages.map(image =>
+          tryDeleteStoredImage({ url: image.src, orgId, groupId: clubId, scope: "gallery" })
+        )
+      );
+
+      toast({
+        title: "Images uploaded successfully!",
+        description: `${newImages.length} images were uploaded.`,
+        duration: 7000
+      });
+
+      form.reset();
+      previewImages.forEach(revokePreviewUrl);
+      setPreviewImages([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (error) {
-        console.error("Image processing error:", error);
-        toast({ title: "Upload Failed", description: "There was an error processing your images.", variant: "destructive" });
+      await Promise.all(
+        uploadedUrls.map(url =>
+          tryDeleteStoredImage({ url, orgId, groupId: clubId, scope: "gallery" })
+        )
+      );
+      console.error("Image upload error:", error);
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "There was an error uploading your images.",
+        variant: "destructive",
+      });
     } finally {
-        setIsUploading(false);
+      setIsUploading(false);
     }
   };
 
@@ -252,7 +283,7 @@ export default function GalleryPage() {
       }
     });
   };
-  
+
   const handleDownload = async (imageSrc: string, imageName: string) => {
     if (isNativeApp) {
       try {
@@ -290,7 +321,7 @@ export default function GalleryPage() {
     link.click();
     document.body.removeChild(link);
   };
-  
+
   const handleDelete = async (imageId: number) => {
     const imageToDelete = images.find(img => img.id === imageId);
     const saved = await setImagesAsync(prevImages => prevImages.filter(img => img.id !== imageId));
@@ -305,12 +336,32 @@ export default function GalleryPage() {
     }
     if (imageToDelete?.src.startsWith('blob:')) {
         URL.revokeObjectURL(imageToDelete.src);
+    } else if (imageToDelete?.src && orgId && clubId) {
+      try {
+        await deleteStoredImage({
+          url: imageToDelete.src,
+          orgId,
+          groupId: clubId,
+          scope: "gallery",
+        });
+      } catch (error) {
+        console.error("Storage image delete failed", error);
+        toast({
+          title: "Image removed",
+          description: "The gallery item was removed, but the stored file could not be deleted.",
+          variant: "destructive",
+        });
+        setDeletingImageId(null);
+        return;
+      }
     }
     toast({ title: "Image deleted successfully" });
     setDeletingImageId(null);
   };
-  
-  const isValidImage = (image: GalleryImage) => typeof image.src === 'string' && image.src.startsWith('data:image/');
+
+  const isValidImage = (image: GalleryImage) =>
+    typeof image.src === 'string' &&
+    (image.src.startsWith('data:image/') || /^https?:\/\//i.test(image.src));
   const visibleImages = images.filter(isValidImage);
 
   return (
@@ -401,7 +452,7 @@ export default function GalleryPage() {
           </form>
         </CardContent>
       </Card>
-      
+
       <div>
         {loading ? (
           <p>Loading gallery...</p>

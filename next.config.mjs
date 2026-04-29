@@ -34,8 +34,21 @@ const optionalModuleAliases = {
 };
 
 let supabaseOrigin = "";
+const remoteImagePatterns = [
+  {
+    protocol: "https",
+    hostname: "placehold.co",
+  },
+];
 try {
-  supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
+  const parsedSupabaseUrl = supabaseUrl ? new URL(supabaseUrl) : null;
+  supabaseOrigin = parsedSupabaseUrl ? parsedSupabaseUrl.origin : "";
+  if (parsedSupabaseUrl) {
+    remoteImagePatterns.push({
+      protocol: parsedSupabaseUrl.protocol.replace(":", ""),
+      hostname: parsedSupabaseUrl.hostname,
+    });
+  }
 } catch {
   supabaseOrigin = "";
 }
@@ -45,7 +58,7 @@ const cspDirectives = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: https://placehold.co${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -67,6 +80,9 @@ const nextConfig = {
     parallelServerBuildTraces: false,
     webpackBuildWorker: false,
     webpackMemoryOptimizations: false,
+  },
+  images: {
+    remotePatterns: remoteImagePatterns,
   },
   eslint: {
     ignoreDuringBuilds: true,

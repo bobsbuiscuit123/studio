@@ -17,6 +17,7 @@ const noStoreHeaders = {
 const paramsSchema = z.string().uuid();
 
 const bodySchema = z.object({
+  logoUrl: z.string().trim().url().nullable().optional(),
   memberLimitOverride: z.number().int().positive().nullable().optional(),
   aiTokenLimitOverride: z.number().int().positive().nullable().optional(),
 }).strict();
@@ -125,6 +126,7 @@ export async function GET(
   const orgRecord = context.org as Record<string, unknown>;
   const payload: OrgSettings = {
     joinCode: typeof orgRecord.join_code === 'string' ? orgRecord.join_code : null,
+    logoUrl: typeof orgRecord.logo_url === 'string' ? orgRecord.logo_url : null,
     memberLimitOverride: parseOptionalPositiveInt(orgRecord.member_limit_override),
     aiTokenLimitOverride: parseOptionalPositiveInt(orgRecord.ai_token_limit_override),
   };
@@ -176,8 +178,15 @@ export async function PATCH(
   }
 
   const updatePayload = {
-    member_limit_override: parsedBody.data.memberLimitOverride ?? null,
-    ai_token_limit_override: parsedBody.data.aiTokenLimitOverride ?? null,
+    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'logoUrl')
+      ? { logo_url: parsedBody.data.logoUrl ?? null }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'memberLimitOverride')
+      ? { member_limit_override: parsedBody.data.memberLimitOverride ?? null }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'aiTokenLimitOverride')
+      ? { ai_token_limit_override: parsedBody.data.aiTokenLimitOverride ?? null }
+      : {}),
     updated_at: new Date().toISOString(),
   };
 
@@ -202,6 +211,7 @@ export async function PATCH(
   const updatedRecord = updatedOrg as Record<string, unknown>;
   const payload: OrgSettings = {
     joinCode: typeof updatedRecord.join_code === 'string' ? updatedRecord.join_code : null,
+    logoUrl: typeof updatedRecord.logo_url === 'string' ? updatedRecord.logo_url : null,
     memberLimitOverride: parseOptionalPositiveInt(updatedRecord.member_limit_override),
     aiTokenLimitOverride: parseOptionalPositiveInt(updatedRecord.ai_token_limit_override),
   };

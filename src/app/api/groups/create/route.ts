@@ -33,6 +33,7 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}));
   const schema = z.object({
+    groupId: z.string().uuid().optional(),
     orgId: z.string().uuid(),
     name: z.string().min(3),
     description: z.string().optional(),
@@ -103,6 +104,7 @@ export async function POST(request: Request) {
   const { data, error } = await admin
     .from('groups')
     .insert({
+      ...(parsed.data.groupId ? { id: parsed.data.groupId } : {}),
       org_id: parsed.data.orgId,
       name: parsed.data.name,
       created_by: userId,

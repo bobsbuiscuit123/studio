@@ -3,7 +3,7 @@
 
 import { Suspense, useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
-import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles } from "lucide-react";
+import { Megaphone, Loader2, Pencil, Download, Paperclip, X, File as FileIcon, Sparkles, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -34,6 +34,15 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -148,6 +157,8 @@ function AnnouncementsPageInner() {
   const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const [deletingAnnouncement, setDeletingAnnouncement] = useState<Announcement | null>(null);
+  const [isDeletingAnnouncement, setIsDeletingAnnouncement] = useState(false);
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
   const memberNameByEmail = useMemo(() => {
@@ -418,6 +429,59 @@ function AnnouncementsPageInner() {
     }
     toast({ title: "Announcement updated!" });
     handleDialogClose();
+  };
+
+  const handleDeleteAnnouncement = async () => {
+    if (!deletingAnnouncement) return;
+
+    setIsDeletingAnnouncement(true);
+    const announcementToDelete = deletingAnnouncement;
+    const saved = await setAnnouncementsAsync(prev => {
+      const list = Array.isArray(prev) ? prev : [];
+      return list.filter(ann => String(ann.id) !== String(announcementToDelete.id));
+    });
+
+    if (!saved) {
+      setIsDeletingAnnouncement(false);
+      toast({
+        title: "Failed to delete announcement",
+        description: "The announcement was not deleted. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (announcementToDelete.linkedFormId && formsClubId) {
+      void setFormsAsync(prev => {
+        const list = Array.isArray(prev) ? prev : [];
+        return list.map(form =>
+          form.id === announcementToDelete.linkedFormId
+            ? { ...form, linkedAnnouncementId: undefined }
+            : form
+        );
+      });
+    }
+
+    if (Array.isArray(announcementToDelete.attachments) && orgId && clubId) {
+      announcementToDelete.attachments
+        .filter(attachment => attachment.type !== "button")
+        .forEach(attachment => {
+          void tryDeleteGroupAsset({
+            url: attachment.dataUri,
+            orgId,
+            groupId: clubId,
+          });
+        });
+    }
+
+    if (highlightedAnnouncementId === String(announcementToDelete.id)) {
+      setHighlightedAnnouncementId(null);
+      router.replace("/announcements");
+    }
+
+    setIsDeletingAnnouncement(false);
+    setDeletingAnnouncement(null);
+    toast({ title: "Announcement deleted" });
   };
   
   const handleDownloadSlides = async (announcement: Announcement) => {
@@ -816,9 +880,21 @@ function AnnouncementsPageInner() {
                               </CardDescription>
                           </div>
                           {canEditContent && (
-                              <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
-                                  <Pencil className="h-4 w-4" />
-                              </Button>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => handleEditClick(announcement)}>
+                                    <Pencil className="h-4 w-4" />
+                                    <span className="sr-only">Edit announcement</span>
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeletingAnnouncement(announcement as Announcement)}
+                                  className="text-destructive hover:text-destructive"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Delete announcement</span>
+                                </Button>
+                              </div>
                           )}
                       </div>
                     </CardHeader>
@@ -988,6 +1064,33 @@ function AnnouncementsPageInner() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={!!deletingAnnouncement}
+      onOpenChange={open => {
+        if (!open && !isDeletingAnnouncement) {
+          setDeletingAnnouncement(null);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this announcement?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This permanently removes the announcement for everyone in the group.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel asChild>
+            <Button variant="outline" disabled={isDeletingAnnouncement}>Cancel</Button>
+          </AlertDialogCancel>
+          <Button variant="destructive" onClick={handleDeleteAnnouncement} disabled={isDeletingAnnouncement}>
+            {isDeletingAnnouncement ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            Delete announcement
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <div className="hidden">
     {printableContent && Array.isArray(printableContent.slides) && (

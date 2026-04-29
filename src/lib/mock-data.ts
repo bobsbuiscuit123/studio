@@ -161,12 +161,21 @@ export type GalleryImage = {
   read?: boolean;
 };
 
+export type MessageReplyReference = {
+    id: string;
+    sender: string;
+    text: string;
+    timestamp: string;
+}
+
 export type Message = {
     id?: string;
     sender: string;
     text: string;
     timestamp: string;
     readBy: string[];
+    replyTo?: MessageReplyReference;
+    editedAt?: string;
 }
 
 export type GroupChat = {

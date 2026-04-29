@@ -39,6 +39,12 @@ const ALLOWED_ASSET_TYPES = new Set([
   'application/octet-stream',
 ]);
 
+const GROUP_ASSETS_BUCKET_OPTIONS = {
+  public: true,
+  fileSizeLimit: MAX_UPLOAD_BYTES,
+  allowedMimeTypes: Array.from(ALLOWED_ASSET_TYPES),
+};
+
 const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
 };
@@ -54,6 +60,13 @@ const deleteSchema = z
   .strict();
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdmin>;
+type StorageErrorLike = {
+  message?: string;
+  status?: number;
+  statusCode?: string;
+};
+
+let groupAssetsBucketReady: Promise<void> | null = null;
 
 const jsonError = (
   message: string,
@@ -115,6 +128,46 @@ const validateObjectPathScope = ({
   orgId: string;
   groupId: string;
 }) => path.startsWith(`${orgId}/${groupId}/`);
+
+const isMissingBucketError = (error: StorageErrorLike | null | undefined) => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('bucket not found') || error?.status === 404 || error?.statusCode === '404';
+};
+
+const isBucketAlreadyExistsError = (error: StorageErrorLike | null | undefined) => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    error?.status === 409 ||
+    error?.statusCode === '409' ||
+    message.includes('already exists') ||
+    message.includes('duplicate key')
+  );
+};
+
+const ensureGroupAssetsBucket = async (admin: SupabaseAdmin) => {
+  groupAssetsBucketReady ??= (async () => {
+    const { error: getBucketError } = await admin.storage.getBucket(GROUP_ASSETS_BUCKET);
+    if (!getBucketError) {
+      return;
+    }
+    if (!isMissingBucketError(getBucketError)) {
+      throw getBucketError;
+    }
+
+    const { error: createBucketError } = await admin.storage.createBucket(
+      GROUP_ASSETS_BUCKET,
+      GROUP_ASSETS_BUCKET_OPTIONS
+    );
+    if (createBucketError && !isBucketAlreadyExistsError(createBucketError)) {
+      throw createBucketError;
+    }
+  })().catch(error => {
+    groupAssetsBucketReady = null;
+    throw error;
+  });
+
+  return groupAssetsBucketReady;
+};
 
 export async function POST(request: Request) {
   const ipLimiter = rateLimit(`storage-asset-upload:${getRequestIp(request.headers)}`, 80, 60_000);
@@ -180,12 +233,23 @@ export async function POST(request: Request) {
 
     const safeFileName = sanitizeGroupAssetFilename(fileNameValue || file.name || 'asset', file.type);
     const path = buildGroupAssetPath({ orgId, groupId, fileName: safeFileName });
-    const { error: uploadError } = await admin.storage
+    await ensureGroupAssetsBucket(admin);
+    let { error: uploadError } = await admin.storage
       .from(GROUP_ASSETS_BUCKET)
       .upload(path, file, {
         contentType: file.type,
         upsert: false,
       });
+    if (isMissingBucketError(uploadError)) {
+      groupAssetsBucketReady = null;
+      await ensureGroupAssetsBucket(admin);
+      ({ error: uploadError } = await admin.storage
+        .from(GROUP_ASSETS_BUCKET)
+        .upload(path, file, {
+          contentType: file.type,
+          upsert: false,
+        }));
+    }
 
     if (uploadError) {
       return jsonError(uploadError.message, 500, userLimiter, 'NETWORK_HTTP_ERROR');

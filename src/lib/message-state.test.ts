@@ -8,6 +8,7 @@ import {
   mergeMessageMaps,
   normalizeGroupChats,
   normalizeMessageMap,
+  replaceConversationMessage,
   removeConversationMessages,
   removeGroupChatMessages,
 } from '@/lib/message-state';
@@ -82,6 +83,43 @@ describe('message state normalization', () => {
     ]);
   });
 
+  it('normalizes reply references on messages', () => {
+    expect(
+      normalizeMessageMap({
+        'alice@example.com_bob@example.com': [
+          {
+            id: 'reply-1',
+            sender: 'Alice@example.com',
+            text: 'I agree',
+            timestamp: '2026-03-26T12:35:00.000Z',
+            replyTo: {
+              id: ' original-1 ',
+              sender: ' Bob@example.com ',
+              text: '  Can you review this?  ',
+              timestamp: '2026-03-26T12:30:00.000Z',
+            },
+          },
+        ],
+      })
+    ).toEqual({
+      'alice@example.com_bob@example.com': [
+        {
+          id: 'reply-1',
+          sender: 'alice@example.com',
+          text: 'I agree',
+          timestamp: '2026-03-26T12:35:00.000Z',
+          readBy: [],
+          replyTo: {
+            id: 'original-1',
+            sender: 'bob@example.com',
+            text: 'Can you review this?',
+            timestamp: '2026-03-26T12:30:00.000Z',
+          },
+        },
+      ],
+    });
+  });
+
   it('marks readBy once, case-insensitively', () => {
     expect(
       markMessageReadByActor(
@@ -149,6 +187,86 @@ describe('message state normalization', () => {
           text: 'On my way',
           timestamp: '2026-03-26T14:00:00.000Z',
           readBy: ['alice@example.com', 'bob@example.com'],
+        },
+      ],
+    });
+  });
+
+  it('merges edited messages by id without duplicating the original text', () => {
+    expect(
+      mergeMessageMaps(
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              id: 'msg-1',
+              sender: 'alice@example.com',
+              text: 'Original text',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['alice@example.com'],
+            },
+          ],
+        },
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              id: 'msg-1',
+              sender: 'alice@example.com',
+              text: 'Edited text',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['bob@example.com'],
+              editedAt: '2026-03-26T14:05:00.000Z',
+            },
+          ],
+        }
+      )
+    ).toEqual({
+      'alice@example.com_bob@example.com': [
+        {
+          id: 'msg-1',
+          sender: 'alice@example.com',
+          text: 'Edited text',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com', 'bob@example.com'],
+          editedAt: '2026-03-26T14:05:00.000Z',
+        },
+      ],
+    });
+  });
+
+  it('replaces a message by entity id for optimistic edits', () => {
+    expect(
+      replaceConversationMessage(
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              id: 'msg-1',
+              sender: 'alice@example.com',
+              text: 'Original text',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['alice@example.com'],
+            },
+          ],
+        },
+        'alice@example.com_bob@example.com',
+        'msg-1',
+        {
+          id: 'msg-1',
+          sender: 'alice@example.com',
+          text: 'Edited text',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com'],
+          editedAt: '2026-03-26T14:05:00.000Z',
+        }
+      )
+    ).toEqual({
+      'alice@example.com_bob@example.com': [
+        {
+          id: 'msg-1',
+          sender: 'alice@example.com',
+          text: 'Edited text',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com'],
+          editedAt: '2026-03-26T14:05:00.000Z',
         },
       ],
     });

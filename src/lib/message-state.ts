@@ -1,12 +1,18 @@
-import type { GroupChat, Message } from '@/lib/mock-data';
+import type { GroupChat, Message, MessageReplyReference } from '@/lib/mock-data';
 
 export const MESSAGE_TEXT_MAX_CHARS = 2_000;
+export const MESSAGE_REPLY_TEXT_MAX_CHARS = 300;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const toTrimmedString = (value: unknown) =>
   typeof value === 'string' ? value.trim() : '';
+
+const truncateReplyText = (value: string) =>
+  value.length > MESSAGE_REPLY_TEXT_MAX_CHARS
+    ? `${value.slice(0, MESSAGE_REPLY_TEXT_MAX_CHARS - 3).trimEnd()}...`
+    : value;
 
 export const normalizeMessageActor = (value?: string | null) =>
   String(value ?? '').trim().toLowerCase();
@@ -24,6 +30,26 @@ export const normalizeStringList = (
     )
   );
 
+export const normalizeMessageReplyReference = (value: unknown): MessageReplyReference | null => {
+  if (!isRecord(value)) return null;
+
+  const id = toTrimmedString(value.id);
+  const sender = normalizeMessageActor(toTrimmedString(value.sender));
+  const text = truncateReplyText(toTrimmedString(value.text));
+  const timestamp = typeof value.timestamp === 'string' ? value.timestamp : '';
+
+  if (!id || !sender || !text || !timestamp) {
+    return null;
+  }
+
+  return {
+    id,
+    sender,
+    text,
+    timestamp,
+  };
+};
+
 export const normalizeMessage = (value: unknown): Message | null => {
   if (!isRecord(value)) return null;
 
@@ -32,6 +58,8 @@ export const normalizeMessage = (value: unknown): Message | null => {
   const text = toTrimmedString(value.text);
   const timestamp = typeof value.timestamp === 'string' ? value.timestamp : '';
   const readBy = normalizeStringList(value.readBy, { lowercase: true });
+  const replyTo = normalizeMessageReplyReference(value.replyTo);
+  const editedAt = typeof value.editedAt === 'string' ? value.editedAt : '';
 
   if (!sender && !text && !timestamp && readBy.length === 0) {
     return null;
@@ -43,6 +71,8 @@ export const normalizeMessage = (value: unknown): Message | null => {
     text,
     timestamp,
     readBy,
+    ...(replyTo ? { replyTo } : {}),
+    ...(editedAt ? { editedAt } : {}),
   };
 };
 
@@ -69,6 +99,33 @@ export const getMessageKey = (
   const timestamp = typeof message?.timestamp === 'string' ? message.timestamp : '';
   if (!sender || !text || !timestamp) return '';
   return `${sender}__${timestamp}__${text}`;
+};
+
+const getMessageTimelineKey = (
+  message: Pick<Message, 'sender' | 'timestamp'> | null | undefined
+) => {
+  const sender = normalizeMessageActor(message?.sender);
+  const timestamp = typeof message?.timestamp === 'string' ? message.timestamp : '';
+  if (!sender || !timestamp) return '';
+  return `${sender}__${timestamp}`;
+};
+
+export const createMessageReplyReference = (message: Message): MessageReplyReference | null => {
+  const id = getMessageEntityId(message);
+  const sender = normalizeMessageActor(message.sender);
+  const text = truncateReplyText(toTrimmedString(message.text));
+  const timestamp = typeof message.timestamp === 'string' ? message.timestamp : '';
+
+  if (!id || !sender || !text || !timestamp) {
+    return null;
+  }
+
+  return {
+    id,
+    sender,
+    text,
+    timestamp,
+  };
 };
 
 export const normalizeMessageList = (value: unknown): Message[] =>
@@ -164,6 +221,20 @@ const compareMessages = (left: Message, right: Message) => {
   return getMessageKey(left).localeCompare(getMessageKey(right));
 };
 
+const replyReferencesEqual = (
+  left: MessageReplyReference | null | undefined,
+  right: MessageReplyReference | null | undefined
+) => {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  return (
+    left.id === right.id &&
+    left.sender === right.sender &&
+    left.text === right.text &&
+    left.timestamp === right.timestamp
+  );
+};
+
 export const upsertMessageInList = (messages: unknown, incoming: unknown): Message[] => {
   const normalizedMessages = normalizeMessageList(messages);
   const nextMessage = normalizeMessage(incoming);
@@ -172,9 +243,17 @@ export const upsertMessageInList = (messages: unknown, incoming: unknown): Messa
   }
 
   const nextKey = getMessageKey(nextMessage);
-  const existingIndex = nextKey
-    ? normalizedMessages.findIndex(message => getMessageKey(message) === nextKey)
+  const nextId = toTrimmedString(nextMessage.id);
+  const nextTimelineKey = getMessageTimelineKey(nextMessage);
+  let existingIndex = nextId
+    ? normalizedMessages.findIndex(message => toTrimmedString(message.id) === nextId)
     : -1;
+  if (existingIndex === -1 && nextKey) {
+    existingIndex = normalizedMessages.findIndex(message => getMessageKey(message) === nextKey);
+  }
+  if (existingIndex === -1 && nextTimelineKey) {
+    existingIndex = normalizedMessages.findIndex(message => getMessageTimelineKey(message) === nextTimelineKey);
+  }
 
   if (existingIndex === -1) {
     return [...normalizedMessages, nextMessage].sort(compareMessages);
@@ -196,6 +275,8 @@ export const upsertMessageInList = (messages: unknown, incoming: unknown): Messa
     existing.sender === mergedMessage.sender &&
     existing.text === mergedMessage.text &&
     existing.timestamp === mergedMessage.timestamp &&
+    existing.editedAt === mergedMessage.editedAt &&
+    replyReferencesEqual(existing.replyTo, mergedMessage.replyTo) &&
     existing.readBy.length === mergedMessage.readBy.length &&
     existing.readBy.every((value, index) => value === mergedMessage.readBy[index])
   ) {
@@ -228,6 +309,87 @@ export const upsertConversationMessage = (
     ...normalizedMessages,
     [normalizedConversationKey]: nextMessages,
   };
+};
+
+export const replaceMessageInList = (
+  messages: unknown,
+  messageEntityId: string,
+  replacement: unknown
+): Message[] => {
+  const normalizedMessages = normalizeMessageList(messages);
+  const normalizedReplacement = normalizeMessage(replacement);
+  const normalizedMessageEntityId = toTrimmedString(messageEntityId);
+  if (!normalizedMessageEntityId || !normalizedReplacement) {
+    return normalizedMessages;
+  }
+
+  let changed = false;
+  const nextMessages = normalizedMessages.map(message => {
+    if (getMessageEntityId(message) !== normalizedMessageEntityId) {
+      return message;
+    }
+    changed = true;
+    return normalizedReplacement;
+  });
+
+  return changed ? nextMessages.sort(compareMessages) : normalizedMessages;
+};
+
+export const replaceConversationMessage = (
+  messagesByConversation: unknown,
+  conversationKey: string,
+  messageEntityId: string,
+  replacement: unknown
+) => {
+  const normalizedConversationKey = normalizeMessageActor(conversationKey);
+  const normalizedMessages = normalizeMessageMap(messagesByConversation);
+  if (!normalizedConversationKey) {
+    return normalizedMessages;
+  }
+
+  const currentMessages = normalizedMessages[normalizedConversationKey] ?? [];
+  const nextMessages = replaceMessageInList(currentMessages, messageEntityId, replacement);
+  if (nextMessages === currentMessages) {
+    return normalizedMessages;
+  }
+
+  return {
+    ...normalizedMessages,
+    [normalizedConversationKey]: nextMessages,
+  };
+};
+
+export const replaceGroupChatMessage = (
+  groupChats: unknown,
+  chatId: string,
+  messageEntityId: string,
+  replacement: unknown
+) => {
+  const normalizedGroupChats = normalizeGroupChats(groupChats);
+  const normalizedChatId = toTrimmedString(chatId);
+  if (!normalizedChatId) {
+    return normalizedGroupChats;
+  }
+
+  let changed = false;
+  const nextGroupChats = normalizedGroupChats.map(chat => {
+    if (chat.id !== normalizedChatId) {
+      return chat;
+    }
+
+    const nextMessages = replaceMessageInList(chat.messages, messageEntityId, replacement);
+    if (nextMessages === chat.messages) {
+      return chat;
+    }
+
+    changed = true;
+    return {
+      ...chat,
+      messages: nextMessages,
+    };
+  });
+
+  return changed ? nextGroupChats : normalizedGroupChats;
 };
 
 export const upsertGroupChatMessage = (

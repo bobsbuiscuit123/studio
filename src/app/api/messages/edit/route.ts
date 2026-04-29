@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { createSupabaseServerClient } from '@/lib/supabase/server';
-import { err } from '@/lib/result';
-import { createMessage } from '@/lib/assistant/agent/message-service';
-import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
-import { MESSAGE_REPLY_TEXT_MAX_CHARS, MESSAGE_TEXT_MAX_CHARS } from '@/lib/message-state';
+import { updateMessageContent } from '@/lib/assistant/agent/message-service';
+import { MESSAGE_TEXT_MAX_CHARS } from '@/lib/message-state';
+import { rateLimit } from '@/lib/rate-limit';
+import { err } from '@/lib/result';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const replyToSchema = z.object({
-  id: z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS + 400),
-  sender: z.string().trim().min(1).max(320),
-  text: z.string().trim().min(1).max(MESSAGE_REPLY_TEXT_MAX_CHARS),
-  timestamp: z.string().trim().min(1).max(64),
-}).strict();
+const messageEntityIdSchema = z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS + 400);
 
 const schema = z.discriminatedUnion('conversationType', [
   z.object({
@@ -21,33 +16,29 @@ const schema = z.discriminatedUnion('conversationType', [
     groupId: z.string().uuid(),
     conversationType: z.literal('dm'),
     partnerEmail: z.string().trim().email().max(320),
-    clientTimestamp: z.string().trim().max(64).optional(),
+    messageEntityId: messageEntityIdSchema,
     text: z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS),
-    replyTo: replyToSchema.optional(),
   }).strict(),
   z.object({
     orgId: z.string().uuid(),
     groupId: z.string().uuid(),
     conversationType: z.literal('group'),
     chatId: z.string().trim().min(1).max(200),
-    clientTimestamp: z.string().trim().max(64).optional(),
+    messageEntityId: messageEntityIdSchema,
     text: z.string().trim().min(1).max(MESSAGE_TEXT_MAX_CHARS),
-    replyTo: replyToSchema.optional(),
   }).strict(),
 ]);
 
 const toErrorCode = (message: string) => {
   if (
-    message === 'Recipient is not in this group.' ||
+    message === 'Access denied.' ||
+    message === 'Unauthorized.' ||
     message === 'Conversation not found.' ||
+    message === 'Message not found.' ||
     message === 'You are not in this conversation.' ||
-    message === 'Reply target not found.' ||
-    message === 'Reply target must be from someone else.'
+    message === 'You can only edit your own messages.' ||
+    message === 'Invalid message payload.'
   ) {
-    return 'VALIDATION' as const;
-  }
-
-  if (message === 'Access denied.' || message === 'Unauthorized.') {
     return 'VALIDATION' as const;
   }
 
@@ -56,23 +47,22 @@ const toErrorCode = (message: string) => {
 
 const toStatus = (message: string) => {
   if (message === 'Unauthorized.') return 401;
-  if (message === 'Access denied.' || message === 'You are not in this conversation.') return 403;
   if (
-    message === 'Recipient is not in this group.' ||
-    message === 'Conversation not found.' ||
-    message === 'Reply target not found.'
+    message === 'Access denied.' ||
+    message === 'You are not in this conversation.' ||
+    message === 'You can only edit your own messages.'
   ) {
-    return 404;
+    return 403;
   }
-  if (message === 'Reply target must be from someone else.') return 400;
+  if (message === 'Conversation not found.' || message === 'Message not found.') return 404;
   if (message === 'Invalid message payload.') return 400;
   return 500;
 };
 
 export async function POST(request: Request) {
-  const ipLimiter = rateLimit(`messages-send:${getRequestIp(request.headers)}`, 30, 60_000);
+  const ipLimiter = rateLimit(`messages-edit:${getRequestIp(request.headers)}`, 30, 60_000);
   if (!ipLimiter.allowed) {
-    return rateLimitExceededResponse(ipLimiter, 'Too many messages sent too quickly. Please slow down.');
+    return rateLimitExceededResponse(ipLimiter, 'Too many edit requests. Please slow down.');
   }
 
   const body = await request.json().catch(() => ({}));
@@ -94,42 +84,38 @@ export async function POST(request: Request) {
     );
   }
 
-  const userLimiter = rateLimit(`messages-send-user:${actingUser.id}`, 60, 60_000);
+  const userLimiter = rateLimit(`messages-edit-user:${actingUser.id}`, 60, 60_000);
   if (!userLimiter.allowed) {
-    return rateLimitExceededResponse(userLimiter, 'Too many messages sent too quickly. Please slow down.');
+    return rateLimitExceededResponse(userLimiter, 'Too many edit requests. Please slow down.');
   }
 
   try {
     const result =
       parsed.data.conversationType === 'dm'
-        ? await createMessage({
-            mode: 'conversation',
+        ? await updateMessageContent({
             conversationType: 'dm',
             userId: actingUser.id,
             userEmail: actingUser.email,
             orgId: parsed.data.orgId,
             groupId: parsed.data.groupId,
             partnerEmail: parsed.data.partnerEmail,
-            clientTimestamp: parsed.data.clientTimestamp,
+            messageEntityId: parsed.data.messageEntityId,
             body: parsed.data.text,
-            replyTo: parsed.data.replyTo,
           })
-        : await createMessage({
-            mode: 'conversation',
+        : await updateMessageContent({
             conversationType: 'group',
             userId: actingUser.id,
             userEmail: actingUser.email,
             orgId: parsed.data.orgId,
             groupId: parsed.data.groupId,
             chatId: parsed.data.chatId,
-            clientTimestamp: parsed.data.clientTimestamp,
+            messageEntityId: parsed.data.messageEntityId,
             body: parsed.data.text,
-            replyTo: parsed.data.replyTo,
           });
 
     return NextResponse.json({ ok: true, data: { message: result.record } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send message.';
+    const message = error instanceof Error ? error.message : 'Failed to edit message.';
     return NextResponse.json(
       err({ code: toErrorCode(message), message, source: 'app' }),
       { status: toStatus(message) }

@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { ArrowLeft, Loader2, MessageSquarePlus, MoreHorizontal, Search, Send, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Check, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, Reply, Search, Send, Trash2, Users, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -45,15 +45,19 @@ import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
 import {
   MESSAGE_TEXT_MAX_CHARS,
   clearConversationMessages,
+  createMessageReplyReference,
   getMessageEntityId,
   getMessageTimestampMs,
   isMessageFromActor,
   markMessageReadByActor,
   messageIncludesReader,
   normalizeMessage,
+  normalizeMessageReplyReference,
   normalizeGroupChats,
   normalizeMessageActor,
   normalizeMessageMap,
+  replaceConversationMessage,
+  replaceGroupChatMessage,
   removeConversationMessages,
   removeGroupChatMessages,
   upsertConversationMessage,
@@ -524,8 +528,12 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const [isDeleteConversationDialogOpen, setIsDeleteConversationDialogOpen] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message["replyTo"] | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [isSavingMessageEdit, setIsSavingMessageEdit] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const hasAutoScrolledOnOpenRef = useRef(false);
   const safeMembers = useMemo(() => normalizeMembersForMessages(members), [members]);
   const safeAllMessages = useMemo(() => normalizeMessageMap(allMessages), [allMessages]);
@@ -639,6 +647,33 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   }, [activeMessages]);
 
   useEffect(() => {
+    if (!replyingTo) {
+      return;
+    }
+
+    const repliedMessageStillExists = activeMessages.some(
+      message => getMessageEntityId(message) === replyingTo.id
+    );
+    if (!repliedMessageStillExists) {
+      setReplyingTo(null);
+    }
+  }, [activeMessages, replyingTo]);
+
+  useEffect(() => {
+    if (!editingMessage) {
+      return;
+    }
+
+    const editingMessageStillExists = activeMessages.some(
+      message => getMessageEntityId(message) === getMessageEntityId(editingMessage)
+    );
+    if (!editingMessageStillExists) {
+      setEditingMessage(null);
+      messageForm.reset();
+    }
+  }, [activeMessages, editingMessage, messageForm]);
+
+  useEffect(() => {
     if (!focusedMessageId || loading) {
       return;
     }
@@ -658,6 +693,9 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
   useEffect(() => {
     hasAutoScrolledOnOpenRef.current = false;
+    setReplyingTo(null);
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
   }, [conversationId, focusedMessageId]);
 
   useLayoutEffect(() => {
@@ -720,6 +758,30 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     );
   }, []);
 
+  const handleStartReply = useCallback((message: Message) => {
+    const replyReference = createMessageReplyReference(message);
+    if (!replyReference) {
+      return;
+    }
+
+    setEditingMessage(null);
+    setReplyingTo(replyReference);
+    window.setTimeout(() => composerTextareaRef.current?.focus(), 0);
+  }, []);
+
+  const handleStartEdit = useCallback((message: Message) => {
+    setReplyingTo(null);
+    setEditingMessage(message);
+    messageForm.reset({ text: message.text });
+    window.setTimeout(() => composerTextareaRef.current?.focus(), 0);
+  }, [messageForm]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessage(null);
+    setIsSavingMessageEdit(false);
+    messageForm.reset();
+  }, [messageForm]);
+
   const handleSelectableMessageKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>, messageId: string) => {
     if (!isSelectionMode) {
       return;
@@ -739,7 +801,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     }
 
     event.preventDefault();
-    void messageForm.handleSubmit(handleSendMessage)();
+    void messageForm.handleSubmit(editingMessage ? handleEditMessage : handleSendMessage)();
   };
 
   const handleDeleteSelectedMessages = async () => {
@@ -876,15 +938,128 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     });
   };
 
+  const handleEditMessage = async (values: z.infer<typeof messageFormSchema>) => {
+    if (!user || !conversation || !editingMessage) return;
+    if (isSending || isSavingMessageEdit) return;
+
+    const nextText = values.text.trim();
+    const previousText = editingMessage.text.trim();
+    if (nextText === previousText) {
+      handleCancelEdit();
+      return;
+    }
+
+    const selectedOrgId = orgId ?? window.localStorage.getItem("selectedOrgId");
+    const selectedGroupId = clubId ?? window.sessionStorage.getItem("selectedGroupId");
+    if (!selectedOrgId || !selectedGroupId) {
+      toast({
+        title: "Edit failed",
+        description: "No active group is selected.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (findPolicyViolation(nextText)) {
+      dispatchPolicyViolation();
+      return;
+    }
+
+    const originalMessageEntityId = getMessageEntityId(editingMessage);
+    if (!originalMessageEntityId) {
+      toast({
+        title: "Edit failed",
+        description: "This message cannot be edited.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const optimisticMessage: Message = {
+      ...editingMessage,
+      text: nextText,
+      editedAt: new Date().toISOString(),
+    };
+
+    if (conversation.type === "dm") {
+      const conversationKey = getConversationId(user.email, conversation.partner.email);
+      setLocalMessages(prev => replaceConversationMessage(prev, conversationKey, originalMessageEntityId, optimisticMessage));
+    } else {
+      setLocalGroupChats(prev => replaceGroupChatMessage(prev, conversation.chat.id, originalMessageEntityId, optimisticMessage));
+    }
+    dispatchGroupStateSync(selectedOrgId, selectedGroupId);
+    setIsSavingMessageEdit(true);
+
+    const response = await fetch("/api/messages/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        conversation.type === "dm"
+          ? {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              conversationType: "dm",
+              partnerEmail: conversation.partner.email,
+              messageEntityId: originalMessageEntityId,
+              text: nextText,
+            }
+          : {
+              orgId: selectedOrgId,
+              groupId: selectedGroupId,
+              conversationType: "group",
+              chatId: conversation.chat.id,
+              messageEntityId: originalMessageEntityId,
+              text: nextText,
+            }
+      ),
+    }).then(async res => {
+      const json = await res.json().catch(() => null);
+      return { ok: res.ok, data: json };
+    }).catch(() => ({ ok: false, data: null }));
+
+    setIsSavingMessageEdit(false);
+
+    if (!response.ok) {
+      const optimisticMessageEntityId = getMessageEntityId(optimisticMessage);
+      if (conversation.type === "dm") {
+        const conversationKey = getConversationId(user.email, conversation.partner.email);
+        setLocalMessages(prev => replaceConversationMessage(prev, conversationKey, optimisticMessageEntityId, editingMessage));
+      } else {
+        setLocalGroupChats(prev => replaceGroupChatMessage(prev, conversation.chat.id, optimisticMessageEntityId, editingMessage));
+      }
+      dispatchGroupStateSync(selectedOrgId, selectedGroupId);
+      messageForm.reset({ text: values.text });
+      toast({
+        title: "Edit failed",
+        description: response.data?.error?.message || "Your message was not updated. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const savedMessage = normalizeMessage(response.data?.data?.message) ?? optimisticMessage;
+    const optimisticMessageEntityId = getMessageEntityId(optimisticMessage);
+    if (conversation.type === "dm") {
+      const conversationKey = getConversationId(user.email, conversation.partner.email);
+      setLocalMessages(prev => replaceConversationMessage(prev, conversationKey, optimisticMessageEntityId, savedMessage));
+    } else {
+      setLocalGroupChats(prev => replaceGroupChatMessage(prev, conversation.chat.id, optimisticMessageEntityId, savedMessage));
+    }
+    dispatchGroupStateSync(selectedOrgId, selectedGroupId);
+    setEditingMessage(null);
+    messageForm.reset();
+  };
+
   const handleSendMessage = async (values: z.infer<typeof messageFormSchema>) => {
     if (!user || !conversation) return;
-    if (isSending) return;
+    if (isSending || isSavingMessageEdit || editingMessage) return;
     const now = Date.now();
     if (now - lastMessageAt < MESSAGE_SEND_THROTTLE_MS) {
       toast({ title: "Slow down", description: "Please wait a moment before sending another message." });
       return;
     }
 
+    const replyTo = normalizeMessageReplyReference(replyingTo);
     const newMessage: Message = {
       id:
         typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -894,9 +1069,10 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       text: values.text,
       timestamp: new Date().toISOString(),
       readBy: [currentUserEmail || user.email],
+      ...(replyTo ? { replyTo } : {}),
     };
 
-    if (findPolicyViolation(newMessage)) {
+    if (findPolicyViolation(newMessage.text)) {
       dispatchPolicyViolation();
       return;
     }
@@ -921,6 +1097,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     dispatchGroupStateSync(selectedOrgId, selectedGroupId);
     setLastMessageAt(now);
     messageForm.reset();
+    setReplyingTo(null);
     setIsSending(true);
 
     const response = await fetch("/api/messages/send", {
@@ -935,6 +1112,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
               clientTimestamp: newMessage.timestamp,
               partnerEmail: conversation.partner.email,
               text: values.text,
+              ...(replyTo ? { replyTo } : {}),
             }
           : {
               orgId: selectedOrgId,
@@ -943,6 +1121,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
               chatId: conversation.chat.id,
               clientTimestamp: newMessage.timestamp,
               text: values.text,
+              ...(replyTo ? { replyTo } : {}),
             }
       ),
     }).then(async res => {
@@ -978,6 +1157,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       }
       dispatchGroupStateSync(selectedOrgId, selectedGroupId);
       messageForm.reset({ text: values.text });
+      setReplyingTo(replyTo);
       toast({
         title: "Message failed",
         description: response.data?.error?.message || "Your message was not saved. Please try again.",
@@ -1101,7 +1281,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                   key={`${messageId}-${index}`}
                   id={`message-${encodeURIComponent(messageId)}`}
                   className={cn(
-                    "flex w-full scroll-mt-24 items-end gap-2",
+                    "group/message flex w-full scroll-mt-24 items-end gap-2",
                     isMine ? "justify-end" : "justify-start",
                     isSelectionMode && "cursor-pointer"
                   )}
@@ -1113,6 +1293,18 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                 >
                   {isSelectionMode && !isMine ? (
                     <Checkbox checked={isSelected} aria-hidden="true" className="pointer-events-none mb-2" />
+                  ) : null}
+                  {!isSelectionMode && isMine ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mb-2 h-8 w-8 shrink-0 rounded-full opacity-0 transition-opacity hover:bg-muted group-hover/message:opacity-100 focus-visible:opacity-100"
+                      onClick={() => handleStartEdit(message)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      <span className="sr-only">Edit message</span>
+                    </Button>
                   ) : null}
                   <div
                     className={cn(
@@ -1126,11 +1318,32 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                     {conversation.type === "group" && !isMine ? (
                       <p className="mb-1 text-[11px] font-medium text-muted-foreground">{sender?.name || message.sender}</p>
                     ) : null}
+                    {message.replyTo ? (
+                      <MessageReplyPreview
+                        replyTo={message.replyTo}
+                        memberByEmail={memberByEmail}
+                        currentUserEmail={currentUserEmail}
+                        isMine={isMine}
+                      />
+                    ) : null}
                     <p className="whitespace-pre-wrap">{message.text}</p>
                     <p className={cn("mt-1 text-right text-[11px]", isMine ? "text-primary-foreground/70" : "text-muted-foreground")}>
                       {formatTimestamp(message.timestamp)}
+                      {message.editedAt ? " · Edited" : ""}
                     </p>
                   </div>
+                  {!isSelectionMode && !isMine ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mb-2 h-8 w-8 shrink-0 rounded-full opacity-0 transition-opacity hover:bg-muted group-hover/message:opacity-100 focus-visible:opacity-100"
+                      onClick={() => handleStartReply(message)}
+                    >
+                      <Reply className="h-4 w-4" />
+                      <span className="sr-only">Reply to message</span>
+                    </Button>
+                  ) : null}
                   {isSelectionMode && isMine ? (
                     <Checkbox checked={isSelected} aria-hidden="true" className="pointer-events-none mb-2" />
                   ) : null}
@@ -1164,27 +1377,79 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
             </Button>
           </div>
         ) : (
-          <form onSubmit={messageForm.handleSubmit(handleSendMessage)} className="flex items-end gap-2">
-            <div className="flex-1">
-              <Textarea
-                {...composerField}
-                autoComplete="off"
-                enterKeyHint="send"
-                placeholder="Message"
-                disabled={isSending}
-                rows={1}
-                onKeyDown={handleComposerKeyDown}
-                className="max-h-40 min-h-11 resize-none rounded-xl border-border/70 py-3"
-              />
-              {messageForm.formState.errors.text ? (
-                <p className="mt-2 text-sm text-destructive">{messageForm.formState.errors.text.message}</p>
-              ) : null}
-            </div>
-            <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending}>
-              <Send className="h-4 w-4" />
-              <span className="sr-only">Send message</span>
-            </Button>
-          </form>
+          <>
+            {editingMessage ? (
+              <div className="mb-2 flex items-center gap-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+                <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-foreground">Editing message</p>
+                  <p className="truncate text-xs text-muted-foreground">{editingMessage.text}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full"
+                  onClick={handleCancelEdit}
+                  disabled={isSavingMessageEdit}
+                >
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Cancel edit</span>
+                </Button>
+              </div>
+            ) : replyingTo ? (
+              <div className="mb-2 flex items-center gap-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
+                <Reply className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold text-foreground">
+                    Replying to {getMessageSenderLabel(replyingTo.sender, memberByEmail, currentUserEmail)}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{replyingTo.text}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full"
+                  onClick={() => setReplyingTo(null)}
+                >
+                  <X className="h-4 w-4" />
+                  <span className="sr-only">Cancel reply</span>
+                </Button>
+              </div>
+            ) : null}
+            <form onSubmit={messageForm.handleSubmit(editingMessage ? handleEditMessage : handleSendMessage)} className="flex items-end gap-2">
+              <div className="flex-1">
+                <Textarea
+                  {...composerField}
+                  ref={element => {
+                    composerField.ref(element);
+                    composerTextareaRef.current = element;
+                  }}
+                  autoComplete="off"
+                  enterKeyHint="send"
+                  placeholder="Message"
+                  disabled={isSending || isSavingMessageEdit}
+                  rows={1}
+                  onKeyDown={handleComposerKeyDown}
+                  className="max-h-40 min-h-11 resize-none rounded-xl border-border/70 py-3"
+                />
+                {messageForm.formState.errors.text ? (
+                  <p className="mt-2 text-sm text-destructive">{messageForm.formState.errors.text.message}</p>
+                ) : null}
+              </div>
+              <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending || isSavingMessageEdit}>
+                {isSending || isSavingMessageEdit ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : editingMessage ? (
+                  <Check className="h-4 w-4" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                <span className="sr-only">{editingMessage ? "Save message edit" : "Send message"}</span>
+              </Button>
+            </form>
+          </>
         )}
       </div>
 
@@ -1233,6 +1498,34 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   );
 }
 
+function MessageReplyPreview({
+  replyTo,
+  memberByEmail,
+  currentUserEmail,
+  isMine,
+}: {
+  replyTo: NonNullable<Message["replyTo"]>;
+  memberByEmail: Map<string, Member>;
+  currentUserEmail: string;
+  isMine: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-2 rounded-lg border-l-2 px-3 py-2 text-xs",
+        isMine
+          ? "border-primary-foreground/40 bg-primary-foreground/10 text-primary-foreground/80"
+          : "border-primary/50 bg-background/70 text-muted-foreground"
+      )}
+    >
+      <p className={cn("truncate font-semibold", isMine ? "text-primary-foreground" : "text-foreground")}>
+        {getMessageSenderLabel(replyTo.sender, memberByEmail, currentUserEmail)}
+      </p>
+      <p className="truncate">{replyTo.text}</p>
+    </div>
+  );
+}
+
 function ConversationAvatar({
   name,
   avatar,
@@ -1258,6 +1551,18 @@ function ConversationAvatar({
       <AvatarFallback style={{ backgroundColor: stringToColor(name) }}>{initials}</AvatarFallback>
     </Avatar>
   );
+}
+
+function getMessageSenderLabel(
+  sender: string,
+  memberByEmail: Map<string, Member>,
+  currentUserEmail: string
+) {
+  const normalizedSender = normalizeMessageActor(sender);
+  if (normalizedSender && normalizedSender === currentUserEmail) {
+    return "You";
+  }
+  return memberByEmail.get(normalizedSender)?.name || sender;
 }
 
 function getConversationPreviewText(

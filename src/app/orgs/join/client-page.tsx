@@ -14,6 +14,8 @@ import { Logo } from '@/components/icons';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { normalizeJoinCode } from '@/lib/join-code';
 import { cn } from '@/lib/utils';
+import { removeLocalViewCache } from '@/lib/local-view-cache';
+import { ORG_MEMBERSHIP_CHANGED_EVENT, ORGS_CACHE_KEY } from '@/lib/org-list-cache';
 
 const isNativeApp = Capacitor.isNativePlatform();
 
@@ -42,6 +44,8 @@ export default function OrgJoinPage() {
   const completeJoin = (orgId: string) => {
     setSelectedOrgId(orgId);
     clearSelectedGroupId();
+    removeLocalViewCache(ORGS_CACHE_KEY);
+    window.dispatchEvent(new CustomEvent(ORG_MEMBERSHIP_CHANGED_EVENT, { detail: { orgId } }));
     router.push('/clubs');
   };
 

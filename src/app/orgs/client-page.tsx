@@ -21,7 +21,13 @@ import { readLocalViewCacheRecord, writeLocalViewCache } from '@/lib/local-view-
 import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { OrgSubscriptionStatus } from '@/lib/org-subscription';
-import { clearSelectedGroupId, clearSelectedOrgId, setSelectedOrgId } from '@/lib/selection';
+import {
+  clearSelectedGroupId,
+  clearSelectedOrgId,
+  getSelectedOrgId,
+  setSelectedOrgId,
+} from '@/lib/selection';
+import { ORG_MEMBERSHIP_CHANGED_EVENT, ORGS_CACHE_KEY, orgListHasOrg } from '@/lib/org-list-cache';
 
 type OrgSummary = {
   id: string;
@@ -37,7 +43,6 @@ const ORGS_REQUEST_TIMEOUT_MS = 8_000;
 const ORG_STATUS_REQUEST_TIMEOUT_MS = 6_500;
 const BACKGROUND_LOOKUP_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_200 };
 const ORG_STATUS_REQUEST_RETRY = { retries: 1, baseDelayMs: 400, maxDelayMs: 1_200 };
-const ORGS_CACHE_KEY = 'view-cache:orgs:list';
 const orgStatusCacheKey = (orgId: string) => `view-cache:orgs:status:${orgId}`;
 let orgListCache: OrgSummary[] | null = null;
 let orgListLoadedAt = 0;
@@ -165,15 +170,17 @@ export default function OrgsPage() {
     );
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options: { forceRefresh?: boolean } = {}) => {
     const freshOrgList = readCachedOrgList(ORGS_CACHE_TTL_MS);
     const fallbackOrgList = freshOrgList ?? readCachedOrgList(ORGS_STALE_CACHE_TTL_MS);
+    const selectedOrgId = getSelectedOrgId();
+    const freshListHasSelectedOrg = orgListHasOrg(freshOrgList, selectedOrgId);
 
     if (fallbackOrgList) {
       setOrgs(fallbackOrgList);
       setLoading(false);
       void loadStatuses(fallbackOrgList);
-      if (freshOrgList) {
+      if (freshOrgList && freshListHasSelectedOrg && !options.forceRefresh) {
         return;
       }
     }
@@ -219,12 +226,14 @@ export default function OrgsPage() {
 
   useEffect(() => {
     const handleRefresh = () => {
-      void load();
+      void load({ forceRefresh: true });
     };
 
     window.addEventListener('org-subscription-changed', handleRefresh);
+    window.addEventListener(ORG_MEMBERSHIP_CHANGED_EVENT, handleRefresh);
     return () => {
       window.removeEventListener('org-subscription-changed', handleRefresh);
+      window.removeEventListener(ORG_MEMBERSHIP_CHANGED_EVENT, handleRefresh);
     };
   }, [load]);
 

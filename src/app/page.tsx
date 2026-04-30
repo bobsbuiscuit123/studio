@@ -31,6 +31,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { User } from '@/lib/mock-data';
 import { useCurrentUser } from '@/lib/current-user';
 import { writeLocalViewCache } from '@/lib/local-view-cache';
+import { ORGS_CACHE_KEY } from '@/lib/org-list-cache';
 import { safeFetchJson } from '@/lib/network';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { clearSelectedGroupId, clearSelectedOrgId } from '@/lib/selection';
@@ -62,7 +63,6 @@ const loginFormSchema = z.object({
 
 const AUTH_PRIME_REQUEST_TIMEOUT_MS = 8_000;
 const AUTH_PRIME_REQUEST_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_500 };
-const ORGS_CACHE_KEY = 'view-cache:orgs:list';
 const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
 
 function LegalNotice({
@@ -475,4 +475,3 @@ export default function HomePage() {
     </div>
   );
 }
-

@@ -665,16 +665,16 @@ function AnnouncementsPageInner() {
   
   return (
     <>
-    <div className="tab-page-shell">
-      <div className="tab-page-content">
-    <div className="grid gap-4 pt-2 md:grid-cols-3 md:gap-6">
+    <div className="tab-page-shell min-w-0">
+      <div className="tab-page-content min-w-0">
+    <div className="grid w-full min-w-0 max-w-full gap-4 overflow-x-hidden pt-2 md:grid-cols-3 md:gap-6">
       {canEditContent && (
-        <div className="md:col-span-1">
-            <Card>
+        <div className="min-w-0 md:col-span-1">
+            <Card className="min-w-0 max-w-full overflow-hidden">
             <CardHeader>
                 <div className="space-y-1.5">
                   <div className="flex flex-wrap items-center gap-3">
-                    <CardTitle className="flex items-center gap-2"><Megaphone /> Create Announcement</CardTitle>
+                    <CardTitle className="flex min-w-0 items-center gap-2 break-words"><Megaphone className="shrink-0" /> Create Announcement</CardTitle>
                     <AssistantInlineTrigger
                       onClick={() => {
                         setShowAi(false);
@@ -721,7 +721,7 @@ function AnnouncementsPageInner() {
                   />
                   <FormItem>
                     <FormLabel>Attachments (Optional)</FormLabel>
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
                       <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploadingAttachments}>
                           {isUploadingAttachments ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2" />}
                           Add Files
@@ -741,8 +741,8 @@ function AnnouncementsPageInner() {
                   {attachments.length > 0 && (
                     <div className="space-y-2">
                         {attachments.map((file, index) => (
-                        <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
-                            <div className="flex items-center gap-2 truncate">
+                        <div key={index} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
+                            <div className="flex min-w-0 items-center gap-2 truncate">
                               <FileIcon className="h-4 w-4 shrink-0" />
                               <span className="truncate">{file.name}</span>
                             </div>
@@ -784,7 +784,7 @@ function AnnouncementsPageInner() {
                       />
                       <FormItem>
                         <FormLabel>Attachments (Optional)</FormLabel>
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={isUploadingAttachments}>
                               {isUploadingAttachments ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Paperclip className="mr-2" />}
                               Add Files
@@ -804,8 +804,8 @@ function AnnouncementsPageInner() {
                       {attachments.length > 0 && (
                         <div className="space-y-2">
                             {attachments.map((file, index) => (
-                            <div key={index} className="flex items-center justify-between text-sm p-2 bg-muted rounded-md">
-                                <div className="flex items-center gap-2 truncate">
+                            <div key={index} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
+                                <div className="flex min-w-0 items-center gap-2 truncate">
                                   <FileIcon className="h-4 w-4 shrink-0" />
                                   <span className="truncate">{file.name}</span>
                                 </div>
@@ -833,8 +833,8 @@ function AnnouncementsPageInner() {
             </Card>
         </div>
       )}
-      <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
-        <div className="flex flex-col gap-4">
+      <div className={canEditContent ? "min-w-0 md:col-span-2" : "min-w-0 md:col-span-3"}>
+        <div className="flex min-w-0 max-w-full flex-col gap-4">
           {loading ? <p>Loading...</p> : 
             error && safeAnnouncements.length === 0 ? (
               <Card>
@@ -860,15 +860,15 @@ function AnnouncementsPageInner() {
                     key={announcement.id}
                     id={`announcement-${announcement.id}`}
                     className={cn(
-                      "scroll-mt-24 transition-shadow",
+                      "min-w-0 max-w-full scroll-mt-24 overflow-hidden transition-shadow",
                       highlightedAnnouncementId === String(announcement.id) &&
                         "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
                     )}
                   >
                     <CardHeader>
-                      <div className="flex justify-between items-start">
-                          <div>
-                              <CardTitle className="font-bold text-white">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                              <CardTitle className="break-words text-lg font-bold text-white sm:text-xl">
                                 {isInstructionLikeAnnouncementTitle(announcement.title)
                                   ? deriveAnnouncementTitleFromContent(announcement.content, announcement.title)
                                   : announcement.title}
@@ -899,11 +899,11 @@ function AnnouncementsPageInner() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <p className="max-w-5xl whitespace-pre-wrap font-body text-xl font-normal leading-snug text-foreground/85 sm:text-2xl sm:leading-snug">
+                      <p className="max-w-full whitespace-pre-wrap break-words font-body text-base font-normal leading-7 text-foreground/85 [overflow-wrap:anywhere] sm:text-lg sm:leading-8 md:text-xl md:leading-snug">
                         {announcement.content}
                       </p>
                       {announcement.linkedFormId && !hasButtonAttachment && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
                           <Link href={`/forms?formId=${announcement.linkedFormId}`}>
                             <Button size="sm" variant="outline" className={aiSparkle}>
                               Go to form

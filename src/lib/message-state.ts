@@ -84,6 +84,12 @@ export const getMessageEntityId = (
     return id;
   }
 
+  return getMessageLegacyEntityId(message);
+};
+
+export const getMessageLegacyEntityId = (
+  message: Pick<Message, 'sender' | 'text' | 'timestamp'> | null | undefined
+) => {
   const sender = normalizeMessageActor(message?.sender);
   const text = toTrimmedString(message?.text);
   const timestamp = typeof message?.timestamp === 'string' ? message.timestamp : '';
@@ -101,7 +107,7 @@ export const getMessageKey = (
   return `${sender}__${timestamp}__${text}`;
 };
 
-const getMessageTimelineKey = (
+export const getMessageTimelineKey = (
   message: Pick<Message, 'sender' | 'timestamp'> | null | undefined
 ) => {
   const sender = normalizeMessageActor(message?.sender);
@@ -323,16 +329,24 @@ export const replaceMessageInList = (
     return normalizedMessages;
   }
 
-  let changed = false;
-  const nextMessages = normalizedMessages.map(message => {
-    if (getMessageEntityId(message) !== normalizedMessageEntityId) {
-      return message;
+  let targetIndex = normalizedMessages.findIndex(
+    message => getMessageEntityId(message) === normalizedMessageEntityId
+  );
+  if (targetIndex === -1) {
+    const replacementTimelineKey = getMessageTimelineKey(normalizedReplacement);
+    if (replacementTimelineKey) {
+      targetIndex = normalizedMessages.findIndex(
+        message => getMessageTimelineKey(message) === replacementTimelineKey
+      );
     }
-    changed = true;
-    return normalizedReplacement;
-  });
+  }
+  if (targetIndex === -1) {
+    return normalizedMessages;
+  }
 
-  return changed ? nextMessages.sort(compareMessages) : normalizedMessages;
+  return normalizedMessages
+    .map((message, index) => (index === targetIndex ? normalizedReplacement : message))
+    .sort(compareMessages);
 };
 
 export const replaceConversationMessage = (

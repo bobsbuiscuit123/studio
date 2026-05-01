@@ -1,7 +1,12 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import type { Message } from '@/lib/mock-data';
-import { getMessageEntityId, normalizeMessage, normalizeMessageReplyReference } from '@/lib/message-state';
+import {
+  getMessageEntityId,
+  getMessageLegacyEntityId,
+  normalizeMessage,
+  normalizeMessageReplyReference,
+} from '@/lib/message-state';
 import { sendPushToUsers } from '@/lib/send-push';
 import type { RecipientRef } from '@/lib/assistant/agent/types';
 
@@ -47,7 +52,13 @@ const resolveConversationReplyReference = (
 };
 
 const findMessageIndexByEntityId = (messages: unknown[], messageEntityId: string) =>
-  messages.findIndex(message => getMessageEntityId(normalizeMessage(message)) === messageEntityId);
+  messages.findIndex(message => {
+    const normalizedMessage = normalizeMessage(message);
+    return (
+      getMessageEntityId(normalizedMessage) === messageEntityId ||
+      getMessageLegacyEntityId(normalizedMessage) === messageEntityId
+    );
+  });
 
 const updateMessageAuditRow = async ({
   admin,

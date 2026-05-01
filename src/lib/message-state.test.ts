@@ -272,6 +272,44 @@ describe('message state normalization', () => {
     });
   });
 
+  it('replaces a refreshed legacy message by timeline after edit text changes', () => {
+    expect(
+      replaceConversationMessage(
+        {
+          'alice@example.com_bob@example.com': [
+            {
+              sender: 'alice@example.com',
+              text: 'Original text',
+              timestamp: '2026-03-26T14:00:00.000Z',
+              readBy: ['alice@example.com'],
+            },
+          ],
+        },
+        'alice@example.com_bob@example.com',
+        'alice@example.com:2026-03-26T14:00:00.000Z:Edited text',
+        {
+          id: 'msg-1',
+          sender: 'alice@example.com',
+          text: 'Edited text',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com'],
+          editedAt: '2026-03-26T14:05:00.000Z',
+        }
+      )
+    ).toEqual({
+      'alice@example.com_bob@example.com': [
+        {
+          id: 'msg-1',
+          sender: 'alice@example.com',
+          text: 'Edited text',
+          timestamp: '2026-03-26T14:00:00.000Z',
+          readBy: ['alice@example.com'],
+          editedAt: '2026-03-26T14:05:00.000Z',
+        },
+      ],
+    });
+  });
+
   it('merges group chats by id and preserves optimistic messages', () => {
     expect(
       mergeGroupChatLists(

@@ -48,6 +48,7 @@ import {
   createMessageReplyReference,
   getMessageEntityId,
   getMessageTimestampMs,
+  getMessageTimelineKey,
   isMessageFromActor,
   markMessageReadByActor,
   messageIncludesReader,
@@ -664,8 +665,11 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
       return;
     }
 
-    const editingMessageStillExists = activeMessages.some(
-      message => getMessageEntityId(message) === getMessageEntityId(editingMessage)
+    const editingMessageEntityId = getMessageEntityId(editingMessage);
+    const editingMessageTimelineKey = getMessageTimelineKey(editingMessage);
+    const editingMessageStillExists = activeMessages.some(message =>
+      getMessageEntityId(message) === editingMessageEntityId ||
+      Boolean(editingMessageTimelineKey && getMessageTimelineKey(message) === editingMessageTimelineKey)
     );
     if (!editingMessageStillExists) {
       setEditingMessage(null);
@@ -987,7 +991,6 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
     } else {
       setLocalGroupChats(prev => replaceGroupChatMessage(prev, conversation.chat.id, originalMessageEntityId, optimisticMessage));
     }
-    dispatchGroupStateSync(selectedOrgId, selectedGroupId);
     setIsSavingMessageEdit(true);
 
     const response = await fetch("/api/messages/edit", {

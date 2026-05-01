@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { readLocalViewCacheRecord, writeLocalViewCache } from '@/lib/local-view-cache';
 import { safeFetchJson } from '@/lib/network';
+import { getOrgAiBadgePresentation } from '@/lib/org-ai-status';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { OrgSubscriptionStatus } from '@/lib/org-subscription';
 import {
@@ -81,18 +82,6 @@ const readCachedOrgStatus = (orgId: string, maxAgeMs: number = ORG_STATUS_CACHE_
   orgStatusCache.set(orgId, persisted.value);
   orgStatusLoadedAt.set(orgId, persisted.savedAt);
   return persisted.value;
-};
-
-const aiBadgeVariant = (status: OrgSubscriptionStatus | null) => {
-  if (!status?.aiAvailable) return 'destructive' as const;
-  if (status.effectiveAvailableTokens <= 100) return 'secondary' as const;
-  return 'default' as const;
-};
-
-const aiBadgeLabel = (status: OrgSubscriptionStatus | null) => {
-  if (!status?.aiAvailable) return 'AI unavailable';
-  if (status.effectiveAvailableTokens <= 100) return 'AI low';
-  return 'AI available';
 };
 
 export default function OrgsPage() {
@@ -339,6 +328,7 @@ export default function OrgsPage() {
               {orgs.map((org) => {
                 const status = statusByOrg[org.id] ?? null;
                 const isOwner = org.role === 'owner';
+                const aiBadge = getOrgAiBadgePresentation(status);
 
                 return (
                   <Card key={org.id} className="rounded-[28px] border border-border/70 bg-card/95 shadow-sm">
@@ -348,7 +338,7 @@ export default function OrgsPage() {
                           <CardTitle className="text-lg">{org.name}</CardTitle>
                           <CardDescription className="flex flex-wrap items-center gap-2 pt-1">
                             <Badge variant="secondary">{isOwner ? 'Owner' : 'Member'}</Badge>
-                            <Badge variant={aiBadgeVariant(status)}>{aiBadgeLabel(status)}</Badge>
+                            <Badge variant={aiBadge.variant}>{aiBadge.label}</Badge>
                           </CardDescription>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">

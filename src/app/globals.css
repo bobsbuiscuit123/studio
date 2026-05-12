@@ -718,6 +718,14 @@ main,
   animation: assistant-popup-cursor 1s steps(1) infinite;
 }
 
+.assistant-response-cursor {
+  margin-left: 0.16rem;
+}
+
+.assistant-rich-text-typing > p:nth-last-child(2) {
+  display: inline;
+}
+
 .assistant-message-row {
   display: flex;
   width: 100%;

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -82,6 +83,8 @@ const POPUP_GAP = 18;
 const POPUP_VIEWPORT_EDGE_GAP = 18;
 const EMPTY_STATE_TEXT = "Ask about your group or draft something quick.";
 const POPUP_SIZE_STORAGE_KEY = "caspo-assistant-popup-size-v1";
+const ASSISTANT_TYPING_INTERVAL_MS = 18;
+const ASSISTANT_TYPING_MAX_TICKS = 320;
 
 const formatTimestamp = (value: string) => {
   const date = new Date(value);
@@ -97,6 +100,13 @@ const formatTimestamp = (value: string) => {
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
+
+const getTypingStep = (characterCount: number) =>
+  Math.max(1, Math.ceil(characterCount / ASSISTANT_TYPING_MAX_TICKS));
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const getViewportHeight = () => window.visualViewport?.height ?? window.innerHeight;
 
@@ -251,14 +261,17 @@ function AssistantDiagnosticsBlock({
 function AssistantRichText({
   content,
   className,
+  showCursor = false,
 }: {
   content: string;
   className?: string;
+  showCursor?: boolean;
 }) {
   return (
     <div
       className={cn(
         "text-sm leading-6 [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.95em] [&_em]:italic [&_li]:pl-1 [&_li]:marker:text-muted-foreground/80 [&_ol]:my-0 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-5 [&_p]:m-0 [&_p+p]:mt-4 [&_strong]:font-semibold [&_ul]:my-0 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5",
+        showCursor && "assistant-rich-text-typing",
         className
       )}
     >
@@ -284,7 +297,98 @@ function AssistantRichText({
       >
         {content}
       </ReactMarkdown>
+      {showCursor ? (
+        <span className="assistant-popup-cursor assistant-response-cursor" aria-hidden="true" />
+      ) : null}
     </div>
+  );
+}
+
+function AssistantTypedRichText({
+  content,
+  className,
+  typingKey,
+  onTypingComplete,
+  onTypingTick,
+}: {
+  content: string;
+  className?: string;
+  typingKey: string;
+  onTypingComplete: (messageId: string) => void;
+  onTypingTick: () => void;
+}) {
+  const characters = useMemo(() => Array.from(content), [content]);
+  const totalCharacters = characters.length;
+  const [visibleCount, setVisibleCount] = useState(0);
+
+  useEffect(() => {
+    if (totalCharacters === 0 || prefersReducedMotion()) {
+      setVisibleCount(totalCharacters);
+      onTypingComplete(typingKey);
+      return;
+    }
+
+    setVisibleCount(0);
+    onTypingTick();
+
+    const step = getTypingStep(totalCharacters);
+    const intervalId = window.setInterval(() => {
+      setVisibleCount(currentCount => {
+        const nextCount = Math.min(currentCount + step, totalCharacters);
+        onTypingTick();
+
+        if (nextCount >= totalCharacters) {
+          window.clearInterval(intervalId);
+          onTypingComplete(typingKey);
+        }
+
+        return nextCount;
+      });
+    }, ASSISTANT_TYPING_INTERVAL_MS);
+
+    return () => window.clearInterval(intervalId);
+  }, [onTypingComplete, onTypingTick, totalCharacters, typingKey]);
+
+  const visibleContent = useMemo(
+    () => characters.slice(0, visibleCount).join(""),
+    [characters, visibleCount]
+  );
+  const isTyping = visibleCount < totalCharacters;
+
+  return (
+    <AssistantRichText
+      content={visibleContent}
+      className={className}
+      showCursor={isTyping}
+    />
+  );
+}
+
+function AssistantResponseText({
+  content,
+  className,
+  typingKey,
+  onTypingComplete,
+  onTypingTick,
+}: {
+  content: string;
+  className?: string;
+  typingKey?: string | null;
+  onTypingComplete: (messageId: string) => void;
+  onTypingTick: () => void;
+}) {
+  if (!typingKey) {
+    return <AssistantRichText content={content} className={className} />;
+  }
+
+  return (
+    <AssistantTypedRichText
+      content={content}
+      className={className}
+      typingKey={typingKey}
+      onTypingComplete={onTypingComplete}
+      onTypingTick={onTypingTick}
+    />
   );
 }
 
@@ -294,12 +398,18 @@ function AssistantTurnContent({
   onCommand,
   onRetry,
   isSending,
+  typingKey,
+  onTypingComplete,
+  onTypingTick,
 }: {
   message: AiChatClientMessage;
   isUser: boolean;
   onCommand: (command: AssistantCommand) => void;
   onRetry: (retryInput: string) => void;
   isSending: boolean;
+  typingKey?: string | null;
+  onTypingComplete: (messageId: string) => void;
+  onTypingTick: () => void;
 }) {
   const turn = message.turn;
   const preview = turn && ("preview" in turn ? turn.preview : null);
@@ -311,6 +421,16 @@ function AssistantTurnContent({
     setEditor(preview ? previewToEditorState(preview) : null);
   }, [preview, turn?.turnId]);
 
+  const assistantText = (content: string, className?: string) => (
+    <AssistantResponseText
+      content={content}
+      className={className}
+      typingKey={typingKey}
+      onTypingComplete={onTypingComplete}
+      onTypingTick={onTypingTick}
+    />
+  );
+
   if (!turn) {
     if (isUser) {
       return (
@@ -321,10 +441,7 @@ function AssistantTurnContent({
     }
 
     return (
-      <AssistantRichText
-        content={message.content}
-        className="text-foreground/92"
-      />
+      assistantText(message.content, "text-foreground/92")
     );
   }
 
@@ -350,7 +467,7 @@ function AssistantTurnContent({
             {previewKindLabel}
           </span>
         </div>
-        <AssistantRichText content={turn.reply} className="text-foreground/92" />
+        {assistantText(turn.reply, "text-foreground/92")}
 
         <div className="rounded-2xl border border-white/10 bg-black/10 p-3">
           {turn.preview.kind === "announcement" || turn.preview.kind === "event" ? (
@@ -597,7 +714,7 @@ function AssistantTurnContent({
             </span>
           ) : null}
         </div>
-        <AssistantRichText content={turn.reply} className="text-foreground/92" />
+        {assistantText(turn.reply, "text-foreground/92")}
       </div>
     );
   }
@@ -609,7 +726,7 @@ function AssistantTurnContent({
           <Loader2 className="h-4 w-4 animate-spin" />
           <span className="text-sm font-medium">Executing</span>
         </div>
-        <AssistantRichText content={turn.reply} className="text-foreground/92" />
+        {assistantText(turn.reply, "text-foreground/92")}
       </div>
     );
   }
@@ -621,7 +738,7 @@ function AssistantTurnContent({
           <CheckCircle2 className="h-4 w-4" />
           <span className="text-sm font-medium">Completed</span>
         </div>
-        <AssistantRichText content={turn.message} className="text-foreground/92" />
+        {assistantText(turn.message, "text-foreground/92")}
       </div>
     );
   }
@@ -645,7 +762,7 @@ function AssistantTurnContent({
             </Button>
           ) : null}
         </div>
-        <AssistantRichText content={turn.message} className="text-rose-50/95" />
+        {assistantText(turn.message, "text-rose-50/95")}
         {message.retryInput ? null : <AssistantDiagnosticsBlock diagnostics={turn.diagnostics} />}
       </div>
     );
@@ -655,10 +772,10 @@ function AssistantTurnContent({
     return (
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-3">
-          <AssistantRichText
-            content="AI is temporarily unavailable. Please try again later."
-            className="text-foreground/92"
-          />
+          {assistantText(
+            "AI is temporarily unavailable. Please try again later.",
+            "text-foreground/92"
+          )}
           {message.retryInput ? (
             <Button
               type="button"
@@ -681,7 +798,7 @@ function AssistantTurnContent({
     return (
       <div className="space-y-2">
         <div className="flex items-start justify-between gap-3">
-          <AssistantRichText content={turn.reply} className="text-foreground/92" />
+          {assistantText(turn.reply, "text-foreground/92")}
           {message.retryInput ? (
             <Button
               type="button"
@@ -706,7 +823,7 @@ function AssistantTurnContent({
     );
   }
 
-  return <AssistantRichText content={turn.reply} className="text-foreground/92" />;
+  return assistantText(turn.reply, "text-foreground/92");
 }
 
 export function AIChatModal({
@@ -726,9 +843,11 @@ export function AIChatModal({
   const [layout, setLayout] = useState<PopupLayout | null>(null);
   const [preferredSize, setPreferredSize] = useState<PopupSize | null>(null);
   const [typedCount, setTypedCount] = useState(0);
+  const completedTypingMessageIdsRef = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const resizeSessionRef = useRef<AbortController | null>(null);
+  const typingScrollFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -769,6 +888,9 @@ export function AIChatModal({
   useEffect(
     () => () => {
       resizeSessionRef.current?.abort();
+      if (typingScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(typingScrollFrameRef.current);
+      }
     },
     []
   );
@@ -946,6 +1068,32 @@ export function AIChatModal({
     [typedCount]
   );
 
+  const latestAssistantResponseMessageId = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "assistant" && !message.status) {
+        return message.id;
+      }
+    }
+
+    return null;
+  }, [messages]);
+
+  const handleTypingTick = useCallback(() => {
+    if (typingScrollFrameRef.current !== null) {
+      return;
+    }
+
+    typingScrollFrameRef.current = window.requestAnimationFrame(() => {
+      typingScrollFrameRef.current = null;
+      messagesEndRef.current?.scrollIntoView({ block: "end" });
+    });
+  }, []);
+
+  const handleTypingComplete = useCallback((messageId: string) => {
+    completedTypingMessageIdsRef.current.add(messageId);
+  }, []);
+
   const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!layout?.resizable) {
       return;
@@ -1105,6 +1253,13 @@ export function AIChatModal({
 
               const isUser = message.role === "user";
               const isPending = message.status === "pending";
+              const typingKey =
+                !isUser &&
+                !isPending &&
+                message.id === latestAssistantResponseMessageId &&
+                !completedTypingMessageIdsRef.current.has(message.id)
+                  ? message.id
+                  : null;
 
               return (
                 <div
@@ -1151,6 +1306,9 @@ export function AIChatModal({
                         onCommand={onCommand}
                         onRetry={onRetry}
                         isSending={isSending}
+                        typingKey={typingKey}
+                        onTypingComplete={handleTypingComplete}
+                        onTypingTick={handleTypingTick}
                       />
                     )}
 

@@ -16,11 +16,13 @@ import {
   BarChart,
   Sparkles,
   ClipboardList,
+  HeartPulse,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { NotificationKey } from '@/lib/data-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { getSelectedGroupId, syncSelectionCookies } from '@/lib/selection';
+import { HOPELINK_DONORS_HREF, useIsHopeLinkOrg } from '@/lib/hopelink-features';
 
 type NotificationMap = {
   announcements: boolean;
@@ -41,6 +43,7 @@ export const allNavItems = [
   { href: '/email', icon: Mail, label: 'Email', roles: ['Admin', 'Officer'], notificationKey: null },
   { href: '/attendance', icon: CheckCircle, label: 'Attendance', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'attendance' as NotificationKey },
   { href: '/points', icon: BarChart, label: 'Points', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
+  { href: HOPELINK_DONORS_HREF, icon: HeartPulse, label: 'Donors', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/gallery', icon: GalleryHorizontal, label: 'Gallery', roles: ['Admin', 'Officer', 'Member'], notificationKey: 'gallery' as NotificationKey },
   { href: '/members', icon: UsersRound, label: 'Members', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
   { href: '/assistant', icon: Sparkles, label: 'Assistant', roles: ['Admin', 'Officer', 'Member'], notificationKey: null },
@@ -62,6 +65,7 @@ export function AppSidebarNav({
 }) {
   const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
+  const isHopeLinkOrg = useIsHopeLinkOrg();
 
   useEffect(() => {
     setIsClient(true);
@@ -71,15 +75,19 @@ export function AppSidebarNav({
   const isDemoApp = pathname === '/demo/app' || pathname.startsWith('/demo/app/');
 
   const navItems = useMemo(() => {
-    const filteredNavItems = allNavItems.filter(() => groupId);
+    const filteredNavItems = allNavItems.filter(item => {
+      if (!groupId) return false;
+      if (item.href === HOPELINK_DONORS_HREF) return isHopeLinkOrg;
+      return true;
+    });
 
     return filteredNavItems
       .filter(item => item.roles.includes(role) && item.href !== '/assistant')
       .sort((a, b) => {
-        const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Gallery', 'Members', 'Finances'];
+        const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Donors', 'Gallery', 'Members', 'Finances'];
         return order.indexOf(a.label) - order.indexOf(b.label);
       });
-  }, [groupId, role]);
+  }, [groupId, isHopeLinkOrg, role]);
 
   return (
     <>

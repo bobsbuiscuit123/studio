@@ -10,11 +10,13 @@ import type {
   SocialPost,
   Transaction,
   ClubForm,
+  DonorRecord,
   Member,
 } from '@/lib/mock-data';
 
 export type OrgState = {
   members: Member[];
+  donors: DonorRecord[];
   events: ClubEvent[];
   announcements: Announcement[];
   socialPosts: SocialPost[];
@@ -31,6 +33,7 @@ export type OrgState = {
 
 export const getDefaultOrgState = (): OrgState => ({
   members: [],
+  donors: [],
   events: [],
   announcements: [],
   socialPosts: [],

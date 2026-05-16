@@ -27,7 +27,7 @@ import {
     getBrowserSessionWithTimeout,
 } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
-import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm } from './mock-data';
+import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm, DonorRecord } from './mock-data';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
@@ -58,6 +58,7 @@ import { startPerformanceTimer } from '@/lib/performance-guard';
 
 type ClubData = {
     members: Member[];
+    donors: DonorRecord[];
     events: ClubEvent[];
     announcements: Announcement[];
     socialPosts: SocialPost[];
@@ -314,6 +315,7 @@ const summarizeClubData = (data: ClubData | null | undefined) => ({
     galleryImages: Array.isArray(data?.galleryImages) ? data.galleryImages.length : 0,
     groupChats: Array.isArray(data?.groupChats) ? data.groupChats.length : 0,
     members: Array.isArray(data?.members) ? data.members.length : 0,
+    donors: Array.isArray(data?.donors) ? data.donors.length : 0,
     pointEntries: Array.isArray(data?.pointEntries) ? data.pointEntries.length : 0,
     socialPosts: Array.isArray(data?.socialPosts) ? data.socialPosts.length : 0,
     transactions: Array.isArray(data?.transactions) ? data.transactions.length : 0,
@@ -1234,6 +1236,10 @@ export function useEvents() {
 export function useMembers() {
   const { data, loading, updateData, clubId, orgId } = useSpecificClubData('members');
   return { data, loading, updateData, clubId, orgId };
+}
+
+export function useDonors() {
+  return useSpecificClubData('donors');
 }
 
 export function useSocialPosts() {

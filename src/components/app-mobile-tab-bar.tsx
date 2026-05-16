@@ -11,6 +11,7 @@ import { useAssistantChat } from "@/components/assistant/use-assistant-chat";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
 import type { NotificationKey } from "@/lib/data-hooks";
+import { HOPELINK_DONORS_HREF, useIsHopeLinkOrg } from "@/lib/hopelink-features";
 import { syncSelectionCookies } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,7 @@ const mobileNavOrder = [
   "/email",
   "/attendance",
   "/points",
+  HOPELINK_DONORS_HREF,
   "/gallery",
   "/members",
 ] as const;
@@ -37,6 +39,7 @@ type MobileNavItem = {
 export function AppMobileTabBar() {
   const pathname = usePathname();
   const { unread, markTabViewed, role } = useNotificationsContext();
+  const isHopeLinkOrg = useIsHopeLinkOrg();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
   const isMessagesListRoute = pathname === "/messages" || pathname === "/demo/app/messages";
   const isMessageThreadRoute =
@@ -57,7 +60,11 @@ export function AppMobileTabBar() {
     setIsAssistantOpen,
   } = useAssistantChat({ enableExternalOpen: true });
 
-  const allowedItems = allNavItems.filter(item => item.roles.includes(role || "Member"));
+  const allowedItems = allNavItems.filter(item => {
+    if (!item.roles.includes(role || "Member")) return false;
+    if (item.href === HOPELINK_DONORS_HREF) return isHopeLinkOrg;
+    return true;
+  });
   const orderedItems: MobileNavItem[] = mobileNavOrder
     .map(href => allowedItems.find(item => item.href === href))
     .filter((item): item is (typeof allowedItems)[number] => Boolean(item))

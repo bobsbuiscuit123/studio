@@ -11,6 +11,7 @@ import {
   Megaphone,
   Network,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   UsersRound,
 } from "lucide-react";
@@ -40,6 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   useClubData,
   useCurrentUser,
@@ -75,6 +77,8 @@ import { canEditGroupContent } from "@/lib/group-permissions";
 import { getSelectedOrgId } from "@/lib/selection";
 import { getDefaultOrgState } from "@/lib/org-state";
 import { getRoleFromMembers } from "@/lib/notification-state";
+import { useIsHopeLinkOrg } from "@/lib/hopelink-features";
+import type { DonorRecord } from "@/lib/mock-data";
 
 type ActivityItem = {
   type: string;
@@ -137,6 +141,91 @@ const toDate = (value?: string | Date | null) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
+
+function HopeLinkMissionHealth({ donors }: { donors: DonorRecord[] }) {
+  const metrics = useMemo(() => {
+    const total = donors.length;
+    const highRisk = donors.filter(donor => Number(donor.riskScore ?? 0) >= 70).length;
+    const followUp = donors.filter(donor => {
+      const status = normalizeEmail(donor.status);
+      return status.includes("follow") || status.includes("pending") || status.includes("issue");
+    }).length;
+    const optedOut = donors.filter(donor => normalizeEmail(donor.status).includes("opted")).length;
+    const registered = donors.filter(donor => normalizeEmail(donor.status) === "registered").length;
+    const staleContact = donors.filter(donor => {
+      if (!donor.lastContactedAt) return true;
+      const contactedAt = new Date(donor.lastContactedAt).getTime();
+      return Number.isFinite(contactedAt) && Date.now() - contactedAt > 21 * 24 * 60 * 60 * 1000;
+    }).length;
+
+    const churnRisk = total
+      ? clampScore((highRisk / total) * 48 + (followUp / total) * 34 + (staleContact / total) * 18)
+      : 0;
+    const missionHealth = total
+      ? clampScore(100 - churnRisk * 0.58 - (optedOut / total) * 22 + (registered / total) * 18)
+      : 0;
+
+    return {
+      total,
+      highRisk,
+      followUp,
+      optedOut,
+      registered,
+      staleContact,
+      churnRisk,
+      missionHealth,
+    };
+  }, [donors]);
+
+  return (
+    <Card className="mobile-panel border-emerald-200/70 bg-emerald-50/40">
+      <CardHeader>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-emerald-600" />
+              HopeLink AI Mission Health
+            </CardTitle>
+            <CardDescription>
+              Donor churn risk and mission health are estimated from donor status, follow-up timing, and registry completion signals.
+            </CardDescription>
+          </div>
+          <Badge className="w-fit bg-emerald-100 text-emerald-800">HopeLink only</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-lg border bg-background p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Donor churn risk
+            </div>
+            <span className="text-2xl font-bold">{metrics.churnRisk}%</span>
+          </div>
+          <Progress className="mt-3" value={metrics.churnRisk} />
+          <p className="mt-3 text-xs text-muted-foreground">
+            {metrics.highRisk} high-risk donors, {metrics.followUp} follow-ups, {metrics.staleContact} stale contacts.
+          </p>
+        </div>
+        <div className="rounded-lg border bg-background p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              Mission health score
+            </div>
+            <span className="text-2xl font-bold">{metrics.missionHealth}</span>
+          </div>
+          <Progress className="mt-3" value={metrics.missionHealth} />
+          <p className="mt-3 text-xs text-muted-foreground">
+            {metrics.registered} registered donors out of {metrics.total}; {metrics.optedOut} opted out.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const defaultClubData = useMemo(() => getDefaultOrgState(), []);
   const {
@@ -160,6 +249,7 @@ export default function Dashboard() {
     sessionViewedRoutes,
   } = useNotificationsContext();
   const members = clubData?.members ?? defaultClubData.members;
+  const donors = clubData?.donors ?? defaultClubData.donors;
   const events = clubData?.events ?? defaultClubData.events;
   const announcements = clubData?.announcements ?? defaultClubData.announcements;
   const socialPosts = clubData?.socialPosts ?? defaultClubData.socialPosts;
@@ -170,6 +260,7 @@ export default function Dashboard() {
   const transactions = clubData?.transactions ?? defaultClubData.transactions;
   const pointEntries = clubData?.pointEntries ?? defaultClubData.pointEntries;
   const selectedOrgId = getSelectedOrgId();
+  const isHopeLinkOrg = useIsHopeLinkOrg();
   const buildEntityHref = (notification: AppNotification | null, fallbackHref: string) =>
     notification ? buildNotificationHref(routeFromNotification(notification)) : fallbackHref;
   const memberNameByEmail = useMemo(() => {
@@ -1090,6 +1181,7 @@ export default function Dashboard() {
         userId={user?.email}
         mode={canEditContent ? "officer" : "member"}
       />
+      {isHopeLinkOrg ? <HopeLinkMissionHealth donors={donors} /> : null}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
         <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

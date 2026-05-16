@@ -260,6 +260,7 @@ const createForms = (): ClubForm[] => [
 
 const createOrgState = (group: DemoGroup): OrgState => ({
   members: createMembers(group.name),
+  donors: [],
   events: createEvents(group.name),
   announcements: createAnnouncements(group.name),
   socialPosts: createSocialPosts(),
@@ -328,6 +329,7 @@ const ORG_STATE_BY_GROUP_ID: Record<string, OrgState> = Object.fromEntries(
 const cloneOrgState = (state: OrgState): OrgState => ({
   ...state,
   members: state.members.map(member => ({ ...member })),
+  donors: (state.donors ?? []).map(donor => ({ ...donor })),
   events: state.events.map(event => ({ ...event, date: new Date(event.date) })),
   announcements: state.announcements.map(item => ({ ...item })),
   socialPosts: state.socialPosts.map(item => ({ ...item, comments: item.comments.map(c => ({ ...c })) })),

@@ -15,6 +15,7 @@ declare
   v_group_members jsonb;
   v_group_emails jsonb;
   v_point_entries jsonb;
+  v_donors jsonb;
 begin
   select id, coalesce(raw_user_meta_data->>'display_name', raw_user_meta_data->>'name', email)
   into v_owner_id, v_owner_name
@@ -248,12 +249,86 @@ begin
       limit 28
     ) as member;
 
+    select coalesce(jsonb_agg(
+      jsonb_build_object(
+        'id', format('%s-donor-%s', v_group.slug, lpad(donor.idx::text, 3, '0')),
+        'name', format('%s %s', donor_first_names[((donor.idx - 1) % array_length(donor_first_names, 1)) + 1], donor_last_names[((donor.idx + v_group.sort_order - 2) % array_length(donor_last_names, 1)) + 1]),
+        'email', format(
+          '%s.%s.%s@donor.hopelink.demo',
+          lower(donor_first_names[((donor.idx - 1) % array_length(donor_first_names, 1)) + 1]),
+          lower(donor_last_names[((donor.idx + v_group.sort_order - 2) % array_length(donor_last_names, 1)) + 1]),
+          lpad((v_group.sort_order * 1000 + donor.idx)::text, 4, '0')
+        ),
+        'phone', format('(555) %s-%s', lpad(((200 + donor.idx + v_group.sort_order) % 800)::text, 3, '0'), lpad(((1000 + donor.idx * 37 + v_group.sort_order) % 9000)::text, 4, '0')),
+        'ageRange', case donor.idx % 5 when 0 then '18-24' when 1 then '25-34' when 2 then '35-44' when 3 then '45-54' else '55+' end,
+        'registryPartner', case when donor.idx % 2 = 0 then 'DKMS' else 'NMDP' end,
+        'status', case
+          when donor.idx % 17 = 0 then 'Opted out'
+          when donor.idx % 13 = 0 then 'Follow-up needed'
+          when donor.idx % 11 = 0 then 'Kit issue'
+          when donor.idx % 7 = 0 then 'Swab kit pending'
+          else 'Registered'
+        end,
+        'sourceEvent', case
+          when donor.idx % 4 = 0 then format('%s registry drive', v_group.name)
+          when donor.idx % 4 = 1 then 'Campus tabling'
+          when donor.idx % 4 = 2 then 'Community health fair'
+          else 'Patient story night'
+        end,
+        'dateAdded', (now() - (((donor.idx % 75) + v_group.sort_order) * interval '1 day'))::text,
+        'lastContactedAt', case
+          when donor.idx % 9 = 0 then null
+          else (now() - (((donor.idx % 28) + 1) * interval '1 day'))::text
+        end,
+        'nextFollowUpAt', case
+          when donor.idx % 13 = 0 or donor.idx % 11 = 0 or donor.idx % 7 = 0
+            then (now() + (((donor.idx % 9) + 1) * interval '1 day'))::text
+          else null
+        end,
+        'riskScore', least(96, 18 + (donor.idx % 37) + case when donor.idx % 13 = 0 then 32 when donor.idx % 11 = 0 then 24 when donor.idx % 17 = 0 then 28 when donor.idx % 9 = 0 then 18 else 0 end),
+        'assignedVolunteer', v_group_emails->>(1 + (donor.idx % 8)),
+        'notes', case
+          when donor.idx % 13 = 0 then 'Needs a reminder about completing consent and mailing the swab kit.'
+          when donor.idx % 11 = 0 then 'Barcode label or kit status needs staff review.'
+          when donor.idx % 17 = 0 then 'Asked not to receive additional outreach.'
+          else 'Interested in registry updates and patient impact stories.'
+        end
+      )
+      order by donor.idx
+    ), '[]'::jsonb)
+    into v_donors
+    from generate_series(
+      1,
+      case
+        when v_group.sort_order = 1 then 150
+        when v_group.sort_order = 2 then 64
+        when v_group.sort_order = 3 then 72
+        when v_group.sort_order = 4 then 48
+        when v_group.sort_order = 5 then 36
+        else 40
+      end
+    ) as donor(idx)
+    cross join (
+      select
+        array[
+          'Abby','Adrian','Aimee','Akash','Alina','Amir','Anya','Bella','Brandon','Carmen',
+          'Celine','Chris','Dalia','Dev','Drew','Eden','Farah','Felix','Gia','Harper',
+          'Iris','Joon','Kira','Leah','Luca','Malik','Mina','Naomi','Nico','Rina'
+        ] as donor_first_names,
+        array[
+          'Arroyo','Baker','Bose','Castillo','Chandra','Coleman','Davis','Ellis','Foster','Gupta',
+          'Hassan','Hayes','Kapoor','Lam','Long','Mendez','Morgan','Nair','Owens','Park',
+          'Quinn','Ramirez','Sato','Scott','Silva','Stone','Vargas','Watts','Yoon','Zhao'
+        ] as donor_last_names
+    ) as donor_bank;
+
     insert into public.group_state (org_id, group_id, data, updated_at)
     values (
       v_org_id,
       v_group_id,
       jsonb_build_object(
         'members', v_group_members,
+        'donors', v_donors,
         'events', jsonb_build_array(
           jsonb_build_object(
             'id', format('%s-weekly-sync', v_group.slug),

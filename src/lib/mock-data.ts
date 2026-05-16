@@ -16,6 +16,29 @@ export type Member = {
   dataAiHint?: string;
 };
 
+export type DonorRecord = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  ageRange: '18-24' | '25-34' | '35-44' | '45-54' | '55+' | string;
+  registryPartner: 'DKMS' | 'NMDP' | string;
+  status:
+    | 'Registered'
+    | 'Swab kit pending'
+    | 'Follow-up needed'
+    | 'Kit issue'
+    | 'Opted out'
+    | string;
+  sourceEvent?: string;
+  dateAdded: string;
+  lastContactedAt?: string | null;
+  nextFollowUpAt?: string | null;
+  riskScore?: number;
+  assignedVolunteer?: string;
+  notes?: string;
+};
+
 export type ViewReceipt = {
   email: string;
   viewedAt: string;

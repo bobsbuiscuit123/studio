@@ -67,4 +67,26 @@ export function useIsHopeLinkOrg() {
   return enabled;
 }
 
+export const isHopeLinkGroupData = (data: unknown) => {
+  if (!data || typeof data !== 'object') return false;
+  const record = data as Record<string, unknown>;
+  if (Array.isArray(record.donors) && record.donors.length > 0) return true;
+
+  const members = Array.isArray(record.members) ? record.members : [];
+  const hasHopeLinkMembers = members.some(member => {
+    if (!member || typeof member !== 'object') return false;
+    const email = String((member as { email?: unknown }).email ?? '').toLowerCase();
+    return email.includes('@hopelink.demo') || email.includes('.hopelink.demo');
+  });
+  if (hasHopeLinkMembers) return true;
+
+  const events = Array.isArray(record.events) ? record.events : [];
+  return events.some(event => {
+    if (!event || typeof event !== 'object') return false;
+    const title = String((event as { title?: unknown }).title ?? '').toLowerCase();
+    const description = String((event as { description?: unknown }).description ?? '').toLowerCase();
+    return title.includes('hopelink') || description.includes('dkms') || description.includes('nmdp');
+  });
+};
+
 export const HOPELINK_DONORS_HREF = '/donors';

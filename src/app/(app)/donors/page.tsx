@@ -47,7 +47,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUserRole, useDonors, useMembers } from "@/lib/data-hooks";
-import { useIsHopeLinkOrg } from "@/lib/hopelink-features";
+import { isHopeLinkGroupData, useIsHopeLinkOrg } from "@/lib/hopelink-features";
 import type { DonorRecord } from "@/lib/mock-data";
 
 const donorStatuses = [
@@ -132,6 +132,7 @@ export default function DonorsPage() {
   const [form, setForm] = useState<NewDonorForm>(emptyDonorForm);
 
   const safeDonors = useMemo(() => (Array.isArray(donors) ? donors : []), [donors]);
+  const isHopeLinkData = safeDonors.length > 0 || isHopeLinkGroupData({ donors: safeDonors, members });
   const memberOptions = useMemo(
     () => members.filter(member => member.email).slice(0, 80),
     [members]
@@ -236,7 +237,7 @@ export default function DonorsPage() {
     toast({ title: "Donor added", description: "HopeLink donor tracking has been updated." });
   };
 
-  if (!isHopeLinkOrg) {
+  if (!isHopeLinkOrg && !isHopeLinkData) {
     return (
       <div className="tab-page-shell">
         <div className="tab-page-content">

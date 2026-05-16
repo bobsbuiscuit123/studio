@@ -19,10 +19,10 @@ import {
   HeartPulse,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { NotificationKey } from '@/lib/data-hooks';
+import { useClubData, type NotificationKey } from '@/lib/data-hooks';
 import { useEffect, useMemo, useState } from 'react';
 import { getSelectedGroupId, syncSelectionCookies } from '@/lib/selection';
-import { HOPELINK_DONORS_HREF, useIsHopeLinkOrg } from '@/lib/hopelink-features';
+import { HOPELINK_DONORS_HREF, isHopeLinkGroupData, useIsHopeLinkOrg } from '@/lib/hopelink-features';
 
 type NotificationMap = {
   announcements: boolean;
@@ -66,6 +66,7 @@ export function AppSidebarNav({
   const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
   const isHopeLinkOrg = useIsHopeLinkOrg();
+  const { data: clubData } = useClubData();
 
   useEffect(() => {
     setIsClient(true);
@@ -77,7 +78,9 @@ export function AppSidebarNav({
   const navItems = useMemo(() => {
     const filteredNavItems = allNavItems.filter(item => {
       if (!groupId) return false;
-      if (item.href === HOPELINK_DONORS_HREF) return isHopeLinkOrg;
+      if (item.href === HOPELINK_DONORS_HREF) {
+        return isHopeLinkOrg || isHopeLinkGroupData(clubData);
+      }
       return true;
     });
 
@@ -87,7 +90,7 @@ export function AppSidebarNav({
         const order = ['Assistant', 'Dashboard', 'Announcements', 'Messages', 'Calendar', 'Forms', 'Email', 'Attendance', 'Points', 'Donors', 'Gallery', 'Members', 'Finances'];
         return order.indexOf(a.label) - order.indexOf(b.label);
       });
-  }, [groupId, isHopeLinkOrg, role]);
+  }, [clubData, groupId, isHopeLinkOrg, role]);
 
   return (
     <>

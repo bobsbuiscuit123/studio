@@ -10,8 +10,8 @@ import { AIChatModal } from "@/components/assistant/ai-chat-modal";
 import { useAssistantChat } from "@/components/assistant/use-assistant-chat";
 import { useNotificationsContext } from "@/components/notifications-provider";
 import { allNavItems } from "@/components/app-sidebar-nav";
-import type { NotificationKey } from "@/lib/data-hooks";
-import { HOPELINK_DONORS_HREF, useIsHopeLinkOrg } from "@/lib/hopelink-features";
+import { useClubData, type NotificationKey } from "@/lib/data-hooks";
+import { HOPELINK_DONORS_HREF, isHopeLinkGroupData, useIsHopeLinkOrg } from "@/lib/hopelink-features";
 import { syncSelectionCookies } from "@/lib/selection";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,7 @@ export function AppMobileTabBar() {
   const pathname = usePathname();
   const { unread, markTabViewed, role } = useNotificationsContext();
   const isHopeLinkOrg = useIsHopeLinkOrg();
+  const { data: clubData } = useClubData();
   const isDemoApp = pathname === "/demo/app" || pathname.startsWith("/demo/app/");
   const isMessagesListRoute = pathname === "/messages" || pathname === "/demo/app/messages";
   const isMessageThreadRoute =
@@ -62,7 +63,7 @@ export function AppMobileTabBar() {
 
   const allowedItems = allNavItems.filter(item => {
     if (!item.roles.includes(role || "Member")) return false;
-    if (item.href === HOPELINK_DONORS_HREF) return isHopeLinkOrg;
+    if (item.href === HOPELINK_DONORS_HREF) return isHopeLinkOrg || isHopeLinkGroupData(clubData);
     return true;
   });
   const orderedItems: MobileNavItem[] = mobileNavOrder

@@ -77,7 +77,7 @@ import { canEditGroupContent } from "@/lib/group-permissions";
 import { getSelectedOrgId } from "@/lib/selection";
 import { getDefaultOrgState } from "@/lib/org-state";
 import { getRoleFromMembers } from "@/lib/notification-state";
-import { useIsHopeLinkOrg } from "@/lib/hopelink-features";
+import { isHopeLinkGroupData, useIsHopeLinkOrg } from "@/lib/hopelink-features";
 import type { DonorRecord } from "@/lib/mock-data";
 
 type ActivityItem = {
@@ -261,6 +261,7 @@ export default function Dashboard() {
   const pointEntries = clubData?.pointEntries ?? defaultClubData.pointEntries;
   const selectedOrgId = getSelectedOrgId();
   const isHopeLinkOrg = useIsHopeLinkOrg();
+  const showHopeLinkFeatures = isHopeLinkOrg || isHopeLinkGroupData(clubData);
   const buildEntityHref = (notification: AppNotification | null, fallbackHref: string) =>
     notification ? buildNotificationHref(routeFromNotification(notification)) : fallbackHref;
   const memberNameByEmail = useMemo(() => {
@@ -1181,7 +1182,7 @@ export default function Dashboard() {
         userId={user?.email}
         mode={canEditContent ? "officer" : "member"}
       />
-      {isHopeLinkOrg ? <HopeLinkMissionHealth donors={donors} /> : null}
+      {showHopeLinkFeatures ? <HopeLinkMissionHealth donors={donors} /> : null}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-8 lg:grid-cols-4">
         <Card className="mobile-panel">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

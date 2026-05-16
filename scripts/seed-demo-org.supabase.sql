@@ -488,7 +488,7 @@ begin
   raise notice 'Created Caspo Demo High School. Org id: %, join code: %, owner: %', v_org_id, v_join_code, v_owner_email;
 
   -- HopeLink nonprofit demo
-  v_hopelink_join_code := 'HL' || upper(substr(md5(random()::text || clock_timestamp()::text), 1, 6));
+  v_hopelink_join_code := 'HPLINK';
 
   insert into public.orgs (
     name,

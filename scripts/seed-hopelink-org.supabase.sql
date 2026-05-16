@@ -10,6 +10,10 @@ declare
   v_org_id uuid;
   v_group_id uuid;
   v_join_code text := 'HPLINK';
+  v_product_id text := 'basic_org';
+  v_monthly_limit integer := 6000;
+  v_period_start timestamptz := now();
+  v_period_end timestamptz := now() + interval '30 days';
   v_member_pool jsonb;
   v_group record;
   v_group_members jsonb;
@@ -33,6 +37,21 @@ begin
     set email = excluded.email,
         display_name = coalesce(public.profiles.display_name, excluded.display_name);
 
+  -- Keep this seeded demo AI-enabled. The billing model allows only one paid
+  -- org assignment per owner, so move that assignment to HopeLink.
+  update public.orgs
+  set
+    subscription_product_id = null,
+    subscription_status = 'free',
+    monthly_token_limit = 0,
+    tokens_used_this_period = 0,
+    bonus_tokens_this_period = 0,
+    ai_enabled = false,
+    updated_at = now()
+  where owner_id = v_owner_id
+    and join_code <> v_join_code
+    and subscription_product_id is not null;
+
   insert into public.orgs (
     name,
     join_code,
@@ -42,6 +61,7 @@ begin
     logo_url,
     created_by,
     owner_id,
+    subscription_product_id,
     subscription_status,
     monthly_token_limit,
     tokens_used_this_period,
@@ -63,13 +83,14 @@ begin
     'https://placehold.co/512x512/0f766e/ffffff?text=HopeLink',
     v_owner_id,
     v_owner_id,
-    'free',
+    v_product_id,
+    'active',
+    v_monthly_limit,
     0,
+    v_period_start,
+    v_period_end,
     0,
-    now(),
-    now() + interval '30 days',
-    0,
-    false,
+    true,
     300,
     4,
     24000,
@@ -83,11 +104,33 @@ begin
         logo_url = excluded.logo_url,
         created_by = excluded.created_by,
         owner_id = excluded.owner_id,
+        subscription_product_id = excluded.subscription_product_id,
+        subscription_status = excluded.subscription_status,
+        monthly_token_limit = excluded.monthly_token_limit,
+        tokens_used_this_period = excluded.tokens_used_this_period,
+        current_period_start = excluded.current_period_start,
+        current_period_end = excluded.current_period_end,
+        bonus_tokens_this_period = excluded.bonus_tokens_this_period,
+        ai_enabled = excluded.ai_enabled,
         usage_estimate_members = excluded.usage_estimate_members,
         usage_estimate_requests_per_member = excluded.usage_estimate_requests_per_member,
         usage_estimate_monthly_tokens = excluded.usage_estimate_monthly_tokens,
         updated_at = now()
   returning id into v_org_id;
+
+  update public.profiles
+  set
+    subscribed_org_id = v_org_id,
+    active_subscription_product_id = v_product_id,
+    subscription_status = 'active',
+    subscription_current_period_start = v_period_start,
+    subscription_current_period_end = v_period_end,
+    subscription_will_renew = true,
+    subscription_billing_issue_detected_at = null,
+    subscription_grace_period_expires_at = null,
+    subscription_updated_at = now(),
+    updated_at = now()
+  where id = v_owner_id;
 
   insert into public.memberships (user_id, org_id, role)
   values (v_owner_id, v_org_id, 'owner')
@@ -503,5 +546,5 @@ begin
           updated_at = excluded.updated_at;
   end loop;
 
-  raise notice 'Seeded HopeLink. Org id: %, org join code: %, group join codes: HL00-HL05, owner: %', v_org_id, v_join_code, v_owner_email;
+  raise notice 'Seeded HopeLink. Org id: %, org join code: %, group join codes: HL00-HL05, owner: %, AI plan: %, monthly tokens: %', v_org_id, v_join_code, v_owner_email, v_product_id, v_monthly_limit;
 end $$;

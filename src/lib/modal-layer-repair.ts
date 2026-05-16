@@ -16,7 +16,7 @@ function isVisibleElement(element: Element | null): element is HTMLElement {
   }
 
   const style = window.getComputedStyle(element);
-  if (style.display === "none" || style.visibility === "hidden" || style.pointerEvents === "none") {
+  if (style.display === "none" || style.visibility === "hidden") {
     return false;
   }
 

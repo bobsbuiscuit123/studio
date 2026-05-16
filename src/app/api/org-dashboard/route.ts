@@ -33,6 +33,15 @@ const DASHBOARD_STATE_SELECT = [
   'socialPosts:data->socialPosts',
 ].join(', ');
 
+type DashboardStateRow = Record<string, unknown> & {
+  group_id?: unknown;
+};
+
+const toDashboardStateRows = (rows: unknown): DashboardStateRow[] =>
+  Array.isArray(rows)
+    ? rows.filter((row): row is DashboardStateRow => row !== null && typeof row === 'object')
+    : [];
+
 const buildLiteDashboardState = (row: Record<string, unknown>) =>
   stripHeavyMediaFromOrgState({
     members: Array.isArray(row.members) ? row.members : [],
@@ -57,7 +66,7 @@ const csvAttachmentResponse = (csv: string, filename: string) =>
   });
 
 const pdfAttachmentResponse = (pdf: Uint8Array, filename: string) =>
-  new Response(pdf, {
+  new Response(new Uint8Array(pdf), {
     headers: {
       'Cache-Control': 'no-store',
       'Content-Disposition': `attachment; filename="${filename}"`,
@@ -199,9 +208,10 @@ export async function GET(request: Request) {
   }
 
   const stateByGroupId = new Map<string, Record<string, unknown>>();
-  (stateRows ?? []).forEach(row => {
-    if (typeof row.group_id === 'string') {
-      stateByGroupId.set(row.group_id, buildLiteDashboardState(row as Record<string, unknown>));
+  toDashboardStateRows(stateRows).forEach(row => {
+    const groupId = row.group_id;
+    if (typeof groupId === 'string') {
+      stateByGroupId.set(groupId, buildLiteDashboardState(row));
     }
   });
 

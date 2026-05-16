@@ -152,21 +152,35 @@ begin
         (6, 'Fundraising and Grants', 'fundraising', 'Grant writers, donor relations volunteers, and sponsors who fund swab kits, outreach materials, and patient-family support events.', 'HL05', 265, 36, 5, 'Rafael Ortiz', 'rafael.ortiz@hopelink.demo', '15803d', 'fundraising-grants', '$18,000 in drive sponsorships and patient support funds', 'HopeLink Office')
     ) as g(sort_order, name, type, description, join_code, member_start, member_count, officer_count, admin_name, admin_email, accent, slug, target, primary_location)
   loop
-    insert into public.groups (org_id, name, type, description, join_code, created_by)
-    values (
-      v_org_id,
-      v_group.name,
-      v_group.type,
-      v_group.description,
-      v_group.join_code,
-      v_owner_id
-    )
-    on conflict (org_id, join_code) do update
-      set name = excluded.name,
-          type = excluded.type,
-          description = excluded.description,
-          created_by = excluded.created_by
-    returning id into v_group_id;
+    v_group_id := null;
+
+    select id
+    into v_group_id
+    from public.groups
+    where org_id = v_org_id
+      and join_code = v_group.join_code
+    order by created_at asc
+    limit 1;
+
+    if v_group_id is null then
+      insert into public.groups (org_id, name, type, description, join_code, created_by)
+      values (
+        v_org_id,
+        v_group.name,
+        v_group.type,
+        v_group.description,
+        v_group.join_code,
+        v_owner_id
+      )
+      returning id into v_group_id;
+    else
+      update public.groups
+      set name = v_group.name,
+          type = v_group.type,
+          description = v_group.description,
+          created_by = v_owner_id
+      where id = v_group_id;
+    end if;
 
     insert into public.group_memberships (org_id, group_id, user_id, role)
     values (v_org_id, v_group_id, v_owner_id, 'admin')

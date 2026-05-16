@@ -1,9 +1,9 @@
 -- Paste into Supabase SQL Editor to make the HopeLink org AI-enabled.
--- This moves this owner's single paid-org assignment to HopeLink.
+-- This targets the HopeLink org by join code and moves that owner's single
+-- paid-org assignment to HopeLink.
 
 do $$
 declare
-  v_owner_email text := 'pratheek.mukkavilli@gmail.com';
   v_org_join_code text := 'HPLINK';
   v_product_id text := 'basic_org';
   v_monthly_limit integer := 6000;
@@ -12,26 +12,19 @@ declare
   v_period_start timestamptz := now();
   v_period_end timestamptz := now() + interval '30 days';
 begin
-  select id
-  into v_owner_id
-  from auth.users
-  where lower(email) = lower(v_owner_email)
-  limit 1;
-
-  if v_owner_id is null then
-    raise exception 'No Supabase auth user found for %', v_owner_email;
-  end if;
-
-  select id
-  into v_org_id
+  select id, owner_id
+  into v_org_id, v_owner_id
   from public.orgs
-  where owner_id = v_owner_id
-    and join_code = v_org_join_code
+  where join_code = v_org_join_code
   order by created_at desc
   limit 1;
 
   if v_org_id is null then
-    raise exception 'No HopeLink org with join code % found for %', v_org_join_code, v_owner_email;
+    raise exception 'No HopeLink org with join code % found', v_org_join_code;
+  end if;
+
+  if v_owner_id is null then
+    raise exception 'HopeLink org % has no owner_id set', v_org_id;
   end if;
 
   update public.orgs

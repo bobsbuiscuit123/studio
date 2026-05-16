@@ -105,12 +105,14 @@ export default function OrgsPage() {
   });
   const [signOutSubmitting, setSignOutSubmitting] = useState(false);
 
-  const loadStatuses = useCallback(async (orgsToLoad: OrgSummary[]) => {
-    const freshStatusIds = new Set<string>();
+  const loadStatuses = useCallback(async (orgsToLoad: OrgSummary[], options: { forceRefresh?: boolean } = {}) => {
     const cachedStatuses = orgsToLoad.reduce<Record<string, OrgSubscriptionStatus>>((acc, org) => {
+      if (options.forceRefresh) {
+        return acc;
+      }
+
       const freshStatus = readCachedOrgStatus(org.id, ORG_STATUS_CACHE_TTL_MS);
       if (freshStatus) {
-        freshStatusIds.add(org.id);
         acc[org.id] = freshStatus;
         return acc;
       }
@@ -126,15 +128,16 @@ export default function OrgsPage() {
       setStatusByOrg(prev => ({ ...prev, ...cachedStatuses }));
     }
 
-    const orgsNeedingStatus = orgsToLoad.filter(org => !freshStatusIds.has(org.id));
+    const orgsNeedingStatus = orgsToLoad;
     if (orgsNeedingStatus.length === 0) {
       return;
     }
 
     const statusEntries = await Promise.all(
       orgsNeedingStatus.map(async (org) => {
+        const statusUrl = `/api/orgs/${org.id}/status?refresh=1`;
         const result = await safeFetchJson<{ ok: true; data: OrgSubscriptionStatus }>(
-          `/api/orgs/${org.id}/status`,
+          statusUrl,
           {
             method: 'GET',
             timeoutMs: ORG_STATUS_REQUEST_TIMEOUT_MS,
@@ -168,7 +171,7 @@ export default function OrgsPage() {
     if (fallbackOrgList) {
       setOrgs(fallbackOrgList);
       setLoading(false);
-      void loadStatuses(fallbackOrgList);
+      void loadStatuses(fallbackOrgList, { forceRefresh: options.forceRefresh });
       if (freshOrgList && freshListHasSelectedOrg && !options.forceRefresh) {
         return;
       }
@@ -206,7 +209,7 @@ export default function OrgsPage() {
       setStatusByOrg({});
       return;
     }
-    void loadStatuses(orgList);
+    void loadStatuses(orgList, { forceRefresh: options.forceRefresh });
   }, [loadStatuses, router, toast]);
 
   useEffect(() => {

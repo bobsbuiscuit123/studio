@@ -734,8 +734,9 @@ export default function ClubsPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Logo className="h-5 w-5 text-primary" />
             </div>
-            <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-1.5">
               <h1 className="text-lg font-semibold leading-tight">CASPO</h1>
+              <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
             </div>
           </div>
           <Button

@@ -260,7 +260,10 @@ export default function OrgsPage() {
               <Logo className="h-6 w-6 text-emerald-700" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">CASPO</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">CASPO</p>
+                <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
+              </div>
               <h1 className="text-3xl font-semibold text-foreground">Your organizations</h1>
             </div>
           </div>

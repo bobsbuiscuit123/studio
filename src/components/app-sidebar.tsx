@@ -21,6 +21,7 @@ export function AppSidebar() {
           <Link href={homeHref} className="flex items-center gap-2 font-semibold">
             <Logo className="h-6 w-6" />
             <span className="">{appName}</span>
+            <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
           </Link>
         </div>
         <div className="flex-1 overflow-y-auto bg-muted/40">

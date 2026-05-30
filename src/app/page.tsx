@@ -452,7 +452,10 @@ export default function HomePage() {
                 <CardHeader className="items-center px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
                     <div className="mb-0 flex items-center justify-center gap-4">
                         <Logo className="h-10 w-10 text-primary" />
-                        <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
+                        <div className="flex items-baseline gap-2">
+                            <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
+                            <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
+                        </div>
                     </div>
                 </CardHeader>
 

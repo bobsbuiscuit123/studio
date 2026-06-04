@@ -101,33 +101,13 @@ export async function GET(request: Request) {
     );
   }
 
-  const groupIds = Array.from(
-    new Set(
-      (membershipRows ?? [])
-        .map(row => row.group_id)
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-    )
-  );
-
   const isOrgOwner = orgMembership.role === 'owner' || orgRow?.owner_id === userId;
 
-  if (!isOrgOwner && groupIds.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      data: {
-        groups: [],
-      },
-    });
-  }
-
-  const groupQuery = admin
+  const { data: groupRows, error: groupError } = await admin
     .from('groups')
-    .select('id, name, description, join_code')
+    .select('id, name, description')
     .eq('org_id', parsed.data.orgId)
     .order('created_at', { ascending: true });
-  const { data: groupRows, error: groupError } = isOrgOwner
-    ? await groupQuery
-    : await groupQuery.in('id', groupIds);
 
   if (groupError) {
     return NextResponse.json(
@@ -159,15 +139,30 @@ export async function GET(request: Request) {
 
   const { data: groupStateRows, error: groupStateError } = visibleGroupIds.length > 0
     ? await admin
-        .from('group_state')
-        .select('group_id, logo:data->>logo')
-        .eq('org_id', parsed.data.orgId)
-        .in('group_id', visibleGroupIds)
+      .from('group_state')
+      .select('group_id, logo:data->>logo')
+      .eq('org_id', parsed.data.orgId)
+      .in('group_id', visibleGroupIds)
     : { data: [], error: null };
 
   if (groupStateError) {
     return NextResponse.json(
       err({ code: 'NETWORK_HTTP_ERROR', message: groupStateError.message, source: 'network' }),
+      { status: 500 }
+    );
+  }
+
+  const { data: allMembershipRows, error: allMembershipError } = visibleGroupIds.length > 0
+    ? await admin
+      .from('group_memberships')
+      .select('group_id')
+      .eq('org_id', parsed.data.orgId)
+      .in('group_id', visibleGroupIds)
+    : { data: [], error: null };
+
+  if (allMembershipError) {
+    return NextResponse.json(
+      err({ code: 'NETWORK_HTTP_ERROR', message: allMembershipError.message, source: 'network' }),
       { status: 500 }
     );
   }
@@ -194,10 +189,18 @@ export async function GET(request: Request) {
     }
   });
 
+  const memberCountByGroupId = new Map<string, number>();
+  (allMembershipRows ?? []).forEach(row => {
+    if (typeof row.group_id === 'string') {
+      memberCountByGroupId.set(row.group_id, (memberCountByGroupId.get(row.group_id) ?? 0) + 1);
+    }
+  });
+
   const groups = (groupRows ?? []).map(group => ({
     ...group,
     logo: logoByGroupId.get(group.id) ?? null,
     role: roleByGroupId.get(group.id) ?? null,
+    memberCount: memberCountByGroupId.get(group.id) ?? 0,
   }));
 
   return NextResponse.json({

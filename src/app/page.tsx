@@ -63,7 +63,7 @@ const loginFormSchema = z.object({
 
 const AUTH_PRIME_REQUEST_TIMEOUT_MS = 8_000;
 const AUTH_PRIME_REQUEST_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_500 };
-const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
+const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}:discoverable-v1`;
 
 function LegalNotice({
   onOpenTerms,

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, BarChart3, Copy, CreditCard, Pencil, PlusCircle, Settings, Trash2, UserPlus } from "lucide-react";
+import { ArrowRight, BarChart3, Copy, CreditCard, Info, Pencil, PlusCircle, Settings, Trash2, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -37,7 +37,6 @@ import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { readLocalViewCacheRecord, removeLocalViewCache, writeLocalViewCache } from "@/lib/local-view-cache";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import type { OrgSettings } from "@/lib/org-settings";
-import { generateRandomCode } from "@/lib/random-code";
 import { compressImageFile } from "@/lib/image-resizer";
 import { tryDeleteStoredImage, uploadImageToStorage } from "@/lib/storage-images";
 
@@ -45,9 +44,9 @@ type Group = {
   id: string;
   name: string;
   description?: string | null;
-  join_code?: string | null;
   logo?: string | null;
   role?: string | null;
+  memberCount?: number | null;
 };
 
 type GroupsResponse = {
@@ -62,7 +61,7 @@ const GROUPS_STALE_CACHE_TTL_MS = 24 * 60 * 60_000;
 const GROUPS_REQUEST_TIMEOUT_MS = 8_000;
 const BACKGROUND_LOOKUP_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_200 };
 const groupListCache = new Map<string, { groups: Group[]; loadedAt: number }>();
-const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}`;
+const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}:discoverable-v1`;
 const invalidateGroupsCache = (orgId: string) => {
   groupListCache.delete(orgId);
   removeLocalViewCache(groupsCacheKey(orgId));
@@ -112,7 +111,6 @@ export default function ClubsPage() {
   const [loading, setLoading] = useState(
     () => (selectedOrgId ? !getCachedGroups(selectedOrgId, GROUPS_STALE_CACHE_TTL_MS) : true)
   );
-  const [joinCode, setJoinCode] = useState("");
   const [groupName, setGroupName] = useState("");
   const [groupDescription, setGroupDescription] = useState("");
   const [groupLogo, setGroupLogo] = useState<string | null>(null);
@@ -120,7 +118,8 @@ export default function ClubsPage() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [createGroupSubmitting, setCreateGroupSubmitting] = useState(false);
-  const [createdGroupPrompt, setCreatedGroupPrompt] = useState<{ groupId: string; joinCode: string } | null>(null);
+  const [viewingGroup, setViewingGroup] = useState<Group | null>(null);
+  const [joiningGroupId, setJoiningGroupId] = useState<string | null>(null);
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupDescription, setEditGroupDescription] = useState("");
@@ -332,20 +331,18 @@ export default function ClubsPage() {
     };
   }, [router, selectedOrgId, supabase, toast]);
 
-  const handleJoinClub = async () => {
+  const handleJoinGroup = async (groupId: string) => {
     if (!selectedOrgId) return;
-    if (!joinCode.trim()) {
-      toast({ title: "Missing code", description: "Enter a group join code.", variant: "destructive" });
-      return;
-    }
+    setJoiningGroupId(groupId);
     const response = await safeFetchJson<{ ok: boolean; groupId?: string; error?: { message?: string } }>(
       "/api/groups/join",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orgId: selectedOrgId, joinCode: joinCode.trim().toUpperCase() }),
+        body: JSON.stringify({ orgId: selectedOrgId, groupId }),
       }
     );
+    setJoiningGroupId(null);
     if (!response.ok || !response.data?.ok || !response.data.groupId) {
       const message =
         !response.ok
@@ -354,8 +351,28 @@ export default function ClubsPage() {
       toast({ title: "Join failed", description: message, variant: "destructive" });
       return;
     }
+    const joinedGroupId = response.data.groupId;
     invalidateGroupsCache(selectedOrgId);
-    openDashboardForGroup(response.data.groupId);
+    setGroups(currentGroups =>
+      currentGroups.map(group =>
+        group.id === joinedGroupId
+          ? {
+              ...group,
+              role: group.role ?? "member",
+              memberCount: (group.memberCount ?? 0) + (group.role ? 0 : 1),
+            }
+          : group
+      )
+    );
+    setViewingGroup(currentGroup => {
+      if (!currentGroup || currentGroup.id !== joinedGroupId) return currentGroup;
+      return {
+        ...currentGroup,
+        role: currentGroup.role ?? "member",
+        memberCount: (currentGroup.memberCount ?? 0) + (currentGroup.role ? 0 : 1),
+      };
+    });
+    toast({ title: "Joined group", description: "You can now open this group dashboard." });
   };
 
   const handleCreateClub = async () => {
@@ -371,7 +388,6 @@ export default function ClubsPage() {
     }
     createGroupSubmitLockRef.current = true;
     setCreateGroupSubmitting(true);
-    const joinCode = generateRandomCode(4);
     const plannedGroupId = crypto.randomUUID();
     let uploadedLogoUrl: string | null = null;
     try {
@@ -394,7 +410,7 @@ export default function ClubsPage() {
         uploadedLogoUrl = uploaded.url;
       }
       const nextGroupLogo = uploadedLogoUrl || groupLogo || null;
-      const response = await safeFetchJson<{ ok: boolean; groupId?: string; joinCode?: string; error?: { message?: string } }>(
+      const response = await safeFetchJson<{ ok: boolean; groupId?: string; error?: { message?: string } }>(
         "/api/groups/create",
         {
           method: "POST",
@@ -404,7 +420,6 @@ export default function ClubsPage() {
             orgId: selectedOrgId,
             name: nextGroupName,
             description: nextGroupDescription,
-            joinCode,
             logo: nextGroupLogo || "",
           }),
         }
@@ -429,9 +444,9 @@ export default function ClubsPage() {
         id: response.data.groupId,
         name: nextGroupName,
         description: nextGroupDescription || null,
-        join_code: response.data.joinCode ?? joinCode,
         logo: nextGroupLogo,
         role: "admin",
+        memberCount: 1,
       };
       const nextGroups = [...groups, createdGroup];
       persistGroupsCache(selectedOrgId, nextGroups);
@@ -442,13 +457,6 @@ export default function ClubsPage() {
       revokeObjectPreview(groupLogo);
       setGroupLogo(null);
       setGroupLogoFile(null);
-      if (response.data.joinCode) {
-        setCreatedGroupPrompt({
-          groupId: response.data.groupId,
-          joinCode: response.data.joinCode,
-        });
-        return;
-      }
       openDashboardForGroup(response.data.groupId);
     } catch (error) {
       if (uploadedLogoUrl) {
@@ -485,12 +493,6 @@ export default function ClubsPage() {
   const handleSaveProfile = async (updatedUser: Partial<{ name: string; avatar?: string }>) => {
     if (!user) return;
     await saveUser((currentUser) => ({ ...(currentUser ?? user), ...updatedUser }));
-  };
-
-  const handleCopyCreatedGroupJoinCode = async () => {
-    if (!createdGroupPrompt?.joinCode) return;
-    await navigator.clipboard.writeText(createdGroupPrompt.joinCode);
-    toast({ title: "Copied", description: "Join code copied to clipboard." });
   };
 
   const handleOpenEditGroup = (group: Group) => {
@@ -737,6 +739,73 @@ export default function ClubsPage() {
     ...group,
     logo: group.logo || getPlaceholderImageUrl({ label: group.name.charAt(0) }),
   }));
+  const joinedGroups = groupsWithLogos.filter(group => Boolean(group.role));
+  const availableGroups = groupsWithLogos.filter(group => !group.role);
+
+  const renderGroupCard = (group: (typeof groupsWithLogos)[number]) => {
+    const isJoined = Boolean(group.role);
+    const memberCount = group.memberCount ?? 0;
+
+    return (
+      <Card key={group.id} className="relative rounded-2xl shadow-sm">
+        {group.role === "admin" ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-3 top-3 z-10 h-8 w-8"
+            onClick={() => handleOpenEditGroup(group)}
+          >
+            <Pencil className="h-4 w-4" />
+            <span className="sr-only">Edit group</span>
+          </Button>
+        ) : null}
+        <CardHeader className="flex-row items-center gap-4 p-4">
+          <Image
+            src={group.logo}
+            alt={`${group.name} logo`}
+            width={56}
+            height={56}
+            unoptimized
+            className="rounded-2xl aspect-square object-cover"
+          />
+          <div className="min-w-0">
+            <CardTitle className="truncate pr-8 text-base">{group.name}</CardTitle>
+            <CardDescription className="mt-1 flex items-center gap-1.5 text-xs">
+              <Users className="h-3.5 w-3.5" />
+              <span>{memberCount.toLocaleString()} {memberCount === 1 ? "member" : "members"}</span>
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 pt-0">
+          <p className="line-clamp-2 min-h-[2.5rem] text-sm text-muted-foreground">
+            {group.description || "No description yet."}
+          </p>
+        </CardContent>
+        <CardFooter className="flex gap-2 p-4 pt-0">
+          <Button type="button" variant="outline" className="flex-1" onClick={() => setViewingGroup(group)}>
+            <Info className="mr-2 h-4 w-4" />
+            Profile
+          </Button>
+          {isJoined ? (
+            <Button type="button" className="flex-1" onClick={() => handleEnterClub(group.id)}>
+              Open <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={() => void handleJoinGroup(group.id)}
+              disabled={joiningGroupId === group.id}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              {joiningGroupId === group.id ? "Joining..." : "Join"}
+            </Button>
+          )}
+        </CardFooter>
+      </Card>
+    );
+  };
 
   return (
     <div className="viewport-page bg-background">
@@ -879,87 +948,56 @@ export default function ClubsPage() {
             </Button>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button variant="outline" onClick={handleBackToOrgs} className="w-full">
-              Switch Org
-            </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="secondary" className="w-full">
-                  <UserPlus className="mr-2" /> Join Group
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Join a Group</DialogTitle>
-                  <DialogDescription>
-                    Enter the 4-character join code provided by the group admin.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-2 py-2">
-                  <Label htmlFor="group-join-code">Join Code</Label>
-                  <Input
-                    id="group-join-code"
-                    value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder="ABCD"
-                    maxLength={8}
-                  />
-                </div>
-                <DialogFooter>
-                  <Button onClick={handleJoinClub}>Join Group</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+          <Button variant="outline" onClick={handleBackToOrgs} className="w-full">
+            Switch Org
+          </Button>
 
         </div>
 
         {loading ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
-            <p className="text-muted-foreground">Loading clubs...</p>
+            <p className="text-muted-foreground">Loading groups...</p>
           </div>
         ) : groupsWithLogos.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {groupsWithLogos.map((group) => (
-               <Card key={group.id} className="relative rounded-2xl shadow-sm">
-                 {group.role === "admin" && (
-                   <Button
-                     type="button"
-                     variant="ghost"
-                     size="icon"
-                     className="absolute right-3 top-3 z-10 h-8 w-8"
-                     onClick={() => handleOpenEditGroup(group)}
-                   >
-                     <Pencil className="h-4 w-4" />
-                     <span className="sr-only">Edit group</span>
-                   </Button>
-                 )}
-                 <CardHeader className="flex-row items-center gap-4 p-4">
-                   <Image
-                     src={group.logo}
-                     alt={`${group.name} logo`}
-                     width={56}
-                     height={56}
-                     className="rounded-2xl aspect-square object-cover"
-                   />
-                   <div className="min-w-0">
-                     <CardTitle className="truncate text-base">{group.name}</CardTitle>
-                     <CardDescription className="line-clamp-2 text-sm">Manage this club</CardDescription>
-                   </div>
-                 </CardHeader>
-                <CardFooter className="p-4 pt-0">
-                  <Button type="button" className="w-full" onClick={() => handleEnterClub(group.id)}>
-                    Open Dashboard <ArrowRight className="ml-2" />
-                  </Button>
-                </CardFooter>
-              </Card>
-            ))}
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">Your Groups</h3>
+                <span className="text-xs text-muted-foreground">{joinedGroups.length}</span>
+              </div>
+              {joinedGroups.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {joinedGroups.map(renderGroupCard)}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+                  You are not part of any groups yet.
+                </div>
+              )}
+            </section>
+
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 border-t border-dashed border-border" />
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Groups you can join</span>
+              <div className="h-px flex-1 border-t border-dashed border-border" />
+            </div>
+
+            <section className="space-y-3">
+              {availableGroups.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {availableGroups.map(renderGroupCard)}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed py-8 text-center text-sm text-muted-foreground">
+                  No other groups are available right now.
+                </div>
+              )}
+            </section>
           </div>
         ) : (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
-            <p className="text-muted-foreground">You haven't created or joined any clubs yet.</p>
-            <p className="text-muted-foreground">Click "Create Group" or "Join Group" to get started!</p>
+            <p className="text-muted-foreground">No groups have been created in this organization yet.</p>
+            <p className="text-muted-foreground">Create a group to get started.</p>
           </div>
         )}
 
@@ -1007,44 +1045,61 @@ export default function ClubsPage() {
         onLogout={handleLogout}
         onDeleted={handleDeleted}
       />
-      <Dialog
-        open={Boolean(createdGroupPrompt)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setCreatedGroupPrompt(null);
-          }
-        }}
-      >
+      <Dialog open={Boolean(viewingGroup)} onOpenChange={(open) => !open && setViewingGroup(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Group Created</DialogTitle>
+            <DialogTitle>{viewingGroup?.name ?? "Group Profile"}</DialogTitle>
             <DialogDescription>
-              Share this join code with members so they can join your group. In the future, you can find this code in the Members section.
+              {viewingGroup?.role ? "You are part of this group." : "You can join this group from this organization."}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label>Join Code</Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 rounded-md border bg-muted px-3 py-2 text-lg font-semibold tracking-[0.2em]">
-                {createdGroupPrompt?.joinCode}
+          {viewingGroup ? (
+            <div className="space-y-5 py-2">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <Image
+                  src={viewingGroup.logo || getPlaceholderImageUrl({ label: viewingGroup.name.charAt(0) })}
+                  alt={`${viewingGroup.name} logo`}
+                  width={96}
+                  height={96}
+                  unoptimized
+                  className="rounded-2xl aspect-square object-cover border"
+                />
+                <div>
+                  <p className="text-lg font-semibold">{viewingGroup.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(viewingGroup.memberCount ?? 0).toLocaleString()} {(viewingGroup.memberCount ?? 0) === 1 ? "member" : "members"}
+                  </p>
+                </div>
               </div>
-              <Button type="button" variant="outline" size="icon" onClick={handleCopyCreatedGroupJoinCode}>
-                <Copy className="h-4 w-4" />
-                <span className="sr-only">Copy join code</span>
-              </Button>
+              <div className="space-y-2">
+                <Label>Description</Label>
+                <div className="min-h-24 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                  {viewingGroup.description || "No description yet."}
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
           <DialogFooter>
-            <Button
-              type="button"
-              onClick={() => {
-                if (!createdGroupPrompt) return;
-                setCreatedGroupPrompt(null);
-                openDashboardForGroup(createdGroupPrompt.groupId);
-              }}
-            >
-              Continue
+            <Button variant="ghost" onClick={() => setViewingGroup(null)}>
+              Close
             </Button>
+            {viewingGroup?.role ? (
+              <Button
+                onClick={() => {
+                  openDashboardForGroup(viewingGroup.id);
+                  setViewingGroup(null);
+                }}
+              >
+                Open Dashboard
+              </Button>
+            ) : viewingGroup ? (
+              <Button
+                onClick={() => void handleJoinGroup(viewingGroup.id)}
+                disabled={joiningGroupId === viewingGroup.id}
+              >
+                {joiningGroupId === viewingGroup.id ? "Joining..." : "Join Group"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

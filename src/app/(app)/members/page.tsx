@@ -1,7 +1,7 @@
 
 "use client";
 
-import { ChevronDown, Mail, Share2, MessageSquare, UserMinus } from "lucide-react";
+import { ChevronDown, Mail, MessageSquare, UserMinus } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -20,7 +20,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -36,15 +35,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getPlaceholderImageUrl } from "@/lib/placeholders";
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Member } from "@/lib/mock-data";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { clearSelectedGroupId } from "@/lib/selection";
 import { displayGroupRole, type GroupRole } from "@/lib/group-permissions";
 import { normalizeMessageActor } from "@/lib/message-state";
@@ -52,7 +49,6 @@ import { normalizeMessageActor } from "@/lib/message-state";
 export default function MembersPage() {
   const { data: members, updateData: setMembers, loading, clubId, orgId } = useMembers();
   const { toast } = useToast();
-  const [joinCode, setJoinCode] = useState('');
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [adminLeaveOpen, setAdminLeaveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -61,7 +57,6 @@ export default function MembersPage() {
   const { canEditContent, canManageRoles, role } = useCurrentUserRole();
   const { user } = useCurrentUser();
   const router = useRouter();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const baseMembers = useMemo(() => (Array.isArray(members) ? members : []), [members]);
   const currentUserRole = useMemo<Member["role"]>(() => {
     if (role === "Admin" || role === "Officer" || role === "Member") {
@@ -93,21 +88,6 @@ export default function MembersPage() {
   const isOnlyAdmin = isAdminRole(role) && adminCount <= 1;
   const transferCandidates = safeMembers.filter(member => member.email !== user?.email && Boolean(member.id));
 
-  useEffect(() => {
-    if (!clubId) return;
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('groups')
-        .select('join_code')
-        .eq('id', clubId)
-        .maybeSingle();
-      if (!error && data?.join_code) {
-        setJoinCode(data.join_code);
-      }
-    };
-    load();
-  }, [clubId, supabase]);
-
   const stringToColor = (str: string) => {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -115,13 +95,6 @@ export default function MembersPage() {
     }
     const hue = hash % 360;
     return `hsl(${hue}, 70%, 80%)`;
-  };
-
-  const handleCopyToClipboard = () => {
-    if (joinCode) {
-      navigator.clipboard.writeText(joinCode);
-      toast({ title: "Copied to clipboard!" });
-    }
   };
 
   const handleRoleChange = async (member: Member, newRole: 'Admin' | 'Officer' | 'Member') => {
@@ -224,36 +197,6 @@ export default function MembersPage() {
   return (
     <div className="app-page-shell">
       <div className="app-page-scroll">
-      {canEditContent ? (
-        <div className="mb-4 flex justify-end">
-          <Dialog>
-              <DialogTrigger asChild>
-              <Button variant="outline">
-                  <Share2 className="mr-2" /> Invite Members
-              </Button>
-              </DialogTrigger>
-              <DialogContent className="top-16 max-h-[calc(100dvh-5rem)] sm:top-[50%] sm:max-h-[calc(100dvh-2rem)]">
-              <DialogHeader>
-                  <DialogTitle>Invite Members with Join Code</DialogTitle>
-                  <DialogDescription>
-                  Share this code with people you want to invite to your group. This code is unique to your group and will not change.
-                  </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                  {joinCode ? (
-                      <p className="text-center text-4xl font-bold tracking-[0.5em] bg-muted p-4 rounded-lg">{joinCode}</p>
-                  ) : (
-                      <p className="text-center text-muted-foreground">Loading join code...</p>
-                  )}
-              </div>
-              <DialogFooter>
-                  <Button onClick={handleCopyToClipboard} disabled={!joinCode}>Copy Code</Button>
-              </DialogFooter>
-              </DialogContent>
-          </Dialog>
-        </div>
-      ) : null}
-
        {loading ? <p>Loading...</p> : 
           safeMembers.length > 0 ? (
           <div className="grid gap-4 md:gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -314,9 +257,9 @@ export default function MembersPage() {
            <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">No members yet.</p>
             {canEditContent ? (
-              <p className="text-muted-foreground">Share the join code to invite your first members.</p>
+              <p className="text-muted-foreground">Members can join this group from the organization groups screen.</p>
             ) : (
-              <p className="text-muted-foreground">Ask an admin for the join code.</p>
+              <p className="text-muted-foreground">Join from the organization groups screen when this group is available.</p>
            )}
           </div>
         )}

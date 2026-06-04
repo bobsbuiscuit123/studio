@@ -31,12 +31,12 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const schema = z.object({
     orgId: z.string().uuid(),
-    joinCode: z.string().min(4),
+    groupId: z.string().uuid(),
   }).strict();
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      err({ code: 'VALIDATION', message: 'Invalid join code.', source: 'app' }),
+      err({ code: 'VALIDATION', message: 'Invalid group.', source: 'app' }),
       { status: 400, headers: getRateLimitHeaders(limiter) }
     );
   }
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     .from('groups')
     .select('id')
     .eq('org_id', parsed.data.orgId)
-    .eq('join_code', parsed.data.joinCode.toUpperCase())
+    .eq('id', parsed.data.groupId)
     .maybeSingle();
   if (groupError) {
     return NextResponse.json(
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
   }
   if (!groupRow?.id) {
     return NextResponse.json(
-      err({ code: 'VALIDATION', message: 'Invalid join code.', source: 'app' }),
+      err({ code: 'VALIDATION', message: 'Group not found.', source: 'app' }),
       { status: 400, headers: getRateLimitHeaders(limiter) }
     );
   }

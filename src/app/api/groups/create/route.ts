@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     orgId: z.string().uuid(),
     name: z.string().min(3),
     description: z.string().optional(),
-    joinCode: z.string().min(4),
+    joinCode: z.string().min(4).optional(),
     logo: z.string().optional(),
   }).strict();
   const parsed = schema.safeParse(body);
@@ -109,9 +109,9 @@ export async function POST(request: Request) {
       name: parsed.data.name,
       created_by: userId,
       description: parsed.data.description ?? '',
-      join_code: parsed.data.joinCode,
+      join_code: parsed.data.joinCode ?? null,
     })
-    .select('id,join_code')
+    .select('id')
     .maybeSingle();
   if (error) {
     return NextResponse.json(
@@ -219,7 +219,6 @@ export async function POST(request: Request) {
     {
       ok: true,
       groupId,
-      joinCode: data?.join_code ?? parsed.data.joinCode,
     },
     { headers: getRateLimitHeaders(limiter) }
   );

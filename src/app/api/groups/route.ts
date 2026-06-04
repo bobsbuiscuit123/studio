@@ -7,7 +7,6 @@ import { err } from '@/lib/result';
 import { rateLimit } from '@/lib/rate-limit';
 import { getRequestIp, rateLimitExceededResponse } from '@/lib/api-security';
 import { ensureOrgOwnerMembershipsForGroups } from '@/lib/group-access';
-import { isInlineAssetString } from '@/lib/org-state-media';
 
 export const dynamic = 'force-dynamic';
 
@@ -190,7 +189,7 @@ export async function GET(request: Request) {
   const logoByGroupId = new Map<string, string>();
   (groupStateRows ?? []).forEach(row => {
     const logo = typeof row.logo === 'string' ? row.logo.trim() : '';
-    if (logo && !isInlineAssetString(logo)) {
+    if (logo) {
       logoByGroupId.set(row.group_id, logo);
     }
   });

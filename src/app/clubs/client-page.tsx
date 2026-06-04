@@ -143,6 +143,12 @@ export default function ClubsPage() {
 
   const { status: orgStatus } = useOrgSubscriptionStatus(selectedOrgId);
   const isOrgOwner = orgStatus?.role?.toLowerCase() === "owner";
+  const orgInviteLink = useMemo(() => {
+    if (!orgJoinCode || typeof window === "undefined") return "";
+    const inviteUrl = new URL("/orgs/join", window.location.origin);
+    inviteUrl.searchParams.set("code", orgJoinCode);
+    return inviteUrl.toString();
+  }, [orgJoinCode]);
 
   useEffect(() => {
     void router.prefetch("/dashboard");
@@ -249,6 +255,12 @@ export default function ClubsPage() {
     if (!orgJoinCode) return;
     await navigator.clipboard.writeText(orgJoinCode);
     toast({ title: "Copied", description: "Organization code copied to clipboard." });
+  };
+
+  const handleCopyOrgInviteLink = async () => {
+    if (!orgInviteLink) return;
+    await navigator.clipboard.writeText(orgInviteLink);
+    toast({ title: "Copied", description: "Organization invite link copied to clipboard." });
   };
 
   useEffect(() => {
@@ -787,6 +799,7 @@ export default function ClubsPage() {
                       alt="Group logo preview"
                       width={96}
                       height={96}
+                      unoptimized
                       className="rounded-lg aspect-square object-cover border"
                     />
                     <Button
@@ -1060,6 +1073,7 @@ export default function ClubsPage() {
                 alt="Group logo preview"
                 width={96}
                 height={96}
+                unoptimized
                 className="rounded-lg aspect-square object-cover border"
               />
               <Button type="button" variant="outline" size="sm" onClick={() => editGroupLogoInputRef.current?.click()}>
@@ -1128,6 +1142,7 @@ export default function ClubsPage() {
                 alt="Organization logo preview"
                 width={96}
                 height={96}
+                unoptimized
                 className="rounded-lg aspect-square object-cover border"
               />
               <Button
@@ -1157,6 +1172,28 @@ export default function ClubsPage() {
                 <Button type="button" variant="outline" size="icon" onClick={handleCopyOrgCode} disabled={!orgJoinCode}>
                   <Copy className="h-4 w-4" />
                   <span className="sr-only">Copy organization code</span>
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization-invite-link">Invite Link</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="organization-invite-link"
+                  value={orgInviteLink || "Unavailable"}
+                  readOnly
+                  className="min-w-0 flex-1 text-xs"
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyOrgInviteLink}
+                  disabled={!orgInviteLink}
+                >
+                  <Copy className="h-4 w-4" />
+                  <span className="sr-only">Copy organization invite link</span>
                 </Button>
               </div>
             </div>

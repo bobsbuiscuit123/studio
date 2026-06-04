@@ -133,8 +133,11 @@ const routeNeedsMedia = (pathname?: string | null) => {
     value.startsWith('/gallery/') ||
     value === '/social' ||
     value.startsWith('/social/') ||
+    value === '/announcements' ||
+    value.startsWith('/announcements/') ||
     value.startsWith('/demo/app/gallery') ||
-    value.startsWith('/demo/app/social')
+    value.startsWith('/demo/app/social') ||
+    value.startsWith('/demo/app/announcements')
   );
 };
 const shouldRefreshOnVisibility = () =>
@@ -428,7 +431,7 @@ async function requestGroupState(
       const merged = reconcileClubData(groupStateCache.get(cacheKey), normalized);
       groupStateCache.set(cacheKey, merged);
       groupStateFetchedAtCache.set(cacheKey, Date.now());
-      groupStateIncludesMediaCache.set(cacheKey, cachedIncludesMedia || Boolean(options.includeMedia));
+      groupStateIncludesMediaCache.set(cacheKey, Boolean(options.includeMedia));
       return merged;
     } finally {
       performanceTimer.stop();

@@ -11,6 +11,12 @@ const hasSupabaseAuthCookie = (request: NextRequest) =>
     .getAll()
     .some(({ name }) => name.startsWith('sb-') && name.includes('auth-token'));
 
+const getSafeNextPath = (value: string | null) => {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  if (value === '/login' || value.startsWith('/login?')) return null;
+  return value;
+};
+
 export function middleware(request: NextRequest) {
   const { pathname, hostname } = request.nextUrl;
   if (pathname.startsWith('/api/')) {
@@ -54,7 +60,10 @@ export function middleware(request: NextRequest) {
 
   if (!authCookiePresent && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();
+    const nextPath = `${pathname}${request.nextUrl.search}`;
     redirectUrl.pathname = '/login';
+    redirectUrl.search = '';
+    redirectUrl.searchParams.set('next', nextPath);
     return NextResponse.redirect(redirectUrl);
   }
 
@@ -64,7 +73,10 @@ export function middleware(request: NextRequest) {
 
     if (pathname === '/login' || isRootRoute) {
       const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = selectedOrgId ? '/clubs' : '/orgs';
+      const nextPath = pathname === '/login' ? getSafeNextPath(request.nextUrl.searchParams.get('next')) : null;
+      const [nextPathname, nextSearch = ''] = nextPath?.split('?') ?? [];
+      redirectUrl.pathname = nextPathname || (selectedOrgId ? '/clubs' : '/orgs');
+      redirectUrl.search = nextSearch ? `?${nextSearch}` : '';
       return NextResponse.redirect(redirectUrl);
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ export default function OrgJoinPage() {
   const [joinCode, setJoinCode] = useState('');
   const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const inviteJoinAttemptedRef = useRef(false);
   const pageTextClass = isNativeApp ? 'text-slate-900' : 'text-foreground';
   const eyebrowTextClass = isNativeApp ? 'text-slate-500' : 'text-muted-foreground';
   const subduedTextClass = isNativeApp ? 'text-slate-600' : 'text-muted-foreground';
@@ -41,15 +42,15 @@ export default function OrgJoinPage() {
     ? 'rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600'
     : 'rounded-xl border border-border/60 bg-secondary/35 p-3 text-xs text-muted-foreground';
 
-  const completeJoin = (orgId: string) => {
+  const completeJoin = useCallback((orgId: string) => {
     setSelectedOrgId(orgId);
     clearSelectedGroupId();
     removeLocalViewCache(ORGS_CACHE_KEY);
     window.dispatchEvent(new CustomEvent(ORG_MEMBERSHIP_CHANGED_EVENT, { detail: { orgId } }));
     router.push('/clubs');
-  };
+  }, [router]);
 
-  const joinViaRpc = async (value: string) => {
+  const joinViaRpc = useCallback(async (value: string) => {
     const normalizedCode = normalizeJoinCode(value);
     const supabase = createSupabaseBrowserClient();
     const { data, error } = await supabase.rpc('join_org', { p_join_code: normalizedCode });
@@ -60,10 +61,10 @@ export default function OrgJoinPage() {
       return { ok: false as const, message: 'Join succeeded but no organization id was returned.' };
     }
     return { ok: true as const, orgId: String(data) };
-  };
+  }, []);
 
-  const handleJoinOrg = async () => {
-    const normalized = normalizeJoinCode(joinCode);
+  const joinOrgWithCode = useCallback(async (value: string) => {
+    const normalized = normalizeJoinCode(value);
     if (!normalized) {
       toast({ title: 'Missing code', description: 'Enter a join code.', variant: 'destructive' });
       return;
@@ -129,6 +130,21 @@ export default function OrgJoinPage() {
     } finally {
       setJoinSubmitting(false);
     }
+  }, [completeJoin, joinViaRpc, toast]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || inviteJoinAttemptedRef.current) return;
+
+    const codeFromLink = normalizeJoinCode(new URLSearchParams(window.location.search).get('code') ?? '');
+    if (!codeFromLink) return;
+
+    inviteJoinAttemptedRef.current = true;
+    setJoinCode(codeFromLink);
+    void joinOrgWithCode(codeFromLink);
+  }, [joinOrgWithCode]);
+
+  const handleJoinOrg = async () => {
+    await joinOrgWithCode(joinCode);
   };
 
   return (

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -348,15 +348,24 @@ export default function HomePage() {
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
-  const navigateWithFallback = (targetPath: string) => {
+  const getSafeNextPath = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    const next = new URLSearchParams(window.location.search).get('next');
+    if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+    if (next === '/login' || next.startsWith('/login?')) return null;
+    return next;
+  }, []);
+
+  const navigateWithFallback = useCallback((targetPath: string) => {
     router.replace(targetPath);
     if (typeof window === 'undefined') return;
     window.setTimeout(() => {
-      if (window.location.pathname !== targetPath) {
+      const currentPath = `${window.location.pathname}${window.location.search}`;
+      if (currentPath !== targetPath) {
         window.location.replace(targetPath);
       }
     }, 1200);
-  };
+  }, [router]);
 
   useEffect(() => {
     setIsClient(true);
@@ -381,7 +390,7 @@ export default function HomePage() {
         return;
       }
       if (user) {
-        navigateWithFallback(selectedOrgId ? '/clubs' : '/orgs');
+        navigateWithFallback(getSafeNextPath() ?? (selectedOrgId ? '/clubs' : '/orgs'));
         return;
       }
       if (pathname === '/') {
@@ -390,12 +399,12 @@ export default function HomePage() {
     };
 
     void routeUser();
-  }, [isClient, isDemoMode, pathname, router, selectedOrgId, user, userLoading]);
+  }, [getSafeNextPath, isClient, isDemoMode, navigateWithFallback, pathname, selectedOrgId, user, userLoading]);
 
   const handleAuthenticatedUser = async (nextUser: User) => {
     setLocalUser(nextUser);
     const nextSelectedOrgId = typeof window === 'undefined' ? null : localStorage.getItem('selectedOrgId');
-    const targetPath = nextSelectedOrgId ? '/clubs' : '/orgs';
+    const targetPath = getSafeNextPath() ?? (nextSelectedOrgId ? '/clubs' : '/orgs');
     setSelectedOrgId(nextSelectedOrgId);
     router.prefetch(targetPath);
 

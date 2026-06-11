@@ -15,6 +15,7 @@ import { ModalLayerRepair } from "@/components/modal-layer-repair";
 import { CurrentUserProvider } from "@/lib/current-user";
 import { PT_Sans } from "next/font/google";
 import { themeInitScript } from "@/lib/app-theme";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const bodyFont = PT_Sans({
@@ -73,6 +74,7 @@ export default function RootLayout({
             <Toaster />
           </div>
         </CurrentUserProvider>
+        <Analytics />
       </body>
     </html>
   );

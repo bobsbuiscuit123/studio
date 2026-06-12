@@ -29,6 +29,12 @@ const ALLOWED_IMAGE_TYPES = new Set([
   'image/heif',
 ]);
 
+const GROUP_GALLERIES_BUCKET_OPTIONS = {
+  public: true,
+  fileSizeLimit: MAX_UPLOAD_BYTES,
+  allowedMimeTypes: Array.from(ALLOWED_IMAGE_TYPES),
+};
+
 const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
 };
@@ -45,6 +51,13 @@ const deleteSchema = z
   .strict();
 
 type SupabaseAdmin = ReturnType<typeof createSupabaseAdmin>;
+type StorageErrorLike = {
+  message?: string;
+  status?: number;
+  statusCode?: string;
+};
+
+let groupGalleriesBucketReady: Promise<void> | null = null;
 
 const getRequestIp = async () => {
   const headerList = await headers();
@@ -84,6 +97,46 @@ const isUploadFile = (value: FormDataEntryValue | null): value is File =>
       'size' in value &&
       'type' in value
   );
+
+const isMissingBucketError = (error: StorageErrorLike | null | undefined) => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return message.includes('bucket not found') || error?.status === 404 || error?.statusCode === '404';
+};
+
+const isBucketAlreadyExistsError = (error: StorageErrorLike | null | undefined) => {
+  const message = String(error?.message ?? '').toLowerCase();
+  return (
+    error?.status === 409 ||
+    error?.statusCode === '409' ||
+    message.includes('already exists') ||
+    message.includes('duplicate key')
+  );
+};
+
+const ensureGroupGalleriesBucket = async (admin: SupabaseAdmin) => {
+  groupGalleriesBucketReady ??= (async () => {
+    const { error: getBucketError } = await admin.storage.getBucket(GROUP_GALLERIES_BUCKET);
+    if (!getBucketError) {
+      return;
+    }
+    if (!isMissingBucketError(getBucketError)) {
+      throw getBucketError;
+    }
+
+    const { error: createBucketError } = await admin.storage.createBucket(
+      GROUP_GALLERIES_BUCKET,
+      GROUP_GALLERIES_BUCKET_OPTIONS
+    );
+    if (createBucketError && !isBucketAlreadyExistsError(createBucketError)) {
+      throw createBucketError;
+    }
+  })().catch(error => {
+    groupGalleriesBucketReady = null;
+    throw error;
+  });
+
+  return groupGalleriesBucketReady;
+};
 
 const loadOrgAccess = async (admin: SupabaseAdmin, orgId: string, userId: string) => {
   const [{ data: membership, error: membershipError }, { data: org, error: orgError }] =
@@ -274,12 +327,23 @@ export async function POST(request: Request) {
       userId,
       fileName: safeFileName,
     });
-    const { error: uploadError } = await admin.storage
+    await ensureGroupGalleriesBucket(admin);
+    let { error: uploadError } = await admin.storage
       .from(GROUP_GALLERIES_BUCKET)
       .upload(path, file, {
         contentType: file.type,
         upsert: false,
       });
+    if (isMissingBucketError(uploadError)) {
+      groupGalleriesBucketReady = null;
+      await ensureGroupGalleriesBucket(admin);
+      ({ error: uploadError } = await admin.storage
+        .from(GROUP_GALLERIES_BUCKET)
+        .upload(path, file, {
+          contentType: file.type,
+          upsert: false,
+        }));
+    }
 
     if (uploadError) {
       return jsonError(uploadError.message, 500, userLimiter, 'NETWORK_HTTP_ERROR');

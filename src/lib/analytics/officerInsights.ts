@@ -60,18 +60,20 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
   {
     const missingNames = eventsMissingLocation.slice(0, 2).map(formatEventTitle);
     const hasMore = eventsMissingLocation.length > missingNames.length;
-    const nameSuffix =
-      missingNames.length > 0
-        ? ` (${missingNames.join(', ')}${hasMore ? ', ...' : ''})`
-        : '';
-    const text =
-      events.length === 0
-        ? 'No events yet to check locations.'
-        : eventsMissingLocation.length > 0
+    let nameSuffix = '';
+    if (missingNames.length > 0) {
+      const moreSuffix = hasMore ? ', ...' : '';
+      nameSuffix = ` (${missingNames.join(', ')}${moreSuffix})`;
+    }
+    let text = 'No events yet to check locations.';
+    if (events.length > 0) {
+      text =
+        eventsMissingLocation.length > 0
           ? `${eventsMissingLocation.length} event${
               eventsMissingLocation.length === 1 ? '' : 's'
             } missing a location${nameSuffix}.`
           : 'All events have a location set.';
+    }
     actionNeeded.push({
       id: 'events_missing_location',
       text,
@@ -84,8 +86,9 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
   {
     let text = 'No upcoming events to check RSVPs.';
     if (upcomingEvents.length > 0) {
-      const nextEvent = upcomingEvents.sort((a, b) => a.date.getTime() - b.date.getTime())[0];
-      const rsvpCount = Array.isArray(nextEvent.rsvps?.yes) ? nextEvent.rsvps?.yes.length : 0;
+      const sortedUpcomingEvents = [...upcomingEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const nextEvent = sortedUpcomingEvents[0];
+      const rsvpCount = nextEvent.rsvps?.yes?.length ?? 0;
       if (members.length === 0) {
         text = `RSVP tracking is unavailable for "${formatEventTitle(nextEvent)}" (no members).`;
       } else if (rsvpCount < Math.ceil(members.length / 3)) {
@@ -110,14 +113,15 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
     return date && date >= weekStart;
   });
   {
-    const text =
-      announcements.length === 0
-        ? 'No announcements posted yet.'
-        : announcementsThisWeek.length === 0
+    let text = 'No announcements posted yet.';
+    if (announcements.length > 0) {
+      text =
+        announcementsThisWeek.length === 0
           ? 'No announcements posted this week.'
           : `${announcementsThisWeek.length} announcement${
               announcementsThisWeek.length === 1 ? '' : 's'
             } posted this week. Review for clarity.`;
+    }
     actionNeeded.push({
       id: 'announcements_this_week',
       text,
@@ -167,7 +171,6 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
     });
   }
 
-  const recentEventHour = upcomingEvents[0]?.date?.getHours();
   {
     let text = 'No upcoming events scheduled to check timing.';
     if (upcomingEvents.length > 0) {
@@ -222,9 +225,6 @@ export const getOfficerInsights = (input: InsightsInput): OfficerInsights => {
   }
 
   const balance = transactions.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-  const income = transactions.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
-  const expenses = transactions.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + tx.amount, 0);
-
   const tipPool = [
     'Tip: Announcements under 120 words tend to get higher engagement.',
     'Tip: Include a clear call-to-action in the first sentence.',

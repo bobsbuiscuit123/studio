@@ -325,14 +325,14 @@ const mergeEvents = (
     const nextNo = uniqueStrings(Array.isArray(nextRsvps.no) ? nextRsvps.no : []).map(normalizeEmail);
     const nextMaybe = uniqueStrings(Array.isArray(nextRsvps.maybe) ? nextRsvps.maybe : []).map(normalizeEmail);
 
-    const actorRsvp =
-      normalizedActorEmail && nextYes.includes(normalizedActorEmail)
-        ? 'yes'
-        : normalizedActorEmail && nextNo.includes(normalizedActorEmail)
-          ? 'no'
-          : normalizedActorEmail && nextMaybe.includes(normalizedActorEmail)
-            ? 'maybe'
-            : null;
+    let actorRsvp: 'yes' | 'no' | 'maybe' | null = null;
+    if (normalizedActorEmail && nextYes.includes(normalizedActorEmail)) {
+      actorRsvp = 'yes';
+    } else if (normalizedActorEmail && nextNo.includes(normalizedActorEmail)) {
+      actorRsvp = 'no';
+    } else if (normalizedActorEmail && nextMaybe.includes(normalizedActorEmail)) {
+      actorRsvp = 'maybe';
+    }
 
     const baseYes = uniqueStrings([...currentYes, ...nextYes]).map(normalizeEmail);
     const baseNo = uniqueStrings([...currentNo, ...nextNo]).map(normalizeEmail);

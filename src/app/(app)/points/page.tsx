@@ -6,7 +6,7 @@ import { useState, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Loader2, PlusCircle, MinusCircle, Award } from "lucide-react";
+import { Loader2, PlusCircle } from "lucide-react";
 
 import {
   Card,
@@ -51,7 +51,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useMembers, useEvents, usePointEntries, useCurrentUser, useCurrentUserRole } from "@/lib/data-hooks";
-import type { PointEntry, Member } from "@/lib/mock-data";
+import type { PointEntry } from "@/lib/mock-data";
 
 const pointEntrySchema = z.object({
   memberEmail: z.string().email("Please select a member."),
@@ -101,11 +101,12 @@ export default function PointsPage() {
       
       const allPoints = [...eventPoints, ...manualPoints];
       const totalPoints = allPoints.reduce((sum, entry) => sum + entry.points, 0);
+      const pointDetails = [...allPoints].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       return {
         ...member,
         totalPoints,
-        pointDetails: allPoints.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+        pointDetails,
       };
     }).sort((a,b) => b.totalPoints - a.totalPoints);
 
@@ -253,8 +254,8 @@ export default function PointsPage() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {member.pointDetails.map((detail, index) => (
-                                                    <TableRow key={index}>
+                                                {member.pointDetails.map((detail) => (
+                                                    <TableRow key={`${detail.date}-${detail.reason}-${detail.points}`}>
                                                         <TableCell>{detail.date}</TableCell>
                                                         <TableCell>{detail.reason}</TableCell>
                                                         <TableCell className={`text-right font-medium ${detail.points > 0 ? 'text-green-600' : 'text-red-600'}`}>

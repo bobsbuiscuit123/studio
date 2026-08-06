@@ -90,6 +90,51 @@ export default function ResetPasswordPage() {
     router.refresh();
   };
 
+  const renderResetContent = () => {
+    if (!ready) {
+      return <p className="text-sm text-muted-foreground">Loading reset session...</p>;
+    }
+
+    if (!validRecovery) {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This reset link is invalid or expired. Request a new password reset email.
+          </p>
+          <Button className="w-full" onClick={() => router.replace("/login")}>
+            Back to Login
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <Label htmlFor="new-password">New Password</Label>
+          <Input
+            id="new-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="confirm-password">Confirm New Password</Label>
+          <Input
+            id="confirm-password"
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+        </div>
+        <Button className="w-full" type="submit" disabled={submitting}>
+          {submitting ? "Updating..." : "Update Password"}
+        </Button>
+      </form>
+    );
+  };
+
   return (
     <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md">
@@ -104,42 +149,7 @@ export default function ResetPasswordPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!ready ? (
-            <p className="text-sm text-muted-foreground">Loading reset session...</p>
-          ) : !validRecovery ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                This reset link is invalid or expired. Request a new password reset email.
-              </p>
-              <Button className="w-full" onClick={() => router.replace("/login")}>
-                Back to Login
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="new-password">New Password</Label>
-                <Input
-                  id="new-password"
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="confirm-password">Confirm New Password</Label>
-                <Input
-                  id="confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                />
-              </div>
-              <Button className="w-full" type="submit" disabled={submitting}>
-                {submitting ? "Updating..." : "Update Password"}
-              </Button>
-            </form>
-          )}
+          {renderResetContent()}
         </CardContent>
       </Card>
     </div>

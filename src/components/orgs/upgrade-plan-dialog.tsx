@@ -1,14 +1,14 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
-type UpgradePlanDialogProps = {
+type UpgradePlanDialogProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
   primaryLabel: string;
   onPrimary?: () => void;
-};
+}>;
 
 export function UpgradePlanDialog({
   open,

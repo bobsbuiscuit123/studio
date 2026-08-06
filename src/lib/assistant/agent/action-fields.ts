@@ -213,7 +213,7 @@ const extractIntentClause = (value: string) => {
   ];
 
   for (const pattern of patterns) {
-    const match = cleaned.match(pattern);
+    const match = pattern.exec(cleaned);
     if (match?.[1]) {
       return cleanIntentClause(match[1]);
     }
@@ -757,8 +757,8 @@ const resolveMonthAndDayFromSource = (
   }
 
   const reference = getZonedReference(requestReceivedAt, requestTimezone);
-  const monthDayMatch = normalizedSource.match(MONTH_DAY_PATTERN);
-  const dayOfMonthMatch = normalizedSource.match(DAY_OF_MONTH_PATTERN);
+  const monthDayMatch = MONTH_DAY_PATTERN.exec(normalizedSource);
+  const dayOfMonthMatch = DAY_OF_MONTH_PATTERN.exec(normalizedSource);
   const rawMonth = monthDayMatch?.[1] ?? dayOfMonthMatch?.[2];
   const rawDay = monthDayMatch?.[2] ?? dayOfMonthMatch?.[1];
   if (!rawMonth || !rawDay) {
@@ -795,7 +795,7 @@ const resolveOrdinalDayFromSource = (
     return null;
   }
 
-  const ordinalMatch = normalizedSource.match(ORDINAL_DAY_PATTERN);
+  const ordinalMatch = ORDINAL_DAY_PATTERN.exec(normalizedSource);
   if (!ordinalMatch?.[1]) {
     return null;
   }
@@ -842,7 +842,7 @@ const getRelativeDateKeyFromSource = (
     return reference.hour < 19 ? reference.dateKey : null;
   }
 
-  const weekdayMatch = normalizedSource.match(weekdayPattern);
+  const weekdayMatch = weekdayPattern.exec(normalizedSource);
   if (!weekdayMatch) {
     return null;
   }
@@ -870,7 +870,7 @@ const normalizeCandidateTime = (value: string) => {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed) return null;
 
-  const twentyFourHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  const twentyFourHourMatch = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
   if (twentyFourHourMatch) {
     const hour = Number(twentyFourHourMatch[1]);
     const minute = Number(twentyFourHourMatch[2]);
@@ -880,7 +880,7 @@ const normalizeCandidateTime = (value: string) => {
     return null;
   }
 
-  const meridiemMatch = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  const meridiemMatch = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i.exec(trimmed);
   if (!meridiemMatch) {
     return null;
   }
@@ -910,7 +910,7 @@ const normalizeCandidateDate = (value: string) => {
     return trimmed;
   }
 
-  const isoDateMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})T/);
+  const isoDateMatch = /^(\d{4}-\d{2}-\d{2})T/.exec(trimmed);
   if (isoDateMatch?.[1]) {
     return isoDateMatch[1];
   }
@@ -939,7 +939,7 @@ const getRelativeTimeFromSource = (args: {
 
   const reference = getZonedReference(args.requestReceivedAt, args.requestTimezone);
   const daypart = getDaypartFromText(args.sourceText);
-  const explicitTimeMatch = args.sourceText.match(explicitTimePattern);
+      const explicitTimeMatch = explicitTimePattern.exec(args.sourceText);
 
   if (explicitTimeMatch) {
     const [, rawHour, rawMinute = '00', rawMeridiem] = explicitTimeMatch;

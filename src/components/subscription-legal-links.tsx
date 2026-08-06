@@ -6,9 +6,9 @@ import { LegalDocumentDialog } from '@/components/legal-document-dialog';
 import { APPLE_STANDARD_EULA_URL } from '@/lib/legal';
 import { cn } from '@/lib/utils';
 
-type SubscriptionLegalLinksProps = {
+type SubscriptionLegalLinksProps = Readonly<{
   className?: string;
-};
+}>;
 
 export function SubscriptionLegalLinks({
   className,

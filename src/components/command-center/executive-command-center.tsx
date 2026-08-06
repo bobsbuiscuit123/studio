@@ -24,9 +24,11 @@ import {
 } from "@/lib/command-center-analytics";
 import { safeFetchJson } from "@/lib/network";
 
-type ExecutiveCommandCenterProps = {
+type ExecutiveCommandCenterProps = Readonly<{
   onExploreOrg: (orgId: string) => void;
-};
+}>;
+
+const LOADING_CARD_KEYS = ["active-members", "engagement", "compliance", "automation"];
 
 const formatPercent = (value: number | null | undefined) =>
   typeof value === "number" ? `${value}%` : "--";
@@ -84,8 +86,8 @@ export function ExecutiveCommandCenter({ onExploreOrg }: ExecutiveCommandCenterP
       <section className="space-y-3">
         <Skeleton className="h-8 w-64" />
         <div className="grid gap-3 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-24 rounded-lg" />
+          {LOADING_CARD_KEYS.map(key => (
+            <Skeleton key={key} className="h-24 rounded-lg" />
           ))}
         </div>
         <Skeleton className="h-44 rounded-lg" />

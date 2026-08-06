@@ -13,12 +13,12 @@ export type AiError = AppError & {
   model?: string;
 };
 const providerEnv = (process.env.AI_PROVIDER || 'gemini').toLowerCase();
-const provider: Provider =
-  providerEnv === 'openrouter'
-    ? 'openrouter'
-    : providerEnv === 'openai'
-      ? 'openai'
-      : 'gemini';
+let provider: Provider = 'gemini';
+if (providerEnv === 'openrouter') {
+  provider = 'openrouter';
+} else if (providerEnv === 'openai') {
+  provider = 'openai';
+}
 
 export type ChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool' | 'developer';
@@ -50,14 +50,14 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4o-mini';
 
-const aiConfigError =
-  provider === 'gemini' && !geminiKey
-    ? 'Missing Gemini API key. Set GEMINI_API_KEY (or GOOGLE_GENAI_API_KEY / GOOGLE_API_KEY) in .env.local.'
-    : provider === 'openrouter' && !OPENROUTER_API_KEY
-      ? 'Missing OPENROUTER_API_KEY in .env.local.'
-      : provider === 'openai' && !OPENAI_API_KEY
-        ? 'Missing OPENAI_API_KEY in .env.local.'
-        : null;
+let aiConfigError: string | null = null;
+if (provider === 'gemini' && !geminiKey) {
+  aiConfigError = 'Missing Gemini API key. Set GEMINI_API_KEY (or GOOGLE_GENAI_API_KEY / GOOGLE_API_KEY) in .env.local.';
+} else if (provider === 'openrouter' && !OPENROUTER_API_KEY) {
+  aiConfigError = 'Missing OPENROUTER_API_KEY in .env.local.';
+} else if (provider === 'openai' && !OPENAI_API_KEY) {
+  aiConfigError = 'Missing OPENAI_API_KEY in .env.local.';
+}
 
 const aiDisabledByEnv = process.env.AI_ENABLED === 'false';
 export const aiEnabled = !aiConfigError && !aiDisabledByEnv;
@@ -122,17 +122,22 @@ const getAiInstance = async (): Promise<GenkitInstance | null> => {
 };
 
 export const activeProvider = provider;
-export const activeModelName =
-  provider === 'openrouter' ? OPENROUTER_MODEL : provider === 'openai' ? OPENAI_MODEL : GEMINI_MODEL;
+let activeModelName = GEMINI_MODEL;
+if (provider === 'openrouter') {
+  activeModelName = OPENROUTER_MODEL;
+} else if (provider === 'openai') {
+  activeModelName = OPENAI_MODEL;
+}
+export { activeModelName };
 
 export function logAiEnvDebug(callSite?: string) {
   if (!isDebugLoggingEnabled) return;
-  const keyPresent =
-    provider === 'openrouter'
-      ? Boolean(OPENROUTER_API_KEY)
-      : provider === 'openai'
-        ? Boolean(OPENAI_API_KEY)
-        : Boolean(geminiKey);
+  let keyPresent = Boolean(geminiKey);
+  if (provider === 'openrouter') {
+    keyPresent = Boolean(OPENROUTER_API_KEY);
+  } else if (provider === 'openai') {
+    keyPresent = Boolean(OPENAI_API_KEY);
+  }
   const suffix = callSite ? ` | callsite=${callSite}` : '';
   console.info(
     `[AI_DEBUG] provider=${provider} | model=${activeModelName} | key_present=${keyPresent} | enabled=${aiEnabled}${suffix}`
@@ -197,12 +202,12 @@ const mapAiError = (error: unknown): AiError => {
   if (aiConfigError) {
     return makeAiError('AI_DISABLED', aiConfigError, undefined, false);
   }
-  const message =
-    typeof error === 'string'
-      ? error
-      : error && typeof error === 'object' && 'message' in error
-        ? String((error as { message?: string }).message)
-        : 'AI request failed.';
+  let message = 'AI request failed.';
+  if (typeof error === 'string') {
+    message = error;
+  } else if (error && typeof error === 'object' && 'message' in error) {
+    message = String((error as { message?: string }).message);
+  }
   if (/timed out|timeout|AbortError/i.test(message)) {
     return makeAiError('AI_TIMEOUT', 'AI request timed out. Please try again.', message, true);
   }
@@ -228,7 +233,14 @@ const mapAiError = (error: unknown): AiError => {
 
 function normalizeMessagesForGenkit(messages: ChatMessage[]) {
   return messages.map(m => {
-    const role = m.role === 'assistant' ? 'model' : m.role === 'developer' ? 'system' : m.role;
+    let role: 'system' | 'user' | 'model' | 'tool';
+    if (m.role === 'assistant') {
+      role = 'model';
+    } else if (m.role === 'developer') {
+      role = 'system';
+    } else {
+      role = m.role;
+    }
     return {
       role: role as 'system' | 'user' | 'model' | 'tool',
       content: [{ text: redactPII(m.content) }],
@@ -599,12 +611,12 @@ export async function callAI<TOutput>(options: {
   }
 
   const blockQuota = (error: unknown) => {
-    const message =
-      typeof error === 'string'
-        ? error
-        : error && typeof error === 'object' && 'message' in error
-          ? String((error as { message: string }).message)
-          : '';
+    let message = '';
+    if (typeof error === 'string') {
+      message = error;
+    } else if (error && typeof error === 'object' && 'message' in error) {
+      message = String((error as { message: string }).message);
+    }
     if (/quota exceeded|too many requests|429/i.test(message)) {
       const consecutive = (globalForGenkit.__aiQuotaConsecutive429 ?? 0) + 1;
       globalForGenkit.__aiQuotaConsecutive429 = consecutive;

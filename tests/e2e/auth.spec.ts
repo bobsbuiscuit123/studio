@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 
+// These browser tests need a seeded account and are skipped in local/CI runs without E2E credentials.
 test.skip(!email || !password, 'E2E_EMAIL/E2E_PASSWORD not set');
 
 test('login/logout flow', async ({ page }) => {
@@ -16,4 +17,3 @@ test('login/logout flow', async ({ page }) => {
   await page.getByRole('button', { name: /logout/i }).click();
   await expect(page.getByText('Log In to ClubHub AI')).toBeVisible();
 });
-

@@ -13,7 +13,6 @@ import ReactFlow, {
   OnEdgesDelete,
   OnNodesDelete,
   Node,
-  Edge,
   NodeChange,
   applyNodeChanges,
 } from 'reactflow';
@@ -34,13 +33,11 @@ export default function MindMapPage() {
   const { data: mindMapData, updateData: setMindMapData, loading } =
     useGroupUserStateSection<MindMapData>('mindmap', { nodes: [], edges: [] });
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(mindMapData.nodes);
+  const [nodes, setNodes] = useNodesState(mindMapData.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(mindMapData.edges);
   
   const [nodeName, setNodeName] = useState('');
   const yPos = useRef(50);
-  const [rfInstance, setRfInstance] = useState<any>(null);
-
   useEffect(() => {
     setNodes(mindMapData.nodes);
     setEdges(mindMapData.edges);
@@ -150,7 +147,6 @@ export default function MindMapPage() {
           onConnect={onConnect}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
-          onInit={setRfInstance}
           fitView
         >
           <Controls />

@@ -24,11 +24,13 @@ import {
 import { safeFetchJson } from "@/lib/network";
 import { cn } from "@/lib/utils";
 
-type OrgOwnerCommandCenterProps = {
+type OrgOwnerCommandCenterProps = Readonly<{
   orgId: string | null;
   isOwner: boolean;
   onOpenGroup: (groupId: string) => void;
-};
+}>;
+
+const LOADING_CARD_KEYS = ["groups", "meetings", "engagement", "compliance"];
 
 const formatPercent = (value: number | null | undefined) =>
   typeof value === "number" ? `${value}%` : "--";
@@ -44,12 +46,16 @@ const formatDate = (value?: string | null) => {
   }).format(parsed);
 };
 
-const statusBadgeClass = (status: OrgDashboardGroupRow["status"]) =>
-  status === "active"
-    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-700"
-    : status === "inactive"
-      ? "border-amber-500/50 bg-amber-500/10 text-amber-700"
-      : "border-red-500/50 bg-red-500/10 text-red-700";
+const statusBadgeClass = (status: OrgDashboardGroupRow["status"]) => {
+  switch (status) {
+    case "active":
+      return "border-emerald-500/50 bg-emerald-500/10 text-emerald-700";
+    case "inactive":
+      return "border-amber-500/50 bg-amber-500/10 text-amber-700";
+    default:
+      return "border-red-500/50 bg-red-500/10 text-red-700";
+  }
+};
 
 const heatmapClass = (count: number, maxCount: number) => {
   if (count === 0 || maxCount === 0) return "bg-muted/40";
@@ -60,7 +66,7 @@ const heatmapClass = (count: number, maxCount: number) => {
   return "bg-emerald-100";
 };
 
-function EngagementHeatmap({ cells }: { cells: HeatmapCell[] }) {
+function EngagementHeatmap({ cells }: Readonly<{ cells: HeatmapCell[] }>) {
   const maxCount = Math.max(0, ...cells.map(cell => cell.count));
   const cellByKey = new Map(cells.map(cell => [`${cell.day}-${cell.hour}`, cell]));
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -168,8 +174,8 @@ export function OrgOwnerCommandCenter({ orgId, isOwner, onOpenGroup }: OrgOwnerC
       <section className="space-y-3">
         <Skeleton className="h-8 w-72" />
         <div className="grid gap-3 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-24 rounded-lg" />
+          {LOADING_CARD_KEYS.map(key => (
+            <Skeleton key={key} className="h-24 rounded-lg" />
           ))}
         </div>
         <Skeleton className="h-64 rounded-lg" />

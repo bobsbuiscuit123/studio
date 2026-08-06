@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 
+// These browser tests need a seeded account and are skipped in local/CI runs without E2E credentials.
 test.skip(!email || !password, 'E2E_EMAIL/E2E_PASSWORD not set');
 
 test('AI failure does not crash calendar flow', async ({ page }) => {
@@ -25,4 +26,3 @@ test('AI failure does not crash calendar flow', async ({ page }) => {
 
   await expect(page.getByText(/AI down|problem generating/i)).toBeVisible();
 });
-

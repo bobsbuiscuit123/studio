@@ -958,7 +958,8 @@ export default function ClubsPage() {
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">Loading groups...</p>
           </div>
-        ) : groupsWithLogos.length > 0 ? (
+        ) : null}
+        {!loading && groupsWithLogos.length > 0 ? (
           <div className="space-y-6">
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -994,12 +995,13 @@ export default function ClubsPage() {
               )}
             </section>
           </div>
-        ) : (
+        ) : null}
+        {!loading && groupsWithLogos.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">No groups have been created in this organization yet.</p>
             <p className="text-muted-foreground">Create a group to get started.</p>
           </div>
-        )}
+        ) : null}
 
         {isOrgOwner ? (
           <div>
@@ -1092,7 +1094,8 @@ export default function ClubsPage() {
               >
                 Open Dashboard
               </Button>
-            ) : viewingGroup ? (
+            ) : null}
+            {viewingGroup && !viewingGroup.role ? (
               <Button
                 onClick={() => void handleJoinGroup(viewingGroup.id)}
                 disabled={joiningGroupId === viewingGroup.id}

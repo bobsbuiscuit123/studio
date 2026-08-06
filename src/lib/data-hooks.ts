@@ -27,30 +27,25 @@ import {
     getBrowserSessionWithTimeout,
 } from '@/lib/supabase/client';
 import { safeFetchJson } from '@/lib/network';
-import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Slide, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm, DonorRecord } from './mock-data';
+import type { Member, Announcement, SocialPost, Presentation, GalleryImage, ClubEvent, Message, GroupChat, Transaction, PointEntry, MindMapData, ClubForm, DonorRecord } from './mock-data';
 import { getDefaultOrgState } from '@/lib/org-state';
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import { getSelectedGroupId, getSelectedOrgId } from '@/lib/selection';
 import { findPolicyViolation, policyErrorMessage } from '@/lib/content-policy';
 import { canEditGroupContent, canManageGroupRoles } from '@/lib/group-permissions';
 import {
-    isMessageFromActor,
-    markMessageReadByActor,
     mergeGroupChatLists,
     mergeMessageMaps,
-    messageIncludesReader,
     normalizeGroupChats,
     normalizeMessageMap,
 } from '@/lib/message-state';
 import { stableSerialize } from '@/lib/stable-serialize';
 import {
     createEmptyGroupActivitySnapshot,
-    createEmptyNotificationActivity,
     createEmptyUnreadNotifications,
     createGroupActivitySnapshot,
     getNotificationActivityByKey,
     getRoleFromMembers,
-    getUnreadNotifications,
     type GroupActivitySnapshot,
     type NotificationKey,
 } from '@/lib/notification-state';
@@ -92,7 +87,7 @@ const normalizeViewedRoute = (value?: string | null) => {
     } else if (pathname.startsWith('/demo/app/')) {
         pathname = pathname.slice('/demo/app'.length) || '/dashboard';
     }
-    const [firstSegment] = pathname.split('/').filter(Boolean);
+    const firstSegment = pathname.split('/').find(Boolean);
     return firstSegment ? `/${firstSegment}` : '/dashboard';
 };
 
@@ -1629,10 +1624,11 @@ export function useNotifications() {
                 return;
             }
 
-            setTabLastSeenAt({
+            const lastSeenByTab = result.ok ? result.data?.data?.lastSeenByTab : undefined;
+            setTabLastSeenAt(lastSeenByTab ? {
                 ...DEFAULT_TAB_LAST_SEEN,
-                ...((result.ok && result.data?.data?.lastSeenByTab) || {}),
-            });
+                ...lastSeenByTab,
+            } : { ...DEFAULT_TAB_LAST_SEEN });
             setLastSeenLoaded(true);
         });
 
@@ -1763,12 +1759,12 @@ export function useNotifications() {
 
     const activeNotificationKey = useMemo<NotificationKey | null>(() => {
         const currentPath = pathname ?? '';
-        const normalizedPath =
-            currentPath === '/demo/app'
-                ? '/dashboard'
-                : currentPath.startsWith('/demo/app/')
-                    ? currentPath.replace('/demo/app', '')
-                    : currentPath;
+        let normalizedPath = currentPath;
+        if (currentPath === '/demo/app') {
+            normalizedPath = '/dashboard';
+        } else if (currentPath.startsWith('/demo/app/')) {
+            normalizedPath = currentPath.replace('/demo/app', '');
+        }
 
         if (normalizedPath === '/announcements' || normalizedPath.startsWith('/announcements/')) return 'announcements';
         if (normalizedPath === '/messages' || normalizedPath.startsWith('/messages/')) return 'messages';
@@ -1847,11 +1843,17 @@ export function useNotifications() {
                 return;
             }
 
-            setTabLastSeenAt(prev => ({
-                ...prev,
-                ...(result.data?.data?.lastSeenByTab ?? {}),
-                [key]: result.data?.lastSeenAt ?? prev[key],
-            }));
+            const lastSeenByTab = result.data.data?.lastSeenByTab;
+            setTabLastSeenAt(prev => {
+                const next = {
+                    ...prev,
+                    [key]: result.data?.lastSeenAt ?? prev[key],
+                };
+                if (lastSeenByTab) {
+                    Object.assign(next, lastSeenByTab);
+                }
+                return next;
+            });
         }).finally(() => {
             markInFlightRef.current[key] = false;
         });

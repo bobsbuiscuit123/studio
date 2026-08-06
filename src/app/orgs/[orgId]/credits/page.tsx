@@ -306,6 +306,12 @@ export default function OrgCreditsPage() {
   const currentDisplayedPlanName = activeProductId
     ? getPlanById(activeProductId).name
     : status?.planName ?? 'Free';
+  let currentSubscriptionDescription: string | undefined = status?.subscriptionStatus;
+  if (isScheduledDowngrade && scheduledPlanName && formattedScheduledEffectiveDate) {
+    currentSubscriptionDescription = `You are currently on ${currentDisplayedPlanName}. Your plan will change to ${scheduledPlanName} on ${formattedScheduledEffectiveDate}.`;
+  } else if (status?.subscriptionStatus === 'free') {
+    currentSubscriptionDescription = 'No paid subscription assigned';
+  }
 
   useEffect(() => {
     if (!orgId) {
@@ -411,16 +417,18 @@ export default function OrgCreditsPage() {
           getPaidPlanTierIndex(options.scheduledProductId) < getPaidPlanTierIndex(options.activeProductId)
       );
 
+    let description = `${options.selectedPlanName} was submitted to Apple. The updated subscription state may take a moment to appear in the app.`;
+    if (isDowngrade && formattedEffectiveDate && currentPlanName) {
+      description = `You are currently on ${currentPlanName}. Your plan will change to ${options.selectedPlanName} on ${formattedEffectiveDate}.`;
+    } else if (options.activeProductId && options.activeProductId !== selectedPlanId) {
+      description = `${currentPlanName} remains active for now. Apple will apply ${options.selectedPlanName} according to its subscription rules.`;
+    } else if (options.hasActiveEntitlement) {
+      description = `${options.selectedPlanName} was purchased and is still syncing to the backend. Check again shortly.`;
+    }
+
     toast({
       title: isDowngrade ? 'Plan change scheduled' : 'Plan change submitted',
-      description:
-        isDowngrade && formattedEffectiveDate && currentPlanName
-          ? `You are currently on ${currentPlanName}. Your plan will change to ${options.selectedPlanName} on ${formattedEffectiveDate}.`
-          : options.activeProductId && options.activeProductId !== selectedPlanId
-            ? `${currentPlanName} remains active for now. Apple will apply ${options.selectedPlanName} according to its subscription rules.`
-          : options.hasActiveEntitlement
-            ? `${options.selectedPlanName} was purchased and is still syncing to the backend. Check again shortly.`
-            : `${options.selectedPlanName} was submitted to Apple. The updated subscription state may take a moment to appear in the app.`,
+      description,
     });
   };
 
@@ -826,11 +834,7 @@ export default function OrgCreditsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-slate-600">
-              {isScheduledDowngrade && scheduledPlanName && formattedScheduledEffectiveDate
-                ? `You are currently on ${currentDisplayedPlanName}. Your plan will change to ${scheduledPlanName} on ${formattedScheduledEffectiveDate}.`
-                : status?.subscriptionStatus === 'free'
-                  ? 'No paid subscription assigned'
-                  : status?.subscriptionStatus}
+              {currentSubscriptionDescription}
             </CardContent>
           </Card>
 

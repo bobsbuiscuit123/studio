@@ -3,16 +3,16 @@
 import React from "react";
 import { usePathname } from "next/navigation";
 
-type Props = {
+type Props = Readonly<{
   children: React.ReactNode;
-};
+}>;
 
 type State = {
   hasError: boolean;
 };
 
 class AppRouteContentBoundaryInner extends React.Component<
-  Props & { pathname: string },
+  Props & Readonly<{ pathname: string }>,
   State
 > {
   state: State = { hasError: false };

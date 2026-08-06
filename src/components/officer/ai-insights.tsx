@@ -12,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getOfficerInsights } from '@/lib/analytics/officerInsights';
-import type { OfficerInsights } from '@/lib/analytics/officerInsights';
 import { getMemberInsights } from '@/lib/analytics/memberInsights';
 import { openAssistantWithContext } from '@/lib/assistant/prefill';
 import {
@@ -32,7 +31,7 @@ import { useGroupUserStateSection } from '@/lib/group-user-state';
 import { stableSerialize } from '@/lib/stable-serialize';
 
 type InsightListKey = 'action' | 'engagement';
-type InsightBoxKey = InsightListKey | string;
+type InsightBoxKey = string;
 
 type InsightItem = {
   id?: string;
@@ -124,12 +123,12 @@ const typewriterText = ({
   startAt,
   now,
   charDelayMs = 18,
-}: {
+}: Readonly<{
   text: string;
   startAt: number;
   now: number;
   charDelayMs?: number;
-}) => {
+}>) => {
   if (!startAt) return text;
   const elapsed = Math.max(0, now - startAt);
   const visibleCount = Math.min(text.length, Math.floor(elapsed / charDelayMs) + 1);
@@ -301,11 +300,11 @@ export default function AIInsights({
   clubId,
   userId,
   mode = 'officer',
-}: {
+}: Readonly<{
   clubId?: string | null;
   userId?: string | null;
   mode?: 'officer' | 'member';
-}) {
+}>) {
   const announcements = useAnnouncements();
   const events = useEvents();
   const transactions = useTransactions();
@@ -342,7 +341,6 @@ export default function AIInsights({
   const [now, setNow] = useState(() => Date.now());
   const [isResolvingInsight, setIsResolvingInsight] = useState(false);
   const [insightError, setInsightError] = useState<string | null>(null);
-  const [isResolvingCustomInsights, setIsResolvingCustomInsights] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(false);
   const lastSubmittedStateRef = useRef<string>('');
   const [promptCache, setPromptCache] = useState<Record<string, InsightResolutionCache>>({});
@@ -626,12 +624,12 @@ export default function AIInsights({
   }, [generatedAt]);
 
   const getListItems = (key: InsightListKey, baseItems: InsightItem[]) => {
-    const hidden = (hiddenInsights[key] ?? []).map(item => item.id);
+    const hidden = new Set((hiddenInsights[key] ?? []).map(item => item.id));
     const added = customInsights[key] ?? [];
     const filtered: InsightItem[] = baseItems
       .filter(item => {
         if (!item.id) return true;
-        return !hidden.includes(item.id);
+        return !hidden.has(item.id);
       })
       .map(item => ({
         ...item,
@@ -668,9 +666,9 @@ export default function AIInsights({
   };
 
   const getCustomListItems = (key: InsightBoxKey) => {
-    const hidden = (hiddenInsights[key] ?? []).map(item => item.id);
+    const hidden = new Set((hiddenInsights[key] ?? []).map(item => item.id));
     const added = customInsights[key] ?? [];
-    return added.filter(item => !item.id || !hidden.includes(item.id));
+    return added.filter(item => !item.id || !hidden.has(item.id));
   };
 
   const appendCustomInsight = (listKey: InsightBoxKey, item: InsightItem) => {
@@ -744,12 +742,10 @@ export default function AIInsights({
     const groupMessages = (groupChats.data ?? []).flatMap(chat => chat.messages ?? []);
     const eventList = events.data ?? [];
     const pointEntryList = pointEntries.data ?? [];
-    const promptTokens = Array.from(
-      new Set(normalized.split(/[^a-z0-9]+/).filter(token => token.length > 1))
-    );
+    const promptTokens = new Set(normalized.split(/[^a-z0-9]+/).filter(token => token.length > 1));
     const hasPhrase = (...phrases: string[]) => phrases.some(phrase => normalized.includes(phrase));
     const tokenScore = (keywords: string[]) =>
-      keywords.reduce((score, keyword) => score + (promptTokens.includes(keyword) ? 1 : 0), 0);
+      keywords.reduce((score, keyword) => score + (promptTokens.has(keyword) ? 1 : 0), 0);
     const memberNameByEmail = new Map(
       memberList.map(member => [member.email?.toLowerCase?.() ?? '', member.name ?? member.email])
     );
@@ -1168,7 +1164,7 @@ export default function AIInsights({
         source: 'custom' as const,
       });
       setNewInsightText('');
-    } catch (error) {
+    } catch {
       setInsightError('Unable to generate an insight right now.');
     } finally {
       setIsResolvingInsight(false);
@@ -1275,7 +1271,6 @@ export default function AIInsights({
       });
     });
     setCustomInsights(next);
-    setIsResolvingCustomInsights(false);
   }, [contextVersion, customRequests, requestCache]);
 
   if (loading) {
@@ -1355,13 +1350,13 @@ export default function AIInsights({
                   event.stopPropagation();
                   void handleAddInsight();
                 }}
-                disabled={isResolvingInsight || isResolvingCustomInsights}
+                disabled={isResolvingInsight}
               />
               <Button
                 type="button"
                 size="sm"
                 onClick={handleAddInsight}
-                disabled={isResolvingInsight || isResolvingCustomInsights}
+                disabled={isResolvingInsight}
               >
                 {isResolvingInsight ? 'Analyzing...' : 'Add'}
               </Button>

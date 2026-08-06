@@ -48,12 +48,10 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import type { GenerateSocialMediaPostOutput } from "@/ai/flows/generate-social-media-post";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
-import { notifyOrgAiUsageChanged, useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
+import { useSocialPosts, useCurrentUserRole, useCurrentUser } from "@/lib/data-hooks";
 import type { SocialPost, Comment } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
-import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
-import { resizeImage } from "@/lib/image-resizer";
 
 const MAX_SOCIAL_POSTS = 5;
 
@@ -73,9 +71,13 @@ const commentFormSchema = z.object({
 
 type GeneratedPost = GenerateSocialMediaPostOutput & { images?: string[], dataAiHint?: string };
 
+const getNextPostId = (posts: SocialPost[]) => {
+  if (posts.length === 0) return 1;
+  return Math.max(...posts.map(post => post.id)) + 1;
+};
+
 export default function SocialPage() {
   const { data: socialPosts, updateData: setSocialPosts, loading } = useSocialPosts();
-  const [isLoading, setIsLoading] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null);
   const [postToReview, setPostToReview] = useState<GeneratedPost | null>(null);
@@ -85,7 +87,6 @@ export default function SocialPage() {
   const [activeCommentPostId, setActiveCommentPostId] = useState<number | null>(null);
   const { canEditContent } = useCurrentUserRole();
   const { user } = useCurrentUser();
-  const aiRequestInFlightRef = useRef(false);
   const openSocialAssistant = (prompt: string) => {
     openAssistantWithContext(prompt);
   };
@@ -202,7 +203,7 @@ export default function SocialPage() {
   const handlePostSubmit = (values: z.infer<typeof postFormSchema>) => {
     if (!user || !postToReview) return;
     const newPost: SocialPost = {
-      id: socialPosts.length > 0 ? Math.max(...socialPosts.map(p => p.id)) + 1 : 1,
+      id: getNextPostId(socialPosts),
       title: values.title,
       content: values.content,
       images: postToReview.images || [],
@@ -288,7 +289,7 @@ export default function SocialPage() {
                     {previewImages.length > 0 && (
                     <div className="grid grid-cols-2 gap-2">
                         {previewImages.map((image, index) => (
-                        <div key={index} className="relative">
+                        <div key={image} className="relative">
                             <Image src={image} alt={`Preview ${index + 1}`} width={200} height={200} className="rounded-md w-full h-auto aspect-square object-cover" />
                             <Button variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6" onClick={() => removePreviewImage(index)}>
                                 <X className="h-4 w-4"/>
@@ -298,7 +299,7 @@ export default function SocialPage() {
                     </div>
                     )}
                 
-                    <Button type="submit" disabled={isLoading} className="w-full">
+                    <Button type="submit" className="w-full">
                     <Sparkles className="mr-2 h-4 w-4" />
                     Continue in Assistant
                     </Button>
@@ -310,8 +311,8 @@ export default function SocialPage() {
       )}
        <div className={canEditContent ? "md:col-span-2" : "md:col-span-3"}>
         <h2 className="text-2xl font-bold mb-4">Recent Posts</h2>
-        {loading ? <p>Loading...</p> : 
-          socialPosts.length > 0 ? (
+        {loading ? <p>Loading...</p> : null}
+        {!loading && socialPosts.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
             {socialPosts.map((post) => {
               const validImages = Array.isArray(post.images) 
@@ -359,7 +360,7 @@ export default function SocialPage() {
                     <Carousel className="w-full max-w-xs mx-auto">
                       <CarouselContent>
                         {validImages.map((image, index) => (
-                          <CarouselItem key={index}>
+                          <CarouselItem key={image}>
                              <Image src={image} alt={`Social post image ${index+1}`} width={400} height={400} className="rounded-lg aspect-square object-cover" data-ai-hint={post.dataAiHint} />
                           </CarouselItem>
                         ))}
@@ -388,8 +389,8 @@ export default function SocialPage() {
                     {activeCommentPostId === post.id && (
                         <div className="w-full pt-4">
                             <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-                                {(post.comments || []).map((comment, index) => (
-                                    <div key={index} className="text-sm p-3 bg-muted rounded-lg">
+                                {(post.comments || []).map((comment) => (
+                                    <div key={`${comment.author}-${comment.text}`} className="text-sm p-3 bg-muted rounded-lg">
                                         <p className="font-semibold">{comment.author}</p>
                                         <p className="text-muted-foreground">{comment.text}</p>
                                     </div>
@@ -420,13 +421,14 @@ export default function SocialPage() {
               </Card>
             )})}
           </div>
-        ) : (
+        ) : null}
+        {!loading && socialPosts.length === 0 ? (
              <Card className="md:col-span-2">
               <CardContent className="pt-6">
                 <p className="tab-empty-state text-muted-foreground">No social posts yet. {canEditContent && "Create one to get started!"}</p>
               </CardContent>
             </Card>
-        )}
+        ) : null}
       </div>
     </div>
       </div>

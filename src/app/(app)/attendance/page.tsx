@@ -2,12 +2,12 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -15,7 +15,6 @@ import { useEvents, useCurrentUserRole, useCurrentUser, useMembers } from "@/lib
 import type { ClubEvent, Member } from "@/lib/mock-data";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { CheckCircle, KeyRound, Loader2, Users } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { generateRandomCode } from "@/lib/random-code";
 import { safeFetchJson } from "@/lib/network";
 import { getSelectedGroupId, getSelectedOrgId } from "@/lib/selection";
@@ -30,7 +29,6 @@ export default function AttendancePage() {
   const { user, loading: userLoading } = useCurrentUser();
   const { canEditContent } = useCurrentUserRole();
   const { toast } = useToast();
-  const [activeEventId, setActiveEventId] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof checkInFormSchema>>({
     resolver: zodResolver(checkInFormSchema),
@@ -58,7 +56,7 @@ export default function AttendancePage() {
   const handleCheckIn = async (eventId: string, values: z.infer<typeof checkInFormSchema>) => {
     if (!user) return;
     const event = events.find(e => e.id === eventId);
-    if (!event || !event.checkInCode) {
+    if (!event?.checkInCode) {
       toast({ title: "Error", description: "This event does not have a check-in code.", variant: "destructive" });
       return;
     }
@@ -130,8 +128,6 @@ export default function AttendancePage() {
   const now = new Date();
 
   const upcomingEvents = sortedEvents.filter(e => e.date >= now);
-  const pastEvents = sortedEvents.filter(e => e.date < now);
-  
   const userAttendance = sortedEvents.filter(e => e.attendees?.includes(user?.email || ''));
 
 
@@ -167,9 +163,11 @@ export default function AttendancePage() {
                         Try again
                     </Button>
                 </div>
-            ) : sortedEvents.length === 0 ? (
+            ) : null}
+            {!eventsError && sortedEvents.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No events found.</p>
-            ) : (
+            ) : null}
+            {sortedEvents.length > 0 ? (
                 <Accordion type="single" collapsible className="w-full">
                     {sortedEvents.map(event => {
                         const attendeesList: Member[] = (event.attendees || [])
@@ -216,7 +214,7 @@ export default function AttendancePage() {
                         </AccordionItem>
                     )})}
                 </Accordion>
-            )}
+            ) : null}
           </CardContent>
         </Card>
         </div>
@@ -243,7 +241,7 @@ export default function AttendancePage() {
                 {upcomingEvents.length === 0 ? (
                      <p className="text-muted-foreground text-center py-8">No upcoming events available for check-in.</p>
                 ) : (
-                    <Accordion type="single" collapsible onValueChange={setActiveEventId}>
+                    <Accordion type="single" collapsible>
                         {upcomingEvents.map(event => (
                             <AccordionItem value={event.id} key={event.id}>
                                 <AccordionTrigger>
@@ -259,7 +257,7 @@ export default function AttendancePage() {
                                         <Input {...form.register('code')} placeholder="A1B2" maxLength={4} className="uppercase font-mono tracking-widest"/>
                                         <Button type="submit">Check In</Button>
                                     </form>
-                                     {form.formState.errors.code && <p className="text-destructive text-sm mt-1 px-2">{form.formState.errors.code.message}</p>}
+                                     {form.formState.errors.code?.message && <p className="text-destructive text-sm mt-1 px-2">{form.formState.errors.code.message}</p>}
                                 </AccordionContent>
                             </AccordionItem>
                         ))}

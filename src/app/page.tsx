@@ -68,10 +68,10 @@ const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}:discoverab
 function LegalNotice({
   onOpenTerms,
   onOpenPrivacy,
-}: {
+}: Readonly<{
   onOpenTerms: () => void;
   onOpenPrivacy: () => void;
-}) {
+}>) {
     return (
         <p className="mt-2 text-center text-xs leading-5 text-gray-500">
             By continuing, you agree to our{" "}
@@ -111,11 +111,11 @@ function SignUpForm({
   onUserSaved,
   onSwitchToLogin,
   supabase,
-}: {
+}: Readonly<{
   onUserSaved: (user: User) => void | Promise<void>;
   onSwitchToLogin: () => void;
   supabase: ReturnType<typeof createSupabaseBrowserClient>;
-}) {
+}>) {
     const form = useForm<z.infer<typeof userFormSchema>>({
         resolver: zodResolver(userFormSchema),
         defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
@@ -233,11 +233,11 @@ function LoginForm({
   onLogin,
   onSwitchToSignUp,
   supabase,
-}: {
+}: Readonly<{
   onLogin: (user: User) => void | Promise<void>;
   onSwitchToSignUp: () => void;
   supabase: ReturnType<typeof createSupabaseBrowserClient>;
-}) {
+}>) {
     const loginForm = useForm<z.infer<typeof loginFormSchema>>({
         resolver: zodResolver(loginFormSchema),
         defaultValues: { email: '', password: '' },

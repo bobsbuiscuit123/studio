@@ -269,6 +269,12 @@ export default function OrgCreatePage() {
   const paidPlanNoticeClass = isNativeApp
     ? 'rounded-[24px] border-emerald-200 bg-emerald-50 text-emerald-950'
     : 'rounded-[24px] border-emerald-500/35 bg-emerald-500/10 text-foreground [&>svg]:text-emerald-400';
+  let paidPlanNotice = 'We found an active subscription that is not yet assigned to an organization. Restore purchases below before creating another paid organization.';
+  if (createPaidActionDecision.crossOrgBlocked && paidOrg?.name) {
+    paidPlanNotice = `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}. Paid plan changes are only allowed from that organization's billing screen.`;
+  } else if (createPaidActionDecision.crossOrgBlocked) {
+    paidPlanNotice = 'Your account already has an active subscription linked to another organization. Paid plan changes are only allowed from that organization.';
+  }
   const purchaseUnavailableNoticeClass = isNativeApp
     ? 'rounded-[24px] border-amber-200 bg-amber-50 text-amber-950'
     : 'rounded-[24px] border-amber-500/40 bg-amber-500/10 text-foreground [&>svg]:text-amber-400';
@@ -586,12 +592,23 @@ export default function OrgCreatePage() {
     router.push('/clubs');
   };
 
-  const buttonLabel =
-    creationMode === 'purchase'
-      ? 'Buy and Create Organization'
-      : creationMode === 'transfer_subscription'
-        ? 'Transfer and Create Organization'
-        : 'Create Organization';
+  const buttonLabelByCreationMode = {
+    free: 'Create Organization',
+    keep_current_paid: 'Create Organization',
+    purchase: 'Buy and Create Organization',
+    transfer_subscription: 'Transfer and Create Organization',
+  } satisfies Record<OrgBillingMode, string>;
+  const buttonLabel = buttonLabelByCreationMode[creationMode];
+  const stepTitleByStep = {
+    1: 'Step 1: Organization details',
+    2: 'Step 2: Estimate usage and choose a plan',
+    3: 'Step 3: Review and confirm',
+  };
+  const stepDescriptionByStep = {
+    1: 'Enter organization details.',
+    2: 'Estimate monthly AI usage and choose how this organization should be billed.',
+    3: 'Review the organization details, usage estimate, and billing action before continuing.',
+  };
 
   return (
     <div className={cn('viewport-page bg-background', pageTextClass)}>
@@ -630,18 +647,10 @@ export default function OrgCreatePage() {
             </div>
             <div>
               <CardTitle className="text-xl">
-                {step === 1
-                  ? 'Step 1: Organization details'
-                  : step === 2
-                    ? 'Step 2: Estimate usage and choose a plan'
-                    : 'Step 3: Review and confirm'}
+                {stepTitleByStep[step]}
               </CardTitle>
               <CardDescription>
-                {step === 1
-                  ? 'Enter organization details.'
-                  : step === 2
-                    ? 'Estimate monthly AI usage and choose how this organization should be billed.'
-                    : 'Review the organization details, usage estimate, and billing action before continuing.'}
+                {stepDescriptionByStep[step]}
               </CardDescription>
             </div>
           </CardHeader>
@@ -690,11 +699,7 @@ export default function OrgCreatePage() {
                     <Sparkles className="h-4 w-4" />
                     <AlertTitle>Paid plans are unavailable for this new organization</AlertTitle>
                     <AlertDescription>
-                      {createPaidActionDecision.crossOrgBlocked
-                        ? paidOrg?.name
-                          ? `Your ${activeSubscriptionPlan?.name ?? 'paid'} subscription is currently linked to ${paidOrg.name}. Paid plan changes are only allowed from that organization's billing screen.`
-                          : 'Your account already has an active subscription linked to another organization. Paid plan changes are only allowed from that organization.'
-                        : 'We found an active subscription that is not yet assigned to an organization. Restore purchases below before creating another paid organization.'}{' '}
+                      {paidPlanNotice}{' '}
                       You can still create this organization on the free plan.
                     </AlertDescription>
                   </Alert>

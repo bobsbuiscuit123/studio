@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-type AIChatModalProps = {
+type AIChatModalProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   messages: AiChatClientMessage[];
@@ -37,7 +37,7 @@ type AIChatModalProps = {
   isSending: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   placement?: "above" | "below";
-};
+}>;
 
 type PopupLayout = {
   left: number;
@@ -125,15 +125,18 @@ const canResizePopup = (placement: AIChatModalProps["placement"]) =>
 const recipientsToText = (recipients?: RecipientRef[]) =>
   (recipients ?? []).map(recipient => recipient.email).join(", ");
 
+const previewBodyToText = (preview: DraftPreview) => {
+  if (preview.kind === "event") {
+    return "";
+  }
+
+  return preview.body ?? "";
+};
+
 const previewToEditorState = (preview: DraftPreview): PreviewEditorState => ({
   title: preview.kind === "announcement" || preview.kind === "event" ? preview.title ?? "" : "",
   subject: preview.kind === "email" ? preview.subject ?? "" : "",
-  body:
-    preview.kind === "announcement" || preview.kind === "email"
-      ? preview.body ?? ""
-      : preview.kind === "message"
-        ? preview.body ?? ""
-        : "",
+  body: previewBodyToText(preview),
   description: preview.kind === "event" ? preview.description ?? "" : "",
   date: preview.kind === "event" ? preview.date ?? "" : "",
   time: preview.kind === "event" ? preview.time ?? "" : "",
@@ -232,9 +235,9 @@ const getDiagnosticPhaseLabel = (phase: AssistantTurnDiagnostics["phase"]) => {
 
 function AssistantDiagnosticsBlock({
   diagnostics,
-}: {
+}: Readonly<{
   diagnostics?: AssistantTurnDiagnostics;
-}) {
+}>) {
   if (!diagnostics) {
     return null;
   }
@@ -262,11 +265,11 @@ function AssistantRichText({
   content,
   className,
   showCursor = false,
-}: {
+}: Readonly<{
   content: string;
   className?: string;
   showCursor?: boolean;
-}) {
+}>) {
   return (
     <div
       className={cn(
@@ -310,13 +313,13 @@ function AssistantTypedRichText({
   typingKey,
   onTypingComplete,
   onTypingTick,
-}: {
+}: Readonly<{
   content: string;
   className?: string;
   typingKey: string;
   onTypingComplete: (messageId: string) => void;
   onTypingTick: () => void;
-}) {
+}>) {
   const characters = useMemo(() => Array.from(content), [content]);
   const totalCharacters = characters.length;
   const [visibleCount, setVisibleCount] = useState(0);
@@ -370,13 +373,13 @@ function AssistantResponseText({
   typingKey,
   onTypingComplete,
   onTypingTick,
-}: {
+}: Readonly<{
   content: string;
   className?: string;
   typingKey?: string | null;
   onTypingComplete: (messageId: string) => void;
   onTypingTick: () => void;
-}) {
+}>) {
   if (!typingKey) {
     return <AssistantRichText content={content} className={className} />;
   }
@@ -401,7 +404,7 @@ function AssistantTurnContent({
   typingKey,
   onTypingComplete,
   onTypingTick,
-}: {
+}: Readonly<{
   message: AiChatClientMessage;
   isUser: boolean;
   onCommand: (command: AssistantCommand) => void;
@@ -410,7 +413,7 @@ function AssistantTurnContent({
   typingKey?: string | null;
   onTypingComplete: (messageId: string) => void;
   onTypingTick: () => void;
-}) {
+}>) {
   const turn = message.turn;
   const preview = turn && ("preview" in turn ? turn.preview : null);
   const [editor, setEditor] = useState<PreviewEditorState | null>(

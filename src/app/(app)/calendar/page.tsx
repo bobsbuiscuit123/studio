@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,7 +25,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, PlusSquare, Award, Sparkles, Check, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Pencil, PlusSquare, Award, Check, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -155,7 +155,6 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
   const [isClient, setIsClient] = useState(false);
   const { data: events, updateData: setEvents, updateDataAsync: saveEvents, error, loading, refreshData } = useEvents();
-  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [editingEvent, setEditingEvent] = useState<ClubEvent | null>(null);
   const [editingDraftEvent, setEditingDraftEvent] = useState(false);
@@ -170,7 +169,6 @@ export default function CalendarPage() {
   const safeEvents = Array.isArray(events) ? events : [];
   const highlightedEventId = searchParams.get("eventId");
   const [showAi, setShowAi] = useState(false);
-  const aiRequestInFlightRef = useRef(false);
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
   const openCalendarAssistant = (prompt: string) => {
     openAssistantWithContext(prompt);
@@ -420,7 +418,7 @@ export default function CalendarPage() {
   
   const handleManualAdd = async (values: z.infer<typeof manualEventSchema>) => {
     const dateTime = parseManualEventDateTime(values.date, values.time);
-    const hasTime = Boolean(values.time && values.time.trim());
+    const hasTime = Boolean(values.time?.trim());
     const newEvent: ClubEvent = {
       id: createClientEventId(),
       title: values.title,
@@ -457,7 +455,7 @@ export default function CalendarPage() {
   
   const generateGoogleCalendarLink = (event: ClubEvent) => {
     const formatDate = (date: Date) => {
-      return date.toISOString().replace(/-|:|\.\d\d\d/g,"");
+      return date.toISOString().replaceAll(/-|:|\.\d\d\d/g, "");
     };
 
     const startTime = formatDate(event.date);
@@ -491,6 +489,7 @@ export default function CalendarPage() {
   }, [date, upcomingEvents]);
 
   const weekLabels = ["S", "M", "T", "W", "T", "F", "S"];
+  const eventSubmitLabel = editingDraftEvent ? "Add Event" : "Save Changes";
   
   return (
     <div className="app-page-shell">
@@ -727,8 +726,8 @@ export default function CalendarPage() {
                               </FormItem>
                           )}
                           />
-                          <Button type="submit" disabled={isLoading} className={`w-full ${aiSparkle}`}>
-                          {isLoading ? <Loader2 className="animate-spin" /> : "Continue in Assistant"}
+                          <Button type="submit" className={`w-full ${aiSparkle}`}>
+                            Continue in Assistant
                           </Button>
                       </form>
                     </Form>
@@ -745,16 +744,16 @@ export default function CalendarPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
-             {loading ? <p>Loading...</p> : 
-                error && upcomingEvents.length === 0 ? (
+             {loading ? <p>Loading...</p> : null}
+             {!loading && error && upcomingEvents.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground space-y-3">
                     <div>{error}</div>
                     <Button variant="outline" onClick={() => void refreshData()}>
                       Try again
                     </Button>
                   </div>
-                ) :
-                upcomingEvents.length > 0 ? (
+                ) : null}
+                {!loading && upcomingEvents.length > 0 ? (
                   <Accordion type="single" collapsible className="w-full space-y-3">
                     {upcomingEvents.map((event) => (
                       <AccordionItem
@@ -858,10 +857,11 @@ export default function CalendarPage() {
                                  <p className="text-xs text-muted-foreground">
                                    RSVPs: {(event.rsvps?.yes || []).length}
                                  </p>
-                               ) : event.rsvpRequired ? (
-                                 <p className="text-xs text-muted-foreground">RSVP required</p>
                                ) : null
                              )}
+                             {!canEditContent && (event.rsvps?.yes || []).length === 0 && event.rsvpRequired ? (
+                                 <p className="text-xs text-muted-foreground">RSVP required</p>
+                             ) : null}
                              <Link href={generateGoogleCalendarLink(event)} target="_blank" rel="noopener noreferrer">
                                <Button variant="outline" size="sm">
                                  <PlusSquare className="mr-2 h-4 w-4" /> Add to Google Calendar
@@ -872,10 +872,10 @@ export default function CalendarPage() {
                       </AccordionItem>
                     ))}
                   </Accordion>
-              ) : (
+              ) : null}
+              {!loading && !error && upcomingEvents.length === 0 ? (
                  <div className="text-center py-8 text-muted-foreground">No events scheduled.</div>
-              )
-            }
+              ) : null}
           </CardContent>
         </Card>
       </div>
@@ -961,10 +961,11 @@ export default function CalendarPage() {
                         <p className="text-sm text-muted-foreground">
                           RSVPs: {(selectedEvent.rsvps?.yes || []).length}
                         </p>
-                      ) : selectedEvent.rsvpRequired ? (
-                        <p className="text-sm text-muted-foreground">RSVP required</p>
                       ) : null
                     )}
+                    {!canEditContent && (selectedEvent.rsvps?.yes || []).length === 0 && selectedEvent.rsvpRequired ? (
+                        <p className="text-sm text-muted-foreground">RSVP required</p>
+                    ) : null}
                 </div>
                 <DialogFooter className="flex-row flex-wrap justify-between gap-2 sm:justify-between">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1127,7 +1128,7 @@ export default function CalendarPage() {
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Saving...
                         </>
-                      ) : editingDraftEvent ? "Add Event" : "Save Changes"}
+                      ) : eventSubmitLabel}
                     </Button>
                 </DialogFooter>
               </form>

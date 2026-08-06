@@ -39,6 +39,9 @@ type SaveUserInput = Partial<User> | ((currentUser: User | null) => User);
 type CurrentUserStatus = DashboardAsyncStatus;
 type CurrentUserResponse = { ok: true; data: User | null };
 
+const mergeUserInput = (currentUser: User | null, newUser: Partial<User>): User =>
+  currentUser ? ({ ...currentUser, ...newUser } as User) : (newUser as User);
+
 type CurrentUserContextValue = {
   user: User | null;
   status: CurrentUserStatus;
@@ -328,7 +331,7 @@ function useCurrentUserState(): CurrentUserContextValue {
         demoCtx.updateUser(currentUser =>
           typeof newUser === 'function'
             ? (newUser as (currentUser: User | null) => User)(currentUser)
-            : ({ ...(currentUser || {}), ...newUser } as User)
+            : mergeUserInput(currentUser, newUser)
         );
         return;
       }
@@ -337,7 +340,7 @@ function useCurrentUserState(): CurrentUserContextValue {
       const updatedUser =
         typeof newUser === 'function'
           ? (newUser as (currentUser: User | null) => User)(user)
-          : ({ ...(user || {}), ...newUser } as User);
+          : mergeUserInput(user, newUser);
       persistCurrentUserCache(updatedUser);
       setUser(updatedUser);
       const response = await safeFetchJson<{ ok: boolean; data?: User }>('/api/profile', {

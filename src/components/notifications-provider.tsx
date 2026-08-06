@@ -8,7 +8,7 @@ type NotificationsContextValue = ReturnType<typeof useNotifications>;
 
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 
-export function NotificationsProvider({ children }: { children: ReactNode }) {
+export function NotificationsProvider({ children }: Readonly<{ children: ReactNode }>) {
   const notifications = useNotifications();
 
   return (

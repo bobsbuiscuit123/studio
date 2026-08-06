@@ -64,16 +64,21 @@ const errorResponse = (error: unknown, status = 500) =>
   new Response(
     JSON.stringify({
       error: true,
-      message:
-        error && typeof error === 'object' && 'message' in error
-          ? String((error as { message?: unknown }).message || 'Unknown error')
-          : 'Unknown error',
+      message: getErrorMessage(error),
     }),
     {
       status,
       headers: jsonHeaders,
     }
   );
+
+const getErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('message' in error)) {
+    return 'Unknown error';
+  }
+  const message = (error as { message?: unknown }).message;
+  return typeof message === 'string' && message ? message : 'Unknown error';
+};
 
 const clampTabAiResult = (value: unknown) => {
   if (isResult(value)) {
@@ -213,14 +218,14 @@ export async function POST(request: Request) {
     const feature = parsed.data.feature;
     const action = parsed.data.action || (feature === 'chat' ? 'assistant' : feature);
 
-    const messageSource =
-      typeof payload?.message === 'string'
-        ? payload.message
-        : typeof payload?.query === 'string'
-          ? payload.query
-          : typeof payload?.prompt === 'string'
-            ? payload.prompt
-            : '';
+    let messageSource = '';
+    if (typeof payload?.message === 'string') {
+      messageSource = payload.message;
+    } else if (typeof payload?.query === 'string') {
+      messageSource = payload.query;
+    } else if (typeof payload?.prompt === 'string') {
+      messageSource = payload.prompt;
+    }
     const message = String(messageSource ?? '').trim();
     if (message.length > 8_000) {
       return errorResponse(new Error('Prompt is too long.'), 400);
@@ -332,10 +337,7 @@ export async function POST(request: Request) {
       return new Response(
         JSON.stringify({
           error: true,
-          message:
-            error && typeof error === 'object' && 'message' in error
-              ? String((error as { message?: unknown }).message || 'Unknown error')
-              : 'Unknown error',
+          message: getErrorMessage(error),
         }),
         {
           status: 500,

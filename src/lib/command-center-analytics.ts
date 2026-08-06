@@ -152,7 +152,7 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const normalizeCommandCenterEmail = (value: unknown) =>
-  String(value ?? '').trim().toLowerCase();
+  typeof value === 'string' ? value.trim().toLowerCase() : '';
 
 const asArray = <T = Record<string, any>>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : [];
@@ -160,7 +160,8 @@ const asArray = <T = Record<string, any>>(value: unknown): T[] =>
 const toTimestamp = (value: unknown) => {
   if (!value) return 0;
   if (value instanceof Date) return value.getTime();
-  const parsed = new Date(String(value));
+  if (typeof value !== 'string' && typeof value !== 'number') return 0;
+  const parsed = new Date(value);
   const time = parsed.getTime();
   return Number.isFinite(time) ? time : 0;
 };
@@ -278,10 +279,12 @@ const buildHeatmap = (groups: RawGroupInput[]) => {
   const cells = new Map<string, HeatmapCell>();
   DAY_LABELS.forEach(day => {
     COMMAND_CENTER_HEATMAP_HOURS.forEach(hour => {
+      const displayHour = hour > 12 ? hour - 12 : hour;
+      const period = hour >= 12 ? 'p' : 'a';
       cells.set(`${day}-${hour}`, {
         day,
         hour,
-        label: `${day} ${hour > 12 ? hour - 12 : hour}${hour >= 12 ? 'p' : 'a'}`,
+        label: `${day} ${displayHour}${period}`,
         count: 0,
       });
     });
@@ -334,13 +337,18 @@ const buildGroupAnalytics = ({
     log => log.result === 'success' && toTimestamp(log.created_at) >= recentThreshold
   ).length;
   const tasksAutomated = recentSuccessfulLogs + countAiTaggedItems(state, recentThreshold);
-  const status: OrgDashboardGroupRow['status'] = !sponsor
-    ? 'alert'
-    : latestMeeting >= recentThreshold
-      ? 'active'
-      : 'inactive';
-  const statusLabel: OrgDashboardGroupRow['statusLabel'] =
-    status === 'alert' ? 'No Sponsor/Alert' : status === 'active' ? 'Active' : 'Inactive/No Meeting';
+  let status: OrgDashboardGroupRow['status'] = 'inactive';
+  if (!sponsor) {
+    status = 'alert';
+  } else if (latestMeeting >= recentThreshold) {
+    status = 'active';
+  }
+  let statusLabel: OrgDashboardGroupRow['statusLabel'] = 'Inactive/No Meeting';
+  if (status === 'alert') {
+    statusLabel = 'No Sponsor/Alert';
+  } else if (status === 'active') {
+    statusLabel = 'Active';
+  }
   const compliant =
     Boolean(sponsor) &&
     recentEvents.length > 0 &&
@@ -410,7 +418,7 @@ const buildGroupAnalytics = ({
         id: `${group.id}-${log.id ?? log.created_at}-assistant-failure`,
         level: 'critical',
         title: 'Assistant action failed',
-        detail: `${group.name}: ${log.action_type ?? 'AI task'} failed${log.error_message ? ` - ${log.error_message}` : ''}.`,
+        detail: `${group.name}: ${log.action_type ?? 'AI task'} failed${log.error_message ? ' - ' + log.error_message : ''}.`,
         orgId: org.id,
         orgName: org.name,
         groupId: group.id,
@@ -542,17 +550,27 @@ export const buildOrgDashboardPayload = ({
     groups: dashboardGroups,
     auditLog,
     heatmap: buildHeatmap(groups),
-    exportRows: dashboardGroups.map(group => ({
-      orgName: org.name,
-      groupName: group.groupName,
-      activeMembers: group.memberCount,
-      sponsor: group.sponsor ? `${group.sponsor.name}${group.sponsor.email ? ` <${group.sponsor.email}>` : ''}` : '',
-      lastActivityDate: group.lastActivityDate ? compactDate(toTimestamp(group.lastActivityDate)) : '',
-      status: group.statusLabel,
-      compliant: group.compliant ? 'Yes' : 'No',
-      resourceHours: group.resourceHours,
-      tasksAutomated: groupAnalytics.find(item => item.groupId === group.groupId)?.tasksAutomated ?? 0,
-    })),
+    exportRows: dashboardGroups.map(group => {
+      let sponsor = '';
+      if (group.sponsor) {
+        sponsor = group.sponsor.name;
+        if (group.sponsor.email) {
+          sponsor += ` <${group.sponsor.email}>`;
+        }
+      }
+
+      return {
+        orgName: org.name,
+        groupName: group.groupName,
+        activeMembers: group.memberCount,
+        sponsor,
+        lastActivityDate: group.lastActivityDate ? compactDate(toTimestamp(group.lastActivityDate)) : '',
+        status: group.statusLabel,
+        compliant: group.compliant ? 'Yes' : 'No',
+        resourceHours: group.resourceHours,
+        tasksAutomated: groupAnalytics.find(item => item.groupId === group.groupId)?.tasksAutomated ?? 0,
+      };
+    }),
   };
 };
 
@@ -637,7 +655,8 @@ export const buildExecutiveDashboardPayload = ({
 };
 
 const escapeCsvValue = (value: unknown) => {
-  const text = String(value ?? '');
+  const text =
+    typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : '';
   if (/[",\n]/.test(text)) {
     return `"${text.replaceAll('"', '""')}"`;
   }

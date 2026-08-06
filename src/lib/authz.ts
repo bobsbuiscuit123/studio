@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
-import { err, ok, type Result } from '@/lib/result';
+import { err, ok } from '@/lib/result';
 
 export const requireUser = async () => {
   const supabase = await createSupabaseServerClient();

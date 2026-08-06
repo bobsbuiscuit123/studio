@@ -5,11 +5,11 @@ import { APPLE_STANDARD_EULA_URL } from "@/lib/legal";
 
 type LegalDocumentType = "terms" | "privacy";
 
-type LegalDocumentDialogProps = {
+type LegalDocumentDialogProps = Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   type: LegalDocumentType;
-};
+}>;
 
 export function LegalDocumentDialog({
   open,

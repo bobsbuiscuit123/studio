@@ -177,67 +177,76 @@ export async function executePendingAction(args: {
   }
 
   try {
-    const result =
-      pending.actionType === 'create_announcement'
-        ? await createAnnouncement({
-            userId: args.userId,
-            userEmail: args.userEmail,
-            orgId: args.orgId,
-            groupId: args.groupId,
-            title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title ?? '' : '',
-            body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body ?? '' : '',
-          })
-        : pending.actionType === 'update_announcement'
-          ? await updateAnnouncement({
-              userId: args.userId,
-              userEmail: args.userEmail,
-              orgId: args.orgId,
-              groupId: args.groupId,
-              targetRef: typeof claimed.actionFields.targetRef === 'string' ? claimed.actionFields.targetRef : '',
-              title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title : undefined,
-              body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body : undefined,
-            })
-        : pending.actionType === 'create_event'
-          ? await createEvent({
-              userId: args.userId,
-              orgId: args.orgId,
-              groupId: args.groupId,
-              title: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.title ?? '' : '',
-              description: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.description : undefined,
-              date: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.date ?? '' : '',
-              time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time ?? '' : '',
-              location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
-            })
-        : pending.actionType === 'update_event'
-            ? await updateEvent({
-                userId: args.userId,
-                orgId: args.orgId,
-                groupId: args.groupId,
-                targetRef: typeof claimed.actionFields.targetRef === 'string' ? claimed.actionFields.targetRef : '',
-                title: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.title : undefined,
-                description: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.description : undefined,
-                date: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.date : undefined,
-                time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time : undefined,
-                location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
-              })
-          : pending.actionType === 'create_email' || pending.actionType === 'update_email'
-            ? await createEmailDraft({
-                userId: args.userId,
-                orgId: args.orgId,
-                groupId: args.groupId,
-                pendingActionId: claimed.id,
-                subject: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.subject ?? '' : '',
-                body: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.body ?? '' : '',
-              })
-        : await createMessage({
-            mode: 'recipients',
-            userId: args.userId,
-            userEmail: args.userEmail,
-            orgId: args.orgId,
-            groupId: args.groupId,
-            recipients: claimed.currentPayload.kind === 'message' ? claimed.currentPayload.recipients ?? [] : [],
-            body: claimed.currentPayload.kind === 'message' ? claimed.currentPayload.body ?? '' : '',
-          });
+    let result: Awaited<
+      | ReturnType<typeof createAnnouncement>
+      | ReturnType<typeof updateAnnouncement>
+      | ReturnType<typeof createEvent>
+      | ReturnType<typeof updateEvent>
+      | ReturnType<typeof createEmailDraft>
+      | ReturnType<typeof createMessage>
+    >;
+    if (pending.actionType === 'create_announcement') {
+      result = await createAnnouncement({
+        userId: args.userId,
+        userEmail: args.userEmail,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title ?? '' : '',
+        body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body ?? '' : '',
+      });
+    } else if (pending.actionType === 'update_announcement') {
+      result = await updateAnnouncement({
+        userId: args.userId,
+        userEmail: args.userEmail,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        targetRef: typeof claimed.actionFields.targetRef === 'string' ? claimed.actionFields.targetRef : '',
+        title: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.title : undefined,
+        body: claimed.currentPayload.kind === 'announcement' ? claimed.currentPayload.body : undefined,
+      });
+    } else if (pending.actionType === 'create_event') {
+      result = await createEvent({
+        userId: args.userId,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        title: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.title ?? '' : '',
+        description: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.description : undefined,
+        date: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.date ?? '' : '',
+        time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time ?? '' : '',
+        location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
+      });
+    } else if (pending.actionType === 'update_event') {
+      result = await updateEvent({
+        userId: args.userId,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        targetRef: typeof claimed.actionFields.targetRef === 'string' ? claimed.actionFields.targetRef : '',
+        title: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.title : undefined,
+        description: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.description : undefined,
+        date: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.date : undefined,
+        time: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.time : undefined,
+        location: claimed.currentPayload.kind === 'event' ? claimed.currentPayload.location : undefined,
+      });
+    } else if (pending.actionType === 'create_email' || pending.actionType === 'update_email') {
+      result = await createEmailDraft({
+        userId: args.userId,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        pendingActionId: claimed.id,
+        subject: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.subject ?? '' : '',
+        body: claimed.currentPayload.kind === 'email' ? claimed.currentPayload.body ?? '' : '',
+      });
+    } else {
+      result = await createMessage({
+        mode: 'recipients',
+        userId: args.userId,
+        userEmail: args.userEmail,
+        orgId: args.orgId,
+        groupId: args.groupId,
+        recipients: claimed.currentPayload.kind === 'message' ? claimed.currentPayload.recipients ?? [] : [],
+        body: claimed.currentPayload.kind === 'message' ? claimed.currentPayload.body ?? '' : '',
+      });
+    }
 
     await insertAssistantActionLog({
       pendingActionId: claimed.id,

@@ -238,12 +238,14 @@ export async function runAssistant(input: AssistantInput): Promise<Result<Assist
       actions: [],
     });
   } catch (error) {
+    const message =
+      error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+        ? (error as { message: string }).message
+        : 'Gemini call failed';
+
     return err({
       code: 'AI_PROVIDER_ERROR',
-      message:
-        error && typeof error === 'object' && 'message' in error
-          ? String((error as { message?: unknown }).message || 'Gemini call failed')
-          : 'Gemini call failed',
+      message,
       source: 'ai',
       retryable: true,
     });

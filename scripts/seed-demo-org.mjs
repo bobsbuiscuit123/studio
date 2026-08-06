@@ -13,7 +13,7 @@ function loadEnvFile(path) {
     if (equalsIndex === -1) continue;
 
     const key = assignment.slice(0, equalsIndex).trim();
-    if (!key || Object.prototype.hasOwnProperty.call(process.env, key)) continue;
+    if (!key || Object.hasOwn(process.env, key)) continue;
 
     let value = assignment.slice(equalsIndex + 1).trim();
     const quote = value[0];
@@ -55,6 +55,21 @@ const trimTrailingSlashes = (value) => {
   return value.slice(0, end);
 };
 
+function parseResponseBody(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function getResponseMessage(payload, fallback) {
+  if (!payload) return fallback;
+  if (typeof payload === "string") return payload;
+  return payload.message || payload.error_description || payload.error || fallback;
+}
+
 function createRestSupabaseClient(url, serviceRoleKey) {
   const baseUrl = trimTrailingSlashes(url);
   const restUrl = `${baseUrl}/rest/v1`;
@@ -63,21 +78,6 @@ function createRestSupabaseClient(url, serviceRoleKey) {
     authorization: `Bearer ${serviceRoleKey}`,
     "content-type": "application/json",
   };
-
-  function parseResponseBody(text) {
-    if (!text) return null;
-    try {
-      return JSON.parse(text);
-    } catch {
-      return text;
-    }
-  }
-
-  function getResponseMessage(payload, fallback) {
-    if (!payload) return fallback;
-    if (typeof payload === "string") return payload;
-    return payload.message || payload.error_description || payload.error || fallback;
-  }
 
   async function request(endpoint, options = {}) {
     const requestUrl = new URL(`${restUrl}/${endpoint}`);
@@ -198,7 +198,7 @@ function createRestSupabaseClient(url, serviceRoleKey) {
         const query = [...this.filters];
         let method = "GET";
         let prefer = null;
-        let body = undefined;
+        let body;
 
         if (this.operation === "select" || !this.operation) {
           query.unshift(["select", this.columns]);
@@ -257,12 +257,12 @@ const baseOrgName = args.get("org-name") || process.env.DEMO_ORG_NAME || "Caspo 
 const freshOrg = args.get("fresh") === "true" || process.env.DEMO_FRESH_ORG === "true";
 const rawOwnerGroupRole = args.get("owner-group-role") || process.env.DEMO_OWNER_GROUP_ROLE || "Admin";
 const normalizedOwnerGroupRole = String(rawOwnerGroupRole).trim().toLowerCase();
-const ownerGroupRole =
-  normalizedOwnerGroupRole === "officer"
-    ? "Officer"
-    : normalizedOwnerGroupRole === "member"
-      ? "Member"
-      : "Admin";
+let ownerGroupRole = "Admin";
+if (normalizedOwnerGroupRole === "officer") {
+  ownerGroupRole = "Officer";
+} else if (normalizedOwnerGroupRole === "member") {
+  ownerGroupRole = "Member";
+}
 const ownerGroupMembershipRole = ownerGroupRole.toLowerCase();
 
 if (!ownerEmail) {
@@ -559,6 +559,12 @@ const buildClubState = (club, index, owner) => {
   const formId = `${club.code.toLowerCase()}-member-interest-form`;
   const announcementId = 1000 + index * 10;
   const eventId = `${club.code.toLowerCase()}-weekly-sync`;
+  let weeklyLocation = "Room 124";
+  if (index === 0) {
+    weeklyLocation = "Engineering Lab 214";
+  } else if (index === 2) {
+    weeklyLocation = "Community Center";
+  }
 
   return {
     members,
@@ -568,7 +574,7 @@ const buildClubState = (club, index, owner) => {
         date: addDaysDate(-5, 21, 30),
         title: `${club.name} weekly meeting`,
         description: "Officer updates, committee breakouts, and next-event planning.",
-        location: index === 0 ? "Engineering Lab 214" : index === 2 ? "Community Center" : "Room 124",
+        location: weeklyLocation,
         hasTime: true,
         points: 2,
         checkInCode: `${club.code}9`,
@@ -882,9 +888,8 @@ async function run() {
   await ensureOwnerMembership(org.id, owner.id);
   await resetOrgGroups(org.id);
 
-  const seededGroups = [];
   for (let index = 0; index < clubs.length; index += 1) {
-    seededGroups.push(await seedGroup(org.id, owner, clubs[index], index));
+    await seedGroup(org.id, owner, clubs[index], index);
   }
 
   console.log("");
@@ -895,7 +900,9 @@ async function run() {
   console.log("Open the app, log in as the configured owner, then select the demo organization.");
 }
 
-run().catch((error) => {
+try {
+  await run();
+} catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
-});
+}

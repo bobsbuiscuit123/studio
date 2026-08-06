@@ -49,6 +49,11 @@ const noStoreHeaders = {
   'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
 };
 
+const getFormText = (formData: FormData, key: string) => {
+  const value = formData.get(key);
+  return typeof value === 'string' ? value.trim() : '';
+};
+
 const deleteSchema = z
   .object({
     bucket: z.literal(GROUP_ASSETS_BUCKET).optional(),
@@ -192,10 +197,10 @@ export async function POST(request: Request) {
     return jsonError('Invalid upload payload.', 400, userLimiter);
   }
 
-  const orgId = String(formData.get('orgId') ?? '').trim();
-  const groupId = String(formData.get('groupId') ?? '').trim();
-  const scopeValue = String(formData.get('scope') ?? '').trim();
-  const fileNameValue = String(formData.get('fileName') ?? '').trim();
+  const orgId = getFormText(formData, 'orgId');
+  const groupId = getFormText(formData, 'groupId');
+  const scopeValue = getFormText(formData, 'scope');
+  const fileNameValue = getFormText(formData, 'fileName');
   const file = formData.get('file');
 
   if (!z.string().uuid().safeParse(orgId).success) {

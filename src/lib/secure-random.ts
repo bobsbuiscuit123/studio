@@ -1,4 +1,4 @@
-const UINT32_RANGE = 0x1_0000_0000;
+const UINT32_RANGE = 2 ** 32;
 
 const getCrypto = () => {
   const cryptoObject = globalThis.crypto;

@@ -31,7 +31,7 @@ import { DeleteAccountAction } from "@/components/delete-account-action";
 import { compressImageFile } from "@/lib/image-resizer";
 import { tryDeleteStoredImage, uploadImageToStorage } from "@/lib/storage-images";
 
-type ProfileDialogProps = {
+type ProfileDialogProps = Readonly<{
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   user: UserType | null;
@@ -39,7 +39,7 @@ type ProfileDialogProps = {
   onDeleted: () => Promise<void> | void;
   onLogout?: () => Promise<void> | void;
   mode?: 'live' | 'demo';
-};
+}>;
 
 const AVATAR_MAX_DIMENSION = 512;
 const AVATAR_JPEG_QUALITY = 0.82;

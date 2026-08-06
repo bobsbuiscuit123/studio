@@ -75,7 +75,8 @@ export const isHopeLinkGroupData = (data: unknown) => {
   const members = Array.isArray(record.members) ? record.members : [];
   const hasHopeLinkMembers = members.some(member => {
     if (!member || typeof member !== 'object') return false;
-    const email = String((member as { email?: unknown }).email ?? '').toLowerCase();
+    const rawEmail = (member as { email?: unknown }).email;
+    const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase() : '';
     return email.includes('@hopelink.demo') || email.includes('.hopelink.demo');
   });
   if (hasHopeLinkMembers) return true;
@@ -83,8 +84,10 @@ export const isHopeLinkGroupData = (data: unknown) => {
   const events = Array.isArray(record.events) ? record.events : [];
   return events.some(event => {
     if (!event || typeof event !== 'object') return false;
-    const title = String((event as { title?: unknown }).title ?? '').toLowerCase();
-    const description = String((event as { description?: unknown }).description ?? '').toLowerCase();
+    const rawTitle = (event as { title?: unknown }).title;
+    const rawDescription = (event as { description?: unknown }).description;
+    const title = typeof rawTitle === 'string' ? rawTitle.toLowerCase() : '';
+    const description = typeof rawDescription === 'string' ? rawDescription.toLowerCase() : '';
     return title.includes('hopelink') || description.includes('dkms') || description.includes('nmdp');
   });
 };

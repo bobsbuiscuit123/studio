@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { captureException } from '@/lib/telemetry';
 
-export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
+export default function GlobalError({ error }: Readonly<{ error: Error & { digest?: string } }>) {
   useEffect(() => {
     captureException(error, { digest: error.digest, scope: 'global-error' });
   }, [error]);

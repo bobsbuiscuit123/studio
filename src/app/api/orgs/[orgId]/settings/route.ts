@@ -178,13 +178,13 @@ export async function PATCH(
   }
 
   const updatePayload = {
-    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'logoUrl')
+    ...(Object.hasOwn(parsedBody.data, 'logoUrl')
       ? { logo_url: parsedBody.data.logoUrl ?? null }
       : {}),
-    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'memberLimitOverride')
+    ...(Object.hasOwn(parsedBody.data, 'memberLimitOverride')
       ? { member_limit_override: parsedBody.data.memberLimitOverride ?? null }
       : {}),
-    ...(Object.prototype.hasOwnProperty.call(parsedBody.data, 'aiTokenLimitOverride')
+    ...(Object.hasOwn(parsedBody.data, 'aiTokenLimitOverride')
       ? { ai_token_limit_override: parsedBody.data.aiTokenLimitOverride ?? null }
       : {}),
     updated_at: new Date().toISOString(),

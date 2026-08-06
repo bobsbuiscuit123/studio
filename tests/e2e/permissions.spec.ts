@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 const email = process.env.E2E_MEMBER_EMAIL;
 const password = process.env.E2E_MEMBER_PASSWORD;
 
+// These browser tests need a seeded member account and are skipped in local/CI runs without E2E credentials.
 test.skip(!email || !password, 'E2E_MEMBER_EMAIL/E2E_MEMBER_PASSWORD not set');
 
 test('member cannot create announcement', async ({ page }) => {
@@ -14,4 +15,3 @@ test('member cannot create announcement', async ({ page }) => {
   await page.goto('/announcements');
   await expect(page.getByText(/Access Denied|not available/i)).toBeVisible();
 });
-

@@ -81,11 +81,15 @@ export function AppMobileTabBar() {
 
   const isItemActive = (href: string) => {
     const resolvedHref = buildHref(href);
-    return isDemoApp
-      ? href === "/dashboard"
-        ? pathname === "/demo/app" || pathname === "/demo/app/dashboard"
-        : pathname === resolvedHref || pathname.startsWith(`${resolvedHref}/`)
-      : pathname === href || pathname.startsWith(`${href}/`);
+    if (!isDemoApp) {
+      return pathname === href || pathname.startsWith(`${href}/`);
+    }
+
+    if (href === "/dashboard") {
+      return pathname === "/demo/app" || pathname === "/demo/app/dashboard";
+    }
+
+    return pathname === resolvedHref || pathname.startsWith(`${resolvedHref}/`);
   };
 
   const navSets = useMemo(() => chunkItems(orderedItems, 4), [orderedItems]);
@@ -268,13 +272,13 @@ function IconTab({
   active,
   unread,
   onMarkViewed,
-}: {
+}: Readonly<{
   item: MobileNavItem;
   href: string;
   active: boolean;
   unread: Record<string, boolean>;
   onMarkViewed: (key: NotificationKey | null, href?: string) => void;
-}) {
+}>) {
   const Icon = item.icon;
   const hasNotification = Boolean(item.notificationKey && unread[item.notificationKey] && !active);
 

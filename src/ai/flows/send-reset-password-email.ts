@@ -34,7 +34,7 @@ export async function sendResetPasswordEmail(
   const { email, allUsers } = input;
   const user = allUsers.find(u => u.email === email);
 
-  if (user && user.password) {
+  if (user?.password) {
       return {
           success: true,
           message: `Password for ${email} is: ${user.password}`,

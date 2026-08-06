@@ -31,13 +31,15 @@ export const getMemberInsights = (input: InsightsInput): OfficerInsights => {
     : [];
 
   {
-    const text = userEmail
-      ? unreadAnnouncements.length > 0
-        ? `You have ${unreadAnnouncements.length} unread announcement${
-            unreadAnnouncements.length === 1 ? '' : 's'
-          }.`
-        : 'You are all caught up on announcements.'
-      : 'Sign in to track unread announcements.';
+    let text = 'Sign in to track unread announcements.';
+    if (userEmail) {
+      text =
+        unreadAnnouncements.length > 0
+          ? `You have ${unreadAnnouncements.length} unread announcement${
+              unreadAnnouncements.length === 1 ? '' : 's'
+            }.`
+          : 'You are all caught up on announcements.';
+    }
     actionNeeded.push({
       id: 'unread_announcements',
       text,
@@ -50,7 +52,8 @@ export const getMemberInsights = (input: InsightsInput): OfficerInsights => {
   {
     let text = 'No upcoming events scheduled.';
     if (upcomingEvents.length > 0) {
-      const nextEvent = upcomingEvents.sort((a, b) => a.date.getTime() - b.date.getTime())[0];
+      const sortedUpcomingEvents = [...upcomingEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const nextEvent = sortedUpcomingEvents[0];
       text = `Next event: ${nextEvent.title} on ${nextEvent.date.toLocaleDateString()}.`;
     }
     actionNeeded.push({
@@ -67,14 +70,15 @@ export const getMemberInsights = (input: InsightsInput): OfficerInsights => {
     return date && date >= weekStart;
   });
   {
-    const text =
-      announcements.length === 0
-        ? 'No announcements posted yet.'
-        : announcementsThisWeek.length === 0
+    let text = 'No announcements posted yet.';
+    if (announcements.length > 0) {
+      text =
+        announcementsThisWeek.length === 0
           ? 'No announcements posted this week.'
           : `${announcementsThisWeek.length} announcement${
               announcementsThisWeek.length === 1 ? '' : 's'
             } posted this week.`;
+    }
     engagementWarnings.push({
       id: 'announcements_this_week',
       text,

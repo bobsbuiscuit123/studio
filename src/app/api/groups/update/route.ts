@@ -117,10 +117,10 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const nextData = {
-    ...((stateRow?.data as Record<string, unknown> | null) ?? {}),
-    logo: parsed.data.logo ?? '',
-  };
+  const existingStateData = (stateRow?.data as Record<string, unknown> | null) ?? null;
+  const nextData = existingStateData
+    ? { ...existingStateData, logo: parsed.data.logo ?? '' }
+    : { logo: parsed.data.logo ?? '' };
   const stateUpdate = await admin
     .from('group_state')
     .upsert(

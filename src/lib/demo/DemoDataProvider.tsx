@@ -50,10 +50,10 @@ const mergeUserIntoMembers = (members: Member[], user: User, appRole: DemoAppRol
 export function DemoDataProvider({
   initialSession,
   children,
-}: {
+}: Readonly<{
   initialSession: DemoSession;
   children: ReactNode;
-}) {
+}>) {
   const [session] = useState<DemoSession>(initialSession);
   const [user, setUser] = useState<User>(initialSession.user);
   const [initialStateByGroupId] = useState<Record<string, OrgState>>(() =>

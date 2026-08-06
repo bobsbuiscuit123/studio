@@ -183,6 +183,6 @@ export const getPlanRecommendation = (estimatedMonthlyTokens: number): Subscript
   const paidPlans = SUBSCRIPTION_PLANS.filter((plan) => !plan.isFree);
   return (
     paidPlans.find((plan) => plan.monthlyTokenLimit >= positiveEstimate) ??
-    paidPlans[paidPlans.length - 1]
+    paidPlans.at(-1)!
   );
 };

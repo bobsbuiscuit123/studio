@@ -14,16 +14,16 @@ import {
 } from "@/lib/app-theme";
 
 export function useAppTheme() {
-  const [theme, setThemeState] = useState<AppTheme>(() =>
+  const [theme, setTheme] = useState<AppTheme>(() =>
     typeof document === "undefined" ? "light" : getAppliedAppTheme()
   );
 
   useEffect(() => {
     const syncedTheme = applyAppTheme(readStoredAppTheme());
-    setThemeState(syncedTheme);
+    setTheme(syncedTheme);
 
     const handleThemeChange = () => {
-      setThemeState(getAppliedAppTheme());
+      setTheme(getAppliedAppTheme());
     };
 
     const handleStorage = (event: StorageEvent) => {
@@ -33,7 +33,7 @@ export function useAppTheme() {
 
       const nextTheme = resolveAppTheme(event.newValue);
       applyAppTheme(nextTheme);
-      setThemeState(nextTheme);
+      setTheme(nextTheme);
     };
 
     window.addEventListener(APP_THEME_CHANGE_EVENT, handleThemeChange as EventListener);
@@ -47,7 +47,7 @@ export function useAppTheme() {
 
   const updateTheme = useCallback((nextTheme: AppTheme) => {
     const appliedTheme = setAppTheme(nextTheme);
-    setThemeState(appliedTheme);
+    setTheme(appliedTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {

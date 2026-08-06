@@ -17,12 +17,14 @@ export function SecurityGuard() {
   useEffect(() => {
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input, init) => {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
+      let url: string;
+      if (typeof input === "string") {
+        url = input;
+      } else if (input instanceof URL) {
+        url = input.toString();
+      } else {
+        url = input.url;
+      }
       if (isBlockedUrl(url)) {
         // Return an empty success response to avoid breaking app flows.
         return Promise.resolve(new Response("", { status: 204 }));

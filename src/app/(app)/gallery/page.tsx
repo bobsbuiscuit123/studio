@@ -320,7 +320,7 @@ export default function GalleryPage() {
     link.download = imageName;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
 
   const handleDelete = async (imageId: number) => {
@@ -364,6 +364,14 @@ export default function GalleryPage() {
     typeof image.src === 'string' &&
     (image.src.startsWith('data:image/') || /^https?:\/\//i.test(image.src));
   const visibleImages = images.filter(isValidImage);
+  const uploadButtonLabel = (() => {
+    if (previewImages.length === 0) {
+      return 'Upload Image';
+    }
+
+    const pluralSuffix = previewImages.length === 1 ? '' : 's';
+    return `Upload ${previewImages.length} Image${pluralSuffix}`;
+  })();
 
   return (
     <div className="app-page-shell">
@@ -428,7 +436,7 @@ export default function GalleryPage() {
               {previewImages.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                       {previewImages.map((image, index) => (
-                           <div key={index} className="relative">
+                           <div key={image} className="relative">
                                 <Image src={image} alt={`Preview ${index}`} width={150} height={150} className="rounded-md aspect-square object-cover" />
                                 <Button
                                     type="button"
@@ -449,7 +457,7 @@ export default function GalleryPage() {
                   <Loader2 className="mr-2 animate-spin" /> Uploading...
                 </>
               ) : (
-                `Upload ${previewImages.length > 0 ? previewImages.length : ''} Image${previewImages.length !== 1 ? 's' : ''}`
+                uploadButtonLabel
               )}
             </Button>
           </form>
@@ -459,19 +467,24 @@ export default function GalleryPage() {
       <div>
         {loading ? (
           <p>Loading gallery...</p>
-        ) : error && visibleImages.length === 0 ? (
+        ) : null}
+        {!loading && error && visibleImages.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg space-y-3">
              <p className="text-muted-foreground">{error}</p>
              <Button variant="outline" onClick={() => void refreshData()}>
                Try again
              </Button>
           </div>
-        ) : visibleImages.length > 0 ? (
+        ) : null}
+        {!loading && visibleImages.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {visibleImages.map((image) => {
               const likedBy = Array.isArray(image.likedBy) ? image.likedBy : [];
               const likedByCurrentUser = Boolean(user?.email && likedBy.includes(user.email));
-              const likeCount = likedBy.length > 0 ? likedBy.length : Math.max(0, image.likes || 0);
+              let likeCount = Math.max(0, image.likes || 0);
+              if (likedBy.length > 0) {
+                likeCount = likedBy.length;
+              }
               return (
               <Card key={image.id} className="overflow-hidden flex flex-col">
                 <CardContent className="p-0">
@@ -528,12 +541,13 @@ export default function GalleryPage() {
               </Card>
             )})}
           </div>
-        ) : (
+        ) : null}
+        {!loading && !error && visibleImages.length === 0 ? (
           <div className="text-center py-16 border-2 border-dashed rounded-lg">
              <p className="text-muted-foreground">The gallery is empty.</p>
              <p className="text-muted-foreground">Upload an image to get started!</p>
           </div>
-        )}
+        ) : null}
       </div>
         </div>
       </div>
@@ -549,7 +563,7 @@ function revokePreviewUrl(url?: string) {
 
 function dataUrlToFile(dataUrl: string, fileName: string) {
   const [meta, content = ""] = dataUrl.split(",");
-  const mimeMatch = meta.match(/data:(.*?);base64/);
+  const mimeMatch = /data:(.*?);base64/.exec(meta);
   const mimeType = mimeMatch?.[1] || "image/jpeg";
   const binary = atob(content);
   const bytes = new Uint8Array(binary.length);
@@ -564,7 +578,7 @@ function dataUrlToFile(dataUrl: string, fileName: string) {
 async function imageSourceToBase64(imageSrc: string) {
   if (imageSrc.startsWith("data:")) {
     const [meta, base64Data = ""] = imageSrc.split(",");
-    const mimeType = meta.match(/data:(.*?);base64/)?.[1] || "image/jpeg";
+    const mimeType = /data:(.*?);base64/.exec(meta)?.[1] || "image/jpeg";
     return { base64Data, mimeType };
   }
 
@@ -572,7 +586,7 @@ async function imageSourceToBase64(imageSrc: string) {
   const blob = await response.blob();
   const dataUrl = await blobToDataUrl(blob);
   const [meta, base64Data = ""] = dataUrl.split(",");
-  const mimeType = meta.match(/data:(.*?);base64/)?.[1] || blob.type || "image/jpeg";
+  const mimeType = /data:(.*?);base64/.exec(meta)?.[1] || blob.type || "image/jpeg";
   return { base64Data, mimeType };
 }
 

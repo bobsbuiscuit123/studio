@@ -40,7 +40,6 @@ import { getPlaceholderImageUrl } from "@/lib/placeholders";
 import { useState, useMemo } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Member } from "@/lib/mock-data";
 import { clearSelectedGroupId } from "@/lib/selection";
 import { displayGroupRole, type GroupRole } from "@/lib/group-permissions";
@@ -85,8 +84,10 @@ export default function MembersPage() {
   }, [baseMembers, fallbackMember, user?.email]);
   const isAdminRole = (value?: string | null) => value === 'Admin';
   const adminCount = safeMembers.filter(member => isAdminRole(member.role)).length;
-  const isOnlyAdmin = isAdminRole(role) && adminCount <= 1;
   const transferCandidates = safeMembers.filter(member => member.email !== user?.email && Boolean(member.id));
+  const emptyMembersMessage = canEditContent
+    ? "Members can join this group from the organization groups screen."
+    : "Join from the organization groups screen when this group is available.";
 
   const stringToColor = (str: string) => {
     let hash = 0;
@@ -197,8 +198,8 @@ export default function MembersPage() {
   return (
     <div className="app-page-shell">
       <div className="app-page-scroll">
-       {loading ? <p>Loading...</p> : 
-          safeMembers.length > 0 ? (
+       {loading ? <p>Loading...</p> : null}
+       {!loading && safeMembers.length > 0 ? (
           <div className="grid gap-4 md:gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {safeMembers.map((member) => (
               <Card key={member.email}>
@@ -253,16 +254,13 @@ export default function MembersPage() {
               </Card>
             ))}
           </div>
-       ) : (
+       ) : null}
+       {!loading && safeMembers.length === 0 ? (
            <div className="text-center py-16 border-2 border-dashed rounded-lg">
             <p className="text-muted-foreground">No members yet.</p>
-            {canEditContent ? (
-              <p className="text-muted-foreground">Members can join this group from the organization groups screen.</p>
-            ) : (
-              <p className="text-muted-foreground">Join from the organization groups screen when this group is available.</p>
-           )}
+            <p className="text-muted-foreground">{emptyMembersMessage}</p>
           </div>
-        )}
+        ) : null}
       </div>
       <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
         <DialogContent>

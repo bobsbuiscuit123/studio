@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useOrgSubscriptionStatus } from "@/lib/org-subscription-hooks";
 import { getSelectedOrgId, setSelectedGroupId, syncSelectionCookies } from "@/lib/selection";
 
+const LOADING_CARD_KEYS = ["groups", "meetings", "engagement", "compliance"];
+
 export default function OrgOwnerDashboardPageClient() {
   const router = useRouter();
   const [selectedOrgId, setSelectedOrgIdState] = useState<string | null>(null);
@@ -59,15 +61,17 @@ export default function OrgOwnerDashboardPageClient() {
           <section className="space-y-3">
             <Skeleton className="h-8 w-72" />
             <div className="grid gap-3 md:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Skeleton key={index} className="h-24 rounded-lg" />
+              {LOADING_CARD_KEYS.map(key => (
+                <Skeleton key={key} className="h-24 rounded-lg" />
               ))}
             </div>
             <Skeleton className="h-64 rounded-lg" />
           </section>
-        ) : isOrgOwner ? (
+        ) : null}
+        {selectedOrgId && !statusLoading && isOrgOwner ? (
           <OrgOwnerCommandCenter orgId={selectedOrgId} isOwner={isOrgOwner} onOpenGroup={handleOpenGroup} />
-        ) : (
+        ) : null}
+        {selectedOrgId && !statusLoading && !isOrgOwner ? (
           <Alert className="rounded-lg border-border/70 bg-card">
             <Lock className="h-4 w-4" />
             <AlertTitle>Owner access required</AlertTitle>
@@ -75,7 +79,7 @@ export default function OrgOwnerDashboardPageClient() {
               The organization command center is only available to the org owner. You can still open your groups from the group selector.
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
       </div>
     </div>
   );

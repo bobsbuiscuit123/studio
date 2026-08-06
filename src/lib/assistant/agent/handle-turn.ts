@@ -138,12 +138,12 @@ const extractPlannerTargetCandidates = (items: unknown): PlannerTargetCandidate[
           ? String(record.id)
           : '';
       const title = typeof record.title === 'string' ? record.title.trim() : '';
-      const date =
-        typeof record.date === 'string'
-          ? record.date
-          : record.date instanceof Date
-            ? record.date.toISOString()
-            : undefined;
+      let date: string | undefined;
+      if (typeof record.date === 'string') {
+        date = record.date;
+      } else if (record.date instanceof Date) {
+        date = record.date.toISOString();
+      }
 
       return id && title ? [{ id, title, ...(date ? { date } : {}) }] : [];
     });
@@ -285,14 +285,13 @@ const buildPreviewUi = (preview: DraftPreview, actionType: AgentActionType) => {
 };
 
 const buildPreviewReply = (preview: DraftPreview, awaitingConfirmation: boolean) => {
-  const label =
-    preview.kind === 'announcement'
-      ? 'announcement'
-      : preview.kind === 'event'
-        ? 'event'
-        : preview.kind === 'email'
-          ? 'email'
-        : 'message';
+  const labelByKind: Record<DraftPreview['kind'], string> = {
+    announcement: 'announcement',
+    event: 'event',
+    email: 'email',
+    message: 'message',
+  };
+  const label = labelByKind[preview.kind];
 
   return awaitingConfirmation
     ? `I drafted a ${label}. Review it and confirm when you're ready.`
@@ -658,6 +657,18 @@ async function runResponder(args: {
   return result.data;
 }
 
+const getExecutionResultLabel = (state: AssistantTurnResponse['state']) => {
+  if (state === 'success') {
+    return 'success';
+  }
+
+  if (state === 'error') {
+    return 'failure';
+  }
+
+  return null;
+};
+
 async function persistTurnResult(args: {
   userId: string;
   orgId: string;
@@ -719,13 +730,7 @@ async function persistTurnResult(args: {
     groupId: args.groupId,
     state: args.result.state,
     actionType: args.actionType ?? null,
-    executionResult:
-      args.executionResult ??
-      (args.result.state === 'success'
-        ? 'success'
-        : args.result.state === 'error'
-          ? 'failure'
-          : null),
+    executionResult: args.executionResult ?? getExecutionResultLabel(args.result.state),
     error: args.result.state === 'error' ? args.result.message : null,
     diagnostics: args.result.diagnostics ?? null,
   });
@@ -1011,12 +1016,7 @@ export async function handleAssistantTurn({
         requestPayload,
         result: executionResult,
         actionType: pending.actionType,
-        executionResult:
-          executionResult.state === 'success'
-            ? 'success'
-            : executionResult.state === 'error'
-              ? 'failure'
-              : null,
+        executionResult: getExecutionResultLabel(executionResult.state),
       });
     }
 
@@ -1355,33 +1355,22 @@ export async function handleAssistantTurn({
         } satisfies AgentPlan);
     const plannedAction = normalizedPlan.action;
 
-    const retrieval = normalizedPlan.needsRetrieval
-      ? await withTimeout(
-          () =>
-            fetchAgentRetrievalContext({
-              groupId,
-              role: context.role,
-              plan: normalizedPlan,
-              requiredResources: plannedAction
-                ? getActionRequiredRetrievalResources(plannedAction.type)
-                : [],
-            }),
-          8_000,
-          { label: 'Assistant retrieval' }
-        )
-      : plannedAction
-        ? await withTimeout(
-            () =>
-              fetchAgentRetrievalContext({
-                groupId,
-                role: context.role,
-                plan: normalizedPlan,
-                requiredResources: getActionRequiredRetrievalResources(plannedAction.type),
-              }),
-            8_000,
-            { label: 'Assistant retrieval' }
-          )
-        : { context: {}, usedEntities: [] as AiChatEntity[] };
+    let retrieval = { context: {}, usedEntities: [] as AiChatEntity[] };
+    if (normalizedPlan.needsRetrieval || plannedAction) {
+      retrieval = await withTimeout(
+        () =>
+          fetchAgentRetrievalContext({
+            groupId,
+            role: context.role,
+            plan: normalizedPlan,
+            requiredResources: plannedAction
+              ? getActionRequiredRetrievalResources(plannedAction.type)
+              : [],
+          }),
+        8_000,
+        { label: 'Assistant retrieval' }
+      );
+    }
 
     if (!plannedAction || !draftableActionTypes.has(plannedAction.type)) {
       try {

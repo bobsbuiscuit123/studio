@@ -140,7 +140,7 @@ const getRouteSection = (value: string) => {
   } else if (path.startsWith('/demo/app/')) {
     path = path.slice('/demo/app'.length) || '/';
   }
-  return path.split('/').filter(Boolean)[0] ?? '';
+  return path.split('/').find(Boolean) ?? '';
 };
 
 const shouldSuppressForegroundToast = (pathname: string, route: string) => {
@@ -251,16 +251,12 @@ export function PushNotificationClient() {
         return;
       }
 
-      listenerHandles.push(await PushNotifications.addListener('registration', handleRegistration));
       listenerHandles.push(
+        await PushNotifications.addListener('registration', handleRegistration),
         await PushNotifications.addListener('registrationError', (error: unknown) => {
           console.error('Push registration error', error);
-        })
-      );
-      listenerHandles.push(
-        await PushNotifications.addListener('pushNotificationReceived', handleReceived)
-      );
-      listenerHandles.push(
+        }),
+        await PushNotifications.addListener('pushNotificationReceived', handleReceived),
         await PushNotifications.addListener('pushNotificationActionPerformed', handleAction)
       );
 

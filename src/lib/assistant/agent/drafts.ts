@@ -50,38 +50,40 @@ export async function generateDraftPreview(args: {
 }): Promise<DraftPreview> {
   const prompt = buildDraftPrompt(args);
 
-  const result =
-    args.actionType === 'create_announcement' || args.actionType === 'update_announcement'
-      ? await callAI({
-          messages: [{ role: 'user', content: prompt }],
-          responseFormat: 'json_object',
-          outputSchema: announcementDraftPreviewSchema,
-          temperature: 0.4,
-          timeoutMs: 18_000,
-        })
-      : args.actionType === 'create_event' || args.actionType === 'update_event'
-        ? await callAI({
-            messages: [{ role: 'user', content: prompt }],
-            responseFormat: 'json_object',
-            outputSchema: eventDraftPreviewSchema,
-            temperature: 0.3,
-            timeoutMs: 18_000,
-          })
-        : args.actionType === 'create_message' || args.actionType === 'update_message'
-          ? await callAI({
-              messages: [{ role: 'user', content: prompt }],
-              responseFormat: 'json_object',
-              outputSchema: messageDraftPreviewSchema,
-              temperature: 0.35,
-              timeoutMs: 18_000,
-            })
-          : await callAI({
-              messages: [{ role: 'user', content: prompt }],
-              responseFormat: 'json_object',
-              outputSchema: emailDraftPreviewSchema,
-              temperature: 0.3,
-              timeoutMs: 18_000,
-            });
+  let result: Awaited<ReturnType<typeof callAI<DraftPreview>>>;
+  if (args.actionType === 'create_announcement' || args.actionType === 'update_announcement') {
+    result = await callAI({
+      messages: [{ role: 'user', content: prompt }],
+      responseFormat: 'json_object',
+      outputSchema: announcementDraftPreviewSchema,
+      temperature: 0.4,
+      timeoutMs: 18_000,
+    });
+  } else if (args.actionType === 'create_event' || args.actionType === 'update_event') {
+    result = await callAI({
+      messages: [{ role: 'user', content: prompt }],
+      responseFormat: 'json_object',
+      outputSchema: eventDraftPreviewSchema,
+      temperature: 0.3,
+      timeoutMs: 18_000,
+    });
+  } else if (args.actionType === 'create_message' || args.actionType === 'update_message') {
+    result = await callAI({
+      messages: [{ role: 'user', content: prompt }],
+      responseFormat: 'json_object',
+      outputSchema: messageDraftPreviewSchema,
+      temperature: 0.35,
+      timeoutMs: 18_000,
+    });
+  } else {
+    result = await callAI({
+      messages: [{ role: 'user', content: prompt }],
+      responseFormat: 'json_object',
+      outputSchema: emailDraftPreviewSchema,
+      temperature: 0.3,
+      timeoutMs: 18_000,
+    });
+  }
 
   if (!result.ok) {
     throw new Error(result.error.detail || result.error.message);

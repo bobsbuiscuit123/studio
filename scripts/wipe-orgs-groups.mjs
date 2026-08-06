@@ -57,7 +57,9 @@ async function run() {
   console.log("done");
 }
 
-run().catch((err) => {
+try {
+  await run();
+} catch (err) {
   console.error(err.message || err);
   process.exit(1);
-});
+}

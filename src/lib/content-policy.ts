@@ -28,7 +28,7 @@ const scanString = (value: string): string | null => {
   }
 
   for (const pattern of BLOCKED_PATTERNS) {
-    const match = trimmed.match(pattern);
+    const match = pattern.exec(trimmed);
     if (match?.[0]) {
       return match[0];
     }

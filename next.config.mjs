@@ -1,6 +1,6 @@
-import path from "path";
-import { existsSync } from "fs";
-import { fileURLToPath } from "url";
+import path from "node:path";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -8,30 +8,24 @@ const stub = path.join(__dirname, "stubs", "empty.js");
 const isDev = process.env.NODE_ENV !== "production";
 const shouldEnableSentryBuildPlugin = Boolean(process.env.SENTRY_AUTH_TOKEN);
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const optionalModuleAliases = {
-  ...(existsSync(path.join(__dirname, "node_modules", "@capacitor", "status-bar"))
-    ? {}
-    : { "@capacitor/status-bar": path.join(__dirname, "stubs", "capacitor-status-bar.js") }),
-  ...(existsSync(path.join(__dirname, "node_modules", "@capacitor", "push-notifications"))
-    ? {}
-    : {
-        "@capacitor/push-notifications": path.join(
-          __dirname,
-          "stubs",
-          "capacitor-push-notifications.js"
-        ),
-      }),
-  ...(existsSync(path.join(__dirname, "node_modules", "firebase-admin"))
-    ? {}
-    : {
-        "firebase-admin/app": path.join(__dirname, "stubs", "firebase-admin-app.js"),
-        "firebase-admin/messaging": path.join(
-          __dirname,
-          "stubs",
-          "firebase-admin-messaging.js"
-        ),
-      }),
-};
+const capacitorStatusBarStub = path.join(__dirname, "stubs", "capacitor-status-bar.js");
+const capacitorPushNotificationsStub = path.join(__dirname, "stubs", "capacitor-push-notifications.js");
+const firebaseAdminAppStub = path.join(__dirname, "stubs", "firebase-admin-app.js");
+const firebaseAdminMessagingStub = path.join(__dirname, "stubs", "firebase-admin-messaging.js");
+const optionalModuleAliases = {};
+
+if (!existsSync(path.join(__dirname, "node_modules", "@capacitor", "status-bar"))) {
+  optionalModuleAliases["@capacitor/status-bar"] = capacitorStatusBarStub;
+}
+
+if (!existsSync(path.join(__dirname, "node_modules", "@capacitor", "push-notifications"))) {
+  optionalModuleAliases["@capacitor/push-notifications"] = capacitorPushNotificationsStub;
+}
+
+if (!existsSync(path.join(__dirname, "node_modules", "firebase-admin"))) {
+  optionalModuleAliases["firebase-admin/app"] = firebaseAdminAppStub;
+  optionalModuleAliases["firebase-admin/messaging"] = firebaseAdminMessagingStub;
+}
 
 let supabaseOrigin = "";
 const remoteImagePatterns = [
@@ -58,11 +52,11 @@ const cspDirectives = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  `img-src 'self' data: blob: https://placehold.co${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  `img-src 'self' data: blob: https://placehold.co${supabaseOrigin ? " " + supabaseOrigin : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  `connect-src 'self' https://*.sentry.io${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+  `connect-src 'self' https://*.sentry.io${supabaseOrigin ? " " + supabaseOrigin : ""}`,
   "form-action 'self'",
 ];
 
@@ -124,23 +118,22 @@ const nextConfig = {
     ];
   },
   webpack: (config, { isServer }) => {
-    config.resolve = config.resolve || {};
-    config.resolve.alias = {
-      ...(config.resolve.alias || {}),
+    config.resolve ??= {};
+    config.resolve.alias ??= {};
+    Object.assign(config.resolve.alias, {
       "@opentelemetry/exporter-jaeger": stub,
       "@genkit-ai/firebase": stub,
       ...optionalModuleAliases,
-    };
-    config.resolve.fallback = {
-      ...(config.resolve.fallback || {}),
+    });
+    config.resolve.fallback ??= {};
+    Object.assign(config.resolve.fallback, {
       async_hooks: false,
       fs: false,
       net: false,
       tls: false,
-    };
+    });
     if (!isServer) {
-      config.resolve.alias = {
-        ...(config.resolve.alias || {}),
+      Object.assign(config.resolve.alias, {
         "@opentelemetry/context-async-hooks": stub,
         "@opentelemetry/otlp-grpc-exporter-base": stub,
         "@genkit-ai/ai": stub,
@@ -157,7 +150,7 @@ const nextConfig = {
         "node:net": stub,
         "node:tls": stub,
         "node:perf_hooks": stub,
-      };
+      });
     }
     return config;
   },

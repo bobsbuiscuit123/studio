@@ -31,8 +31,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -46,9 +44,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import type { GenerateClubAnnouncementOutput } from "@/ai/flows/generate-announcement";
 import { useToast } from "@/hooks/use-toast";
-import { notifyOrgAiUsageChanged, useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
+import { useAnnouncements, useCurrentUserRole, useCurrentUser, useMembers, useForms } from "@/lib/data-hooks";
 import type { Announcement, Attachment, ClubForm } from "@/lib/mock-data";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
@@ -196,11 +193,9 @@ function AnnouncementsPageInner() {
   const {
     data: forms,
     loading: formsLoading,
-    updateData: setForms,
     updateDataAsync: setFormsAsync,
     clubId: formsClubId,
   } = useForms();
-  const [isLoading, setIsLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const { toast } = useToast();
   const { canEditContent } = useCurrentUserRole();
@@ -213,13 +208,16 @@ function AnnouncementsPageInner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
-  const [generatedAnnouncement, setGeneratedAnnouncement] = useState<GenerateClubAnnouncementOutput | null>(null);
   const [isPostDialogOpen, setIsPostDialogOpen] = useState(false);
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
   const [deletingAnnouncement, setDeletingAnnouncement] = useState<Announcement | null>(null);
   const [isDeletingAnnouncement, setIsDeletingAnnouncement] = useState(false);
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeForms = useMemo(() => (Array.isArray(forms) ? forms : []), [forms]);
+  const announcementSubmitLabel = editingAnnouncement ? "Save Changes" : "Post Announcement";
+  const emptyAnnouncementsMessage = canEditContent
+    ? "Create one to update your members."
+    : "Check back soon for updates from your admins.";
   const memberNameByEmail = useMemo(() => {
     const list = Array.isArray(members) ? members : [];
     return new Map(
@@ -253,7 +251,6 @@ function AnnouncementsPageInner() {
   const [handledFormId, setHandledFormId] = useState<string | null>(null);
   const [linkedFormIdDraft, setLinkedFormIdDraft] = useState<string | null>(null);
   const [highlightedAnnouncementId, setHighlightedAnnouncementId] = useState<string | null>(null);
-  const aiRequestInFlightRef = useRef(false);
   const openAnnouncementAssistant = (prompt: string) => {
     openAssistantWithContext(prompt);
   };
@@ -461,7 +458,6 @@ function AnnouncementsPageInner() {
   const handleDialogClose = () => {
     setEditingAnnouncement(null); 
     setIsPostDialogOpen(false); 
-    setGeneratedAnnouncement(null);
     if (linkedFormIdDraft) {
       setLinkedFormIdDraft(null);
       setAttachments([]);
@@ -609,7 +605,7 @@ function AnnouncementsPageInner() {
     link.download = attachment.name;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
   };
 
   const handleSubmit = async (values: z.infer<typeof promptFormSchema>) => {
@@ -800,7 +796,7 @@ function AnnouncementsPageInner() {
                   {attachments.length > 0 && (
                     <div className="space-y-2">
                         {attachments.map((file, index) => (
-                        <div key={index} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
+                        <div key={`${file.name}-${file.type}-${file.dataUri}`} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
                             <div className="flex min-w-0 items-center gap-2 truncate">
                               <FileIcon className="h-4 w-4 shrink-0" />
                               <span className="truncate">{file.name}</span>
@@ -863,7 +859,7 @@ function AnnouncementsPageInner() {
                       {attachments.length > 0 && (
                         <div className="space-y-2">
                             {attachments.map((file, index) => (
-                            <div key={index} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
+                            <div key={`${file.name}-${file.type}-${file.dataUri}`} className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted p-2 text-sm">
                                 <div className="flex min-w-0 items-center gap-2 truncate">
                                   <FileIcon className="h-4 w-4 shrink-0" />
                                   <span className="truncate">{file.name}</span>
@@ -876,14 +872,8 @@ function AnnouncementsPageInner() {
                         </div>
                       )}
 
-                      <Button type="submit" disabled={isLoading || isUploadingAttachments} className={`w-full ${aiSparkle}`}>
-                      {isLoading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                          <>
-                            <Sparkles className="h-4 w-4 mr-2" /> Continue in Assistant
-                          </>
-                      )}
+                      <Button type="submit" disabled={isUploadingAttachments} className={`w-full ${aiSparkle}`}>
+                        <Sparkles className="h-4 w-4 mr-2" /> Continue in Assistant
                       </Button>
                   </form>
                 </Form>
@@ -894,8 +884,8 @@ function AnnouncementsPageInner() {
       )}
       <div className={canEditContent ? "min-w-0 md:col-span-2" : "min-w-0 md:col-span-3"}>
         <div className="flex min-w-0 max-w-full flex-col gap-4">
-          {loading ? <p>Loading...</p> : 
-            error && safeAnnouncements.length === 0 ? (
+          {loading ? <p>Loading...</p> : null}
+          {!loading && error && safeAnnouncements.length === 0 ? (
               <Card>
                 <CardContent className="pt-6">
                   <div className="tab-empty-state gap-3">
@@ -906,8 +896,8 @@ function AnnouncementsPageInner() {
                   </div>
                 </CardContent>
               </Card>
-            ) :
-            safeAnnouncements.length > 0 ? (
+            ) : null}
+            {!loading && safeAnnouncements.length > 0 ? (
               sortedAnnouncements.map((announcement) => {
                 const hasButtonAttachment = Array.isArray(announcement.attachments) && announcement.attachments.some(att => att.type === 'button');
                 const viewedByList = Array.isArray(announcement.viewedBy)
@@ -993,7 +983,7 @@ function AnnouncementsPageInner() {
                                     const isButton = file.type === "button";
                                     const isImage = !isButton && isImageAttachment(file);
                                     return (
-                                      <div key={index} className="space-y-3 rounded-md border p-3">
+                                      <div key={`${file.name}-${file.type}-${file.dataUri}`} className="space-y-3 rounded-md border p-3">
                                           <div className="flex items-center justify-between gap-3 text-sm">
                                             <div className="flex min-w-0 items-center gap-2 truncate">
                                                 {isButton ? <Megaphone className="h-4 w-4 shrink-0" /> : <FileIcon className="h-4 w-4 shrink-0" />}
@@ -1043,20 +1033,17 @@ function AnnouncementsPageInner() {
                   </Card>
                 );
               })
-          ) : (
+          ) : null}
+          {!loading && !error && safeAnnouncements.length === 0 ? (
             <Card>
               <CardContent className="pt-6">
                 <div className="tab-empty-state">
                   <p className="text-muted-foreground">No announcements yet.</p>
-                  {canEditContent ? (
-                    <p className="text-muted-foreground">Create one to update your members.</p>
-                  ) : (
-                    <p className="text-muted-foreground">Check back soon for updates from your admins.</p>
-                  )}
+                  <p className="text-muted-foreground">{emptyAnnouncementsMessage}</p>
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
@@ -1118,7 +1105,7 @@ function AnnouncementsPageInner() {
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Saving...
                       </>
-                    ) : editingAnnouncement ? "Save Changes" : "Post Announcement"}
+                    ) : announcementSubmitLabel}
                 </Button>
             </DialogFooter>
         </DialogContent>
@@ -1154,8 +1141,8 @@ function AnnouncementsPageInner() {
     <div className="hidden">
     {printableContent && Array.isArray(printableContent.slides) && (
             <div id={`print-announcement-${printableContent.id}`} className="print:block">
-            {printableContent.slides.map((slide: any, index: number) => (
-                <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
+            {printableContent.slides.map((slide: any) => (
+                <div key={`print-${slide.id ?? `${slide.title}-${slide.content}`}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
                         <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
                         <div className="prose prose-2xl">
                         <ReactMarkdown>{slide.content}</ReactMarkdown>
@@ -1171,7 +1158,7 @@ function AnnouncementsPageInner() {
 
 function extractAttachmentBase64(dataUri: string) {
   const [meta, base64Data = ""] = dataUri.split(",");
-  const mimeType = meta.match(/data:(.*?);base64/)?.[1] || "application/octet-stream";
+  const mimeType = /data:(.*?);base64/.exec(meta)?.[1] || "application/octet-stream";
   if (!base64Data) {
     throw new Error("Missing attachment data.");
   }

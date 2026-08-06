@@ -96,8 +96,7 @@ export const initializeRevenueCat = async (): Promise<string> => {
 
   const appUserID = await getAuthenticatedUserId();
 
-  if (!configurePromise) {
-    configurePromise = (async () => {
+  configurePromise ??= (async () => {
       const apiKey = getRevenueCatAppleApiKey();
       await Purchases.setLogLevel({ level: LOG_LEVEL.WARN });
       await Purchases.configure({ apiKey, appUserID });
@@ -109,7 +108,6 @@ export const initializeRevenueCat = async (): Promise<string> => {
       configuredAppUserId = null;
       throw error;
     });
-  }
 
   await configurePromise;
 
@@ -145,8 +143,7 @@ export const loadRevenueCatOfferings = async () => {
     return cachedOfferings;
   }
 
-  if (!offeringsPromise) {
-    offeringsPromise = (async () => {
+  offeringsPromise ??= (async () => {
       await ensureRevenueCatConfigured();
       const offerings = await Purchases.getOfferings();
       cachedOfferings = offerings;
@@ -154,7 +151,6 @@ export const loadRevenueCatOfferings = async () => {
     })().finally(() => {
       offeringsPromise = null;
     });
-  }
 
   return offeringsPromise;
 };

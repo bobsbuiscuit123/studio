@@ -151,25 +151,27 @@ const projectEvents = (
     const attendees = projectStringList(event.attendees, 24);
     const viewedBy = projectStringList(event.viewedBy, 24);
     const normalizedCurrentUserEmail = normalizeActorEmail(options.currentUserEmail);
-    const currentUserResponse = normalizedCurrentUserEmail
-      ? yes.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
-        ? 'yes'
-        : no.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
-          ? 'no'
-          : maybe.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)
-            ? 'maybe'
-            : null
-      : null;
+    let currentUserResponse: 'yes' | 'no' | 'maybe' | null = null;
+    if (normalizedCurrentUserEmail) {
+      if (yes.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)) {
+        currentUserResponse = 'yes';
+      } else if (no.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)) {
+        currentUserResponse = 'no';
+      } else if (maybe.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)) {
+        currentUserResponse = 'maybe';
+      }
+    }
+    let date = '';
+    if (typeof event.date === 'string') {
+      date = event.date;
+    } else if (event.date instanceof Date) {
+      date = event.date.toISOString();
+    }
 
     return {
       id: trimText(event.id, 80),
       title: trimText(event.title, 120),
-      date:
-        typeof event.date === 'string'
-          ? event.date
-          : event.date instanceof Date
-            ? event.date.toISOString()
-            : '',
+      date,
       location: trimText(event.location, 120),
       description: trimText(event.description, AI_CHAT_EVENT_DESCRIPTION_CHARS),
       points: typeof event.points === 'number' ? event.points : null,
@@ -298,12 +300,18 @@ const projectGalleryImages = (
     const image = isRecord(item) ? item : {};
     const likedBy = projectStringList(image.likedBy, 40);
     const normalizedCurrentUserEmail = normalizeActorEmail(options.currentUserEmail);
+    let likes = 0;
+    if (likedBy.length > 0) {
+      likes = likedBy.length;
+    } else if (typeof image.likes === 'number') {
+      likes = image.likes;
+    }
     return {
       id: typeof image.id === 'string' || typeof image.id === 'number' ? String(image.id) : '',
       alt: trimText(image.alt, 120),
       author: trimText(image.author, 120),
       date: typeof image.date === 'string' ? image.date : '',
-      likes: likedBy.length > 0 ? likedBy.length : typeof image.likes === 'number' ? image.likes : 0,
+      likes,
       currentUserLiked: Boolean(
         normalizedCurrentUserEmail &&
           likedBy.some(email => normalizeActorEmail(email) === normalizedCurrentUserEmail)

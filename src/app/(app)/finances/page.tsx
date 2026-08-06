@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -19,9 +19,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { notifyOrgAiUsageChanged, useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
+import { useTransactions, useCurrentUserRole } from "@/lib/data-hooks";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Loader2, Landmark, Sparkles } from "lucide-react";
+import { PlusCircle, Landmark, Sparkles } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -47,9 +47,7 @@ const manualFormSchema = z.object({
 
 export default function FinancesPage() {
   const { data: transactions, updateData: setTransactions, loading } = useTransactions();
-  const [isProcessing, setIsProcessing] = useState(false);
   const [showAi, setShowAi] = useState(false);
-  const aiRequestInFlightRef = useRef(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
   const aiSparkle = "bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.35)]";
@@ -79,10 +77,10 @@ export default function FinancesPage() {
   };
   
   const handleManualAdd = (values: z.infer<typeof manualFormSchema>) => {
-    const normalizedAmount =
-      values.status === 'Deposit'
-        ? Math.abs(values.amount)
-        : -Math.abs(values.amount);
+    let normalizedAmount = Math.abs(values.amount);
+    if (values.status === 'Withdrawal') {
+      normalizedAmount = -normalizedAmount;
+    }
     const newTransaction: Transaction = {
       id: Date.now().toString(),
       description: values.description,
@@ -161,8 +159,8 @@ export default function FinancesPage() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                {loading ? <p>Loading...</p> : 
-                    transactions.length > 0 ? (
+                {loading ? <p>Loading...</p> : null}
+                {!loading && transactions.length > 0 ? (
                 <Table>
                     <TableHeader>
                     <TableRow>
@@ -204,12 +202,12 @@ export default function FinancesPage() {
                     ))}
                     </TableBody>
                 </Table>
-                ) : (
+                ) : null}
+                {!loading && transactions.length === 0 ? (
                     <div className="tab-empty-state text-muted-foreground">
                         <p>No transactions yet. Add one to get started!</p>
                     </div>
-                )
-                }
+                ) : null}
                 </CardContent>
             </Card>
         </div>
@@ -325,8 +323,8 @@ export default function FinancesPage() {
                             </FormItem>
                           )}
                         />
-                        <Button type="submit" disabled={isProcessing} className={`w-full ${aiSparkle}`}>
-                          {isProcessing ? <Loader2 className="animate-spin" /> : <><Sparkles className="mr-2" /> Continue in Assistant</>}
+                        <Button type="submit" className={`w-full ${aiSparkle}`}>
+                          <Sparkles className="mr-2" /> Continue in Assistant
                         </Button>
                       </form>
                     </Form>

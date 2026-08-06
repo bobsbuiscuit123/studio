@@ -174,12 +174,12 @@ function useLiveGroupStateMessages({
   groupId,
   refreshState,
   onRealtimeMessage,
-}: {
+}: Readonly<{
   orgId?: string | null;
   groupId?: string | null;
   refreshState: () => Promise<boolean>;
   onRealtimeMessage?: (envelope: MessageAuditEnvelope) => boolean;
-}) {
+}>) {
   useEffect(() => {
     if (!orgId || !groupId) {
       return;
@@ -504,7 +504,7 @@ export function MessagesListScreen() {
   );
 }
 
-export function MessageChatScreen({ conversationId }: { conversationId: string }) {
+export function MessageChatScreen({ conversationId }: Readonly<{ conversationId: string }>) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useCurrentUser();
@@ -1212,6 +1212,13 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
   const avatar = conversation.type === "dm" ? conversation.partner.avatar : undefined;
   const selectionCount = selectedMessageIds.length;
   const threadActionsDisabled = isDeletingSelected || isDeletingConversation;
+  let composerSubmitIcon = <Send className="h-4 w-4" />;
+  if (editingMessage) {
+    composerSubmitIcon = <Check className="h-4 w-4" />;
+  }
+  if (isSending || isSavingMessageEdit) {
+    composerSubmitIcon = <Loader2 className="h-4 w-4 animate-spin" />;
+  }
 
   return (
     <div className="messages-screen messages-thread-screen flex min-h-0 flex-1 flex-col justify-start overflow-hidden bg-background">
@@ -1233,7 +1240,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
           <Button variant="ghost" size="sm" onClick={exitSelectionMode} disabled={threadActionsDisabled}>
             Cancel
           </Button>
-        ) : activeMessages.length > 0 ? (
+        ) : null}
+        {!isSelectionMode && activeMessages.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-11 w-11 rounded-2xl" disabled={threadActionsDisabled}>
@@ -1398,7 +1406,8 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                   <span className="sr-only">Cancel edit</span>
                 </Button>
               </div>
-            ) : replyingTo ? (
+            ) : null}
+            {!editingMessage && replyingTo ? (
               <div className="mb-2 flex items-center gap-3 rounded-xl border border-border/70 bg-muted/40 px-3 py-2">
                 <Reply className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
@@ -1440,13 +1449,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
                 ) : null}
               </div>
               <Button type="submit" size="icon" className="h-11 w-11 rounded-xl" disabled={isSending || isSavingMessageEdit}>
-                {isSending || isSavingMessageEdit ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : editingMessage ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+                {composerSubmitIcon}
                 <span className="sr-only">{editingMessage ? "Save message edit" : "Send message"}</span>
               </Button>
             </form>
@@ -1504,12 +1507,12 @@ function MessageReplyPreview({
   memberByEmail,
   currentUserEmail,
   isMine,
-}: {
+}: Readonly<{
   replyTo: NonNullable<Message["replyTo"]>;
   memberByEmail: Map<string, Member>;
   currentUserEmail: string;
   isMine: boolean;
-}) {
+}>) {
   return (
     <div
       className={cn(
@@ -1532,12 +1535,12 @@ function ConversationAvatar({
   avatar,
   initials,
   isGroup,
-}: {
+}: Readonly<{
   name: string;
   avatar?: string;
   initials: string;
   isGroup: boolean;
-}) {
+}>) {
   if (isGroup) {
     return (
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -1616,7 +1619,7 @@ function buildConversationSummaries({
         allMessages,
         groupMessagesById
       );
-      const lastMessage = messages[messages.length - 1];
+      const lastMessage = messages.at(-1);
       const name = conversation.type === "dm" ? conversation.partner.name : conversation.chat.name;
       return {
         id: getRouteConversationId(conversation),

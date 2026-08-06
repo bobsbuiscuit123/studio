@@ -57,12 +57,12 @@ export function AppSidebarNav({
   notifications,
   onLinkClick,
   onNavigate,
-}: {
+}: Readonly<{
   role: string;
   notifications: NotificationMap;
   onLinkClick: (key: NotificationKey | null, href?: string) => void;
   onNavigate?: () => void;
-}) {
+}>) {
   const pathname = usePathname();
   const [isClient, setIsClient] = useState(false);
   const isHopeLinkOrg = useIsHopeLinkOrg();
@@ -98,11 +98,12 @@ export function AppSidebarNav({
         const demoHref =
           item.href === '/dashboard' ? '/demo/app' : `/demo/app${item.href}`;
         const href = isDemoApp ? demoHref : item.href;
-        const isActive = isDemoApp
-          ? item.href === '/dashboard'
-            ? pathname === '/demo/app' || pathname === '/demo/app/dashboard'
-            : pathname === href || pathname.startsWith(`${href}/`)
-          : pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
+        let isActive = pathname === item.href || (pathname.startsWith(item.href) && item.href !== '/');
+        if (isDemoApp && item.href === '/dashboard') {
+          isActive = pathname === '/demo/app' || pathname === '/demo/app/dashboard';
+        } else if (isDemoApp) {
+          isActive = pathname === href || pathname.startsWith(`${href}/`);
+        }
         const hasNotification =
           Boolean(item.notificationKey && notifications[item.notificationKey as keyof NotificationMap]) &&
           !isActive;

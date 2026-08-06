@@ -17,9 +17,9 @@ import { setSelectedGroupId } from '@/lib/selection';
 
 export default function DemoAppLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const router = useRouter();
   const [session, setSession] = useState<DemoSession | null>(null);
 

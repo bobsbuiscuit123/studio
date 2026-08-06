@@ -59,12 +59,21 @@ export type AssistantExecutionResult = Result<{
   reply: string;
 }>;
 
+const toSafeString = (value: unknown) => {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+};
+
 const toIsoDate = (value: unknown) => {
-  const parsed = new Date(String(value ?? ''));
+  const parsed = new Date(toSafeString(value));
   return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : new Date(0).toISOString();
 };
 
-const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const normalizeEmail = (value: unknown) => toSafeString(value).trim().toLowerCase();
 
 const getConversationId = (left: string, right: string) =>
   [normalizeEmail(left), normalizeEmail(right)].sort((a, b) => a.localeCompare(b)).join('_');
@@ -84,7 +93,7 @@ const memberLabel = (value: unknown) => {
     if (typeof candidate.name === 'string' && candidate.name.trim()) return candidate.name.trim();
     if (typeof candidate.email === 'string' && candidate.email.trim()) return candidate.email.trim();
   }
-  return String(value ?? '').trim();
+  return toSafeString(value).trim();
 };
 
 const renderVariableValue = (value: unknown): string => {
@@ -117,7 +126,7 @@ const resolveVariable = (expression: string, variables: Record<string, unknown>)
   if (!expression.startsWith('$')) return undefined;
   const [root, ...path] = expression.split('.');
   const rootValue = variables[root];
-  if (typeof rootValue === 'undefined') return undefined;
+  if (rootValue === undefined) return undefined;
   return path.length > 0 ? getPathValue(rootValue, path) : rootValue;
 };
 
@@ -127,12 +136,12 @@ const resolveVariablesDeep = (
 ): unknown => {
   if (typeof value === 'string') {
     const direct = resolveVariable(value, variables);
-    if (typeof direct !== 'undefined') {
+    if (direct !== undefined) {
       return direct;
     }
-    return value.replace(/\$[A-Z0-9_]+(?:\.[A-Za-z0-9_]+)*/g, token => {
+    return value.replace(/\$[A-Z0-9_]+(?:\.\w+)*/g, token => {
       const resolved = resolveVariable(token, variables);
-      return typeof resolved === 'undefined' ? token : renderVariableValue(resolved);
+      return resolved === undefined ? token : renderVariableValue(resolved);
     });
   }
   if (Array.isArray(value)) {
@@ -171,10 +180,13 @@ const resolveEventFromReference = (events: ClubEvent[], reference: string) => {
   const weekdayEntry = Object.entries(weekdayMap).find(([label]) => normalized.includes(label));
   if (weekdayEntry) {
     const [, weekday] = weekdayEntry;
-    const exact = sorted.filter(event => new Date(event.date).getDay() === weekday);
-    if (exact.length > 0) {
-      const past = exact.filter(event => new Date(event.date).getTime() <= Date.now());
-      return (past[0] ?? exact[0]) || null;
+    const exactEvent = sorted.find(event => new Date(event.date).getDay() === weekday);
+    if (exactEvent) {
+      return (
+        sorted.find(
+          event => new Date(event.date).getDay() === weekday && new Date(event.date).getTime() <= Date.now()
+        ) ?? exactEvent
+      );
     }
   }
 
@@ -243,7 +255,10 @@ const getLastAnnouncementViewsTool: ToolDefinition<
     const authored = announcements
       .filter(item => normalizeEmail(item.author) === context.userEmail)
       .sort((left, right) => toIsoDate(right.date).localeCompare(toIsoDate(left.date)));
-    const scoped = authored.length > 0 ? authored : announcements.sort((left, right) => toIsoDate(right.date).localeCompare(toIsoDate(left.date)));
+    const recentAnnouncements = [...announcements].sort((left, right) =>
+      toIsoDate(right.date).localeCompare(toIsoDate(left.date))
+    );
+    const scoped = authored.length > 0 ? authored : recentAnnouncements;
     const lastAnnouncement = scoped[0] ?? null;
 
     if (!lastAnnouncement) {

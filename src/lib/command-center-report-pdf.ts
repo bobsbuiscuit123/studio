@@ -14,9 +14,15 @@ const TOP_Y = 746;
 const BOTTOM_Y = 54;
 const LINE_HEIGHT = 14;
 
+const toPdfString = (value: unknown) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+};
+
 const cleanPdfText = (value: unknown) => {
   let printable = '';
-  for (const char of String(value ?? '')) {
+  for (const char of toPdfString(value)) {
     const codePoint = char.codePointAt(0) ?? 0;
     const isAllowedWhitespace = codePoint === 9 || codePoint === 10 || codePoint === 13;
     printable += isAllowedWhitespace || (codePoint >= 32 && codePoint <= 126) ? char : '?';
@@ -190,15 +196,14 @@ export const buildEngagementReportPdf = (
     '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n',
   ];
   const pageObjectNumbers = pages.map((_, index) => pageObjectsStart + index * 2);
-  objects[1] = `2 0 obj\n<< /Type /Pages /Kids [${pageObjectNumbers.map(number => `${number} 0 R`).join(' ')}] /Count ${pages.length} >>\nendobj\n`;
+  const pageKidReferences = pageObjectNumbers.map(number => `${number} 0 R`).join(' ');
+  objects[1] = `2 0 obj\n<< /Type /Pages /Kids [${pageKidReferences}] /Count ${pages.length} >>\nendobj\n`;
 
   pages.forEach((content, index) => {
     const pageObjectNumber = pageObjectsStart + index * 2;
     const contentObjectNumber = pageObjectNumber + 1;
     objects.push(
-      `${pageObjectNumber} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectNumber} 0 R >>\nendobj\n`
-    );
-    objects.push(
+      `${pageObjectNumber} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectNumber} 0 R >>\nendobj\n`,
       `${contentObjectNumber} 0 obj\n<< /Length ${byteLength(content)} >>\nstream\n${content}endstream\nendobj\n`
     );
   });

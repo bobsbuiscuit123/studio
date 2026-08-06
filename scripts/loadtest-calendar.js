@@ -11,10 +11,9 @@ export const options = {
   ],
 };
 
-export default function () {
+export default function runCalendarLoadTest() {
   const payload = JSON.stringify({ prompt: 'Schedule a meeting tomorrow at 3pm' });
   const params = { headers: { 'Content-Type': 'application/json' } };
   http.post(`${BASE_URL}/api/calendar/ai`, payload, params);
   sleep(1);
 }
-

@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Mail, Loader2, Wand2, Users, ExternalLink, Sparkles } from "lucide-react";
+import { Mail, Users, ExternalLink } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,6 @@ function EmailPageInner() {
   const { role } = useCurrentUserRole();
   const { toast } = useToast();
   
-  const [isGenerating, setIsGenerating] = useState(false);
   const [emailContent, setEmailContent] = useState({ subject: '', body: '' });
   const [hydratedFromQuery, setHydratedFromQuery] = useState(false);
   const [showAi, setShowAi] = useState(false);
@@ -215,8 +214,8 @@ function EmailPageInner() {
                     </FormItem>
                   )}
                 />
-                <Button type="submit" disabled={isGenerating} className={aiSparkle}>
-                  {isGenerating ? <Loader2 className="animate-spin" /> : 'Continue in Assistant'}
+                <Button type="submit" className={aiSparkle}>
+                  Continue in Assistant
                 </Button>
               </form>
             </Form>

@@ -219,13 +219,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const nextData = {
-      ...((existing?.data as Record<string, unknown> | null) ?? {}),
-      [parsed.data.section]: parsed.data.value,
-    };
+    const existingData = (existing?.data as Record<string, unknown> | null) ?? null;
+    const nextData = existingData
+      ? { ...existingData, [parsed.data.section]: parsed.data.value }
+      : { [parsed.data.section]: parsed.data.value };
 
     const currentSectionValue =
-      ((existing?.data as Record<string, unknown> | null) ?? {})[parsed.data.section];
+      existingData?.[parsed.data.section];
     if (JSON.stringify(currentSectionValue) === JSON.stringify(parsed.data.value)) {
       return NextResponse.json({ ok: true, skipped: true });
     }

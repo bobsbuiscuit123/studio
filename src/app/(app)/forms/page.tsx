@@ -193,6 +193,14 @@ function FormsPageInner() {
     toast({ title: "Response submitted", description: "Your answers have been saved." });
   };
 
+  const updateResponseDraftAnswer = (formId: string, questionId: string, value: string) => {
+    setResponseDrafts(prev => {
+      const nextAnswers = prev[formId] ? { ...prev[formId] } : {};
+      nextAnswers[questionId] = value;
+      return { ...prev, [formId]: nextAnswers };
+    });
+  };
+
   const viewedCount = (form: ClubForm) => Array.isArray(form.viewedBy) ? form.viewedBy.length : 0;
   const respondedCount = (form: ClubForm) => Array.isArray(form.responses) ? form.responses.length : 0;
   const resolveOptionLabel = (value: string, options?: string[]) => {
@@ -200,7 +208,9 @@ function FormsPageInner() {
     const trimmed = value.trim();
     const directMatch = options.find(opt => opt === trimmed);
     if (directMatch) return directMatch;
-    const match = trimmed.match(/^(?:option|choice)\s*(\d+)$/i) || trimmed.match(/^(\d+)$/);
+    const optionMatch = /^(?:option|choice)\s*(\d+)$/i.exec(trimmed);
+    const numericMatch = /^(\d+)$/.exec(trimmed);
+    const match = optionMatch || numericMatch;
     if (match) {
       const index = Number(match[1]) - 1;
       if (index >= 0 && index < options.length) {
@@ -331,11 +341,13 @@ function FormsPageInner() {
             <CardContent className="space-y-4">
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading forms...</p>
-              ) : safeForms.length === 0 ? (
+              ) : null}
+              {!loading && safeForms.length === 0 ? (
                 <div className="tab-empty-state text-muted-foreground">
                   <p>No forms yet. {canEditContent ? "Create one to collect responses." : ""}</p>
                 </div>
-              ) : (
+              ) : null}
+              {!loading && safeForms.length > 0 ? (
                 safeForms.map(form => {
                   const responses = Array.isArray(form.responses) ? form.responses : [];
                   const isNew = currentEmail ? !(form.viewedBy || []).includes(currentEmail) : false;
@@ -413,12 +425,7 @@ function FormsPageInner() {
                                                     type="radio"
                                                     name={`${form.id}-${q.id}`}
                                                     checked={currentValue === option}
-                                                    onChange={() =>
-                                                      setResponseDrafts(prev => ({
-                                                        ...prev,
-                                                        [form.id]: { ...(prev[form.id] || {}), [q.id]: option },
-                                                      }))
-                                                    }
+                                                    onChange={() => updateResponseDraftAnswer(form.id, q.id, option)}
                                                   />
                                                   {option}
                                                 </label>
@@ -441,10 +448,7 @@ function FormsPageInner() {
                                                         const next = e.target.checked
                                                           ? [...values, option]
                                                           : values.filter(v => v !== option);
-                                                        setResponseDrafts(prev => ({
-                                                          ...prev,
-                                                          [form.id]: { ...(prev[form.id] || {}), [q.id]: next.join("||") },
-                                                        }));
+                                                        updateResponseDraftAnswer(form.id, q.id, next.join("||"));
                                                       }}
                                                     />
                                                     {option}
@@ -482,10 +486,7 @@ function FormsPageInner() {
                                                     scope: "form-response",
                                                     fileName: file.name,
                                                   });
-                                                  setResponseDrafts(prev => ({
-                                                    ...prev,
-                                                    [form.id]: { ...(prev[form.id] || {}), [q.id]: stored.url },
-                                                  }));
+                                                  updateResponseDraftAnswer(form.id, q.id, stored.url);
                                                 } catch (error) {
                                                   toast({
                                                     title: "Upload failed",
@@ -503,12 +504,7 @@ function FormsPageInner() {
                                           <Textarea
                                             placeholder="Your answer"
                                             value={currentValue}
-                                            onChange={e =>
-                                              setResponseDrafts(prev => ({
-                                                ...prev,
-                                                [form.id]: { ...(prev[form.id] || {}), [q.id]: e.target.value },
-                                              }))
-                                            }
+                                            onChange={e => updateResponseDraftAnswer(form.id, q.id, e.target.value)}
                                           />
                                         );
                                       })()}
@@ -554,28 +550,34 @@ function FormsPageInner() {
                                             <span>{new Date(resp.submittedAt).toLocaleString()}</span>
                                           </div>
                                           <div className="mt-2 space-y-1 text-sm">
-                                            {form.questions.map(q => (
-                                              <div key={q.id}>
-                                                <p className="font-medium">{q.prompt}</p>
-                                                {q.kind === "file" && resp.answers[q.id] ? (
-                                                  <a className="text-primary underline text-xs" href={resp.answers[q.id]} download>
-                                                    Download upload
-                                                  </a>
-                                                ) : q.kind === "multi" ? (
-                                                  <p className="text-muted-foreground">
-                                                    {(resp.answers[q.id] || "")
-                                                      .split("||")
-                                                      .filter(Boolean)
-                                                      .map(value => resolveOptionLabel(value, q.options))
-                                                      .join(", ") || "—"}
-                                                  </p>
-                                                ) : (
-                                                  <p className="text-muted-foreground">
-                                                    {resolveOptionLabel(resp.answers[q.id] || "—", q.options)}
-                                                  </p>
-                                                )}
-                                              </div>
-                                            ))}
+                                            {form.questions.map(q => {
+                                              const answer = resp.answers[q.id] || "";
+                                              const hasFileAnswer = q.kind === "file" && Boolean(answer);
+                                              return (
+                                                <div key={q.id}>
+                                                  <p className="font-medium">{q.prompt}</p>
+                                                  {hasFileAnswer ? (
+                                                    <a className="text-primary underline text-xs" href={answer} download>
+                                                      Download upload
+                                                    </a>
+                                                  ) : null}
+                                                  {!hasFileAnswer && q.kind === "multi" ? (
+                                                    <p className="text-muted-foreground">
+                                                      {answer
+                                                        .split("||")
+                                                        .filter(Boolean)
+                                                        .map(value => resolveOptionLabel(value, q.options))
+                                                        .join(", ") || "—"}
+                                                    </p>
+                                                  ) : null}
+                                                  {!hasFileAnswer && q.kind !== "multi" ? (
+                                                    <p className="text-muted-foreground">
+                                                      {resolveOptionLabel(answer || "—", q.options)}
+                                                    </p>
+                                                  ) : null}
+                                                </div>
+                                              );
+                                            })}
                                           </div>
                                         </div>
                                       ))}
@@ -590,7 +592,7 @@ function FormsPageInner() {
                     </Card>
                   );
                 })
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </div>

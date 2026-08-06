@@ -38,8 +38,12 @@ const baseEvents: ClubEvent[] = [
   },
 ];
 
-const resolveMemberName = (email: string) =>
-  email === 'alex@example.com' ? 'Alex' : email === 'me@example.com' ? 'Me' : email;
+const MEMBER_NAMES_BY_EMAIL = new Map([
+  ['alex@example.com', 'Alex'],
+  ['me@example.com', 'Me'],
+]);
+
+const resolveMemberName = (email: string) => MEMBER_NAMES_BY_EMAIL.get(email) ?? email;
 
 describe('dashboard missed activity', () => {
   it('includes missed announcements, unread messages, and new forms from before the current group session', () => {

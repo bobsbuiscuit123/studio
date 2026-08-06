@@ -14,7 +14,7 @@ const clearCookie = (key: string) => {
 
 const readCookie = (key: string) => {
   if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp(`(?:^|; )${key}=([^;]*)`));
+  const match = new RegExp(`(?:^|; )${key}=([^;]*)`).exec(document.cookie);
   return match ? decodeURIComponent(match[1]) : null;
 };
 

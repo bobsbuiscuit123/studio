@@ -22,7 +22,7 @@ type UpdateAnnouncementInput = {
   body?: string;
 };
 
-const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const normalizeEmail = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
 const ensureAnnouncementPermission = async (input: {
   userId: string;
@@ -85,10 +85,11 @@ const resolveAuthorName = async (input: {
     const record = member as Record<string, unknown>;
     return record.id === input.userId || normalizeEmail(record.email) === normalizedEmail;
   });
-  const memberName =
-    matchingMember && typeof matchingMember === 'object'
-      ? String((matchingMember as Record<string, unknown>).name ?? '').trim()
-      : '';
+  let memberName = '';
+  if (matchingMember && typeof matchingMember === 'object') {
+    const rawName = (matchingMember as Record<string, unknown>).name;
+    memberName = typeof rawName === 'string' ? rawName.trim() : '';
+  }
   if (memberName) {
     return memberName;
   }
@@ -100,7 +101,7 @@ const resolveAuthorName = async (input: {
       .select('display_name')
       .eq('id', input.userId)
       .maybeSingle();
-    const profileName = String(data?.display_name ?? '').trim();
+    const profileName = typeof data?.display_name === 'string' ? data.display_name.trim() : '';
     if (profileName) {
       return profileName;
     }
@@ -167,7 +168,12 @@ export async function createAnnouncement(input: CreateAnnouncementInput) {
   const authorName = await resolveAuthorName({ ...input, currentData });
   const nextId =
     announcements.reduce((maxId, item) => {
-      const id = typeof item?.id === 'number' ? item.id : typeof item?.id === 'string' ? Number(item.id) : 0;
+      let id = 0;
+      if (typeof item?.id === 'number') {
+        id = item.id;
+      } else if (typeof item?.id === 'string') {
+        id = Number(item.id);
+      }
       return Number.isFinite(id) && id > maxId ? id : maxId;
     }, 0) + 1;
 

@@ -15,7 +15,7 @@ const commandArgs = [
   path.join(projectRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
   path.join('src', 'ai', 'dev.ts'),
 ];
-const taskkillPath = 'C:\\Windows\\System32\\taskkill.exe';
+const taskkillPath = String.raw`C:\Windows\System32\taskkill.exe`;
 
 let child = null;
 let restarting = false;

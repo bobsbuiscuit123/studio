@@ -30,6 +30,8 @@ import {
 } from '@/lib/selection';
 import { ORG_MEMBERSHIP_CHANGED_EVENT, ORGS_CACHE_KEY, orgListHasOrg } from '@/lib/org-list-cache';
 
+const ORG_SKELETON_KEYS = ['primary', 'secondary', 'tertiary'];
+
 type OrgSummary = {
   id: string;
   name: string;
@@ -313,8 +315,8 @@ export default function OrgsPage() {
 
           {loading ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 3 }).map((_, idx) => (
-                <Card key={idx} className="rounded-[28px] border border-border/70 bg-card/90 shadow-sm">
+              {ORG_SKELETON_KEYS.map(key => (
+                <Card key={key} className="rounded-[28px] border border-border/70 bg-card/90 shadow-sm">
                   <CardHeader className="space-y-3">
                     <Skeleton className="h-5 w-32" />
                     <Skeleton className="h-3 w-24" />
@@ -329,7 +331,9 @@ export default function OrgsPage() {
                 </Card>
               ))}
             </div>
-          ) : orgs.length > 0 ? (
+          ) : null}
+
+          {!loading && orgs.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {orgs.map((org) => {
                 const status = statusByOrg[org.id] ?? null;
@@ -391,7 +395,9 @@ export default function OrgsPage() {
                 );
               })}
             </div>
-          ) : (
+          ) : null}
+
+          {!loading && orgs.length === 0 ? (
             <Card className="rounded-[28px] border border-dashed border-border/70 bg-card/90 shadow-sm">
               <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
@@ -411,7 +417,7 @@ export default function OrgsPage() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </section>
       </div>
     </div>

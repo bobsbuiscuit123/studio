@@ -153,12 +153,12 @@ export async function POST(request: Request) {
 
   if (error) {
     const message = error.message || 'Unable to finalize organization creation.';
-    const status =
-      /purchase_not_synced|subscription_assignment_conflict|target_org_not_owned/i.test(message)
-        ? 409
-        : /draft_not_found/i.test(message)
-          ? 404
-          : 500;
+    let status = 500;
+    if (/purchase_not_synced|subscription_assignment_conflict|target_org_not_owned/i.test(message)) {
+      status = 409;
+    } else if (/draft_not_found/i.test(message)) {
+      status = 404;
+    }
 
     return NextResponse.json(
       err({

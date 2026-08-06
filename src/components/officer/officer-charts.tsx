@@ -20,7 +20,7 @@ import { useAnnouncements, useEvents, useTransactions } from '@/lib/data-hooks';
 
 const emptyFallback = 'Not enough data yet.';
 
-export default function OfficerCharts({ clubId: _clubId }: { clubId?: string | null }) {
+export default function OfficerCharts({ clubId: _clubId }: Readonly<{ clubId?: string | null }>) {
   const announcements = useAnnouncements();
   const events = useEvents();
   const transactions = useTransactions();

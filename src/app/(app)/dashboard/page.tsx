@@ -143,7 +143,7 @@ const toDate = (value?: string | Date | null) => {
 
 const clampScore = (value: number) => Math.max(0, Math.min(100, Math.round(value)));
 
-function HopeLinkMissionHealth({ donors }: { donors: DonorRecord[] }) {
+function HopeLinkMissionHealth({ donors }: Readonly<{ donors: DonorRecord[] }>) {
   const metrics = useMemo(() => {
     const total = donors.length;
     const highRisk = donors.filter(donor => Number(donor.riskScore ?? 0) >= 70).length;
@@ -788,25 +788,17 @@ export default function Dashboard() {
   ]);
 
   const getActionLabel = (link: string) =>
-    link === "/announcements"
-      ? "Announcements"
-      : link === "/calendar"
-      ? "Calendar"
-      : link === "/messages"
-      ? "Messages"
-      : link === "/forms"
-      ? "Forms"
-      : link === "/members"
-      ? "Members"
-      : link === "/gallery"
-      ? "Gallery"
-      : link === "/finances"
-      ? "Finances"
-      : link === "/attendance"
-      ? "Attendance"
-      : link === "/points"
-      ? "Points"
-      : "View";
+    ({
+      "/announcements": "Announcements",
+      "/calendar": "Calendar",
+      "/messages": "Messages",
+      "/forms": "Forms",
+      "/members": "Members",
+      "/gallery": "Gallery",
+      "/finances": "Finances",
+      "/attendance": "Attendance",
+      "/points": "Points",
+    })[link] ?? "View";
 
   useEffect(() => {
     if (dashboardStatus !== "success" || !groupSessionReady || !clubId || !user?.email) {
@@ -1319,8 +1311,8 @@ export default function Dashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
-            {events.slice(0, 3).map((event, index) => (
-              <div key={index} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+            {events.slice(0, 3).map(event => (
+              <div key={event.id} className="flex items-start gap-3 rounded-2xl border border-border/70 bg-background/70 p-4">
                 <div className="rounded-2xl bg-primary/10 p-2 text-primary">
                   <CalendarDays className="h-5 w-5" />
                 </div>

@@ -8,11 +8,11 @@ export function OrgAiQuotaBadge({
   orgId,
   className,
   compact = false,
-}: {
+}: Readonly<{
   orgId?: string | null;
   className?: string;
   compact?: boolean;
-}) {
+}>) {
   const { loading, status, used, limit, percent } = useOrgSubscriptionStatus(orgId);
   const paused = !status?.aiAvailable;
   const safeLimit = Math.max(0, limit);
@@ -27,11 +27,12 @@ export function OrgAiQuotaBadge({
   const radius = compact ? 16 : 18;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (usedPercent / 100) * circumference;
-  const usageLabel = loading
-    ? "..."
-    : safeLimit <= 0
-      ? "AI unavailable"
-      : `${safeUsed}/${safeLimit} used`;
+  let usageLabel = `${safeUsed}/${safeLimit} used`;
+  if (loading) {
+    usageLabel = "...";
+  } else if (safeLimit <= 0) {
+    usageLabel = "AI unavailable";
+  }
 
   return (
     <div

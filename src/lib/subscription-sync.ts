@@ -23,8 +23,9 @@ const isSubscriptionAssignmentConflict = (error: unknown) => {
     return false;
   }
 
-  const code = String((error as { code?: unknown }).code ?? '').trim();
-  const message = String((error as { message?: unknown }).message ?? '').toLowerCase();
+  const { code: rawCode, message: rawMessage } = error as { code?: unknown; message?: unknown };
+  const code = typeof rawCode === 'string' ? rawCode.trim() : '';
+  const message = typeof rawMessage === 'string' ? rawMessage.toLowerCase() : '';
   return (
     code === '23505' ||
     message.includes('23505') ||
@@ -204,11 +205,12 @@ export const syncRevenueCatSubscriber = async ({
   webhookEvent,
   targetOrgId = null,
 }: SyncOptions): Promise<RevenueCatSyncResult> => {
-  const candidates = webhookEvent
-    ? collectRevenueCatCustomerCandidates(webhookEvent)
-    : appUserId
-      ? [appUserId]
-      : [];
+  let candidates: string[] = [];
+  if (webhookEvent) {
+    candidates = collectRevenueCatCustomerCandidates(webhookEvent);
+  } else if (appUserId) {
+    candidates = [appUserId];
+  }
 
   if (candidates.length === 0) {
     return {
@@ -261,25 +263,27 @@ export const syncRevenueCatSubscriber = async ({
     await sleep(400 * (attempt + 1));
   }
 
-  const stabilizedCanonicalState =
+  let stabilizedCanonicalState = canonicalState;
+  if (
     canonicalState &&
     canonicalState.activeProductId === null &&
     canonicalState.subscriptionStatus === 'free' &&
     previousSubscription.activeProductId &&
     previousSubscription.currentPeriodEnd &&
     Date.parse(previousSubscription.currentPeriodEnd) > Date.now()
-        ? {
-          activeProductId: previousSubscription.activeProductId,
-          scheduledProductId: canonicalState.scheduledProductId,
-          subscriptionStatus: toCanonicalPaidStatus(previousSubscription.subscriptionStatus),
-          currentPeriodStart: previousSubscription.currentPeriodStart,
-          currentPeriodEnd: previousSubscription.currentPeriodEnd,
-          willRenew: previousSubscription.willRenew,
-          billingIssueDetectedAt: null,
-          gracePeriodExpiresAt: null,
-          managementUrl: canonicalState.managementUrl,
-        }
-      : canonicalState;
+  ) {
+    stabilizedCanonicalState = {
+      activeProductId: previousSubscription.activeProductId,
+      scheduledProductId: canonicalState.scheduledProductId,
+      subscriptionStatus: toCanonicalPaidStatus(previousSubscription.subscriptionStatus),
+      currentPeriodStart: previousSubscription.currentPeriodStart,
+      currentPeriodEnd: previousSubscription.currentPeriodEnd,
+      willRenew: previousSubscription.willRenew,
+      billingIssueDetectedAt: null,
+      gracePeriodExpiresAt: null,
+      managementUrl: canonicalState.managementUrl,
+    };
+  }
 
   if (
     canonicalState &&

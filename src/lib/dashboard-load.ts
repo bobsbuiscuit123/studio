@@ -56,10 +56,13 @@ export const createDashboardLogger = (scope = '[Dashboard]') => ({
     console.warn(`${scope} ${message}`, details ?? {});
   },
   error(message: string, error?: unknown, details?: DashboardLogDetails) {
-    console.error(`${scope} ${message}`, {
-      ...(details ?? {}),
+    const errorDetails = details ? {
+      ...details,
       error: error ? serializeDashboardError(error) : undefined,
-    });
+    } : {
+      error: error ? serializeDashboardError(error) : undefined,
+    };
+    console.error(`${scope} ${message}`, errorDetails);
   },
 });
 
@@ -158,7 +161,7 @@ export async function retryWithBackoff<T>(
       if (isAbortError(error) || attempt >= retries) {
         throw error;
       }
-      const delayMs = delays[Math.min(attempt, delays.length - 1)] ?? delays[delays.length - 1] ?? 0;
+      const delayMs = delays[Math.min(attempt, delays.length - 1)] ?? delays.at(-1) ?? 0;
       logger?.warn(`${label} retry scheduled`, {
         attempt: attempt + 1,
         delayMs,

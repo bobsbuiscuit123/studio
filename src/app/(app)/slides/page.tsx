@@ -1,11 +1,11 @@
 
 'use client';
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Presentation, Download, Loader2, Copy, Eye, Trash2, Pencil } from "lucide-react";
+import { Presentation, Download, Copy, Eye, Trash2, Pencil } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 
 
@@ -15,8 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import type { GenerateMeetingSlidesOutput } from "@/ai/flows/generate-meeting-slides";
-import { notifyOrgAiUsageChanged, useCurrentUserRole, usePresentations } from "@/lib/data-hooks";
+import { useCurrentUserRole, usePresentations } from "@/lib/data-hooks";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import {
   Carousel,
@@ -31,9 +30,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
-  DialogClose,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -67,13 +64,11 @@ type EditingSlideState = {
 export default function SlidesPage() {
   const [activePresentation, setActivePresentation] = useState<PresentationType | null>(null);
   const [editingSlide, setEditingSlide] = useState<EditingSlideState | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const { role } = useCurrentUserRole();
   const { data: presentations, updateData: setPresentations, loading: presentationsLoading } = usePresentations();
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [printableContent, setPrintableContent] = useState<PresentationType | null>(null);
-  const aiRequestInFlightRef = useRef(false);
   const openSlidesAssistant = (prompt: string) => {
     openAssistantWithContext(prompt);
   };
@@ -224,7 +219,7 @@ export default function SlidesPage() {
                         </FormItem>
                       )}
                     />
-                    <Button type="submit" disabled={isLoading} className="w-full">
+                    <Button type="submit" className="w-full">
                       Continue in Assistant
                     </Button>
                   </form>
@@ -237,7 +232,8 @@ export default function SlidesPage() {
                     <CardDescription>Previously generated presentations.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {presentationsLoading ? <p>Loading...</p> : presentations.length > 0 ? (
+                    {presentationsLoading ? <p>Loading...</p> : null}
+                    {!presentationsLoading && presentations.length > 0 ? (
                         presentations.map(p => (
                             <div key={p.id} className="border p-3 rounded-lg flex justify-between items-center">
                                 <div>
@@ -266,9 +262,10 @@ export default function SlidesPage() {
                                 </div>
                             </div>
                         ))
-                    ) : (
+                    ) : null}
+                    {!presentationsLoading && presentations.length === 0 ? (
                         <p className="text-sm text-muted-foreground text-center py-4">No history yet.</p>
-                    )}
+                    ) : null}
                 </CardContent>
             </Card>
           </div>
@@ -293,16 +290,11 @@ export default function SlidesPage() {
                 </div>
               </CardHeader>
               <CardContent className="min-h-[500px] flex-grow">
-                {isLoading && (
-                  <div className="tab-empty-state text-muted-foreground">
-                    <Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                )}
                 {activePresentation && activePresentation.slides.length > 0 ? (
                     <Carousel className="w-full max-w-xl">
                         <CarouselContent>
-                        {activePresentation.slides.map((slide, index) => (
-                            <CarouselItem key={index}>
+                        {activePresentation.slides.map((slide) => (
+                            <CarouselItem key={slide.id}>
                                 <Card className="w-full aspect-video flex flex-col justify-center items-center text-center p-8 bg-background shadow-lg relative">
                                     <Button variant="ghost" size="icon" className="absolute top-2 right-2" onClick={() => handleEditSlideClick(activePresentation, slide)}>
                                         <Pencil className="h-4 w-4" />
@@ -320,7 +312,7 @@ export default function SlidesPage() {
                         <CarouselPrevious className="-left-12" />
                         <CarouselNext className="-right-12" />
                     </Carousel>
-                ) : !isLoading && (
+                ) : (
                   <div className="tab-empty-state text-center text-muted-foreground">
                       <div>
                         <p>Generated slides will be displayed here.</p>
@@ -382,8 +374,8 @@ export default function SlidesPage() {
       <div className="hidden">
           {printableContent && (
              <div id={`print-content-${printableContent.id}`} className="print:block">
-                {printableContent.slides.map((slide, index) => (
-                    <div key={`print-${index}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
+                {printableContent.slides.map((slide) => (
+                    <div key={`print-${slide.id}`} className="w-[11in] h-[8.5in] p-8 flex flex-col justify-center items-center text-center bg-card">
                           <h2 className="text-5xl font-bold mb-8">{slide.title}</h2>
                           <div className="prose prose-2xl">
                             <ReactMarkdown>{slide.content}</ReactMarkdown>

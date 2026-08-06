@@ -40,7 +40,7 @@ type PlanItem = {
   newAdminUserId?: string;
 };
 
-type DeleteAccountActionProps = {
+type DeleteAccountActionProps = Readonly<{
   onDeleted: () => Promise<void> | void;
   mode?: "live" | "demo";
   userEmail?: string | null;
@@ -48,7 +48,7 @@ type DeleteAccountActionProps = {
   className?: string;
   disabled?: boolean;
   variant?: ComponentProps<typeof Button>["variant"];
-};
+}>;
 
 export function DeleteAccountAction({
   onDeleted,

@@ -22,7 +22,7 @@ type GroupAccessResult =
       reason: 'org' | 'group';
     };
 
-const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
+const normalizeEmail = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
 const loadUserProfileSnapshot = async (
   admin: SupabaseAdmin,
@@ -35,7 +35,9 @@ const loadUserProfileSnapshot = async (
     .maybeSingle();
 
   const email = normalizeEmail(data?.email);
-  const name = String(data?.display_name || data?.email || 'Member').trim();
+  const profileName = typeof data?.display_name === 'string' ? data.display_name.trim() : '';
+  const profileEmail = typeof data?.email === 'string' ? data.email.trim() : '';
+  const name = profileName || profileEmail || 'Member';
   return {
     email,
     name,

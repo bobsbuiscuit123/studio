@@ -87,38 +87,40 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result =
-      parsed.data.deleteMode === 'conversation'
-        ? await deleteMessageContent({
-            mode: 'conversation',
-            conversationType: 'dm',
-            userId: actingUser.id,
-            userEmail: actingUser.email,
-            orgId: parsed.data.orgId,
-            groupId: parsed.data.groupId,
-            partnerEmail: parsed.data.partnerEmail,
-          })
-        : parsed.data.conversationType === 'dm'
-          ? await deleteMessageContent({
-              mode: 'messages',
-              conversationType: 'dm',
-              userId: actingUser.id,
-              userEmail: actingUser.email,
-              orgId: parsed.data.orgId,
-              groupId: parsed.data.groupId,
-              partnerEmail: parsed.data.partnerEmail,
-              messageEntityIds: parsed.data.messageEntityIds,
-            })
-          : await deleteMessageContent({
-              mode: 'messages',
-              conversationType: 'group',
-              userId: actingUser.id,
-              userEmail: actingUser.email,
-              orgId: parsed.data.orgId,
-              groupId: parsed.data.groupId,
-              chatId: parsed.data.chatId,
-              messageEntityIds: parsed.data.messageEntityIds,
-            });
+    let result: Awaited<ReturnType<typeof deleteMessageContent>>;
+    if (parsed.data.deleteMode === 'conversation') {
+      result = await deleteMessageContent({
+        mode: 'conversation',
+        conversationType: 'dm',
+        userId: actingUser.id,
+        userEmail: actingUser.email,
+        orgId: parsed.data.orgId,
+        groupId: parsed.data.groupId,
+        partnerEmail: parsed.data.partnerEmail,
+      });
+    } else if (parsed.data.conversationType === 'dm') {
+      result = await deleteMessageContent({
+        mode: 'messages',
+        conversationType: 'dm',
+        userId: actingUser.id,
+        userEmail: actingUser.email,
+        orgId: parsed.data.orgId,
+        groupId: parsed.data.groupId,
+        partnerEmail: parsed.data.partnerEmail,
+        messageEntityIds: parsed.data.messageEntityIds,
+      });
+    } else {
+      result = await deleteMessageContent({
+        mode: 'messages',
+        conversationType: 'group',
+        userId: actingUser.id,
+        userEmail: actingUser.email,
+        orgId: parsed.data.orgId,
+        groupId: parsed.data.groupId,
+        chatId: parsed.data.chatId,
+        messageEntityIds: parsed.data.messageEntityIds,
+      });
+    }
 
     return NextResponse.json({ ok: true, data: result });
   } catch (error) {

@@ -50,7 +50,7 @@ export function hasVisibleOpenModal(documentRef: Document = document) {
 }
 
 export function repairStaleModalLayers(documentRef: Document = document) {
-  if (typeof window === "undefined" || typeof documentRef === "undefined") {
+  if (typeof window === "undefined") {
     return false;
   }
 

@@ -176,18 +176,15 @@ export async function updateEvent(input: UpdateEventInput) {
   }
 
   const existing = events[eventIndex];
+  const existingDate = existing.date instanceof Date ? existing.date : new Date(existing.date);
   const nextDate =
     typeof input.date === 'string' && input.date.trim()
       ? input.date.trim()
-      : existing.date instanceof Date
-        ? existing.date.toISOString().slice(0, 10)
-        : new Date(existing.date).toISOString().slice(0, 10);
+      : existingDate.toISOString().slice(0, 10);
   const nextTime =
     typeof input.time === 'string' && input.time.trim()
       ? input.time.trim()
-      : existing.date instanceof Date
-        ? existing.date.toISOString().slice(11, 16)
-        : new Date(existing.date).toISOString().slice(11, 16);
+      : existingDate.toISOString().slice(11, 16);
 
   const updatedEvent: ClubEvent = {
     ...existing,

@@ -44,7 +44,7 @@ export default function MindMapPage() {
   useEffect(() => {
     setNodes(mindMapData.nodes);
     setEdges(mindMapData.edges);
-    const maxId = mindMapData.nodes.reduce((max, node) => Math.max(max, parseInt(node.id, 10) || 0), 1);
+    const maxId = mindMapData.nodes.reduce((max, node) => Math.max(max, Number.parseInt(node.id, 10) || 0), 1);
     id = maxId + 1;
   }, [mindMapData, setNodes, setEdges]);
   

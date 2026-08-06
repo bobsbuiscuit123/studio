@@ -21,7 +21,7 @@ function loadEnvFile(path) {
       value = value.slice(1, -1);
     }
     if (quote === '"') {
-      value = value.replace(/\\n/g, "\n");
+      value = value.replaceAll("\\n", "\n");
     }
 
     process.env[key] = value;
@@ -47,8 +47,16 @@ const toQueryError = (error) => ({
   message: error instanceof Error ? error.message : String(error || "Unknown Supabase error"),
 });
 
+const trimTrailingSlashes = (value) => {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") {
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 function createRestSupabaseClient(url, serviceRoleKey) {
-  const baseUrl = url.replace(/\/+$/, "");
+  const baseUrl = trimTrailingSlashes(url);
   const restUrl = `${baseUrl}/rest/v1`;
   const headers = {
     apikey: serviceRoleKey,
@@ -181,8 +189,8 @@ function createRestSupabaseClient(url, serviceRoleKey) {
       return this.execute({ single: true });
     }
 
-    then(resolve, reject) {
-      return this.execute({ single: false }).then(resolve, reject);
+    all() {
+      return this.execute({ single: false });
     }
 
     async execute({ single }) {
@@ -410,22 +418,24 @@ async function resetOrgGroups(orgId) {
   const { data: groups, error: groupLookupError } = await supabase
     .from("groups")
     .select("id")
-    .eq("org_id", orgId);
+    .eq("org_id", orgId)
+    .all();
   if (groupLookupError) throw new Error(`Could not load existing groups: ${groupLookupError.message}`);
 
   const groupIds = (groups || []).map((group) => group.id).filter(Boolean);
   if (groupIds.length > 0) {
-    await supabase.from("group_state").delete().in("group_id", groupIds);
-    await supabase.from("group_memberships").delete().in("group_id", groupIds);
+    await supabase.from("group_state").delete().in("group_id", groupIds).all();
+    await supabase.from("group_memberships").delete().in("group_id", groupIds).all();
   }
-  const { error: deleteGroupsError } = await supabase.from("groups").delete().eq("org_id", orgId);
+  const { error: deleteGroupsError } = await supabase.from("groups").delete().eq("org_id", orgId).all();
   if (deleteGroupsError) throw new Error(`Could not clear existing groups: ${deleteGroupsError.message}`);
 }
 
 async function ensureOwnerMembership(orgId, ownerId) {
   const { error } = await supabase
     .from("memberships")
-    .upsert({ org_id: orgId, user_id: ownerId, role: "owner" }, { onConflict: "user_id,org_id" });
+    .upsert({ org_id: orgId, user_id: ownerId, role: "owner" }, { onConflict: "user_id,org_id" })
+    .all();
   if (error) throw new Error(`Could not add owner membership: ${error.message}`);
 }
 
@@ -844,17 +854,21 @@ async function seedGroup(orgId, owner, club, index) {
         role: ownerGroupMembershipRole,
       },
       { onConflict: "user_id,group_id" }
-    );
+    )
+    .all();
   if (membershipError) {
     throw new Error(`Could not create group membership for ${club.name}: ${membershipError.message}`);
   }
 
-  const { error: stateError } = await supabase.from("group_state").insert({
-    org_id: orgId,
-    group_id: group.id,
-    data: buildClubState(club, index, owner),
-    updated_at: new Date().toISOString(),
-  });
+  const { error: stateError } = await supabase
+    .from("group_state")
+    .insert({
+      org_id: orgId,
+      group_id: group.id,
+      data: buildClubState(club, index, owner),
+      updated_at: new Date().toISOString(),
+    })
+    .all();
   if (stateError) {
     throw new Error(`Could not seed group state for ${club.name}: ${stateError.message}`);
   }

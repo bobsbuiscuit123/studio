@@ -35,11 +35,27 @@ const parseRouteUrl = (value: string) => {
   }
 };
 
+const trimLeadingSlashes = (value: string) => {
+  let start = 0;
+  while (start < value.length && value[start] === '/') {
+    start += 1;
+  }
+  return value.slice(start);
+};
+
+const trimTrailingSlashes = (value: string) => {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1;
+  }
+  return value.slice(0, end);
+};
+
 const getLastPathSegment = (value: string, prefix: string) => {
   const parsed = parseRouteUrl(value);
   const pathname = parsed?.pathname ?? value.split('?')[0] ?? '';
   if (!pathname.startsWith(prefix)) return '';
-  return pathname.slice(prefix.length).replace(/^\/+/, '');
+  return trimLeadingSlashes(pathname.slice(prefix.length));
 };
 
 const getQueryParamFromRoute = (value: string, key: string) => {
@@ -111,9 +127,9 @@ const normalizeRoutePath = (value: string) => {
   if (!value) return '';
   try {
     const parsed = new URL(value, 'https://caspo.local');
-    return parsed.pathname.replace(/\/+$/, '') || '/';
+    return trimTrailingSlashes(parsed.pathname) || '/';
   } catch {
-    return value.split('?')[0]?.replace(/\/+$/, '') || '/';
+    return trimTrailingSlashes(value.split('?')[0] ?? '') || '/';
   }
 };
 

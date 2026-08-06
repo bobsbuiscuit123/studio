@@ -683,7 +683,9 @@ const resolveGroupMemberUserIds = async (
 const resolveDmParticipants = (conversationKey: string, memberEmails: string[]) => {
   for (let left = 0; left < memberEmails.length; left += 1) {
     for (let right = left + 1; right < memberEmails.length; right += 1) {
-      const candidate = [memberEmails[left], memberEmails[right]].sort().join('_');
+      const candidate = [memberEmails[left], memberEmails[right]]
+        .sort((a, b) => a.localeCompare(b))
+        .join('_');
       if (candidate === conversationKey) {
         return [memberEmails[left], memberEmails[right]];
       }

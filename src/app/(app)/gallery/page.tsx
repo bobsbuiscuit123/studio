@@ -382,7 +382,7 @@ export default function GalleryPage() {
               {form.formState.errors.alt && <p className="text-red-500 text-sm">{form.formState.errors.alt.message}</p>}
             </div>
              <div className="space-y-2">
-                <label>Image Files</label>
+                <label htmlFor="gallery-image-files">Image Files</label>
                 <div>
                     {isNativeApp ? (
                       <DropdownMenu>
@@ -414,6 +414,7 @@ export default function GalleryPage() {
                       </Button>
                     )}
                     <Input
+                    id="gallery-image-files"
                     type="file"
                     className="hidden"
                     ref={fileInputRef}
@@ -430,6 +431,7 @@ export default function GalleryPage() {
                            <div key={index} className="relative">
                                 <Image src={image} alt={`Preview ${index}`} width={150} height={150} className="rounded-md aspect-square object-cover" />
                                 <Button
+                                    type="button"
                                     variant="destructive"
                                     size="icon"
                                     className="absolute top-1 right-1 h-6 w-6"
@@ -553,7 +555,7 @@ function dataUrlToFile(dataUrl: string, fileName: string) {
   const bytes = new Uint8Array(binary.length);
 
   for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+    bytes[index] = binary.codePointAt(index) ?? 0;
   }
 
   return new File([bytes], fileName, { type: mimeType });

@@ -16,8 +16,6 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.+)$/s;
-
 const extensionFromMimeType = mimeType => {
   const normalized = mimeType.toLowerCase();
   if (normalized.includes('png')) return 'png';
@@ -27,23 +25,63 @@ const extensionFromMimeType = mimeType => {
   return normalized.includes('jpeg') || normalized.includes('jpg') ? 'jpg' : 'bin';
 };
 
-const sanitizePathPart = value =>
-  String(value || 'asset')
-    .replace(/[/\\]+/g, '-')
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80) || 'asset';
+const isSafePathChar = char =>
+  (char >= 'a' && char <= 'z') ||
+  (char >= 'A' && char <= 'Z') ||
+  (char >= '0' && char <= '9') ||
+  char === '.' ||
+  char === '_' ||
+  char === '-';
+
+const trimEdgeDashes = value => {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === '-') start += 1;
+  while (end > start && value[end - 1] === '-') end -= 1;
+  return value.slice(start, end);
+};
+
+const sanitizePathPart = value => {
+  let next = '';
+  let lastWasDash = false;
+
+  for (const char of String(value || 'asset')) {
+    if (isSafePathChar(char)) {
+      next += char;
+      lastWasDash = char === '-';
+    } else if (!lastWasDash) {
+      next += '-';
+      lastWasDash = true;
+    }
+  }
+
+  return trimEdgeDashes(next).slice(0, 80) || 'asset';
+};
+
+const parseDataUrl = dataUrl => {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
+  const commaIndex = dataUrl.indexOf(',');
+  if (commaIndex === -1) return null;
+
+  const meta = dataUrl.slice(5, commaIndex);
+  const base64Suffix = ';base64';
+  if (!meta.toLowerCase().endsWith(base64Suffix)) return null;
+
+  const mimeType = meta.slice(0, -base64Suffix.length);
+  const content = dataUrl.slice(commaIndex + 1);
+  if (!mimeType || mimeType.includes(';') || mimeType.includes(',') || !content) return null;
+
+  return { mimeType, content };
+};
 
 const dataUrlToUpload = async ({ dataUrl, orgId, groupId, jsonPath, counter }) => {
-  const match = dataUrl.match(DATA_URL_PATTERN);
-  if (!match) return null;
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) return null;
 
-  const mimeType = match[1] || 'application/octet-stream';
-  const base64 = match[2] || '';
-  const bytes = Buffer.from(base64, 'base64');
+  const bytes = Buffer.from(parsed.content, 'base64');
   if (bytes.length === 0) return null;
 
-  const extension = extensionFromMimeType(mimeType);
+  const extension = extensionFromMimeType(parsed.mimeType);
   const fileName = `${Date.now()}-${counter}-${sanitizePathPart(jsonPath)}.${extension}`;
   const objectPath = `${orgId}/${groupId}/${fileName}`;
 
@@ -51,7 +89,7 @@ const dataUrlToUpload = async ({ dataUrl, orgId, groupId, jsonPath, counter }) =
     const { error } = await supabase.storage
       .from(BUCKET)
       .upload(objectPath, bytes, {
-        contentType: mimeType,
+        contentType: parsed.mimeType,
         upsert: false,
       });
     if (error) throw error;
@@ -63,7 +101,7 @@ const dataUrlToUpload = async ({ dataUrl, orgId, groupId, jsonPath, counter }) =
 
 const migrateJsonValue = async ({ value, orgId, groupId, path = [], stats }) => {
   if (typeof value === 'string') {
-    if (!value.startsWith('data:image/') && !DATA_URL_PATTERN.test(value)) {
+    if (!value.startsWith('data:image/') && !parseDataUrl(value)) {
       return { changed: false, value };
     }
 

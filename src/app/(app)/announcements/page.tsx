@@ -69,10 +69,62 @@ const announcementFormSchema = z.object({
     content: z.string().min(10, "Content must be at least 10 characters long."),
 });
 
+const isWhitespace = (char: string) => char.trim() === '';
+
+const getFirstWord = (value: string) => {
+  let word = '';
+  for (const char of value) {
+    const isAlphaNumeric = (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9');
+    if (isAlphaNumeric) {
+      word += char;
+      continue;
+    }
+    if (word) break;
+  }
+  return word;
+};
+
+const hasWord = (value: string, target: string) => {
+  let token = '';
+  for (const char of value) {
+    const isAlphaNumeric = (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9');
+    if (isAlphaNumeric) {
+      token += char;
+      continue;
+    }
+    if (token === target) return true;
+    token = '';
+  }
+  return token === target;
+};
+
 const isInstructionLikeAnnouncementTitle = (value?: string | null) => {
   const text = String(value ?? '').trim().toLowerCase();
   if (!text) return true;
-  return /^(send|write|draft|create|post)\b/.test(text) || /\bannouncement\b/.test(text);
+  return ['send', 'write', 'draft', 'create', 'post'].includes(getFirstWord(text)) || hasWord(text, 'announcement');
+};
+
+const stripAnnouncementLabel = (value: string) => {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  for (const prefix of ['reminder', 'announcement']) {
+    if (!lower.startsWith(prefix)) continue;
+    let index = prefix.length;
+    while (index < trimmed.length && isWhitespace(trimmed[index])) index += 1;
+    if (trimmed[index] !== ':') continue;
+    index += 1;
+    while (index < trimmed.length && isWhitespace(trimmed[index])) index += 1;
+    return trimmed.slice(index);
+  }
+  return trimmed;
+};
+
+const stripTrailingSentencePunctuation = (value: string) => {
+  let end = value.length;
+  while (end > 0 && ['.', '!', '?'].includes(value[end - 1])) {
+    end -= 1;
+  }
+  return value.slice(0, end);
 };
 
 const deriveAnnouncementTitleFromContent = (content?: string | null, fallback?: string | null) => {
@@ -81,10 +133,7 @@ const deriveAnnouncementTitleFromContent = (content?: string | null, fallback?: 
       .split(/\r?\n/)
       .map(line => line.trim())
       .find(Boolean) ?? '';
-  const cleaned = firstLine
-    .replace(/^(reminder|announcement)\s*:\s*/i, '')
-    .replace(/[.!?]+$/, '')
-    .trim();
+  const cleaned = stripTrailingSentencePunctuation(stripAnnouncementLabel(firstLine)).trim();
   const fallbackText = String(fallback ?? '').trim();
   const value = cleaned || fallbackText || 'Announcement';
   return value.length > 80 ? `${value.slice(0, 77).trimEnd()}...` : value;
@@ -105,8 +154,18 @@ const normalizeAnnouncementForDisplay = <T extends { title?: string | null; cont
 const normalizeMemberEmail = (value?: string | null) =>
   String(value ?? "").trim().toLowerCase();
 
-const looksLikeEmailAddress = (value: string) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const looksLikeEmailAddress = (value: string) => {
+  const text = value.trim();
+  if (!text) return false;
+  for (const char of text) {
+    if (isWhitespace(char)) return false;
+  }
+  const atIndex = text.indexOf('@');
+  if (atIndex <= 0 || atIndex !== text.lastIndexOf('@')) return false;
+  const domain = text.slice(atIndex + 1);
+  const dotIndex = domain.lastIndexOf('.');
+  return dotIndex > 0 && dotIndex < domain.length - 1;
+};
 
 const isImageAttachment = (attachment: Attachment) => {
   const attachmentType = String(attachment.type ?? "").toLowerCase();

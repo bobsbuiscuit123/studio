@@ -265,17 +265,99 @@ const clampMessagesToTotalChars = (messages: ChatMessage[], maxChars: number) =>
   return next;
 };
 
-const redactPII = (value: string) => {
-  const emailRedacted = value.replace(
-    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
-    '[redacted-email]'
+const isEmailTokenChar = (char: string) => {
+  const lower = char.toLowerCase();
+  return (
+    (lower >= 'a' && lower <= 'z') ||
+    (char >= '0' && char <= '9') ||
+    char === '.' ||
+    char === '_' ||
+    char === '%' ||
+    char === '+' ||
+    char === '-' ||
+    char === '@'
   );
-  const phoneRedacted = emailRedacted.replace(
-    /(?:\+?\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}/g,
-    '[redacted-phone]'
-  );
-  return phoneRedacted;
 };
+
+const isEmailCandidate = (value: string) => {
+  const atIndex = value.indexOf('@');
+  if (atIndex <= 0 || atIndex !== value.lastIndexOf('@')) return false;
+  const domain = value.slice(atIndex + 1);
+  const dotIndex = domain.lastIndexOf('.');
+  return dotIndex > 0 && dotIndex < domain.length - 2;
+};
+
+const redactEmails = (value: string) => {
+  let redacted = '';
+  let index = 0;
+  while (index < value.length) {
+    if (!isEmailTokenChar(value[index])) {
+      redacted += value[index];
+      index += 1;
+      continue;
+    }
+
+    let end = index;
+    while (end < value.length && isEmailTokenChar(value[end])) {
+      end += 1;
+    }
+
+    let token = value.slice(index, end);
+    let trailingPeriods = '';
+    while (token.endsWith('.')) {
+      token = token.slice(0, -1);
+      trailingPeriods += '.';
+    }
+    redacted += isEmailCandidate(token) ? `[redacted-email]${trailingPeriods}` : value.slice(index, end);
+    index = end;
+  }
+  return redacted;
+};
+
+const isPhoneRunStart = (char: string) =>
+  (char >= '0' && char <= '9') || char === '+' || char === '(';
+
+const isPhoneRunChar = (char: string) =>
+  (char >= '0' && char <= '9') ||
+  char === '+' ||
+  char === '-' ||
+  char === '.' ||
+  char === ' ' ||
+  char === '(' ||
+  char === ')';
+
+const countDigits = (value: string) => {
+  let digits = 0;
+  for (const char of value) {
+    if (char >= '0' && char <= '9') digits += 1;
+  }
+  return digits;
+};
+
+const redactPhones = (value: string) => {
+  let redacted = '';
+  let index = 0;
+  while (index < value.length) {
+    if (!isPhoneRunStart(value[index])) {
+      redacted += value[index];
+      index += 1;
+      continue;
+    }
+
+    let end = index;
+    while (end < value.length && isPhoneRunChar(value[end])) {
+      end += 1;
+    }
+
+    const candidate = value.slice(index, end);
+    const digitCount = countDigits(candidate);
+    redacted += digitCount >= 10 && digitCount <= 15 ? '[redacted-phone]' : candidate;
+    index = end;
+  }
+  return redacted;
+};
+
+const redactPII = (value: string) => redactPhones(redactEmails(value));
 
 async function callOpenRouterChat(options: {
   messages: ChatMessage[];

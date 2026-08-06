@@ -77,14 +77,75 @@ export const FIELD_VALIDATOR_SYSTEM_PROMPT = [
   'Confidence is telemetry only and will not control gating.',
 ].join(' ');
 
+const stripCaseInsensitivePrefix = (value: string, prefix: string) =>
+  value.toLowerCase().startsWith(prefix.toLowerCase()) ? value.slice(prefix.length).trimStart() : value;
+
+const stripWordPrefix = (value: string, word: string) => {
+  const trimmed = value.trimStart();
+  const lower = trimmed.toLowerCase();
+  if (!lower.startsWith(word)) return null;
+  const nextChar = trimmed[word.length];
+  if (nextChar && nextChar.trim() !== '') return null;
+  return trimmed.slice(word.length).trimStart();
+};
+
+const stripFirstMatchingWord = (value: string, words: string[]) => {
+  for (const word of words) {
+    const stripped = stripWordPrefix(value, word);
+    if (stripped !== null) return stripped;
+  }
+  return null;
+};
+
+const stripPhrasePrefix = (value: string, words: string[]) => {
+  let next = value;
+  for (const word of words) {
+    const stripped = stripWordPrefix(next, word);
+    if (stripped === null) return null;
+    next = stripped;
+  }
+  return next;
+};
+
+const stripFollowingPrefix = (value: string) => {
+  let next = value.trimStart();
+  next = stripCaseInsensitivePrefix(next, 'the ');
+  if (!next.toLowerCase().startsWith('following')) return null;
+  let index = 'following'.length;
+  while (index < next.length && next[index].trim() === '') {
+    index += 1;
+  }
+  return next[index] === ':' ? next.slice(index + 1).trimStart() : null;
+};
+
 const extractUserContentHint = (value: string) => {
-  const normalized = value
-    .replace(
-      /^(?:please\s+)?(?:(?:make|create|draft|write|send|post|compose|generate)\s+(?:and\s+send\s+)?(?:an?\s+)?(?:announcement|event|message|email|mail)?\s*)?(?:about|regarding)\s+(?:the\s+)?following\s*:\s*/i,
-      ''
-    )
-    .replace(/^(?:the\s+)?following\s*:\s*/i, '')
-    .trim();
+  const trimmed = value.trim();
+  const withoutPlease = stripWordPrefix(trimmed, 'please') ?? trimmed;
+  let afterCommand = withoutPlease;
+  const commandStripped = stripFirstMatchingWord(afterCommand, [
+    'make',
+    'create',
+    'draft',
+    'write',
+    'send',
+    'post',
+    'compose',
+    'generate',
+  ]);
+  if (commandStripped !== null) {
+    afterCommand = stripPhrasePrefix(commandStripped, ['and', 'send']) ?? commandStripped;
+    afterCommand = stripWordPrefix(afterCommand, 'an') ?? stripWordPrefix(afterCommand, 'a') ?? afterCommand;
+    afterCommand =
+      stripFirstMatchingWord(afterCommand, ['announcement', 'event', 'message', 'email', 'mail']) ??
+      afterCommand;
+  }
+
+  const afterContextPrefix =
+    stripWordPrefix(afterCommand, 'about') ?? stripWordPrefix(afterCommand, 'regarding');
+  const normalized =
+    (afterContextPrefix ? stripFollowingPrefix(afterContextPrefix) : null) ??
+    stripFollowingPrefix(trimmed) ??
+    trimmed;
 
   return normalized || value.trim();
 };

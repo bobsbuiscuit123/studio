@@ -258,7 +258,7 @@ export default function FinancesPage() {
                                 type="number"
                                 step="0.01"
                                 value={field.value ?? ''}
-                                onChange={e => field.onChange(parseFloat(e.target.value))}
+                                onChange={e => field.onChange(Number.parseFloat(e.target.value))}
                               />
                             </FormControl>
                             <FormMessage />

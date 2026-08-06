@@ -639,7 +639,7 @@ export const buildExecutiveDashboardPayload = ({
 const escapeCsvValue = (value: unknown) => {
   const text = String(value ?? '');
   if (/[",\n]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
+    return `"${text.replaceAll('"', '""')}"`;
   }
   return text;
 };

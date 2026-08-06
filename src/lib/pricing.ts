@@ -108,7 +108,7 @@ export const normalizePlanId = (value?: string | null): string =>
     .trim()
     .toLowerCase()
     .replace('com.caspo.', '')
-    .replace(/\./g, '_');
+    .replaceAll('.', '_');
 
 export const getPlanById = (planId?: string | null): SubscriptionPlan =>
   PLAN_BY_ID.get((normalizePlanId(planId) || FREE_PLAN_ID) as PlanId) ?? PLAN_BY_ID.get(FREE_PLAN_ID)!;

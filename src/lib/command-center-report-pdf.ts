@@ -14,17 +14,21 @@ const TOP_Y = 746;
 const BOTTOM_Y = 54;
 const LINE_HEIGHT = 14;
 
-const cleanPdfText = (value: unknown) =>
-  String(value ?? '')
-    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '?')
-    .replace(/\s+/g, ' ')
-    .trim();
+const cleanPdfText = (value: unknown) => {
+  let printable = '';
+  for (const char of String(value ?? '')) {
+    const codePoint = char.codePointAt(0) ?? 0;
+    const isAllowedWhitespace = codePoint === 9 || codePoint === 10 || codePoint === 13;
+    printable += isAllowedWhitespace || (codePoint >= 32 && codePoint <= 126) ? char : '?';
+  }
+  return printable.split(/\s+/).join(' ').trim();
+};
 
 const escapePdfText = (value: unknown) =>
   cleanPdfText(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)');
+    .replaceAll('\\', '\\\\')
+    .replaceAll('(', '\\(')
+    .replaceAll(')', '\\)');
 
 const truncateText = (value: unknown, maxLength: number) => {
   const text = cleanPdfText(value);

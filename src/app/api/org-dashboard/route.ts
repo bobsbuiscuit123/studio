@@ -53,8 +53,26 @@ const buildLiteDashboardState = (row: Record<string, unknown>) =>
     socialPosts: Array.isArray(row.socialPosts) ? row.socialPosts : [],
   }) as Record<string, unknown>;
 
-const reportFilenamePart = (value: string) =>
-  value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'organization';
+const reportFilenamePart = (value: string) => {
+  let next = '';
+  let lastWasDash = false;
+  for (const char of value.toLowerCase()) {
+    const isSafe = (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9');
+    if (isSafe) {
+      next += char;
+      lastWasDash = false;
+    } else if (!lastWasDash) {
+      next += '-';
+      lastWasDash = true;
+    }
+  }
+
+  let start = 0;
+  let end = next.length;
+  while (start < end && next[start] === '-') start += 1;
+  while (end > start && next[end - 1] === '-') end -= 1;
+  return next.slice(start, end) || 'organization';
+};
 
 const csvAttachmentResponse = (csv: string, filename: string) =>
   new Response(`\uFEFF${csv}`, {

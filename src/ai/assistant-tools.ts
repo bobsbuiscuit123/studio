@@ -67,7 +67,7 @@ const toIsoDate = (value: unknown) => {
 const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
 
 const getConversationId = (left: string, right: string) =>
-  [normalizeEmail(left), normalizeEmail(right)].sort().join('_');
+  [normalizeEmail(left), normalizeEmail(right)].sort((a, b) => a.localeCompare(b)).join('_');
 
 const toMemberSummary = (member: Member) => ({
   id: member.id ?? null,

@@ -75,15 +75,15 @@ function LegalNotice({
     return (
         <p className="mt-2 text-center text-xs leading-5 text-gray-500">
             By continuing, you agree to our{" "}
-            <button type="button" onClick={onOpenTerms} className="font-medium text-foreground underline underline-offset-2">
-                Terms &amp; Conditions
-            </button>{" "}
-            and{" "}
-            <button type="button" onClick={onOpenPrivacy} className="font-medium text-foreground underline underline-offset-2">
-                Privacy Policy
-            </button>
-            .
-        </p>
+	            <button type="button" onClick={onOpenTerms} className="font-medium text-foreground underline underline-offset-2">
+	                Terms &amp; Conditions
+	            </button>
+	            <span> and </span>
+	            <button type="button" onClick={onOpenPrivacy} className="font-medium text-foreground underline underline-offset-2">
+	                Privacy Policy
+	            </button>
+	            <span>.</span>
+	        </p>
     );
 }
 function buildBrowserProfileUser(

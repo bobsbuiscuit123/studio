@@ -9,7 +9,7 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
   }, [error]);
 
   return (
-    <html>
+    <html lang="en">
       <body>
         <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-6 text-center">
           <h1 className="text-2xl font-semibold">We hit an unexpected error</h1>

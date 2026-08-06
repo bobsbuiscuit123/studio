@@ -12,7 +12,7 @@ export function AppSidebar() {
   const { unread, markTabViewed, role } = useNotificationsContext();
   const isDemoApp = pathname === '/demo/app' || pathname.startsWith('/demo/app/');
   const homeHref = isDemoApp ? '/demo/app' : '/';
-  const appName = isDemoApp ? 'CASPO' : 'CASPO';
+  const appName = 'CASPO';
 
   return (
     <div className="hidden h-full border-r md:block">
@@ -37,4 +37,3 @@ export function AppSidebar() {
     </div>
   );
 }
-

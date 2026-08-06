@@ -11,7 +11,8 @@ import { sendPushToUsers } from '@/lib/send-push';
 import type { RecipientRef } from '@/lib/assistant/agent/types';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const getConversationId = (email1: string, email2: string) => [email1, email2].sort().join('_');
+const getConversationId = (email1: string, email2: string) =>
+  [email1, email2].sort((a, b) => a.localeCompare(b)).join('_');
 
 const getMessagePreview = (value: string) =>
   value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;

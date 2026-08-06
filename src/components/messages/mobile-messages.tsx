@@ -1678,7 +1678,9 @@ function getRouteConversationId(conversation: Conversation) {
 }
 
 function getConversationId(email1: string, email2: string) {
-  return [normalizeMessageActor(email1), normalizeMessageActor(email2)].sort().join("_");
+  return [normalizeMessageActor(email1), normalizeMessageActor(email2)]
+    .sort((a, b) => a.localeCompare(b))
+    .join("_");
 }
 
 function getInitials(name: string) {
@@ -1692,8 +1694,8 @@ function getInitials(name: string) {
 
 function stringToColor(value: string) {
   let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = value.charCodeAt(index) + ((hash << 5) - hash);
+  for (const char of value) {
+    hash = (char.codePointAt(0) ?? 0) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash % 360);
   return `hsl(${hue}, 50%, 70%)`;

@@ -228,18 +228,18 @@ function FormsPageInner() {
                 onSubmit={builderForm.handleSubmit(handleCreateForm)}
               >
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Title</label>
-                  <Input {...builderForm.register("title")} placeholder="RSVP for mentorship mixer" />
+                  <label htmlFor="form-title" className="text-sm font-medium">Title</label>
+                  <Input id="form-title" {...builderForm.register("title")} placeholder="RSVP for mentorship mixer" />
                   <p className="text-xs text-destructive">{builderForm.formState.errors.title?.message}</p>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium">Description</label>
-                  <Textarea {...builderForm.register("description")} placeholder="Tell members why this form matters." />
+                  <label htmlFor="form-description" className="text-sm font-medium">Description</label>
+                  <Textarea id="form-description" {...builderForm.register("description")} placeholder="Tell members why this form matters." />
                 </div>
                 <Separator />
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-semibold">Questions</label>
+                    <span className="text-sm font-semibold">Questions</span>
                     <Button type="button" variant="ghost" size="sm" onClick={addQuestion}>
                       <Plus className="h-4 w-4 mr-1" /> Add
                     </Button>
@@ -252,8 +252,9 @@ function FormsPageInner() {
                         placeholder={`Question ${index + 1}`}
                       />
                       <div className="flex items-center gap-2">
-                        <label className="text-xs font-semibold">Type</label>
+                        <label htmlFor={`question-${q.id}-kind`} className="text-xs font-semibold">Type</label>
                         <select
+                          id={`question-${q.id}-kind`}
                           className="text-sm border rounded px-2 py-1"
                           value={q.kind}
                           onChange={e => builderForm.setValue(`questions.${index}.kind`, e.target.value as any)}
@@ -267,7 +268,7 @@ function FormsPageInner() {
                       {(q.kind === "single" || q.kind === "multi") && (
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
-                            <label className="text-xs font-semibold">Answer choices</label>
+                            <span className="text-xs font-semibold">Answer choices</span>
                             <Button
                               type="button"
                               size="sm"
@@ -300,11 +301,12 @@ function FormsPageInner() {
                       )}
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <input
+                          id={`question-${q.id}-required`}
                           type="checkbox"
                           checked={q.required}
                           onChange={e => builderForm.setValue(`questions.${index}.required`, e.target.checked)}
                         />
-                        Required
+                        <label htmlFor={`question-${q.id}-required`}>Required</label>
                       </div>
                       <p className="text-xs text-destructive">
                         {builderForm.formState.errors.questions?.[index]?.prompt?.message}

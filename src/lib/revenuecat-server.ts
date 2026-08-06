@@ -188,7 +188,7 @@ const getSnapshotPriority = (snapshot: KnownSubscriptionSnapshot) =>
   ) || 0;
 
 const isSnapshotEligibleNow = (snapshot: KnownSubscriptionSnapshot, now: number) => {
-  const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : NaN;
+  const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : Number.NaN;
   return !Number.isFinite(purchaseAtMs) || purchaseAtMs <= now;
 };
 
@@ -211,7 +211,7 @@ const resolveCurrentAndScheduledSnapshots = ({
     knownSubscriptions
       .filter((snapshot) => snapshot.productId !== currentSnapshot?.productId)
       .filter((snapshot) => {
-        const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : NaN;
+        const purchaseAtMs = snapshot.purchaseDate ? Date.parse(snapshot.purchaseDate) : Number.NaN;
         return Number.isFinite(purchaseAtMs) && purchaseAtMs > now;
       })
       .sort((left, right) => {
@@ -290,7 +290,7 @@ export const deriveCanonicalRevenueCatState = (
   const currentPeriodStart = normalizeDate(
     entitlement?.purchase_date ?? subscription?.purchase_date ?? subscription?.original_purchase_date ?? null
   );
-  const expiresAtMs = currentPeriodEnd ? Date.parse(currentPeriodEnd) : NaN;
+  const expiresAtMs = currentPeriodEnd ? Date.parse(currentPeriodEnd) : Number.NaN;
   const unsubscribeDetectedAt = normalizeDate(
     subscription?.unsubscribe_detected_at ?? fallbackSubscription?.unsubscribeDetectedAt ?? null
   );

@@ -47,6 +47,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { secureRandomInt } from "@/lib/secure-random";
 
 const MAX_GALLERY_IMAGES = 20;
 const isNativeApp = Capacitor.isNativePlatform();
@@ -56,7 +57,7 @@ const GALLERY_CHROME_RESYNC_DELAYS = [
 ];
 
 const createGalleryImageId = (offset: number = 0) =>
-  Date.now() * 1000 + offset + Math.floor(Math.random() * 1000);
+  Date.now() * 1000 + offset + secureRandomInt(1000);
 
 const uploadFormSchema = z.object({
   alt: z.string().optional(),

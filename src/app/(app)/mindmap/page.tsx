@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import type { MindMapData } from '@/lib/mock-data';
 import { PlusCircle } from 'lucide-react';
 import { useGroupUserStateSection } from '@/lib/group-user-state';
+import { secureRandomFloat } from '@/lib/secure-random';
 
 let id = 2;
 const getId = () => `${id++}`;
@@ -96,7 +97,7 @@ export default function MindMapPage() {
     yPos.current += 70;
     const newNode: Node = {
       id: getId(),
-      position: { x: Math.random() * 400, y: yPos.current },
+      position: { x: secureRandomFloat() * 400, y: yPos.current },
       data: { label: nodeName },
     };
     const newNodes = [...nodes, newNode];

@@ -32,6 +32,7 @@ If you already applied an older billing migration, also apply `supabase/patches/
 Then apply `supabase/patches/20260328_org_subscription_refactor.sql` for the subscription-to-organization refactor.
 Then apply `supabase/patches/20260329_processed_webhooks_rls.sql` to lock down `processed_webhooks` with RLS.
 Then apply `supabase/patches/20260401_security_hardening.sql` to re-assert RLS and revoke direct access on internal webhook and billing bookkeeping tables.
+Then apply the remaining dated SQL files in `supabase/patches/` in filename order. The assistant feature depends on the April 2026 assistant patches plus `supabase/patches/20260617_assistant_action_type_constraints.sql`; without them, email drafts can fail with `assistant_pending_actions_action_type_check`.
 
 ## Development
 ```
@@ -71,4 +72,3 @@ Rotate leaked keys before public launch.
 - Create the EAS secret `NEXT_PUBLIC_REVENUECAT_APPLE_API_KEY` for the `caspo_ios` RevenueCat app.
 - Set `REVENUECAT_WEBHOOK_AUTH` on the server to match the RevenueCat webhook authorization header.
 - Set `REVENUECAT_SECRET_API_KEY` on the server so webhook processing and restore reconciliation can call `GET /v1/subscribers/{app_user_id}`.
-

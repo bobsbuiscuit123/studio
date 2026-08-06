@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from '@/lib/supabase/admin';
 import { canEditGroupContent, normalizeGroupRole } from '@/lib/group-permissions';
 import { err, ok, type Result } from '@/lib/result';
+import { createSecureId } from '@/lib/secure-random';
 import type {
   Announcement,
   ClubEvent,
@@ -468,7 +469,7 @@ const deductPointsTool: ToolDefinition<
 
     validUsers.forEach(member => {
       entries.push({
-        id: `assistant-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: createSecureId('assistant'),
         memberEmail: member.email,
         points: amount,
         reason,

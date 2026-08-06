@@ -42,6 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { findPolicyViolation, policyErrorMessage } from "@/lib/content-policy";
 import { useCurrentUser, useMessagingData } from "@/lib/data-hooks";
+import { createSecureId } from "@/lib/secure-random";
 import {
   MESSAGE_TEXT_MAX_CHARS,
   clearConversationMessages,
@@ -1064,10 +1065,7 @@ export function MessageChatScreen({ conversationId }: { conversationId: string }
 
     const replyTo = normalizeMessageReplyReference(replyingTo);
     const newMessage: Message = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: createSecureId(),
       sender: currentUserEmail || user.email,
       text: values.text,
       timestamp: new Date().toISOString(),

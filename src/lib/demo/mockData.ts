@@ -1,5 +1,6 @@
 import type { OrgState } from '@/lib/org-state';
 import { getPlaceholderImageUrl } from '@/lib/placeholders';
+import { secureRandomInt } from '@/lib/secure-random';
 import type {
   Announcement,
   ClubEvent,
@@ -431,7 +432,7 @@ export const createDemoSession = (role: DemoRole, preferredGroupId?: string): De
   const preferredGroup = preferredGroupId
     ? DEMO_GROUPS.find(group => group.id === preferredGroupId)
     : null;
-  const randomGroup = preferredGroup ?? DEMO_GROUPS[Math.floor(Math.random() * DEMO_GROUPS.length)];
+  const randomGroup = preferredGroup ?? DEMO_GROUPS[secureRandomInt(DEMO_GROUPS.length)];
   const appRole = DEMO_ROLE_TO_APP_ROLE[role];
   return {
     role,

@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import { createSecureId } from '@/lib/secure-random';
+
 type AiActionContext = {
   id: string;
   name: string;
@@ -34,7 +36,7 @@ const sleep = (ms: number) =>
   });
 
 export function runWithAiAction<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const id = `${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = createSecureId(name);
   const context: AiActionContext = {
     id,
     name,

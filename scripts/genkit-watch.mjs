@@ -6,11 +6,16 @@ const projectRoot = process.cwd();
 const watchDir = path.join(projectRoot, 'src', 'ai');
 const watchEnabled = String(process.env.GENKIT_WATCH ?? '1') !== '0';
 const lockPath = path.join(projectRoot, '.genkit-dev.lock');
-const command = process.platform === 'win32' ? 'cmd' : 'sh';
-const commandArgs =
-  process.platform === 'win32'
-    ? ['/c', 'genkit start -- tsx src/ai/dev.ts']
-    : ['-c', 'genkit start -- tsx src/ai/dev.ts'];
+const command = process.execPath;
+const commandArgs = [
+  path.join(projectRoot, 'node_modules', 'genkit-cli', 'dist', 'bin', 'genkit.js'),
+  'start',
+  '--',
+  process.execPath,
+  path.join(projectRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
+  path.join('src', 'ai', 'dev.ts'),
+];
+const taskkillPath = 'C:\\Windows\\System32\\taskkill.exe';
 
 let child = null;
 let restarting = false;
@@ -72,7 +77,7 @@ const killChild = () =>
     child.once('exit', onExit);
 
     if (process.platform === 'win32' && pid) {
-      spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
+      spawn(taskkillPath, ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
         .on('exit', onExit)
         .on('error', onExit);
       return;

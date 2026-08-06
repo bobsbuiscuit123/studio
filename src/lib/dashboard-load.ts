@@ -1,3 +1,5 @@
+import { createSecureId } from '@/lib/secure-random';
+
 export const DASHBOARD_TIMEOUT_MS = 8_000;
 export const DASHBOARD_SLOW_LOAD_MS = 3_000;
 export const DASHBOARD_WATCHDOG_MS = 10_000;
@@ -44,7 +46,7 @@ export const serializeDashboardError = (error: unknown) => ({
 });
 
 export const createDashboardRequestId = (prefix = 'dashboard') =>
-  `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  createSecureId(prefix);
 
 export const createDashboardLogger = (scope = '[Dashboard]') => ({
   log(message: string, details?: DashboardLogDetails) {

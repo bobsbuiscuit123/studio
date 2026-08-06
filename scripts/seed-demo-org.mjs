@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { randomInt } from "node:crypto";
 
 function loadEnvFile(path) {
   if (!existsSync(path)) return;
@@ -274,7 +275,7 @@ const addDaysDate = (offset, hour = 15, minute = 0) => isoDays(offset, hour, min
 
 const codeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const randomCode = (length) =>
-  Array.from({ length }, () => codeAlphabet[Math.floor(Math.random() * codeAlphabet.length)]).join("");
+  Array.from({ length }, () => codeAlphabet[randomInt(codeAlphabet.length)]).join("");
 
 const placeholderImage = ({ label, width = 640, height = 420, background = "#1f3529", foreground = "#86efac" }) => {
   const safeLabel = String(label || "?").slice(0, 3).toUpperCase();
@@ -874,17 +875,10 @@ async function run() {
 
   console.log("");
   console.log("Seeded demo org");
-  console.log(`Org: ${org.name}`);
-  console.log(`Org ID: ${org.id}`);
-  console.log(`Org join code: ${org.join_code}`);
-  console.log(`Owner: ${owner.name} <${owner.email}>`);
+  console.log("Demo groups seeded.");
+  console.log("Owner membership ensured.");
   console.log("");
-  console.log("Groups:");
-  seededGroups.forEach((group) => {
-    console.log(`- ${group.name} (${group.join_code})`);
-  });
-  console.log("");
-  console.log("Open the app, log in as the owner above, then select this organization.");
+  console.log("Open the app, log in as the configured owner, then select the demo organization.");
 }
 
 run().catch((error) => {

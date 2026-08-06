@@ -1,6 +1,7 @@
 import { err, ok, type AppError, type Result } from '@/lib/result';
 import { getClientTimeZoneHeaderName } from '@/lib/day-key';
 import { startPerformanceTimer } from '@/lib/performance-guard';
+import { secureRandomInt } from '@/lib/secure-random';
 
 type RetryOptions = {
   retries: number;
@@ -26,7 +27,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const backoffDelay = (attempt: number, retry: RetryOptions) => {
   const exp = Math.min(retry.maxDelayMs, retry.baseDelayMs * 2 ** attempt);
-  const jitter = Math.random() * 100;
+  const jitter = secureRandomInt(100);
   return exp + jitter;
 };
 

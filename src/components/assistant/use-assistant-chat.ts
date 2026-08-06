@@ -10,6 +10,7 @@ import {
 } from "@/lib/ai-chat";
 import { buildAssistantHistoryPayload } from "@/components/assistant/history";
 import type { AssistantCommand } from "@/lib/assistant/agent/types";
+import { createSecureId } from "@/lib/secure-random";
 import {
   ASSISTANT_OPEN_EVENT,
   clearAssistantPrefill,
@@ -76,7 +77,7 @@ const createClientMessage = (
   content: string,
   options?: Omit<AiChatClientMessage, "id" | "role" | "content" | "createdAt">
 ): AiChatClientMessage => ({
-  id: `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  id: createSecureId(role),
   role,
   content,
   createdAt: new Date().toISOString(),

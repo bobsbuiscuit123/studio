@@ -27,6 +27,16 @@ describe('assistant storage readiness', () => {
     ).toBe(true);
   });
 
+  it('detects stale assistant action constraints from postgres errors', () => {
+    expect(
+      isAssistantStorageMissingError({
+        code: '23514',
+        message:
+          'new row for relation "assistant_pending_actions" violates check constraint "assistant_pending_actions_action_type_check"',
+      })
+    ).toBe(true);
+  });
+
   it('builds a terminal assistant error turn', () => {
     expect(
       buildAssistantStorageUnavailableTurn({

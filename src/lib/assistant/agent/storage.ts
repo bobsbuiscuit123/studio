@@ -8,6 +8,11 @@ const ASSISTANT_STORAGE_TABLE_NAMES = [
   'assistant_action_logs',
 ] as const;
 
+const ASSISTANT_ACTION_TYPE_CONSTRAINT_NAMES = [
+  'assistant_pending_actions_action_type_check',
+  'assistant_action_logs_action_type_check',
+] as const;
+
 export const ASSISTANT_STORAGE_UNAVAILABLE_MESSAGE =
   'Assistant setup is incomplete. Apply the latest Supabase database patches and try again.';
 
@@ -33,16 +38,21 @@ export const isAssistantStorageMissingError = (error: unknown) => {
   const referencesAssistantStorage = ASSISTANT_STORAGE_TABLE_NAMES.some(tableName =>
     errorText.includes(tableName)
   );
+  const referencesAssistantActionTypeConstraint = ASSISTANT_ACTION_TYPE_CONSTRAINT_NAMES.some(
+    constraintName => errorText.includes(constraintName)
+  );
 
   return (
-    referencesAssistantStorage &&
-    (errorText.includes('does not exist') ||
-      errorText.includes('schema cache') ||
-      errorText.includes('could not find the table') ||
-      errorText.includes('column') ||
-      errorText.includes('pgrst205') ||
-      errorText.includes('42p01') ||
-      errorText.includes('42703'))
+    (referencesAssistantStorage &&
+      (errorText.includes('does not exist') ||
+        errorText.includes('schema cache') ||
+        errorText.includes('could not find the table') ||
+        errorText.includes('column') ||
+        errorText.includes('pgrst205') ||
+        errorText.includes('42p01') ||
+        errorText.includes('42703'))) ||
+    (referencesAssistantActionTypeConstraint &&
+      (errorText.includes('violates check constraint') || errorText.includes('23514')))
   );
 };
 

@@ -86,6 +86,7 @@ import {
 } from '@/lib/assistant/agent/pending-actions';
 import { handleAssistantTurn } from '@/lib/assistant/agent/handle-turn';
 import { runLlmStepWithRetry } from '@/lib/assistant/agent/retry';
+import { ASSISTANT_STORAGE_UNAVAILABLE_MESSAGE } from '@/lib/assistant/agent/storage';
 
 const announcementPlannerValue = {
   intent: 'draft_action' as const,
@@ -345,6 +346,71 @@ describe('handleAssistantTurn', () => {
         }),
       })
     );
+  });
+
+  it('returns setup guidance when email drafts hit a stale action type constraint', async () => {
+    vi.mocked(runLlmStepWithRetry).mockImplementation(async ({ step }: { step: string }) => {
+      if (step === 'planner') {
+        return {
+          ok: true,
+          value: {
+            ...emailPlannerValue,
+            action: { ...emailPlannerValue.action },
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      if (step === 'field_validator') {
+        return {
+          ok: true,
+          value: {
+            inferredFields: {
+              subject: 'Drive Event Reminder',
+              body: 'Please remember the drive event tomorrow at 5 PM.',
+            },
+            missingFields: [],
+            usedInference: true,
+          },
+          retryCount: 0,
+          timeoutFlag: false,
+        };
+      }
+
+      return {
+        ok: true,
+        value: {
+          kind: 'email',
+          subject: 'Drive Event Reminder',
+          body: 'Please remember the drive event tomorrow at 5 PM.',
+        },
+        retryCount: 0,
+        timeoutFlag: false,
+      };
+    });
+    vi.mocked(createPendingAction).mockRejectedValueOnce(
+      new Error(
+        'new row for relation "assistant_pending_actions" violates check constraint "assistant_pending_actions_action_type_check"'
+      )
+    );
+
+    const result = await handleAssistantTurn({
+      userId: 'a68cbbdb-b8db-4f70-b5fc-28afbdbf8f87',
+      orgId: '764eb6cf-af13-4929-b897-019b8d1e17d0',
+      groupId: '0df3d166-7e79-4f91-bc34-2b3fa555445f',
+      userEmail: 'leader@example.com',
+      message: 'Draft an email regarding the following: drive event tomorrow at 5pm',
+      requestTimezone: 'America/Chicago',
+      requestReceivedAt: '2026-04-23T18:00:00.000Z',
+    });
+
+    expect(result.state).toBe('error');
+    if (result.state !== 'error') {
+      throw new Error('Expected storage setup error result.');
+    }
+
+    expect(result.message).toBe(ASSISTANT_STORAGE_UNAVAILABLE_MESSAGE);
   });
 
   it('treats missing validator event fields as a pipeline failure', async () => {

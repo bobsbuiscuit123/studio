@@ -80,9 +80,12 @@ function prepareNestedLayoutForCapSync() {
 }
 
 function runCapSync() {
-  const isWindows = process.platform === 'win32';
-  const command = isWindows ? 'cmd' : 'npx';
-  const args = isWindows ? ['/c', 'npx', 'cap', 'sync', 'ios'] : ['cap', 'sync', 'ios'];
+  const command = process.execPath;
+  const args = [
+    path.join(repoRoot, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor'),
+    'sync',
+    'ios',
+  ];
   const result = spawnSync(command, args, {
     cwd: repoRoot,
     stdio: 'inherit',

@@ -62,6 +62,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { openAssistantWithContext } from "@/lib/assistant/prefill";
 import { AssistantInlineTrigger } from "@/components/assistant/assistant-inline-trigger";
 import { cn } from "@/lib/utils";
+import { createSecureId } from "@/lib/secure-random";
 
 const formSchema = z.object({
   prompt: z.string().min(10, "Please provide a more detailed prompt."),
@@ -105,10 +106,7 @@ type CalendarAiEnvelope = {
   message?: string;
 };
 
-const createClientEventId = () =>
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const createClientEventId = () => createSecureId();
 
 const manualEventSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters."),

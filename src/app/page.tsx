@@ -228,10 +228,10 @@ function PartnerLogo() {
         <Image
           src={partner.logoSrc}
           alt={`${partner.name} logo`}
-          width={455}
-          height={113}
-          className="h-auto max-h-14 w-auto max-w-full object-contain"
-          sizes="(min-width: 1024px) 260px, 100vw"
+          width={200}
+          height={200}
+          className="h-20 w-20 object-contain"
+          sizes="80px"
           onError={() => setImageFailed(true)}
         />
       </div>

@@ -758,7 +758,7 @@ function PublicHomePage() {
                   CASPO is being built by student leaders who know how much work it takes to keep
                   organizations moving.
                 </p>
-                <div className="mt-8 grid gap-5 md:grid-cols-2">
+                <div className="mx-auto mt-8 grid w-full max-w-5xl gap-5 md:grid-cols-2">
                   {teamMembers.map(member => (
                     <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
                       <CardHeader>

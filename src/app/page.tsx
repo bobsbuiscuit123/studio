@@ -1,7 +1,17 @@
 
 "use client";
 
-import { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import {
+  ArrowRight,
+  ClipboardCheck,
+  GraduationCap,
+  PlayCircle,
+  Quote,
+  Sparkles,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -42,6 +52,7 @@ import {
   getAuthMetadataDisplayName,
   resolveStoredDisplayName,
 } from '@/lib/user-display-name';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const userFormSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters."),
@@ -64,6 +75,35 @@ const loginFormSchema = z.object({
 const AUTH_PRIME_REQUEST_TIMEOUT_MS = 8_000;
 const AUTH_PRIME_REQUEST_RETRY = { retries: 1, baseDelayMs: 500, maxDelayMs: 1_500 };
 const groupsCacheKey = (orgId: string) => `view-cache:groups:${orgId}:discoverable-v1`;
+const missionHighlights = [
+  {
+    title: 'Run the whole club in one place',
+    description: 'Announcements, events, attendance, points, forms, finances, and member communication live together instead of across scattered tools.',
+    icon: ClipboardCheck,
+  },
+  {
+    title: 'Give student leaders their time back',
+    description: 'CASPO helps officers move faster on routine work so they can spend more time building community and less time chasing updates.',
+    icon: Sparkles,
+  },
+  {
+    title: 'Make participation easier to see',
+    description: 'Members get clearer updates, advisors get better visibility, and organizations can understand what is happening across every group.',
+    icon: Users,
+  },
+];
+const teamMembers = [
+  {
+    name: 'Pratheek Mukkavilli',
+    role: 'Founder & CEO',
+    note: 'Building CASPO to make club leadership simpler, more organized, and more accessible for every student group.',
+  },
+  {
+    name: 'Soham',
+    role: 'CTO',
+    note: 'Leading the technical direction behind CASPO’s platform, automation, and product experience.',
+  },
+];
 
 function LegalNotice({
   onOpenTerms,
@@ -110,11 +150,9 @@ function buildBrowserProfileUser(
 function SignUpForm({
   onUserSaved,
   onSwitchToLogin,
-  supabase,
 }: Readonly<{
   onUserSaved: (user: User) => void | Promise<void>;
   onSwitchToLogin: () => void;
-  supabase: ReturnType<typeof createSupabaseBrowserClient>;
 }>) {
     const form = useForm<z.infer<typeof userFormSchema>>({
         resolver: zodResolver(userFormSchema),
@@ -124,6 +162,17 @@ function SignUpForm({
     const [legalDialog, setLegalDialog] = useState<'terms' | 'privacy' | null>(null);
 
     const handleSaveUser = async (values: z.infer<typeof userFormSchema>) => {
+        let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+        try {
+          supabase = createSupabaseBrowserClient();
+        } catch (error) {
+          toast({
+            title: "Signup unavailable",
+            description: error instanceof Error ? error.message : "Supabase is not configured.",
+            variant: "destructive",
+          });
+          return;
+        }
         const trimmedName = values.name.trim();
         const normalizedEmail = normalizeAuthEmail(values.email);
         const signupResponse = await safeFetchJson<{ ok: boolean; userId?: string; error?: string }>(
@@ -232,11 +281,9 @@ function SignUpForm({
 function LoginForm({
   onLogin,
   onSwitchToSignUp,
-  supabase,
 }: Readonly<{
   onLogin: (user: User) => void | Promise<void>;
   onSwitchToSignUp: () => void;
-  supabase: ReturnType<typeof createSupabaseBrowserClient>;
 }>) {
     const loginForm = useForm<z.infer<typeof loginFormSchema>>({
         resolver: zodResolver(loginFormSchema),
@@ -247,6 +294,17 @@ function LoginForm({
     const { toast } = useToast();
 
      const handleLogin = async (values: z.infer<typeof loginFormSchema>) => {
+        let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+        try {
+          supabase = createSupabaseBrowserClient();
+        } catch (error) {
+          toast({
+            title: "Login unavailable",
+            description: error instanceof Error ? error.message : "Supabase is not configured.",
+            variant: "destructive",
+          });
+          return;
+        }
         const normalizedEmail = normalizeAuthEmail(values.email);
         const { data, error } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
@@ -337,16 +395,274 @@ function LoginForm({
     );
 }
 
+function AuthEntry({
+  onAuthenticatedUser,
+}: Readonly<{
+  onAuthenticatedUser: (user: User) => void | Promise<void>;
+}>) {
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+
+  return (
+    <div className="viewport-page bg-background">
+      <div className="viewport-scroll flex h-full flex-col items-center justify-center px-4 pb-4 pt-4 sm:pt-8">
+        <Card className="auth-card-shell w-full max-w-md">
+          <CardHeader className="items-center px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
+            <div className="mb-0 flex items-center justify-center gap-4">
+              <Logo className="h-10 w-10 text-primary" />
+              <div className="flex items-baseline gap-2">
+                <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
+                <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
+              </div>
+            </div>
+          </CardHeader>
+
+          <div className="px-5 pb-5 pt-0 sm:px-6 sm:pb-6">
+            {authMode === 'login' ? (
+              <LoginForm
+                onLogin={onAuthenticatedUser}
+                onSwitchToSignUp={() => setAuthMode('signup')}
+              />
+            ) : (
+              <SignUpForm
+                onUserSaved={onAuthenticatedUser}
+                onSwitchToLogin={() => setAuthMode('login')}
+              />
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function PublicHomePage() {
+  return (
+    <div className="viewport-page bg-[#f7faf8] text-slate-950">
+      <div className="viewport-scroll">
+        <header className="sticky top-0 z-20 border-b border-emerald-900/10 bg-[#f7faf8]/92 backdrop-blur">
+          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+            <Link href="/" className="flex items-center gap-3" aria-label="CASPO homepage">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                <Logo className="h-6 w-6" />
+              </span>
+              <span className="text-xl font-bold">CASPO</span>
+            </Link>
+            <Button asChild className="rounded-xl bg-slate-950 text-white hover:bg-slate-800">
+              <Link href="/login">
+                Log in
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </header>
+
+        <main>
+          <section className="border-b border-emerald-900/10 bg-white">
+            <div className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:py-16">
+              <div className="flex flex-col justify-center">
+                <p className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-emerald-700/20 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800">
+                  <GraduationCap className="h-4 w-4" />
+                  Built for clubs, chapters, teams, and student organizations
+                </p>
+                <h1 className="max-w-3xl text-5xl font-bold leading-[1.02] sm:text-6xl lg:text-7xl">
+                  CASPO helps student organizations run with less chaos.
+                </h1>
+                <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+                  CASPO brings the everyday work of club leadership into one place: communication,
+                  events, attendance, points, forms, finances, and AI-assisted workflows that help
+                  officers move faster without losing the human part of community.
+                </p>
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  <Button asChild size="lg" className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
+                    <Link href="/login">
+                      Log in to CASPO
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg" className="rounded-xl border-slate-300 bg-white">
+                    <a href="#learn-more">Explore the mission</a>
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center">
+                <div className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-2xl">
+                  <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
+                    <span className="h-3 w-3 rounded-full bg-red-400" />
+                    <span className="h-3 w-3 rounded-full bg-amber-300" />
+                    <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                    <span className="ml-3 text-sm text-slate-400">caspo.club</span>
+                  </div>
+                  <div className="grid gap-4 p-5 sm:p-6">
+                    <div className="rounded-2xl bg-white p-5 text-slate-950">
+                      <div className="mb-4 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-emerald-700">Command center</p>
+                          <p className="text-2xl font-bold">Robotics Club</p>
+                        </div>
+                        <div className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                          Active
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {['3 events', '128 members', '94% read'].map(metric => (
+                          <div key={metric} className="rounded-xl bg-slate-100 px-3 py-4 text-center font-semibold">
+                            {metric}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-2xl bg-emerald-400 p-5 text-emerald-950">
+                        <p className="text-sm font-semibold">Next meeting</p>
+                        <p className="mt-2 text-2xl font-bold">Friday, 3:30 PM</p>
+                      </div>
+                      <div className="rounded-2xl bg-white/10 p-5 text-white">
+                        <p className="text-sm font-semibold text-emerald-200">AI draft ready</p>
+                        <p className="mt-2 text-lg font-bold">Announcement + RSVP reminder</p>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-white">
+                      <div className="mb-3 h-2 w-24 rounded-full bg-emerald-300" />
+                      <div className="space-y-2">
+                        <div className="h-3 rounded-full bg-white/25" />
+                        <div className="h-3 w-10/12 rounded-full bg-white/20" />
+                        <div className="h-3 w-7/12 rounded-full bg-white/15" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="learn-more" className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+            <div className="mx-auto w-full max-w-7xl">
+              <Tabs defaultValue="mission" className="w-full">
+                <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase text-emerald-700">About CASPO</p>
+                    <h2 className="mt-2 text-3xl font-bold sm:text-4xl">What we are building</h2>
+                  </div>
+                  <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm lg:w-auto">
+                    <TabsTrigger value="mission" className="rounded-lg px-4 py-2">Our Mission</TabsTrigger>
+                    <TabsTrigger value="team" className="rounded-lg px-4 py-2">Our Team</TabsTrigger>
+                    <TabsTrigger value="advisory" className="rounded-lg px-4 py-2">Advisory Board</TabsTrigger>
+                    <TabsTrigger value="endorsements" className="rounded-lg px-4 py-2">Endorsements</TabsTrigger>
+                  </TabsList>
+                </div>
+
+                <TabsContent value="mission" className="mt-0">
+                  <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr]">
+                    <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
+                      <h3 className="text-2xl font-bold">Our mission</h3>
+                      <p className="mt-4 text-lg leading-8 text-slate-600">
+                        CASPO exists to help student leaders spend less time managing scattered
+                        logistics and more time creating belonging. We are building a modern operating
+                        system for organizations: clear communication, smarter planning, cleaner records,
+                        and AI assistance that helps every officer lead with confidence.
+                      </p>
+                      <div className="mt-8 grid gap-4">
+                        {missionHighlights.map(highlight => {
+                          const Icon = highlight.icon;
+                          return (
+                            <div key={highlight.title} className="flex gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                                <Icon className="h-5 w-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold">{highlight.title}</h4>
+                                <p className="mt-1 leading-7 text-slate-600">{highlight.description}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
+                      <p className="text-sm font-semibold uppercase text-emerald-300">Promo video</p>
+                      <div className="mt-5 flex aspect-video items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+                        <div className="text-center">
+                          <PlayCircle className="mx-auto h-16 w-16 text-emerald-300" />
+                          <p className="mt-4 text-xl font-bold">Video coming soon</p>
+                          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
+                            Drop in the promo video link later and this section can become an embedded
+                            CASPO overview.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <p className="text-sm leading-6 text-slate-300">
+                          CASPO is for the people who keep organizations alive: the officers sending
+                          reminders, advisors keeping an eye on progress, and members trying to stay in
+                          the loop.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="team" className="mt-0">
+                  <div className="grid gap-5 md:grid-cols-2">
+                    {teamMembers.map(member => (
+                      <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
+                        <CardHeader>
+                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
+                            {member.name.charAt(0)}
+                          </div>
+                          <CardTitle>{member.name}</CardTitle>
+                          <CardDescription className="text-base font-semibold text-emerald-700">
+                            {member.role}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="leading-7 text-slate-600">{member.note}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="advisory" className="mt-0">
+                  <div className="rounded-3xl border border-dashed border-emerald-700/30 bg-white p-8 shadow-sm">
+                    <div className="max-w-2xl">
+                      <h3 className="text-2xl font-bold">Advisory Board</h3>
+                      <p className="mt-3 leading-7 text-slate-600">
+                        This section is ready for advisory board members, bios, photos, and titles once
+                        you send over the details.
+                      </p>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="endorsements" className="mt-0">
+                  <div className="rounded-3xl bg-white p-8 shadow-sm">
+                    <Quote className="h-10 w-10 text-emerald-600" />
+                    <h3 className="mt-5 text-2xl font-bold">Endorsements</h3>
+                    <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                      We will add endorsements, quotes, and partner notes here once you provide them.
+                    </p>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const { user, loading: userLoading, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const didLogNavigationRef = useRef(false);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
+  const isLoginRoute = pathname === '/login';
 
   const getSafeNextPath = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -391,10 +707,6 @@ export default function HomePage() {
       }
       if (user) {
         navigateWithFallback(getSafeNextPath() ?? (selectedOrgId ? '/clubs' : '/orgs'));
-        return;
-      }
-      if (pathname === '/') {
-        navigateWithFallback('/login');
       }
     };
 
@@ -437,14 +749,6 @@ export default function HomePage() {
   };
 
   
-  if (!isClient || userLoading) {
-    return (
-        <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center">
-            <Logo className="h-16 w-16 animate-pulse text-primary" />
-        </div>
-    );
-  }
-
   if (isDemoMode) {
     return (
       <div className="min-h-[100dvh] bg-background flex items-center justify-center">
@@ -453,32 +757,20 @@ export default function HomePage() {
     );
   }
 
-  if (!user) {
-    return (
-        <div className="viewport-page bg-background">
-             <div className="viewport-scroll flex h-full flex-col items-center justify-center px-4 pb-4 pt-4 sm:pt-8">
-             <Card className="auth-card-shell w-full max-w-md">
-                <CardHeader className="items-center px-5 pb-3 pt-5 sm:px-6 sm:pt-6">
-                    <div className="mb-0 flex items-center justify-center gap-4">
-                        <Logo className="h-10 w-10 text-primary" />
-                        <div className="flex items-baseline gap-2">
-                            <CardTitle className="text-[2.25rem]">CASPO</CardTitle>
-                            <span className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary-foreground">beta</span>
-                        </div>
-                    </div>
-                </CardHeader>
+  if (!isLoginRoute && !user) {
+    return <PublicHomePage />;
+  }
 
-                <div className="px-5 pb-5 pt-0 sm:px-6 sm:pb-6">
-                   {authMode === 'login' ? (
-                        <LoginForm onLogin={handleAuthenticatedUser} onSwitchToSignUp={() => setAuthMode('signup')} supabase={supabase} />
-                   ) : (
-                        <SignUpForm onUserSaved={handleAuthenticatedUser} onSwitchToLogin={() => setAuthMode('login')} supabase={supabase} />
-                   )}
-                </div>
-            </Card>
-            </div>
+  if (!isClient || userLoading) {
+    return (
+        <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center">
+            <Logo className="h-16 w-16 animate-pulse text-primary" />
         </div>
     );
+  }
+
+  if (!user) {
+    return <AuthEntry onAuthenticatedUser={handleAuthenticatedUser} />;
   }
 
   return (

@@ -111,7 +111,7 @@ const teamMembers: TeamMember[] = [
     name: 'Pratheek Mukkavilli',
     role: 'Founder & CEO',
     note: 'Building CASPO to make club leadership simpler, more organized, and more accessible for every student group.',
-    photoSrc: '/team/pratheek.jpg',
+    photoSrc: '/team/pratheek.png',
   },
   {
     name: 'Soham',

@@ -204,7 +204,7 @@ function TeamMemberAvatar({ member }: Readonly<{ member: TeamMember }>) {
     <ProfileImage
       name={member.name}
       src={member.photoSrc}
-      className="mb-4 aspect-[4/5] w-full rounded-2xl object-cover object-center"
+      className="mx-auto mb-4 aspect-[4/5] w-full max-w-xs rounded-2xl object-cover object-center"
     />
   );
 }

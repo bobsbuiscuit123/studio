@@ -2,12 +2,12 @@
 "use client";
 
 import { useCallback, useState, useEffect, useRef } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowRight,
   ClipboardCheck,
   GraduationCap,
-  PlayCircle,
   Quote,
   Sparkles,
   Users,
@@ -92,16 +92,24 @@ const missionHighlights = [
     icon: Users,
   },
 ];
-const teamMembers = [
+type TeamMember = {
+  name: string;
+  role: string;
+  note: string;
+  photoSrc?: string;
+};
+
+const teamMembers: TeamMember[] = [
   {
     name: 'Pratheek Mukkavilli',
     role: 'Founder & CEO',
     note: 'Building CASPO to make club leadership simpler, more organized, and more accessible for every student group.',
+    photoSrc: '/team/pratheek.jpg',
   },
   {
     name: 'Soham',
-    role: 'CTO',
-    note: 'Leading the technical direction behind CASPO’s platform, automation, and product experience.',
+    role: 'CFO',
+    note: 'Leading the financial direction behind CASPO’s growth, planning, and long-term sustainability.',
   },
 ];
 const homeTabs = [
@@ -120,6 +128,29 @@ function HomeTabsList({ className }: Readonly<{ className: string }>) {
         </TabsTrigger>
       ))}
     </TabsList>
+  );
+}
+
+function TeamMemberAvatar({ member }: Readonly<{ member: TeamMember }>) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (member.photoSrc && !imageFailed) {
+    return (
+      <Image
+        src={member.photoSrc}
+        alt={`${member.name} headshot`}
+        width={640}
+        height={800}
+        className="mb-4 aspect-[4/5] w-full rounded-2xl object-cover object-center"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
+      {member.name.charAt(0)}
+    </div>
   );
 }
 
@@ -597,16 +628,24 @@ function PublicHomePage() {
 
                   <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
                     <p className="text-sm font-semibold uppercase text-emerald-300">Promo video</p>
-                    <div className="mt-5 flex aspect-video items-center justify-center rounded-2xl border border-white/15 bg-white/10">
-                      <div className="text-center">
-                        <PlayCircle className="mx-auto h-16 w-16 text-emerald-300" />
-                        <p className="mt-4 text-xl font-bold">Video coming soon</p>
-                        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
-                          Drop in the promo video link later and this section can become an embedded
-                          CASPO overview.
-                        </p>
-                      </div>
+                    <div className="mt-5 overflow-hidden rounded-2xl border border-white/15 bg-black">
+                      <iframe
+                        className="aspect-video w-full"
+                        src="https://www.youtube-nocookie.com/embed/QVFi8ZTWqvE?rel=0&modestbranding=1"
+                        title="Caspo AI"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerPolicy="strict-origin-when-cross-origin"
+                        allowFullScreen
+                      />
                     </div>
+                    <a
+                      href="https://youtu.be/QVFi8ZTWqvE"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 inline-flex text-sm font-semibold text-emerald-300 underline underline-offset-4"
+                    >
+                      Watch Caspo AI on YouTube
+                    </a>
                     <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
                       <p className="text-sm leading-6 text-slate-300">
                         CASPO is for the people who keep organizations alive: the officers sending
@@ -633,9 +672,7 @@ function PublicHomePage() {
                   {teamMembers.map(member => (
                     <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
                       <CardHeader>
-                        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
-                          {member.name.charAt(0)}
-                        </div>
+                        <TeamMemberAvatar member={member} />
                         <CardTitle>{member.name}</CardTitle>
                         <CardDescription className="text-base font-semibold text-emerald-700">
                           {member.role}

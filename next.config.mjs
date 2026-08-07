@@ -57,6 +57,7 @@ const cspDirectives = [
   "font-src 'self' data:",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   `connect-src 'self' https://*.sentry.io${supabaseOrigin ? " " + supabaseOrigin : ""}`,
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
   "form-action 'self'",
 ];
 

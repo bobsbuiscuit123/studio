@@ -204,7 +204,7 @@ function TeamMemberAvatar({ member }: Readonly<{ member: TeamMember }>) {
     <ProfileImage
       name={member.name}
       src={member.photoSrc}
-      className="mx-auto mb-4 aspect-[4/5] w-full max-w-xs rounded-2xl object-cover object-center"
+      className="aspect-[4/5] w-full rounded-2xl object-cover object-center"
     />
   );
 }
@@ -224,13 +224,14 @@ function PartnerLogo() {
 
   if (!imageFailed) {
     return (
-      <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-6">
         <Image
           src={partner.logoSrc}
           alt={`${partner.name} logo`}
-          width={520}
-          height={160}
-          className="max-h-20 w-full object-contain"
+          width={395}
+          height={113}
+          className="h-auto max-h-16 w-auto max-w-full object-contain"
+          sizes="(min-width: 1024px) 320px, 100vw"
           onError={() => setImageFailed(true)}
         />
       </div>
@@ -758,20 +759,18 @@ function PublicHomePage() {
                   CASPO is being built by student leaders who know how much work it takes to keep
                   organizations moving.
                 </p>
-                <div className="mx-auto mt-8 grid w-full max-w-5xl gap-5 md:grid-cols-2">
+                <div className="mx-auto mt-8 grid w-full max-w-5xl gap-8 md:grid-cols-2">
                   {teamMembers.map(member => (
-                    <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
-                      <CardHeader>
+                    <div key={member.name}>
+                      <div className="mx-auto w-full max-w-xs overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <TeamMemberAvatar member={member} />
-                        <CardTitle>{member.name}</CardTitle>
-                        <CardDescription className="text-base font-semibold text-emerald-700">
-                          {member.role}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="leading-7 text-slate-600">{member.note}</p>
-                      </CardContent>
-                    </Card>
+                      </div>
+                      <div className="mt-5">
+                        <h2 className="text-2xl font-bold text-slate-950">{member.name}</h2>
+                        <p className="mt-1 text-base font-semibold text-emerald-700">{member.role}</p>
+                        <p className="mt-5 leading-7 text-slate-600">{member.note}</p>
+                      </div>
+                    </div>
                   ))}
                 </div>
                 <div className="mt-8 rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-sm sm:p-8">

@@ -111,12 +111,13 @@ const teamMembers: TeamMember[] = [
     name: 'Pratheek Mukkavilli',
     role: 'Founder & CEO',
     note: 'Building CASPO to make club leadership simpler, more organized, and more accessible for every student group.',
-    photoSrc: '/team/pratheek.png',
+    photoSrc: '/team/pratheek.jpg',
   },
   {
     name: 'Soham',
     role: 'CFO',
     note: 'Leading the financial direction behind CASPO’s growth, planning, and long-term sustainability.',
+    photoSrc: '/team/soham.jpg',
   },
 ];
 const partner = {
@@ -137,7 +138,7 @@ const advisoryBoard: Advisor[] = [
   },
   {
     name: 'Ganesh Harke',
-    role: 'VP, Citi',
+    role: 'Vice President, Citi',
     photoSrc: '/advisory/ganesh-harke.jpg',
   },
   {
@@ -184,6 +185,8 @@ function ProfileImage({
         width={640}
         height={800}
         className={className}
+        loading="eager"
+        sizes="(min-width: 1024px) 25vw, (min-width: 768px) 50vw, 100vw"
         onError={() => setImageFailed(true)}
       />
     );
@@ -686,7 +689,7 @@ function PublicHomePage() {
                   </div>
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr]">
+                <div className="grid items-start gap-6 lg:grid-cols-[1fr_0.82fr]">
                   <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
                     <h3 className="text-2xl font-bold">A better operating system for student organizations</h3>
                     <p className="mt-4 text-lg leading-8 text-slate-600">
@@ -713,7 +716,7 @@ function PublicHomePage() {
                     </div>
                   </div>
 
-                  <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
+                  <div className="self-start rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
                     <p className="text-sm font-semibold uppercase text-emerald-300">Promo video</p>
                     <div className="mt-5 overflow-hidden rounded-2xl border border-white/15 bg-black">
                       <iframe

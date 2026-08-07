@@ -104,6 +104,24 @@ const teamMembers = [
     note: 'Leading the technical direction behind CASPO’s platform, automation, and product experience.',
   },
 ];
+const homeTabs = [
+  { value: 'mission', label: 'Our Mission' },
+  { value: 'team', label: 'Our Team' },
+  { value: 'advisory', label: 'Advisory Board' },
+  { value: 'endorsements', label: 'Endorsements' },
+] as const;
+
+function HomeTabsList({ className }: Readonly<{ className: string }>) {
+  return (
+    <TabsList className={className}>
+      {homeTabs.map(tab => (
+        <TabsTrigger key={tab.value} value={tab.value} className="shrink-0 rounded-lg px-4 py-2">
+          {tab.label}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+  );
+}
 
 function LegalNotice({
   onOpenTerms,
@@ -437,220 +455,234 @@ function AuthEntry({
 
 function PublicHomePage() {
   return (
-    <div className="viewport-page bg-[#f7faf8] text-slate-950">
+    <Tabs defaultValue="mission" className="viewport-page bg-[#f7faf8] text-slate-950">
       <div className="viewport-scroll">
         <header className="sticky top-0 z-20 border-b border-emerald-900/10 bg-[#f7faf8]/92 backdrop-blur">
-          <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-            <Link href="/" className="flex items-center gap-3" aria-label="CASPO homepage">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-                <Logo className="h-6 w-6" />
-              </span>
-              <span className="text-xl font-bold">CASPO</span>
-            </Link>
-            <Button asChild className="rounded-xl bg-slate-950 text-white hover:bg-slate-800">
-              <Link href="/login">
-                Log in
-                <ArrowRight className="ml-2 h-4 w-4" />
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between gap-4">
+              <Link href="/" className="flex items-center gap-3" aria-label="CASPO homepage">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <Logo className="h-6 w-6" />
+                </span>
+                <span className="text-xl font-bold">CASPO</span>
               </Link>
-            </Button>
+              <HomeTabsList className="hidden h-auto justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm lg:flex" />
+              <Button asChild className="rounded-xl bg-slate-950 text-white hover:bg-slate-800">
+                <Link href="/login">
+                  Log in
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+            <HomeTabsList className="flex h-auto w-full justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm lg:hidden" />
           </div>
         </header>
 
         <main>
-          <section className="border-b border-emerald-900/10 bg-white">
-            <div className="mx-auto grid min-h-[calc(100dvh-68px)] w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:py-16">
-              <div className="flex flex-col justify-center">
-                <p className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-emerald-700/20 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800">
-                  <GraduationCap className="h-4 w-4" />
-                  Built for clubs, chapters, teams, and student organizations
-                </p>
-                <h1 className="max-w-3xl text-5xl font-bold leading-[1.02] sm:text-6xl lg:text-7xl">
-                  CASPO helps student organizations run with less chaos.
-                </h1>
-                <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-                  CASPO brings the everyday work of club leadership into one place: communication,
-                  events, attendance, points, forms, finances, and AI-assisted workflows that help
-                  officers move faster without losing the human part of community.
-                </p>
-                <div className="mt-8 flex flex-wrap items-center gap-3">
-                  <Button asChild size="lg" className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
-                    <Link href="/login">
-                      Log in to CASPO
-                      <ArrowRight className="ml-2 h-5 w-5" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="lg" className="rounded-xl border-slate-300 bg-white">
-                    <a href="#learn-more">Explore the mission</a>
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center">
-                <div className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-2xl">
-                  <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
-                    <span className="h-3 w-3 rounded-full bg-red-400" />
-                    <span className="h-3 w-3 rounded-full bg-amber-300" />
-                    <span className="h-3 w-3 rounded-full bg-emerald-400" />
-                    <span className="ml-3 text-sm text-slate-400">caspo.club</span>
+          <TabsContent value="mission" className="m-0">
+            <section className="border-b border-emerald-900/10 bg-white">
+              <div className="mx-auto grid min-h-[calc(88dvh-104px)] w-full max-w-7xl gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:py-16">
+                <div className="flex flex-col justify-center">
+                  <p className="mb-4 inline-flex w-fit items-center gap-2 rounded-full border border-emerald-700/20 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800">
+                    <GraduationCap className="h-4 w-4" />
+                    Built for clubs, chapters, teams, and student organizations
+                  </p>
+                  <h1 className="max-w-3xl text-5xl font-bold leading-[1.02] sm:text-6xl lg:text-7xl">
+                    CASPO helps student organizations run with less chaos.
+                  </h1>
+                  <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+                    CASPO brings the everyday work of club leadership into one place: communication,
+                    events, attendance, points, forms, finances, and AI-assisted workflows that help
+                    officers move faster without losing the human part of community.
+                  </p>
+                  <div className="mt-8 flex flex-wrap items-center gap-3">
+                    <Button asChild size="lg" className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
+                      <Link href="/login">
+                        Log in to CASPO
+                        <ArrowRight className="ml-2 h-5 w-5" />
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="lg" className="rounded-xl border-slate-300 bg-white">
+                      <a href="#mission-details">Explore the mission</a>
+                    </Button>
                   </div>
-                  <div className="grid gap-4 p-5 sm:p-6">
-                    <div className="rounded-2xl bg-white p-5 text-slate-950">
-                      <div className="mb-4 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-emerald-700">Command center</p>
-                          <p className="text-2xl font-bold">Robotics Club</p>
-                        </div>
-                        <div className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
-                          Active
-                        </div>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {['3 events', '128 members', '94% read'].map(metric => (
-                          <div key={metric} className="rounded-xl bg-slate-100 px-3 py-4 text-center font-semibold">
-                            {metric}
+                </div>
+
+                <div className="flex items-center">
+                  <div className="w-full overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 shadow-2xl">
+                    <div className="flex items-center gap-2 border-b border-white/10 px-5 py-4">
+                      <span className="h-3 w-3 rounded-full bg-red-400" />
+                      <span className="h-3 w-3 rounded-full bg-amber-300" />
+                      <span className="h-3 w-3 rounded-full bg-emerald-400" />
+                      <span className="ml-3 text-sm text-slate-400">caspo.club</span>
+                    </div>
+                    <div className="grid gap-4 p-5 sm:p-6">
+                      <div className="rounded-2xl bg-white p-5 text-slate-950">
+                        <div className="mb-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-emerald-700">Command center</p>
+                            <p className="text-2xl font-bold">Robotics Club</p>
                           </div>
-                        ))}
+                          <div className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+                            Active
+                          </div>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          {['3 events', '128 members', '94% read'].map(metric => (
+                            <div key={metric} className="rounded-xl bg-slate-100 px-3 py-4 text-center font-semibold">
+                              {metric}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-2xl bg-emerald-400 p-5 text-emerald-950">
-                        <p className="text-sm font-semibold">Next meeting</p>
-                        <p className="mt-2 text-2xl font-bold">Friday, 3:30 PM</p>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="rounded-2xl bg-emerald-400 p-5 text-emerald-950">
+                          <p className="text-sm font-semibold">Next meeting</p>
+                          <p className="mt-2 text-2xl font-bold">Friday, 3:30 PM</p>
+                        </div>
+                        <div className="rounded-2xl bg-white/10 p-5 text-white">
+                          <p className="text-sm font-semibold text-emerald-200">AI draft ready</p>
+                          <p className="mt-2 text-lg font-bold">Announcement + RSVP reminder</p>
+                        </div>
                       </div>
-                      <div className="rounded-2xl bg-white/10 p-5 text-white">
-                        <p className="text-sm font-semibold text-emerald-200">AI draft ready</p>
-                        <p className="mt-2 text-lg font-bold">Announcement + RSVP reminder</p>
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-white">
-                      <div className="mb-3 h-2 w-24 rounded-full bg-emerald-300" />
-                      <div className="space-y-2">
-                        <div className="h-3 rounded-full bg-white/25" />
-                        <div className="h-3 w-10/12 rounded-full bg-white/20" />
-                        <div className="h-3 w-7/12 rounded-full bg-white/15" />
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-white">
+                        <div className="mb-3 h-2 w-24 rounded-full bg-emerald-300" />
+                        <div className="space-y-2">
+                          <div className="h-3 rounded-full bg-white/25" />
+                          <div className="h-3 w-10/12 rounded-full bg-white/20" />
+                          <div className="h-3 w-7/12 rounded-full bg-white/15" />
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section id="learn-more" className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-            <div className="mx-auto w-full max-w-7xl">
-              <Tabs defaultValue="mission" className="w-full">
-                <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <section id="mission-details" className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+              <div className="mx-auto w-full max-w-7xl">
+                <div className="mb-8">
                   <div>
                     <p className="text-sm font-semibold uppercase text-emerald-700">About CASPO</p>
-                    <h2 className="mt-2 text-3xl font-bold sm:text-4xl">What we are building</h2>
+                    <h2 className="mt-2 text-3xl font-bold sm:text-4xl">Our Mission</h2>
                   </div>
-                  <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm lg:w-auto">
-                    <TabsTrigger value="mission" className="rounded-lg px-4 py-2">Our Mission</TabsTrigger>
-                    <TabsTrigger value="team" className="rounded-lg px-4 py-2">Our Team</TabsTrigger>
-                    <TabsTrigger value="advisory" className="rounded-lg px-4 py-2">Advisory Board</TabsTrigger>
-                    <TabsTrigger value="endorsements" className="rounded-lg px-4 py-2">Endorsements</TabsTrigger>
-                  </TabsList>
                 </div>
 
-                <TabsContent value="mission" className="mt-0">
-                  <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr]">
-                    <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
-                      <h3 className="text-2xl font-bold">Our mission</h3>
-                      <p className="mt-4 text-lg leading-8 text-slate-600">
-                        CASPO exists to help student leaders spend less time managing scattered
-                        logistics and more time creating belonging. We are building a modern operating
-                        system for organizations: clear communication, smarter planning, cleaner records,
-                        and AI assistance that helps every officer lead with confidence.
-                      </p>
-                      <div className="mt-8 grid gap-4">
-                        {missionHighlights.map(highlight => {
-                          const Icon = highlight.icon;
-                          return (
-                            <div key={highlight.title} className="flex gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                                <Icon className="h-5 w-5" />
-                              </div>
-                              <div>
-                                <h4 className="font-bold">{highlight.title}</h4>
-                                <p className="mt-1 leading-7 text-slate-600">{highlight.description}</p>
-                              </div>
+                <div className="grid gap-6 lg:grid-cols-[1fr_0.82fr]">
+                  <div className="rounded-3xl bg-white p-6 shadow-sm sm:p-8">
+                    <h3 className="text-2xl font-bold">A better operating system for student organizations</h3>
+                    <p className="mt-4 text-lg leading-8 text-slate-600">
+                      CASPO exists to help student leaders spend less time managing scattered
+                      logistics and more time creating belonging. We are building a modern operating
+                      system for organizations: clear communication, smarter planning, cleaner records,
+                      and AI assistance that helps every officer lead with confidence.
+                    </p>
+                    <div className="mt-8 grid gap-4">
+                      {missionHighlights.map(highlight => {
+                        const Icon = highlight.icon;
+                        return (
+                          <div key={highlight.title} className="flex gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                              <Icon className="h-5 w-5" />
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div>
+                              <h4 className="font-bold">{highlight.title}</h4>
+                              <p className="mt-1 leading-7 text-slate-600">{highlight.description}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
+                  </div>
 
-                    <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
-                      <p className="text-sm font-semibold uppercase text-emerald-300">Promo video</p>
-                      <div className="mt-5 flex aspect-video items-center justify-center rounded-2xl border border-white/15 bg-white/10">
-                        <div className="text-center">
-                          <PlayCircle className="mx-auto h-16 w-16 text-emerald-300" />
-                          <p className="mt-4 text-xl font-bold">Video coming soon</p>
-                          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
-                            Drop in the promo video link later and this section can become an embedded
-                            CASPO overview.
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="text-sm leading-6 text-slate-300">
-                          CASPO is for the people who keep organizations alive: the officers sending
-                          reminders, advisors keeping an eye on progress, and members trying to stay in
-                          the loop.
+                  <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-sm sm:p-8">
+                    <p className="text-sm font-semibold uppercase text-emerald-300">Promo video</p>
+                    <div className="mt-5 flex aspect-video items-center justify-center rounded-2xl border border-white/15 bg-white/10">
+                      <div className="text-center">
+                        <PlayCircle className="mx-auto h-16 w-16 text-emerald-300" />
+                        <p className="mt-4 text-xl font-bold">Video coming soon</p>
+                        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-300">
+                          Drop in the promo video link later and this section can become an embedded
+                          CASPO overview.
                         </p>
                       </div>
                     </div>
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="team" className="mt-0">
-                  <div className="grid gap-5 md:grid-cols-2">
-                    {teamMembers.map(member => (
-                      <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
-                        <CardHeader>
-                          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
-                            {member.name.charAt(0)}
-                          </div>
-                          <CardTitle>{member.name}</CardTitle>
-                          <CardDescription className="text-base font-semibold text-emerald-700">
-                            {member.role}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="leading-7 text-slate-600">{member.note}</p>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </TabsContent>
-
-                <TabsContent value="advisory" className="mt-0">
-                  <div className="rounded-3xl border border-dashed border-emerald-700/30 bg-white p-8 shadow-sm">
-                    <div className="max-w-2xl">
-                      <h3 className="text-2xl font-bold">Advisory Board</h3>
-                      <p className="mt-3 leading-7 text-slate-600">
-                        This section is ready for advisory board members, bios, photos, and titles once
-                        you send over the details.
+                    <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p className="text-sm leading-6 text-slate-300">
+                        CASPO is for the people who keep organizations alive: the officers sending
+                        reminders, advisors keeping an eye on progress, and members trying to stay in
+                        the loop.
                       </p>
                     </div>
                   </div>
-                </TabsContent>
+                </div>
+              </div>
+            </section>
+          </TabsContent>
 
-                <TabsContent value="endorsements" className="mt-0">
-                  <div className="rounded-3xl bg-white p-8 shadow-sm">
-                    <Quote className="h-10 w-10 text-emerald-600" />
-                    <h3 className="mt-5 text-2xl font-bold">Endorsements</h3>
-                    <p className="mt-3 max-w-2xl leading-7 text-slate-600">
-                      We will add endorsements, quotes, and partner notes here once you provide them.
+          <TabsContent value="team" className="m-0">
+            <section className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+              <div className="mx-auto w-full max-w-7xl">
+                <p className="text-sm font-semibold uppercase text-emerald-700">Our Team</p>
+                <h1 className="mt-2 max-w-3xl text-4xl font-bold sm:text-5xl">The people building CASPO</h1>
+                <p className="mt-4 max-w-2xl text-lg leading-8 text-slate-600">
+                  CASPO is being built by student leaders who know how much work it takes to keep
+                  organizations moving.
+                </p>
+                <div className="mt-8 grid gap-5 md:grid-cols-2">
+                  {teamMembers.map(member => (
+                    <Card key={member.name} className="rounded-2xl border-slate-200 bg-white shadow-sm">
+                      <CardHeader>
+                        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
+                          {member.name.charAt(0)}
+                        </div>
+                        <CardTitle>{member.name}</CardTitle>
+                        <CardDescription className="text-base font-semibold text-emerald-700">
+                          {member.role}
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="leading-7 text-slate-600">{member.note}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="advisory" className="m-0">
+            <section className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+              <div className="mx-auto w-full max-w-7xl">
+                <div className="rounded-3xl border border-dashed border-emerald-700/30 bg-white p-8 shadow-sm">
+                  <div className="max-w-2xl">
+                    <h1 className="text-3xl font-bold sm:text-4xl">Advisory Board</h1>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      This section is ready for advisory board members, bios, photos, and titles once
+                      you send over the details.
                     </p>
                   </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-          </section>
+                </div>
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="endorsements" className="m-0">
+            <section className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+              <div className="mx-auto w-full max-w-7xl">
+                <div className="rounded-3xl bg-white p-8 shadow-sm">
+                  <Quote className="h-10 w-10 text-emerald-600" />
+                  <h1 className="mt-5 text-3xl font-bold sm:text-4xl">Endorsements</h1>
+                  <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+                    We will add endorsements, quotes, and partner notes here once you provide them.
+                  </p>
+                </div>
+              </div>
+            </section>
+          </TabsContent>
         </main>
       </div>
-    </div>
+    </Tabs>
   );
 }
 

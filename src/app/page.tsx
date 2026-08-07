@@ -224,14 +224,14 @@ function PartnerLogo() {
 
   if (!imageFailed) {
     return (
-      <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-6">
+      <div className="flex min-h-20 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white p-4">
         <Image
           src={partner.logoSrc}
           alt={`${partner.name} logo`}
-          width={395}
+          width={455}
           height={113}
-          className="h-auto max-h-16 w-auto max-w-full object-contain"
-          sizes="(min-width: 1024px) 320px, 100vw"
+          className="h-auto max-h-14 w-auto max-w-full object-contain"
+          sizes="(min-width: 1024px) 260px, 100vw"
           onError={() => setImageFailed(true)}
         />
       </div>
@@ -239,7 +239,7 @@ function PartnerLogo() {
   }
 
   return (
-    <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-3xl font-bold text-purple-800">
+    <div className="flex min-h-20 w-full items-center justify-center rounded-2xl border border-slate-200 bg-white p-4 text-2xl font-bold text-purple-800">
       {partner.name}
     </div>
   );
@@ -759,9 +759,9 @@ function PublicHomePage() {
                   CASPO is being built by student leaders who know how much work it takes to keep
                   organizations moving.
                 </p>
-                <div className="mx-auto mt-8 grid w-full max-w-5xl gap-8 md:grid-cols-2">
+                <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                   {teamMembers.map(member => (
-                    <div key={member.name}>
+                    <div key={member.name} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                       <div className="mx-auto w-full max-w-xs overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <TeamMemberAvatar member={member} />
                       </div>
@@ -772,20 +772,18 @@ function PublicHomePage() {
                       </div>
                     </div>
                   ))}
-                </div>
-                <div className="mt-8 rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-sm sm:p-8">
-                  <p className="text-sm font-semibold uppercase text-emerald-700">Official Partner</p>
-                  <div className="mt-4 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="max-w-2xl">
-                      <h2 className="text-2xl font-bold sm:text-3xl">
-                        Officially partnered with {partner.name}
-                      </h2>
-                      <p className="mt-3 leading-7 text-slate-600">
-                        CASPO is officially partnered with Xrathus DXP as we build a stronger,
-                        smarter operating system for student organizations.
-                      </p>
+                  <div className="rounded-2xl border border-emerald-900/10 bg-white p-5 shadow-sm">
+                    <p className="text-sm font-semibold uppercase text-emerald-700">Official Partner</p>
+                    <h2 className="mt-4 text-2xl font-bold text-slate-950">
+                      Officially partnered with {partner.name}
+                    </h2>
+                    <p className="mt-3 leading-7 text-slate-600">
+                      CASPO is officially partnered with Xrathus DXP as we build a stronger,
+                      smarter operating system for student organizations.
+                    </p>
+                    <div className="mt-6">
+                      <PartnerLogo />
                     </div>
-                    <PartnerLogo />
                   </div>
                 </div>
               </div>

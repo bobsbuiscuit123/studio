@@ -23,10 +23,11 @@ import {
 import { useOptionalDemoCtx } from '@/lib/demo/DemoDataProvider';
 import type { User } from '@/lib/mock-data';
 import { safeFetchJson } from '@/lib/network';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { createSupabaseBrowserClient, hasSupabaseBrowserConfig } from '@/lib/supabase/client';
 
 const DEMO_MODE_ENABLED = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 const CURRENT_USER_STORAGE_KEY = 'currentUser';
+const SUPABASE_BROWSER_CONFIGURED = hasSupabaseBrowserConfig();
 
 const isDemoRoute = () =>
   typeof window !== 'undefined' &&
@@ -98,11 +99,16 @@ const readStoredCurrentUser = () => {
 function useCurrentUserState(): CurrentUserContextValue {
   const demoCtx = useOptionalDemoCtx();
   const useDemo = shouldUseDemoData(Boolean(demoCtx));
-  const initialStoredUser = useDemo && demoCtx ? demoCtx.user : readStoredCurrentUser();
+  const authUnavailable = !SUPABASE_BROWSER_CONFIGURED && !useDemo;
+  const initialStoredUser =
+    useDemo && demoCtx ? demoCtx.user : authUnavailable ? null : readStoredCurrentUser();
   const [user, setUser] = useState<User | null>(() => initialStoredUser);
   const [status, setStatus] = useState<CurrentUserStatus>(() => {
     if (useDemo && demoCtx) {
       return 'success';
+    }
+    if (authUnavailable) {
+      return 'empty';
     }
     return initialStoredUser ? 'success' : 'loading';
   });
@@ -127,6 +133,13 @@ function useCurrentUserState(): CurrentUserContextValue {
       if (useDemo && demoCtx) {
         setUser(demoCtx.user);
         setStatus('success');
+        setError(null);
+        return true;
+      }
+      if (authUnavailable) {
+        persistCurrentUserCache(null);
+        setUser(null);
+        setStatus('empty');
         setError(null);
         return true;
       }
@@ -252,7 +265,7 @@ function useCurrentUserState(): CurrentUserContextValue {
         }
       }
     },
-    [demoCtx, useDemo]
+    [authUnavailable, demoCtx, useDemo]
   );
 
   useEffect(() => {
@@ -260,6 +273,13 @@ function useCurrentUserState(): CurrentUserContextValue {
     if (useDemo && demoCtx) {
       setUser(demoCtx.user);
       setStatus('success');
+      setError(null);
+      return;
+    }
+    if (authUnavailable) {
+      persistCurrentUserCache(null);
+      setUser(null);
+      setStatus('empty');
       setError(null);
       return;
     }
@@ -272,7 +292,7 @@ function useCurrentUserState(): CurrentUserContextValue {
     return () => {
       activeAbortRef.current?.abort();
     };
-  }, [demoCtx, hydrateCurrentUser, useDemo]);
+  }, [authUnavailable, demoCtx, hydrateCurrentUser, useDemo]);
 
   const setLocalUser = useCallback(
     (nextUser: User | null) => {
@@ -298,11 +318,19 @@ function useCurrentUserState(): CurrentUserContextValue {
   }, [demoCtx, useDemo]);
 
   useEffect(() => {
-    if (useDemo) {
+    if (useDemo || authUnavailable) {
       return;
     }
 
-    const supabase = createSupabaseBrowserClient();
+    let supabase: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      supabase = createSupabaseBrowserClient();
+    } catch (error) {
+      logger.error('Current user auth subscription unavailable', error);
+      setStatus('empty');
+      setError(null);
+      return;
+    }
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event: AuthChangeEvent) => {
@@ -323,7 +351,7 @@ function useCurrentUserState(): CurrentUserContextValue {
     return () => {
       subscription.unsubscribe();
     };
-  }, [hydrateCurrentUser, useDemo]);
+  }, [authUnavailable, hydrateCurrentUser, useDemo]);
 
   const saveUser = useCallback(
     async (newUser: SaveUserInput) => {

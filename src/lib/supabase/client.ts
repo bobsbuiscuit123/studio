@@ -52,6 +52,9 @@ const createBuildSafeBrowserClientStub = () =>
     },
   }) as ReturnType<typeof createBrowserClient>;
 
+export const hasSupabaseBrowserConfig = () =>
+  Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+
 export const createSupabaseBrowserClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;

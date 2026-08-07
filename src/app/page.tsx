@@ -2,6 +2,7 @@
 "use client";
 
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -99,6 +100,12 @@ type TeamMember = {
   photoSrc?: string;
 };
 
+type Advisor = {
+  name: string;
+  role: string;
+  photoSrc?: string;
+};
+
 const teamMembers: TeamMember[] = [
   {
     name: 'Pratheek Mukkavilli',
@@ -110,6 +117,33 @@ const teamMembers: TeamMember[] = [
     name: 'Soham',
     role: 'CFO',
     note: 'Leading the financial direction behind CASPO’s growth, planning, and long-term sustainability.',
+  },
+];
+const partner = {
+  name: 'Xrathus DXP',
+  logoSrc: '/partners/xrathus-dxp.jpg',
+};
+
+const advisoryBoard: Advisor[] = [
+  {
+    name: 'Brielle Sutton',
+    role: 'Founder and Principal, Ferana Advisory',
+    photoSrc: '/advisory/brielle-sutton.jpg',
+  },
+  {
+    name: 'Rheka Patel',
+    role: 'Founder and CEO, Xrathus',
+    photoSrc: '/advisory/rheka-patel.jpg',
+  },
+  {
+    name: 'Ganesh Harke',
+    role: 'VP, Citi',
+    photoSrc: '/advisory/ganesh-harke.jpg',
+  },
+  {
+    name: 'Tejus Mane',
+    role: 'Founder, AtmoSpark',
+    photoSrc: '/advisory/tejus-mane.jpg',
   },
 ];
 const homeTabs = [
@@ -131,25 +165,78 @@ function HomeTabsList({ className }: Readonly<{ className: string }>) {
   );
 }
 
-function TeamMemberAvatar({ member }: Readonly<{ member: TeamMember }>) {
+function ProfileImage({
+  name,
+  src,
+  className,
+}: Readonly<{
+  name: string;
+  src?: string;
+  className: string;
+}>) {
   const [imageFailed, setImageFailed] = useState(false);
 
-  if (member.photoSrc && !imageFailed) {
+  if (src && !imageFailed) {
     return (
       <Image
-        src={member.photoSrc}
-        alt={`${member.name} headshot`}
+        src={src}
+        alt={`${name} headshot`}
         width={640}
         height={800}
-        className="mb-4 aspect-[4/5] w-full rounded-2xl object-cover object-center"
+        className={className}
         onError={() => setImageFailed(true)}
       />
     );
   }
 
   return (
-    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-xl font-bold text-emerald-800">
-      {member.name.charAt(0)}
+    <div className={`${className} flex items-center justify-center bg-emerald-100 text-4xl font-bold text-emerald-800`}>
+      {name.charAt(0)}
+    </div>
+  );
+}
+
+function TeamMemberAvatar({ member }: Readonly<{ member: TeamMember }>) {
+  return (
+    <ProfileImage
+      name={member.name}
+      src={member.photoSrc}
+      className="mb-4 aspect-[4/5] w-full rounded-2xl object-cover object-center"
+    />
+  );
+}
+
+function AdvisorPhoto({ advisor }: Readonly<{ advisor: Advisor }>) {
+  return (
+    <ProfileImage
+      name={advisor.name}
+      src={advisor.photoSrc}
+      className="mb-5 aspect-square w-full rounded-2xl object-cover object-center"
+    />
+  );
+}
+
+function PartnerLogo() {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  if (!imageFailed) {
+    return (
+      <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-5">
+        <Image
+          src={partner.logoSrc}
+          alt={`${partner.name} logo`}
+          width={520}
+          height={160}
+          className="max-h-20 w-full object-contain"
+          onError={() => setImageFailed(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-24 w-full max-w-sm items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-3xl font-bold text-purple-800">
+      {partner.name}
     </div>
   );
 }
@@ -684,6 +771,21 @@ function PublicHomePage() {
                     </Card>
                   ))}
                 </div>
+                <div className="mt-8 rounded-3xl border border-emerald-900/10 bg-white p-6 shadow-sm sm:p-8">
+                  <p className="text-sm font-semibold uppercase text-emerald-700">Official Partner</p>
+                  <div className="mt-4 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="max-w-2xl">
+                      <h2 className="text-2xl font-bold sm:text-3xl">
+                        Officially partnered with {partner.name}
+                      </h2>
+                      <p className="mt-3 leading-7 text-slate-600">
+                        CASPO is officially partnered with Xrathus DXP as we build a stronger,
+                        smarter operating system for student organizations.
+                      </p>
+                    </div>
+                    <PartnerLogo />
+                  </div>
+                </div>
               </div>
             </section>
           </TabsContent>
@@ -691,14 +793,31 @@ function PublicHomePage() {
           <TabsContent value="advisory" className="m-0">
             <section className="bg-[#f7faf8] px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
               <div className="mx-auto w-full max-w-7xl">
-                <div className="rounded-3xl border border-dashed border-emerald-700/30 bg-white p-8 shadow-sm">
-                  <div className="max-w-2xl">
-                    <h1 className="text-3xl font-bold sm:text-4xl">Advisory Board</h1>
-                    <p className="mt-3 leading-7 text-slate-600">
-                      This section is ready for advisory board members, bios, photos, and titles once
-                      you send over the details.
-                    </p>
-                  </div>
+                <div className="max-w-3xl">
+                  <p className="text-sm font-semibold uppercase text-emerald-700">Advisory Board</p>
+                  <h1 className="mt-2 text-4xl font-bold sm:text-5xl">
+                    Advisors helping shape CASPO
+                  </h1>
+                  <p className="mt-4 text-lg leading-8 text-slate-600">
+                    CASPO is supported by experienced operators, founders, and leaders who help guide
+                    the product, partnerships, and long-term direction.
+                  </p>
+                </div>
+                <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {advisoryBoard.map(advisor => (
+                    <Card
+                      key={advisor.name}
+                      className={`rounded-2xl border-slate-200 bg-white shadow-sm ${advisor.name === 'Tejus Mane' ? 'lg:col-start-2' : ''}`}
+                    >
+                      <CardHeader>
+                        <AdvisorPhoto advisor={advisor} />
+                        <CardTitle className="text-xl">{advisor.name}</CardTitle>
+                        <CardDescription className="text-base font-semibold text-emerald-700">
+                          {advisor.role}
+                        </CardDescription>
+                      </CardHeader>
+                    </Card>
+                  ))}
                 </div>
               </div>
             </section>
@@ -726,6 +845,8 @@ function PublicHomePage() {
 export default function HomePage() {
   const { user, loading: userLoading, setLocalUser } = useCurrentUser();
   const [isClient, setIsClient] = useState(false);
+  const [nativePlatformChecked, setNativePlatformChecked] = useState(false);
+  const [isNativeApp, setIsNativeApp] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const didLogNavigationRef = useRef(false);
@@ -754,6 +875,11 @@ export default function HomePage() {
 
   useEffect(() => {
     setIsClient(true);
+  }, []);
+
+  useEffect(() => {
+    setIsNativeApp(Capacitor.isNativePlatform());
+    setNativePlatformChecked(true);
   }, []);
 
   useEffect(() => {
@@ -826,16 +952,16 @@ export default function HomePage() {
     );
   }
 
-  if (!isLoginRoute && !user) {
-    return <PublicHomePage />;
-  }
-
-  if (!isClient || userLoading) {
+  if (!isClient || !nativePlatformChecked || userLoading) {
     return (
         <div className="min-h-[100dvh] bg-background flex flex-col items-center justify-center">
             <Logo className="h-16 w-16 animate-pulse text-primary" />
         </div>
     );
+  }
+
+  if (!isLoginRoute && !user && !isNativeApp) {
+    return <PublicHomePage />;
   }
 
   if (!user) {

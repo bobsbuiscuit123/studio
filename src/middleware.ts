@@ -45,7 +45,7 @@ export function middleware(request: NextRequest) {
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next({ request });
 
-  const publicRoutes = ['/login', '/auth/callback', '/reset-password'];
+  const publicRoutes = ['/', '/login', '/auth/callback', '/reset-password'];
   const isPublicRoute =
     publicRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
   const isRootRoute = pathname === '/';
